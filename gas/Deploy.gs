@@ -123,16 +123,24 @@ function deployPreflight() {
   }
 
   var expected = getExpectedTriggerHandlers_();
+  var dispatchers = getInstalledTriggerHandlers_();
   try {
     var installed = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
-    var absent = expected.filter(function (h) { return installed.indexOf(h) === -1; });
+    var absent = dispatchers.filter(function (h) { return installed.indexOf(h) === -1; });
     add('TRIGGERS', absent.length ? 'FAIL' : 'PASS',
-      absent.length ? 'Не установлены: ' + absent.join(', ') + ' — запустите installTriggers().' : 'Все ' + expected.length + ' триггеров установлены.');
+      absent.length ? 'Не установлены: ' + absent.join(', ') + ' — запустите installTriggers().' : 'Все ' + dispatchers.length + ' триггеров-диспетчеров установлены.');
   } catch (trgErr) {
     add('TRIGGERS', 'FAIL', String(trgErr.message || trgErr));
   }
 
-  var missingFns = expected.filter(function (h) { return typeof globalThis[h] !== 'function'; });
+  var scheduled = [];
+  Object.keys(TRIGGER_SCHEDULE_).forEach(function (k) { scheduled = scheduled.concat(TRIGGER_SCHEDULE_[k]); });
+  scheduled = scheduled.concat(Object.keys(DAILY_TRIGGER_HOURS_));
+  var unscheduled = expected.filter(function (h) { return scheduled.indexOf(h) === -1; });
+  add('TRIGGER_SCHEDULE', unscheduled.length ? 'FAIL' : 'PASS',
+    unscheduled.length ? 'Нет в расписании диспетчеров: ' + unscheduled.join(', ') : 'Все ' + expected.length + ' задач распределены по диспетчерам.');
+
+  var missingFns = expected.concat(dispatchers).filter(function (h) { return typeof globalThis[h] !== 'function'; });
   add('TRIGGER_HANDLERS_EXIST', missingFns.length ? 'FAIL' : 'PASS',
     missingFns.length ? 'Нет функций-обработчиков: ' + missingFns.join(', ') : 'Функции-обработчики найдены.');
 

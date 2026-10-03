@@ -43,50 +43,21 @@ function api(action, data, token) {
  * все они ТОЛЬКО напоминают/помечают, ни один не придумывает данные за человека.
  */
 function installTriggers() {
-  // Единый список обработчиков — getExpectedTriggerHandlers_() (Deploy.gs), тот же использует deployPreflight().
-  var handlers = getExpectedTriggerHandlers_();
+  // Лимит Apps Script — 20 триггеров на проект, задач 28. Поэтому ставим 6 диспетчеров
+  // (TriggerScheduler.gs), каждый вызывает свои задачи с прежним расписанием.
+  // Удаляем и свои диспетчеры, и старые триггеры отдельных задач от предыдущих версий.
+  var handlers = getInstalledTriggerHandlers_().concat(getExpectedTriggerHandlers_());
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (handlers.indexOf(t.getHandlerFunction()) !== -1) ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('dailyBackupTrigger_').timeBased().everyDays(1).atHour(3).create();
-  ScriptApp.newTrigger('dailyAutoJournalTrigger_').timeBased().everyHours(1).create();
-  ScriptApp.newTrigger('journalReminderTrigger_').timeBased().everyMinutes(15).create();
-  ScriptApp.newTrigger('overdueJournalTrigger_').timeBased().everyHours(1).create();
-  ScriptApp.newTrigger('expiryCheckTrigger_').timeBased().everyDays(1).atHour(7).create();
-  ScriptApp.newTrigger('criticalStockTrigger_').timeBased().everyHours(2).create();
-  // Секондарные фичи, раунд 3 (Архитектура v4 §8) — раз в день достаточно: расписание
-  // лабораторных исследований низкочастотное (дни/недели), не требует часовой проверки,
-  // как у журнальной просрочки.
-  ScriptApp.newTrigger('labScheduleTrigger_').timeBased().everyDays(1).atHour(6).create();
-  // Раунд 8 (ТЗ §18) — декларации истекают по дням, не по часам, раз в день достаточно
-  // (тот же интервал, что и у expiryCheckTrigger_ для партий, другой час — чтобы не
-  // конкурировать с ним за LockService в одну и ту же минуту).
-  ScriptApp.newTrigger('declarationExpiryTrigger_').timeBased().everyDays(1).atHour(8).create();
-  // P22.3 — просрочка инструктажей и истечение допусков к оборудованию (раньше не запускалось по расписанию).
-  // Раз в 6 часов: дедупликация уведомлений идёт по event_key, повторный запуск ничего не дублирует.
-  ScriptApp.newTrigger('safetyDeadlinesTrigger_').timeBased().everyHours(6).create();
-  // Этап 19 — ежедневный управленческий контроль экономики: только сигналы/уведомления, без автосписаний.
-  ScriptApp.newTrigger('managementEconomicsTrigger_').timeBased().everyDays(1).atHour(9).create();
-  // Stage 20 — ежедневный прогноз потребности: только уведомления, без автоматического создания закупок/производства.
-  ScriptApp.newTrigger('demandPlanningTrigger_').timeBased().everyDays(1).atHour(10).create();
-  ScriptApp.newTrigger('financeStage22Trigger_').timeBased().everyDays(1).atHour(11).create();
-  ScriptApp.newTrigger('controlTowerStage23Trigger_').timeBased().everyHours(2).create();
-  ScriptApp.newTrigger('runAutomationDecisionTrigger_').timeBased().everyHours(2).create();
-  ScriptApp.newTrigger('eventAutomationStage26Trigger_').timeBased().everyMinutes(15).create();
-  ScriptApp.newTrigger('automationWorkflowSlaStage27Trigger_').timeBased().everyMinutes(15).create();
-  ScriptApp.newTrigger('periodClosingStage33Trigger_').timeBased().everyDays(1).atHour(2).create();
-  ScriptApp.newTrigger('capaStage37Trigger_').timeBased().everyHours(6).create();
-  ScriptApp.newTrigger('complianceMatrixStage38Trigger_').timeBased().everyDays(1).atHour(3).create();
-  ScriptApp.newTrigger('complianceCockpitStage39Trigger_').timeBased().everyDays(1).atHour(4).create();
-  ScriptApp.newTrigger('enterpriseBoardPackStage40Trigger_').timeBased().everyDays(1).atHour(5).create();
-  ScriptApp.newTrigger('kpiTargetsStage41Trigger_').timeBased().everyDays(1).atHour(6).create();
-  ScriptApp.newTrigger('enterpriseExecutionStage42to50Trigger_').timeBased().everyHours(2).create();
-  ScriptApp.newTrigger('digitalFactoryStage51to60Trigger_').timeBased().everyHours(2).create();
-  ScriptApp.newTrigger('digitalIntelligenceStage61to70Trigger_').timeBased().everyHours(4).create();
-  ScriptApp.newTrigger('autonomousPlanningStage71to80Trigger_').timeBased().everyHours(4).create();
-  ScriptApp.newTrigger('autonomousOperationsStage81to90Trigger_').timeBased().everyHours(2).create();
-  ScriptApp.newTrigger('core100FinalStage91to100Trigger_').timeBased().everyHours(6).create();
-  return 'Триггеры установлены: бэкап, авто-журналы, напоминания, просрочка, сроки годности, критический остаток, лаборатория, декларации, сроки охраны труда, управленческая экономика, прогноз потребности, финансы, Control Tower, Automation Engine, Event Automation и CAPA SLA и Compliance Cockpit, Enterprise Board Pack.';
+  ScriptApp.newTrigger('tick15m_').timeBased().everyMinutes(15).create();
+  ScriptApp.newTrigger('tickHourly_').timeBased().everyHours(1).create();
+  ScriptApp.newTrigger('tick2hA_').timeBased().everyHours(2).create();
+  ScriptApp.newTrigger('tick2hB_').timeBased().everyHours(2).create();
+  ScriptApp.newTrigger('tick4h_').timeBased().everyHours(4).create();
+  ScriptApp.newTrigger('tick6h_').timeBased().everyHours(6).create();
+  return 'Установлено триггеров-диспетчеров: ' + getInstalledTriggerHandlers_().length +
+    ' (задач по расписанию: ' + getExpectedTriggerHandlers_().length + ').';
 }
 
 /** Генерирует авто-журналы для всех активных точек на основе их SETTINGS (рабочие часы/кол-во слотов). */
