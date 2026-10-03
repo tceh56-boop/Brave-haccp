@@ -1,0 +1,3 @@
+/** Review/impact facade. */
+function getPpkReviews_(session,data){var c=_ppkCtx_(session,data&&data.locationId);return _ppkRows_('PPK_REVIEW_REQUESTS',c.organizationId,c.locationId).filter(function(x){return !data||!data.ppkId||x.ppk_id===data.ppkId;});}
+function resolvePpkReview_(session,data){var r=findOne_('PPK_REVIEW_REQUESTS','review_id',data.reviewId);assertOwnedByOrg_(session,r,'PPK_REVIEW_REQUESTS:'+data.reviewId);updateRow_('PPK_REVIEW_REQUESTS',r,{status:data.status||'RESOLVED',resolved_at:nowIso_(),resolved_by:session.user_id});return findOne_('PPK_REVIEW_REQUESTS','review_id',r.review_id);}

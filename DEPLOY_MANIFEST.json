@@ -1,0 +1,750 @@
+{
+  "built_at": "2026-10-03T18:26:29.221660+00:00",
+  "stage": 105,
+  "name": "CORE100 Hardening Pack 101–105",
+  "files": [
+    {
+      "name": "STAGE101_105_HARDENING.md",
+      "bytes": 2543,
+      "sha256": "a0debdb28da4111739db947785f70304b4c5af9481f8aee1fe12996ac94486d8"
+    },
+    {
+      "name": "STAGE25_AUTOMATION_DECISION_ENGINE.md",
+      "bytes": 1933,
+      "sha256": "dd5dd80460b29f62ebb44ba617c015993c3fde813f6a6af749452ccc9810e8d6"
+    },
+    {
+      "name": "STAGE26_EVENT_AUTOMATION.md",
+      "bytes": 2229,
+      "sha256": "5f65a9c293c1025eaea01e3d46fa2c2359b33c5fb977059b00c832e28b3ee03a"
+    },
+    {
+      "name": "STAGE27_AUTOMATION_WORKFLOW.md",
+      "bytes": 967,
+      "sha256": "979d495680b3fc17a3c9cb7c5c96b3be3438de27582c05e5c54d3cb0c9d09a7f"
+    },
+    {
+      "name": "STAGE28_CONFIGURATION_CENTER.md",
+      "bytes": 1675,
+      "sha256": "81ea218faf2f3770ef892ed991a6958e84da5ef6d280e252d962d65afd5cf348"
+    },
+    {
+      "name": "STAGE29_POLICY_RULES.md",
+      "bytes": 1428,
+      "sha256": "5ba70e930cbe5a5e21a15333a326ffc21afe794d0b9c3b70d13e336a4bcce3bd"
+    },
+    {
+      "name": "STAGE30_MASTER_DATA.md",
+      "bytes": 805,
+      "sha256": "e74f8fe3ef38a6024365ec2c4beb77ce48579f811c3fc4ab29b91dfc6fc7f69f"
+    },
+    {
+      "name": "STAGE31_DATA_QUALITY.md",
+      "bytes": 1846,
+      "sha256": "ddc0e8bcca900a9b0ee5e7bd3c6224531bb186c16dc77740c0d0929ec4340f55"
+    },
+    {
+      "name": "STAGE32_TRACEABILITY.md",
+      "bytes": 1803,
+      "sha256": "fa2d85469600e5bc91143bd54f7ca56493e799ddf40aa2b604046608b6c05e4c"
+    },
+    {
+      "name": "STAGE33_PERIOD_CLOSING.md",
+      "bytes": 1851,
+      "sha256": "33aa2b4541019f58f194dfddd4d9da7fa2bf516451161c617c3b1d572a97d8ec"
+    },
+    {
+      "name": "STAGE34_PERIOD_LOCK.md",
+      "bytes": 1640,
+      "sha256": "37993ab7b4e7f9d328158a190fd4758a1941ea88275ede6dacc4db9ed27e30de"
+    },
+    {
+      "name": "STAGE35_IMMUTABLE_AUDIT.md",
+      "bytes": 1928,
+      "sha256": "a64b09515554a931152a3f7935724b107603d7ef161cb7c13bfb6eaf8b8bb6dc"
+    },
+    {
+      "name": "STAGE36_EVIDENCE_PACK.md",
+      "bytes": 1191,
+      "sha256": "59a54d11b1f4a9a7cc618f3f6e5c67cbd0c908aadcbf1aa744b1388a1e3f9bfe"
+    },
+    {
+      "name": "STAGE37_CAPA.md",
+      "bytes": 847,
+      "sha256": "ea031aee8e981f2004200fb283cd33e855a22686dd62a385a53bde514f44e302"
+    },
+    {
+      "name": "STAGE38_COMPLIANCE_MATRIX.md",
+      "bytes": 656,
+      "sha256": "ad68889562d92fc6aabb82ec95671e3f1120f880f082ae6bbc06e69d27210be7"
+    },
+    {
+      "name": "STAGE39_COMPLIANCE_COCKPIT.md",
+      "bytes": 1186,
+      "sha256": "577f7a460217d61a5a923d72f113c2210f9387f915473b47f28da0644972e43d"
+    },
+    {
+      "name": "STAGE40_BOARD_PACK.md",
+      "bytes": 1870,
+      "sha256": "82d05d9f83b5ca3769ac09a16fc335b92fb8df0775b1799ef70be0032786eee7"
+    },
+    {
+      "name": "STAGE41_KPI_TARGETS.md",
+      "bytes": 1008,
+      "sha256": "ea6ce5979cfe3a8ddb3683eb2ad31f674d336c63cd79b28b425552f50fcd9ac5"
+    },
+    {
+      "name": "STAGE42_50_ENTERPRISE_EXECUTION.md",
+      "bytes": 3812,
+      "sha256": "0d69e774d9666304fcd6aac21fbe76b2a440c4263129ef47ca7a885b866a9b8b"
+    },
+    {
+      "name": "STAGE51_60_DIGITAL_FACTORY.md",
+      "bytes": 2512,
+      "sha256": "95bd9c42851e19722ad7494fc9ee734942ad0c89f25c18601404eb03b9eab5b0"
+    },
+    {
+      "name": "STAGE61_70_DIGITAL_INTELLIGENCE.md",
+      "bytes": 2045,
+      "sha256": "cf1ed5a30de86f9a0ee1c80d734cc601d63ccfa94e8e67d1b5b7a122a1a9ca65"
+    },
+    {
+      "name": "STAGE71_80_AUTONOMOUS_PLANNING.md",
+      "bytes": 1319,
+      "sha256": "391e1587629150b4e8d0d9d80cd1138d1f9e8a1fa6ecceafacd907c27b6ff4e6"
+    },
+    {
+      "name": "STAGE81_90_EXECUTION_GATEWAY.md",
+      "bytes": 600,
+      "sha256": "5895c568114bcee273f1612d26ee30d762f0432ce034013d8213e42e56a819b9"
+    },
+    {
+      "name": "STAGE91_100_CORE100_FINAL.md",
+      "bytes": 622,
+      "sha256": "dd9c644c509c0a90b9d8f87479da6047bd336de08263756094241a727a5eabc4"
+    },
+    {
+      "name": "gas/AI.gs",
+      "bytes": 4581,
+      "sha256": "d4623f50729218e120e9bb4137d7dc612c785deb106e578527cf038f4bc77045"
+    },
+    {
+      "name": "gas/API.gs",
+      "bytes": 109788,
+      "sha256": "eff7fc652faeb483acfb0a535123b7a1a17bc734f3d6bdaba1ec22fffd2dcddd"
+    },
+    {
+      "name": "gas/AiCopilotStage24.gs",
+      "bytes": 6781,
+      "sha256": "432f63c183107ca5bde9eb8cb50c4ff916fac332a0fde9d07976fcb6158ec9e6"
+    },
+    {
+      "name": "gas/AiCopilotStage24Tests.gs",
+      "bytes": 1236,
+      "sha256": "195e063b6de273a25ae1f80579c4925c213b0f14891518d72308ce7f86c3adca"
+    },
+    {
+      "name": "gas/AiOrchestrator.gs",
+      "bytes": 21438,
+      "sha256": "033f805ca1afed4f8851306422a7cb0614678605e6d654d1e922752933c9e6a5"
+    },
+    {
+      "name": "gas/Analytics.gs",
+      "bytes": 8548,
+      "sha256": "a18c126c97ca410d99593811c08f3f95d801d51189182839875b391640eff765"
+    },
+    {
+      "name": "gas/Audit.gs",
+      "bytes": 3803,
+      "sha256": "ddb730ba1e3d4551c979a429a5a6b3ffec4bb40363c5cccd98e79b97136dd41f"
+    },
+    {
+      "name": "gas/AuditEvidenceStage35.gs",
+      "bytes": 6758,
+      "sha256": "1f1615b277eae7bd24be2c99c1dce6a2d0a6a4b1ab4d3580fd0e97cb8a55d3c5"
+    },
+    {
+      "name": "gas/AuditEvidenceStage35Tests.gs",
+      "bytes": 883,
+      "sha256": "208548b2612d5f19453c2fbdd5a90701fbc36ac6de578f60bb10666383e3ecaa"
+    },
+    {
+      "name": "gas/Auth.gs",
+      "bytes": 33742,
+      "sha256": "68661ea9623d1136a8eae03cb9bda9f26c961ba74b2faa8b9d2380e77c90015b"
+    },
+    {
+      "name": "gas/AutomationDecisionStage25.gs",
+      "bytes": 8066,
+      "sha256": "dfa2826f472af462da905932a3d756c209d7827265f4a172146e78e096a4fe65"
+    },
+    {
+      "name": "gas/AutomationDecisionStage25Tests.gs",
+      "bytes": 1362,
+      "sha256": "56841d522a8d9196224a79b6d759ed99aa9416b0db054336c6ad124436fa0214"
+    },
+    {
+      "name": "gas/AutomationWorkflowStage27.gs",
+      "bytes": 9704,
+      "sha256": "6ec6b662e5c1e85c49dc3614a1ad8f12b637877336e47d443453ef4c38613efc"
+    },
+    {
+      "name": "gas/AutomationWorkflowStage27Tests.gs",
+      "bytes": 1737,
+      "sha256": "c73328dc0820e13b376046cde996a1fda4d44f952105f2a55d065d756363a595"
+    },
+    {
+      "name": "gas/AutonomousPlanningStage71to80.gs",
+      "bytes": 12291,
+      "sha256": "2f78758617b279d24170a274f07c88ceefcdc7104373e85877a6a9341f0caca7"
+    },
+    {
+      "name": "gas/Backup.gs",
+      "bytes": 3492,
+      "sha256": "493b42a98a93d44d97375ed58294e3c4e9977dfa3932224a592e945483709472"
+    },
+    {
+      "name": "gas/BatchProductionDateMigration.gs",
+      "bytes": 398,
+      "sha256": "221e643dd545a1d8663a26d3f971eeffe1fac295aec3788c92d348d718610376"
+    },
+    {
+      "name": "gas/BoardPackStage40.gs",
+      "bytes": 11253,
+      "sha256": "baa0987d3854056d5e92e1ad74cc01ee1aade149c7fe2aa86146343dbe929a0a"
+    },
+    {
+      "name": "gas/BreakdownCore.gs",
+      "bytes": 23521,
+      "sha256": "499099a158bdadaad5f43fed640d0b1596bc2e1633afe14fa0b88094a0a8a1ca"
+    },
+    {
+      "name": "gas/CapaStage37.gs",
+      "bytes": 11010,
+      "sha256": "9fd4448e692d4995515443d7a287656a267d11a0c1af67a4c65cc70301916e67"
+    },
+    {
+      "name": "gas/CascadeEngine.gs",
+      "bytes": 16530,
+      "sha256": "da045403e488092d68e893cc0ed99169518a4a2cc781e57f1c23c0937718af10"
+    },
+    {
+      "name": "gas/Compliance.gs",
+      "bytes": 15366,
+      "sha256": "ffbe95204fca70fd96113620d0b90e2e257b8406d6e4af3068902f6b6f39d246"
+    },
+    {
+      "name": "gas/ComplianceCockpitStage39.gs",
+      "bytes": 9174,
+      "sha256": "358c5f792e4eb73d4caea61c1c68ff61fca6ed68252fac2bb54f6a641d7aff4c"
+    },
+    {
+      "name": "gas/ComplianceCockpitStage39Tests.gs",
+      "bytes": 135,
+      "sha256": "89df439c8a2dcc4f32f748aabe4b3fc67dbe2ff58b9739b00fd0b1dd97606114"
+    },
+    {
+      "name": "gas/ComplianceEvidenceStage36.gs",
+      "bytes": 6796,
+      "sha256": "39ecd49dccc50e4b03b5ab566273d863bb67c3207ea3c08903c37e8399b555f6"
+    },
+    {
+      "name": "gas/ComplianceMatrixStage38.gs",
+      "bytes": 10192,
+      "sha256": "528b3de31fb8c034e4613bf7ce45fa83b4e22f04246f024401581ca38d306436"
+    },
+    {
+      "name": "gas/ComplianceMatrixStage38Tests.gs",
+      "bytes": 1015,
+      "sha256": "1ce9a803d2f829fb6bc291c0cd20c27f68b884fd70e46bdbb913909759ee078e"
+    },
+    {
+      "name": "gas/Config.gs",
+      "bytes": 156030,
+      "sha256": "e2d91d5f738d79bace3cf20ef0e877f9c6e1562aff16349fb1706e58e3c775d7"
+    },
+    {
+      "name": "gas/ConfigurationCenterStage28.gs",
+      "bytes": 8376,
+      "sha256": "f49ee2f15f8652e7796100cdafcd142e93a165f3564ca9188a1a73173431e351"
+    },
+    {
+      "name": "gas/ControlTowerStage23.gs",
+      "bytes": 9133,
+      "sha256": "772e26f57ccba58faa8d920ddba50eccccb5f10b39b915182f07d98e52d3cbcf"
+    },
+    {
+      "name": "gas/ControlTowerStage23Tests.gs",
+      "bytes": 1259,
+      "sha256": "7d9d5bbc153e31c6e5a7e95499ef4bf4a15dfea5dce39da7491dfb53ce643de4"
+    },
+    {
+      "name": "gas/Core100FinalStage91to100.gs",
+      "bytes": 11646,
+      "sha256": "b72f3a075407bdb0568c79fcd574796cbc28af7577a37871baaaf46401336d1c"
+    },
+    {
+      "name": "gas/Core100Hardening.gs",
+      "bytes": 8120,
+      "sha256": "5b1cb892ffd794914cde84151cd688c2a697640fd6497356ef6cd9384322fdbc"
+    },
+    {
+      "name": "gas/Core100HardeningStage101to105.gs",
+      "bytes": 968,
+      "sha256": "45dac04f584541a290458983078d8137921b1840fbbb3c24a7c1b6c7938219b8"
+    },
+    {
+      "name": "gas/Core100Migration.gs",
+      "bytes": 887,
+      "sha256": "a83d38e4b7805fda75a1c88e21bfe13b5cacc0c5dd78e777e98e3a628723e67b"
+    },
+    {
+      "name": "gas/CriticalIncidentCore.gs",
+      "bytes": 19388,
+      "sha256": "721a0a846307db3f2c56d53e0d25911ded5ffe3c7ff3bc99e8202d7d1ef43f69"
+    },
+    {
+      "name": "gas/DataQualityStage31.gs",
+      "bytes": 6791,
+      "sha256": "535ae24b1585f5664bf18ef7f33c65964660435093a3a18c4df30dc06e079d35"
+    },
+    {
+      "name": "gas/Database.gs",
+      "bytes": 10142,
+      "sha256": "3ca800582c37d7f06746f881378eeabd6a3552ade7a48cb6bd251e7a79a50204"
+    },
+    {
+      "name": "gas/Declarations.gs",
+      "bytes": 19159,
+      "sha256": "ec1f9928d32056face5067d370dbc15f88b1c034d48fb0acab3a34ecfc4ea126"
+    },
+    {
+      "name": "gas/DemandPlanning.gs",
+      "bytes": 14138,
+      "sha256": "df87113a005b33f6b9e0d5043c45f3004fbea70e166a15a15cfa4ef1da194ead"
+    },
+    {
+      "name": "gas/Deploy.gs",
+      "bytes": 16950,
+      "sha256": "ed16182f8b0c6e2c2dc724c70f94553fa0db2d5f8254597e07327573ce26f046"
+    },
+    {
+      "name": "gas/Economics.gs",
+      "bytes": 12589,
+      "sha256": "d674c3298758d7e650f38d0940e6bdcd8404b64f4283bfcf8f40be9851683dea"
+    },
+    {
+      "name": "gas/EmployeeSafetyIntegration.gs",
+      "bytes": 18303,
+      "sha256": "70821b118b26b4214ba1feb53bfce836661147b07e8d08e328168d50a6d5c706"
+    },
+    {
+      "name": "gas/EnterpriseE2E.gs",
+      "bytes": 1039,
+      "sha256": "49ca2475e608af6f8dacd712cfd78bbe1d78e5a067091eee4a841f7cf196e70d"
+    },
+    {
+      "name": "gas/EnterpriseIntake.gs",
+      "bytes": 7453,
+      "sha256": "f69a4b1af66fbe1619f81967c2301f98c822d4b25cd8be01062f793546845f6d"
+    },
+    {
+      "name": "gas/EnterpriseStages42to50.gs",
+      "bytes": 17009,
+      "sha256": "18aee8292d96bf5336eeecd6b805fd9b70a662cf1c64a82d0a332f2795245023"
+    },
+    {
+      "name": "gas/EnterpriseStages51to60.gs",
+      "bytes": 11400,
+      "sha256": "7f83f155c36ab7bd562ddde63deec656847cc21353b4edafb69cbabc623b3942"
+    },
+    {
+      "name": "gas/EnterpriseStages61to70.gs",
+      "bytes": 10097,
+      "sha256": "0c299c1ccd60ace1627277ffd2703209af0417d550ff053d9413b40e8e9efe31"
+    },
+    {
+      "name": "gas/EnterpriseStages61to70Tests.gs",
+      "bytes": 1287,
+      "sha256": "ab655deaed5f6e20529760ee6c61be70a24de78c084f49a4898bbf66b7eaca3b"
+    },
+    {
+      "name": "gas/Equipment.gs",
+      "bytes": 10845,
+      "sha256": "05c3b0364334444a15897cdd7ed8882825c18219ddc06668c2cc4ac9317c286c"
+    },
+    {
+      "name": "gas/EventAutomationStage26.gs",
+      "bytes": 11376,
+      "sha256": "6262c7d133301f27f82dc85a916803c34b464c7f1c7098fe41e918fca1edfc11"
+    },
+    {
+      "name": "gas/Events.gs",
+      "bytes": 9389,
+      "sha256": "d2885378815eecc69af1ceaa187b78010220e989b79770a25df703e2bc215680"
+    },
+    {
+      "name": "gas/ExecutionGatewayStage81to90.gs",
+      "bytes": 12829,
+      "sha256": "28210a2c011386e4fcaf32f6e2e4d5372a872e9e8db77291110aa40e0d0e5557"
+    },
+    {
+      "name": "gas/Expenses.gs",
+      "bytes": 10816,
+      "sha256": "03d0a126330e7fbdffe3139beac0c615e52f9ab6469d2012ecaa3f54ff949dc3"
+    },
+    {
+      "name": "gas/FinanceStage22.gs",
+      "bytes": 7854,
+      "sha256": "cf6d8d4da0a2e126676d05978c7e484640a7065b92d2fb5dd9f3aa959dfc13f8"
+    },
+    {
+      "name": "gas/FoodCost.gs",
+      "bytes": 13159,
+      "sha256": "a8cf74341339781aa5aaf108ea0948a268494593c82ac0e5ce83cc8164b40ee1"
+    },
+    {
+      "name": "gas/HaccpCore.gs",
+      "bytes": 2397,
+      "sha256": "9af9dcf1aa742b521ea3757a4081d38c436a018ebf7d86810d40fee6ffcc1e83"
+    },
+    {
+      "name": "gas/Idempotency.gs",
+      "bytes": 8015,
+      "sha256": "4ffd2da27831ac6167468809786feaae78066bb38b3f31ba0a9dfaada188a75c"
+    },
+    {
+      "name": "gas/Index.html",
+      "bytes": 574576,
+      "sha256": "582e178f1e11f4af3ee50c55de170ecf2f1aef189152132602d8e049cf310310"
+    },
+    {
+      "name": "gas/Integrations.gs",
+      "bytes": 37999,
+      "sha256": "3a6ec5899d67a844b56e91ed37e6eb914c044da170844200b2d2d9161cfb9915"
+    },
+    {
+      "name": "gas/Inventory.gs",
+      "bytes": 10924,
+      "sha256": "746c4b689abf07ca4da115aaf5e018dce967c07298e347c9330820bd6f940f99"
+    },
+    {
+      "name": "gas/InvoiceOcr.gs",
+      "bytes": 2887,
+      "sha256": "c25e8c6244226e525c6e874a11800292f6c86d3c2beb79476926e9c8dee330f4"
+    },
+    {
+      "name": "gas/JournalOrchestrationP21.gs",
+      "bytes": 4665,
+      "sha256": "5cda19abf3f8cefd51baa5faac31e713efe7d4530d19233cc7022243f5d5de37"
+    },
+    {
+      "name": "gas/Journals.gs",
+      "bytes": 45504,
+      "sha256": "39947535e0d694e95fabaa72d1d25d498f6f2dc295e5d7dad5234fcdf7e57fee"
+    },
+    {
+      "name": "gas/KpiTargetsStage41.gs",
+      "bytes": 10513,
+      "sha256": "c08ece575f4a3884122a9df7edeb685459b8bea3bb54b12dafa999e21754eb1f"
+    },
+    {
+      "name": "gas/LabTests.gs",
+      "bytes": 23285,
+      "sha256": "e0ee9f17dbda57297bdabb6746f5ea30765f7bd8bcb4ad05cad94abb94e668a3"
+    },
+    {
+      "name": "gas/Labeling.gs",
+      "bytes": 11844,
+      "sha256": "55286c6d6248df0396ab3b6e1999142efc497c17120706d32a88060075616741"
+    },
+    {
+      "name": "gas/Main.gs",
+      "bytes": 12589,
+      "sha256": "8a87715345bc7d002fe60091d5f5dbb2f330191e6f533924e9ba2af02c701d8c"
+    },
+    {
+      "name": "gas/ManagementEconomics.gs",
+      "bytes": 10315,
+      "sha256": "d71bf9a34b1e555755e3d9cb73f2c4d0b7a335aca2eaf6e6c2ff7c0de5225935"
+    },
+    {
+      "name": "gas/MasterDataStage30.gs",
+      "bytes": 7719,
+      "sha256": "079a81f3bbe3477af5805d1091ae3d09ed1c913534ecbb4ba95015d8858b6611"
+    },
+    {
+      "name": "gas/MasterDataStage30Tests.gs",
+      "bytes": 73,
+      "sha256": "f9f275aa2d54a6b045942bec6d5aab43ab4d1c9c730684909208b77c9030d44a"
+    },
+    {
+      "name": "gas/Notifications.gs",
+      "bytes": 14373,
+      "sha256": "cd1d1c5d5bad20fea51b6d1efbacd5482e2185dd00627935d0ee934511798d14"
+    },
+    {
+      "name": "gas/OcrYandex.gs",
+      "bytes": 35150,
+      "sha256": "dbae3e8016d9847aae4911846ce1bb235634fad6c09f97c552384c9f597cc98c"
+    },
+    {
+      "name": "gas/OperationalClosureStage11.gs",
+      "bytes": 27858,
+      "sha256": "1c2fb6dca7da65908508c2300d2963a67a1ac32cdcff8222b61997da8a648d2b"
+    },
+    {
+      "name": "gas/OperationalHardeningStage12.gs",
+      "bytes": 14145,
+      "sha256": "521aedb2772c2e5bc85b48d2041320ce8602de8b44fee1545936d05478daa202"
+    },
+    {
+      "name": "gas/OperationalUatStage13.gs",
+      "bytes": 6830,
+      "sha256": "30821d986c463277b3976ec493d8ab22de0ddf3778cb163a9c49c6354f4688ec"
+    },
+    {
+      "name": "gas/Organizations.gs",
+      "bytes": 4727,
+      "sha256": "8c2a94bc4d161216bab9325ce11006a814e211f7df692a81b3ec16e19d536b2c"
+    },
+    {
+      "name": "gas/P22Core.gs",
+      "bytes": 18835,
+      "sha256": "d0c32e55406996721b6186bdc43e18490c215b09593bc8e1a7cf82bfe42f148f"
+    },
+    {
+      "name": "gas/P22Costing.gs",
+      "bytes": 491,
+      "sha256": "9ba30a603fbec90afdac2af41347ffc628c65407069e5207da8d00960b98d811"
+    },
+    {
+      "name": "gas/P22ErrorService.gs",
+      "bytes": 127,
+      "sha256": "8dc895f94d610a4b497b7ba3177a3410b249c2557f10ca7c08e8dec6cd549c0c"
+    },
+    {
+      "name": "gas/P22Migration.gs",
+      "bytes": 579,
+      "sha256": "0a1b56aadc8346c97afcea557b48076bc95b5594074a4a513bc72c254134acf7"
+    },
+    {
+      "name": "gas/P22Recovery.gs",
+      "bytes": 239,
+      "sha256": "15d937e827a762b3f7f4f0a49d5c2fb31b265be4b01335ab9999a4818834bcde"
+    },
+    {
+      "name": "gas/P22_3_Migration.gs",
+      "bytes": 943,
+      "sha256": "2ded1f3a4d6276b71bafb1f1022e26b1b9b01b416a7ea76e6133ba32410afd8a"
+    },
+    {
+      "name": "gas/PeriodClosingStage33.gs",
+      "bytes": 11195,
+      "sha256": "3f78da57c2807afe26fe97106916fcbdf026f56c91569cd2221a3f07ed3f225e"
+    },
+    {
+      "name": "gas/PeriodLockStage34.gs",
+      "bytes": 9545,
+      "sha256": "e640235125fb0e27c8ff81974b0f19a5f03955c99bb7a21db80f0724cd193a75"
+    },
+    {
+      "name": "gas/PlanMenu.gs",
+      "bytes": 11147,
+      "sha256": "ffa41cf677cef667abdcfb73294bf4d1eb2cdd6a5d076e02cb428beead22b58b"
+    },
+    {
+      "name": "gas/PolicyRulesStage29.gs",
+      "bytes": 4127,
+      "sha256": "27383b9279be6925fd7dd2c970a074c9af78545fb8f10e0b6fed402074f5ed24"
+    },
+    {
+      "name": "gas/PolicyRulesStage29Tests.gs",
+      "bytes": 143,
+      "sha256": "c2b325221600f2063b079b2507fa61097ba329d779ed82601948e6f8a7d188e7"
+    },
+    {
+      "name": "gas/Ppk.gs",
+      "bytes": 17707,
+      "sha256": "f705e662d0a763d7191373857c73dde76b2384ece245047e893810ee048320c5"
+    },
+    {
+      "name": "gas/PpkDocuments.gs",
+      "bytes": 373,
+      "sha256": "a7e2e462d02cd06ae8f6c672b53b80366aebe81d4c37b3fd11d5666475f5d298"
+    },
+    {
+      "name": "gas/PpkGenerator.gs",
+      "bytes": 36705,
+      "sha256": "c0e7d44f418cf23c1bd7adfeb324d9ac8beb06f673ac234f152a70e29efe1149"
+    },
+    {
+      "name": "gas/PpkReview.gs",
+      "bytes": 611,
+      "sha256": "b1e9e9dec854e5a84b2edf51cd6c60334cfa4610ab7f77b4086f2a11b038a4af"
+    },
+    {
+      "name": "gas/PpkTraceability.gs",
+      "bytes": 511,
+      "sha256": "45b85bbb24ea9a4ddab9a3228409e56d79e09ae40a1086415162d5cd8a1f604e"
+    },
+    {
+      "name": "gas/PpkVerification.gs",
+      "bytes": 326,
+      "sha256": "6768a30ea89c4960baed5d1893b2fb4d30d412f44a1145648dc27c39bf115fed"
+    },
+    {
+      "name": "gas/PriceCascade.gs",
+      "bytes": 2297,
+      "sha256": "7cb18a72c248d53b836b336e6b530626f23187b77ab35c4a3cba561bc714c22b"
+    },
+    {
+      "name": "gas/ProductImport.gs",
+      "bytes": 17776,
+      "sha256": "f3afc7ed2ff4aeee06be0e1e59567931a1f1285dd96630e12ec350180a5748ce"
+    },
+    {
+      "name": "gas/ProductMaster.gs",
+      "bytes": 20163,
+      "sha256": "1f887b1fb6671ceb562eaa4e6b6b4222012208119c15f599aa051df3d2bc2844"
+    },
+    {
+      "name": "gas/Production.gs",
+      "bytes": 15979,
+      "sha256": "fc6603795f1983e1f2dd9b3131e7c7d3a28b1d56bab3179b531b39a8c9c86f24"
+    },
+    {
+      "name": "gas/ProductionDispatchStage21.gs",
+      "bytes": 8366,
+      "sha256": "ca4eb42d6b41dabb29bd9d0e9c2905fa90ec275f37a87a3c3165c97302847ad4"
+    },
+    {
+      "name": "gas/ProductionEnterpriseCore.gs",
+      "bytes": 21180,
+      "sha256": "907a0b508924e198d496964c2bd5d44e664d0c1764e4fee3e96db7507de92fed"
+    },
+    {
+      "name": "gas/ProductionWaste.gs",
+      "bytes": 7374,
+      "sha256": "ca52ee740e011813ea91d35758cf653d54406daf08d99dcedcd2c39db6b1ef50"
+    },
+    {
+      "name": "gas/Products.gs",
+      "bytes": 6939,
+      "sha256": "d5e9cc30de32a23eeea5963ab8dc88ff49b6990c7d8d3b694e2226b01177d690"
+    },
+    {
+      "name": "gas/Purchasing.gs",
+      "bytes": 5959,
+      "sha256": "68713b9ac1cd6f720808f5b299c9f07bf88c0e6bad2d0502ebad72f882f4444f"
+    },
+    {
+      "name": "gas/Recipes.gs",
+      "bytes": 12157,
+      "sha256": "d0f69f3e7929691b8c65468b574cc5a34ccefa71654ca47b99af32b7babdfa2b"
+    },
+    {
+      "name": "gas/Reports.gs",
+      "bytes": 5349,
+      "sha256": "f7ad58293bff585a996a705679674d44cb43cdbf3997118d3b2e7b27c223f57d"
+    },
+    {
+      "name": "gas/Rules.gs",
+      "bytes": 15833,
+      "sha256": "cc7e735128ff9649b869fd968956b2695adf2f79931031127c09bb0d1c5da4b7"
+    },
+    {
+      "name": "gas/Safety.gs",
+      "bytes": 42855,
+      "sha256": "7537c74d4a03af3b57f30275792ac6033a342e43f9d8ddeb81522850dcaf651a"
+    },
+    {
+      "name": "gas/SaleFulfillment.gs",
+      "bytes": 11512,
+      "sha256": "5e869a8298381099b14fb8edd41c7dbc86b696763926e7d2ea7998cfbed16b8b"
+    },
+    {
+      "name": "gas/Sales.gs",
+      "bytes": 21078,
+      "sha256": "18fe0d1eeeac1dfc7a572c5c1ca7bc881aec53b0a933488807f98e0d3f6e2ebc"
+    },
+    {
+      "name": "gas/SalesAnalytics.gs",
+      "bytes": 8782,
+      "sha256": "4301a60df9fc32fd7a9e962a47195c9f91fcc80e97043378e7cf7f61a61c9c34"
+    },
+    {
+      "name": "gas/SemiFinished.gs",
+      "bytes": 10323,
+      "sha256": "acf6cc4f61bb3f4d132be6d690c29d1ca146e12093adf109abe3e4805ed3dfac"
+    },
+    {
+      "name": "gas/SupplierDocuments.gs",
+      "bytes": 8425,
+      "sha256": "22bf03044a25d43cc094ae960ee418177f12c0d253ad9192b94bc13ee4e2497f"
+    },
+    {
+      "name": "gas/Suppliers.gs",
+      "bytes": 3173,
+      "sha256": "39fa10b5982d6c6a1d2fa78404f12f63a64e75221d2c49593cc98e025e4fdcbe"
+    },
+    {
+      "name": "gas/SystemHardening.gs",
+      "bytes": 10804,
+      "sha256": "22f3903f84a98938497f4ec3bcd9ef2bbafce225d6f755c8fbc1d32cfdcea482"
+    },
+    {
+      "name": "gas/TTKCore.gs",
+      "bytes": 13253,
+      "sha256": "332ae437242cb7dc53e860bcedd0dfb176c394ae9163a0b2b73084f5f34b9195"
+    },
+    {
+      "name": "gas/Tasks.gs",
+      "bytes": 10193,
+      "sha256": "0c2204d8aa1c420a6870a57846b02cda4225ce2228f687b147adbb3030db77c4"
+    },
+    {
+      "name": "gas/TraceabilityStage32.gs",
+      "bytes": 15427,
+      "sha256": "7144b668327521c5f1c4b1f028476c8fad58488e9d7620f6091b6c099a9c4905"
+    },
+    {
+      "name": "gas/Users.gs",
+      "bytes": 14521,
+      "sha256": "c7f648f0cdff000258ebbe0a39227b9baeb7d2c3bdf699d9c5fcf8d3c7e20c5a"
+    },
+    {
+      "name": "gas/Utils.gs",
+      "bytes": 5698,
+      "sha256": "7b1fd51655fb312d8085d1eef22345059f14849560ebd500b34f52cf2f253ccf"
+    },
+    {
+      "name": "gas/Warehouse.gs",
+      "bytes": 37489,
+      "sha256": "a93e01925e59002521f6d0bc034f88a0f8e3257adb7a20dbe1a1fc30d3d84046"
+    },
+    {
+      "name": "gas/Workshops.gs",
+      "bytes": 4821,
+      "sha256": "901c9e885af464bccbd3b081ccf5806adaee9f582f49b26be353c94936a3d5ef"
+    },
+    {
+      "name": "gas/WriteOffs.gs",
+      "bytes": 6654,
+      "sha256": "6c70fcecd633f60c10be302bce942a423d59392dd807a76f04b23f35d4dc0342"
+    },
+    {
+      "name": "gas/appsscript.json",
+      "bytes": 491,
+      "sha256": "b6333298067f6ac66a29a9a920af58e5bdba7a5a1e1a2d59c76ffc0d7e4bdea7"
+    },
+    {
+      "name": "gas/migrations_001_PPK_GENERATOR.gs",
+      "bytes": 503,
+      "sha256": "54a17bdb4e86f48c3a77ec74d1ccad3c6287dc493287f0e6278e118936ce7972"
+    }
+  ],
+  "file_count": 148,
+  "aggregate_sha256": "2b9fcac605c8b79c944c48779cbab336c7a77fb9496c55bd7475981f3b28c071",
+  "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
+}

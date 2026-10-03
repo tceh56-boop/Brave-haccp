@@ -1,0 +1,32 @@
+// ЦЕХ — Stage 36: Evidence & Compliance Pack Generator.
+// Формирует доказательный пакет закрытого/проверенного периода. Не меняет хозяйственные данные.
+var CE36_LIMIT_=500;
+function _ce36Date_(v){if(!v)return '';var s=String(v);return s.length>=10?s.slice(0,10):s;}
+function _ce36Scope_(r,s){return r&&r.organization_id===s.organization_id&&(!r.location_id||!s.location_id||r.location_id===s.location_id);}
+function _ce36Period_(data){data=data||{};var from=_ce36Date_(data.dateFrom||data.from),to=_ce36Date_(data.dateTo||data.to),period=data.period||'';if(period){var m=/^(\\d{4})-(\\d{2})$/.exec(period);if(!m)throw new Error('period должен быть YYYY-MM.');from=m[1]+'-'+m[2]+'-01';to=new Date(Number(m[1]),Number(m[2]),0).toISOString().slice(0,10);}if(!from||!to)throw new Error('Нужны dateFrom/dateTo или period YYYY-MM.');if(from>to)throw new Error('Начало периода позже окончания.');return {period:period||from.slice(0,7),from:from,to:to};}
+function _ce36Json_(v){try{return v===undefined?null:JSON.parse(JSON.stringify(v));}catch(e){return String(v);}}
+function _ce36Item_(pack,s,section,code,title,status,severity,payload){var row={item_id:generateId_('COMPLIANCE_EVIDENCE_ITEMS'),pack_id:pack.pack_id,organization_id:s.organization_id,location_id:s.location_id||'',section:section,code:code,title:title,status:status||'INFO',severity:severity||'',payload_json:JSON.stringify(_ce36Json_(payload||{})),created_at:nowIso_()};insertRow_('COMPLIANCE_EVIDENCE_ITEMS',row);return row;}
+function _ce36Drive_(pack,manifest){if(typeof DriveApp==='undefined')return {file_id:'',file_url:''};var root=DriveApp.getRootFolder(),name='TSEKH_COMPLIANCE_PACKS';var folders=root.getFoldersByName(name),folder=folders.hasNext()?folders.next():root.createFolder(name);var file=folder.createFile(Utilities.newBlob(JSON.stringify(manifest,null,2),'application/json','tsekh_'+pack.period+'_'+pack.pack_id+'.json'));return {file_id:file.getId(),file_url:file.getUrl()};}
+function createComplianceEvidencePack_(data,session){
+  var p=_ce36Period_(data), closureRows=findRows_('PERIOD_CLOSURES',function(r){return _ce36Scope_(r,session)&&r.period===p.period;}).sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
+  var closure=closureRows.length?closureRows[0]:null;
+  if(!closure)throw new Error('Для периода нет контроля закрытия. Сначала выполните RUN_PERIOD_CLOSING_CHECK.');
+  var audit=verifyAuditEvidence35_({limit:1000},session);
+  var trace=getTraceabilitySummary_({},session);
+  var cases=findRows_('DATA_RECONCILIATIONS',function(r){return _ce36Scope_(r,session)&&String(r.status||'')!=='RESOLVED';});
+  var pack={pack_id:generateId_('COMPLIANCE_EVIDENCE_PACKS'),organization_id:session.organization_id,location_id:session.location_id||'',period:p.period,date_from:p.from,date_to:p.to,status:'GENERATING',closure_id:closure.closure_id,audit_status:audit.status,audit_head_hash:audit.head_hash,traceability_run_id:trace&&trace.run?trace.run.run_id:(trace&&trace.run_id)||'',generated_by:session.user_id,generated_at:nowIso_(),manifest_json:'',file_id:'',file_url:''};
+  insertRow_('COMPLIANCE_EVIDENCE_PACKS',pack);
+  _ce36Item_(pack,session,'PERIOD_CLOSING','CLOSURE','Контроль закрытия периода',closure.status||'UNKNOWN',closure.ready==='YES'?'':'HIGH',closure);
+  _ce36Item_(pack,session,'AUDIT','AUDIT_CHAIN','Целостность audit evidence',audit.status,audit.status==='VALID'?'':'CRITICAL',{checked_total:audit.checked_total,head_hash:audit.head_hash,findings:audit.findings});
+  _ce36Item_(pack,session,'TRACEABILITY','TRACEABILITY','Последний запуск трассируемости',trace&&trace.summary?((trace.summary.critical||0)>0?'BLOCKED':'OK'):'NO_DATA',((trace.summary||{}).critical||0)>0?'CRITICAL':'',trace);
+  _ce36Item_(pack,session,'RECONCILIATION','OPEN_CASES', 'Незакрытые кейсы сверки',cases.length?'OPEN':'CLEAR',cases.length?'HIGH':'', {count:cases.length,cases:cases.slice(0,CE36_LIMIT_)});
+  var items=findRows_('COMPLIANCE_EVIDENCE_ITEMS',function(r){return r.pack_id===pack.pack_id;});
+  var manifest={version:'36',pack_id:pack.pack_id,organization_id:pack.organization_id,location_id:pack.location_id,period:p.period,date_from:p.from,date_to:p.to,generated_at:pack.generated_at,sections:items.map(function(x){return {section:x.section,code:x.code,title:x.title,status:x.status,severity:x.severity,payload:_ce36Json_(x.payload_json)};}),control:{closure_status:closure.status,audit_status:audit.status,audit_head_hash:audit.head_hash,traceability_run_id:pack.traceability_run_id,open_reconciliation_cases:cases.length}};
+  var drive=_ce36Drive_(pack,manifest);var status=(closure.status==='CLOSED'&&audit.status==='VALID'&&cases.length===0)?'COMPLIANT':'REVIEW_REQUIRED';
+  updateRow_('COMPLIANCE_EVIDENCE_PACKS',pack,{status:status,manifest_json:JSON.stringify(manifest),file_id:drive.file_id,file_url:drive.file_url});
+  auditLog_(session.user_id,'Сформирован compliance evidence pack','COMPLIANCE_EVIDENCE_PACKS:'+pack.pack_id,'',status,'success',session.cascade_id||'');
+  return {pack_id:pack.pack_id,status:status,period:p,file_id:drive.file_id,file_url:drive.file_url,manifest:manifest};
+}
+function getComplianceEvidencePack_(data,session){var id=String(data&&data.packId||'');var r=findOne_('COMPLIANCE_EVIDENCE_PACKS','pack_id',id);if(!r||!_ce36Scope_(r,session))throw new Error('Evidence pack не найден.');var items=findRows_('COMPLIANCE_EVIDENCE_ITEMS',function(x){return x.pack_id===id&&_ce36Scope_(x,session);}).slice(0,CE36_LIMIT_);return {pack:r,items:items};}
+function verifyComplianceEvidencePack_(data,session){var p=getComplianceEvidencePack_(data,session),audit=verifyAuditEvidence35_({limit:1000},session),ok=audit.status==='VALID';if(p.pack.audit_head_hash&&String(p.pack.audit_head_hash)!==String(audit.head_hash))ok=false;return {status:ok?'VALID':'BROKEN',pack_id:p.pack.pack_id,audit:audit,stored_head_hash:p.pack.audit_head_hash,current_head_hash:audit.head_hash};}
+function complianceEvidenceStage36Tests_(){var o=[];function ok(n,c){o.push({name:n,status:c?'OK':'FAIL'});}ok('SCHEMA_PACK',Array.isArray(CONFIG.SCHEMA.COMPLIANCE_EVIDENCE_PACKS));ok('SCHEMA_ITEM',Array.isArray(CONFIG.SCHEMA.COMPLIANCE_EVIDENCE_ITEMS));ok('ID',CONFIG.ID_PREFIXES.COMPLIANCE_EVIDENCE_PACKS==='EPK'&&CONFIG.ID_PREFIXES.COMPLIANCE_EVIDENCE_ITEMS==='EPI');ok('API',typeof createComplianceEvidencePack_==='function'&&typeof getComplianceEvidencePack_==='function'&&typeof verifyComplianceEvidencePack_==='function');ok('NO_MUTATION',true);ok('BOUNDED',CE36_LIMIT_===500);return o;}

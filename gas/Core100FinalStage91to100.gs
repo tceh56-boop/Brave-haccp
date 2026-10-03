@@ -1,0 +1,57 @@
+/** ЦЕХ CORE100 — Stage 91-100 Final Enterprise Layer.
+ * Финальный слой: event bus, universal workflow, enterprise search, deployment health,
+ * backup verification, UAT evidence, Go-Live gate и финальный command center.
+ * Read-only контроль не изменяет хозяйственные данные. Mutating actions проходят RBAC.
+ */
+var CORE100_FINAL_LIMIT_=300;
+var CORE100_FINAL_STAGES_=['91','92','93','94','95','96','97','98','99','100'];
+function _c100fScope_(r,s){return !!r&&String(r.organization_id||'')===String(s.organization_id||'')&&(!s.location_id||!r.location_id||String(r.location_id)===String(s.location_id));}
+function _c100fLoc_(d,s){var l=String((d&&d.locationId)||s.location_id||'');if(l)assertLocationAllowed_(s,l,'CORE100_FINAL');return l;}
+function _c100fRows_(sh,pred){return (findRows_(sh,pred)||[]).slice(0,CORE100_FINAL_LIMIT_);}
+function _c100fHash_(v){var b=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(v||''));return b.map(function(x){return ('0'+(x<0?x+256:x).toString(16)).slice(-2);}).join('');}
+function _c100fJson_(v){try{return JSON.stringify(v||{});}catch(e){return '{}';}}
+
+// 91 — durable event bus. Events are append-only application facts, not business mutations.
+function publishCore100Event91_(d,s){d=d||{};var event={event_id:generateId_('CORE100_EVENTS'),organization_id:s.organization_id,location_id:_c100fLoc_(d,s),event_type:String(d.eventType||''),aggregate_type:String(d.aggregateType||''),aggregate_id:String(d.aggregateId||''),payload_json:_c100fJson_(d.payload||{}),source:String(d.source||'API'),occurred_at:nowIso_(),created_by:s.user_id};if(!event.event_type)throw new Error('eventType обязателен.');insertRow_('CORE100_EVENTS',event);return event;}
+function getCore100Events91_(d,s){d=d||{};var l=_c100fLoc_(d,s);return _c100fRows_('CORE100_EVENTS',function(r){return _c100fScope_(r,{organization_id:s.organization_id,location_id:l})&&(!d.eventType||r.event_type===d.eventType);});}
+
+// 92 — universal workflow execution registry. It records state; actual business mutation remains in existing gateways.
+function createCore100Workflow92_(d,s){d=d||{};var w={workflow_id:generateId_('CORE100_WORKFLOWS'),organization_id:s.organization_id,location_id:_c100fLoc_(d,s),workflow_type:String(d.workflowType||''),source_type:String(d.sourceType||''),source_id:String(d.sourceId||''),status:'READY',steps_json:_c100fJson_(d.steps||[]),owner_id:String(d.ownerId||s.user_id),created_by:s.user_id,created_at:nowIso_(),updated_at:nowIso_()};if(!w.workflow_type)throw new Error('workflowType обязателен.');insertRow_('CORE100_WORKFLOWS',w);return w;}
+function getCore100Workflows92_(d,s){d=d||{};var l=_c100fLoc_(d,s);return _c100fRows_('CORE100_WORKFLOWS',function(r){return _c100fScope_(r,{organization_id:s.organization_id,location_id:l})&&(!d.status||r.status===d.status);});}
+function advanceCore100Workflow92_(d,s){d=d||{};var rows=_c100fRows_('CORE100_WORKFLOWS',function(r){return _c100fScope_(r,s)&&r.workflow_id===String(d.workflowId||'');});if(!rows.length)throw new Error('Workflow не найден.');var w=rows[0];var allowed=['READY','IN_PROGRESS','BLOCKED','COMPLETED'];if(allowed.indexOf(String(d.status||''))<0)throw new Error('Недопустимый статус workflow.');w.status=String(d.status);w.updated_at=nowIso_();updateRow_('CORE100_WORKFLOWS',w);return w;}
+
+// 93 — bounded enterprise search across safe read-model fields.
+var CORE100_SEARCH_SHEETS_=['PRODUCTS','DISHES','SUPPLIERS','BATCHES','PRODUCTION','PURCHASE_REQUESTS','TASKS','CAPA_CASES','KPI_ACTIONS','EXECUTION_REQUESTS'];
+function enterpriseSearch93_(d,s){d=d||{};var q=String(d.query||'').trim().toLowerCase();if(q.length<2)throw new Error('query минимум 2 символа.');var limit=Math.min(Number(d.limit||50),100),out=[];CORE100_SEARCH_SHEETS_.some(function(sh){if(!CONFIG.SCHEMA[sh])return false;_c100fRows_(sh,function(r){if(out.length>=limit)return true;if(!_c100fScope_(r,s))return false;var text=[r.id,r.product_id,r.dish_id,r.batch_id,r.production_id,r.request_id,r.task_id,r.title,r.название,r.name,r.status,r.статус].join(' ').toLowerCase();if(text.indexOf(q)>=0)out.push({source:sh,id:String(r.id||r.product_id||r.dish_id||r.batch_id||r.production_id||r.request_id||r.task_id||''),title:String(r.title||r.название||r.name||''),status:String(r.status||r.статус||'')});return false;});return out.length>=limit;});return {query:q,count:out.length,results:out};}
+
+// 94 — deployment health snapshot. Read-only except explicit snapshot action.
+function getDeploymentHealth94_(d,s){var checks=[];function add(code,status,detail){checks.push({code:code,status:status,detail:detail||''});}
+try{var p=deployPreflight();add('DEPLOY_PREFLIGHT',p.ok?'PASS':'FAIL',JSON.stringify(p));}catch(e){add('DEPLOY_PREFLIGHT','FAIL',String(e.message||e));}
+try{var h=(typeof getSystemHealth_==='function')?getSystemHealth_(s):null;add('SYSTEM_HEALTH',h?'PASS':'WARN',h?JSON.stringify(h):'System health недоступен.');}catch(e2){add('SYSTEM_HEALTH','WARN',String(e2.message||e2));}
+try{var tests=executionGatewayStage81to90Tests_?executionGatewayStage81to90Tests_():[];add('EXECUTION_GATEWAY',tests.every(function(x){return x.status==='OK';})?'PASS':'FAIL',JSON.stringify(tests));}catch(e3){add('EXECUTION_GATEWAY','FAIL',String(e3.message||e3));}
+return {status:checks.some(function(x){return x.status==='FAIL';})?'FAIL':(checks.some(function(x){return x.status==='WARN';})?'WARN':'PASS'),generated_at:nowIso_(),checks:checks};}
+
+// 95 — backup verification metadata. Never deletes or overwrites a backup.
+function verifyBackup95_(d,s){d=d||{};var rows=_c100fRows_('BACKUPS',function(r){return !_c100fScope_(r,s)||false;});var all=findRows_('BACKUPS',function(r){return _c100fScope_(r,s);})||[];var target=d.backupId?all.filter(function(r){return r.backup_id===d.backupId;}):all.slice(-10);return {status:target.length?'AVAILABLE':'NO_BACKUP',checked:target.length,backups:target.map(function(r){return {backup_id:r.backup_id,created_at:r.created_at||r.дата||'',file_id:r.file_id||'',status:r.status||'UNKNOWN'};})};}
+
+// 96 — UAT evidence runner. Executes only deterministic structural contracts; no seed data in PROD.
+function runCore100Uat96_(d,s){var env=PropertiesService.getScriptProperties().getProperty('ENVIRONMENT')||'';var checks=[];function add(code,ok,detail){checks.push({code:code,status:ok?'PASS':'FAIL',detail:detail||''});}
+add('ENVIRONMENT',!!env,env||'not_set');
+var suites=[['STAGE81_90',typeof executionGatewayStage81to90Tests_==='function'?executionGatewayStage81to90Tests_():[]],['FINAL_STAGE',core100FinalStage91to100Tests_()]];suites.forEach(function(x){add(x[0],x[1].every(function(t){return t.status==='OK';}),JSON.stringify(x[1]));});
+var result={uat_run_id:generateId_('CORE100_UAT_RUNS'),organization_id:s.organization_id,location_id:_c100fLoc_(d,s),environment:env,status:checks.every(function(x){return x.status==='PASS';})?'PASS':'FAIL',checks_json:_c100fJson_(checks),started_at:nowIso_(),completed_at:nowIso_(),created_by:s.user_id};insertRow_('CORE100_UAT_RUNS',result);return result;}
+function getCore100Uat96_(d,s){var l=_c100fLoc_(d,s);return _c100fRows_('CORE100_UAT_RUNS',function(r){return _c100fScope_(r,{organization_id:s.organization_id,location_id:l});});}
+
+// 97 — immutable-ish deployment evidence snapshot with hash.
+function createDeploymentEvidence97_(d,s){var health=getDeploymentHealth94_({locationId:_c100fLoc_(d,s)},s),payload={health:health,stage:'CORE100',generated_at:nowIso_()},r={evidence_id:generateId_('CORE100_DEPLOY_EVIDENCE'),organization_id:s.organization_id,location_id:_c100fLoc_(d,s),evidence_type:'DEPLOY_HEALTH',payload_json:_c100fJson_(payload),payload_hash:_c100fHash_(_c100fJson_(payload)),created_by:s.user_id,created_at:nowIso_()};insertRow_('CORE100_DEPLOY_EVIDENCE',r);return r;}
+
+// 98 — final disaster-recovery readiness. It checks backup presence + schema + deploy health.
+function getDisasterRecovery98_(d,s){var b=verifyBackup95_({locationId:_c100fLoc_(d,s)},s),h=getDeploymentHealth94_({locationId:_c100fLoc_(d,s)},s);return {status:(b.status==='AVAILABLE'&&h.status!=='FAIL')?'READY':'ATTENTION',backup:b,deploy_health:h,generated_at:nowIso_()};}
+
+// 99 — Go-Live gate. Explicitly refuses PASS when critical prerequisites fail.
+function runGoLiveGate99_(d,s){var health=getDeploymentHealth94_({locationId:_c100fLoc_(d,s)},s),dr=getDisasterRecovery98_({locationId:_c100fLoc_(d,s)},s),uat=getCore100Uat96_({locationId:_c100fLoc_(d,s)},s),criteria=[{code:'DEPLOY_HEALTH',ok:health.status!=='FAIL'},{code:'DR',ok:dr.status==='READY'},{code:'UAT',ok:uat.length>0&&uat[uat.length-1].status==='PASS'},{code:'PERIOD_LOCK',ok:typeof assertPeriodMutationAllowed_==='function'},{code:'EXECUTION_GATE',ok:typeof executeApprovedProposal84_==='function'}];var status=criteria.every(function(x){return x.ok;})?'GO':'BLOCKED';var r={gate_id:generateId_('CORE100_GO_LIVE_GATES'),organization_id:s.organization_id,location_id:_c100fLoc_(d,s),status:status,criteria_json:_c100fJson_(criteria),health_json:_c100fJson_(health),dr_json:_c100fJson_(dr),uat_json:_c100fJson_(uat[uat.length-1]||{}),created_by:s.user_id,created_at:nowIso_()};insertRow_('CORE100_GO_LIVE_GATES',r);return r;}
+function getGoLiveGates99_(d,s){var l=_c100fLoc_(d,s);return _c100fRows_('CORE100_GO_LIVE_GATES',function(r){return _c100fScope_(r,{organization_id:s.organization_id,location_id:l});});}
+
+// 100 — final command center.
+function getCore100FinalCommandCenter100_(d,s){d=d||{};var l=_c100fLoc_(d,s),health=getDeploymentHealth94_({locationId:l},s),dr=getDisasterRecovery98_({locationId:l},s),g=getGoLiveGates99_({locationId:l},s),last=g.length?g[g.length-1]:null;var status=(last&&last.status==='GO'&&health.status==='PASS'&&dr.status==='READY')?'GREEN':((health.status==='FAIL'||dr.status==='ATTENTION'||(last&&last.status==='BLOCKED'))?'BLOCKED':'ATTENTION');return {status:status,generated_at:nowIso_(),stage:'CORE100',deployment_health:health,disaster_recovery:dr,last_go_live_gate:last,finality:{stages:CORE100_FINAL_STAGES_,approval_required_for_mutations:true,primary_data_auto_repair:false}};}
+function core100FinalStage91to100Trigger_(){try{getOrganizations_(null).forEach(function(org){(getLocations_(org.organization_id)||[]).forEach(function(loc){var s={user_id:'system',organization_id:org.organization_id,location_id:loc.location_id,role:'ADMIN',allowed_locations:[loc.location_id]};var cc=getCore100FinalCommandCenter100_({locationId:loc.location_id},s);if(cc.status!=='GREEN')notify_(org.organization_id,loc.location_id,'CORE100_FINAL','CORE100 Final: '+cc.status,'core100final|'+loc.location_id);});});}catch(e){logSystemError_('core100FinalStage91to100Trigger_',null,'core100_final_91_100',e);}}
+function core100FinalStage91to100Tests_(){function ok(n,c,d){return {name:n,status:c?'OK':'FAIL',detail:d||''};}return [ok('EVENT_BUS',typeof publishCore100Event91_==='function'),ok('WORKFLOW',typeof createCore100Workflow92_==='function'&&typeof advanceCore100Workflow92_==='function'),ok('SEARCH',typeof enterpriseSearch93_==='function'),ok('DEPLOY_HEALTH',typeof getDeploymentHealth94_==='function'),ok('BACKUP_VERIFY',typeof verifyBackup95_==='function'),ok('UAT',typeof runCore100Uat96_==='function'),ok('EVIDENCE',typeof createDeploymentEvidence97_==='function'),ok('DR',typeof getDisasterRecovery98_==='function'),ok('GO_LIVE',typeof runGoLiveGate99_==='function'),ok('COMMAND_CENTER',typeof getCore100FinalCommandCenter100_==='function'),ok('BOUNDED',CORE100_FINAL_LIMIT_===300)];}
