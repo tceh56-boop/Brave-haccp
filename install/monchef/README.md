@@ -12,7 +12,7 @@ https://docs.google.com/spreadsheets/d/1yCYIBLdGHCpclL_NgpoX5Hf9zDy7MdLL7tBENjsd
 ## Шаги (один раз, ~5 минут)
 
 1. Включите Apps Script API: https://script.google.com/home/usersettings → «Google Apps Script API» → Вкл.
-2. Загрузите `MonChef_UI_BRANDED_NO_VERSIONS.zip` в папку «MonChef — установка» (как есть, не распаковывая).
+2. Загрузите архив пакета (например, `MonChef_FINAL_PROJECT_ROOT.zip`) в папку «MonChef — установка» (как есть, не распаковывая).
 3. Откройте https://script.google.com/create — новый пустой проект.
    - Замените содержимое `Код.gs` текстом `MonChefInstaller.gs`.
    - Настройки проекта (шестерёнка) → «Показывать файл манифеста appsscript.json»;
@@ -20,13 +20,24 @@ https://docs.google.com/spreadsheets/d/1yCYIBLdGHCpclL_NgpoX5Hf9zDy7MdLL7tBENjsd
    - Сохраните.
 4. Выберите функцию `installMonChef` → **Выполнить** → разрешите доступ.
    В журнале появятся ссылки на проект «MonChef» и на веб-приложение.
-5. Откройте проект «MonChef» по ссылке из журнала, выполните `installJournalTriggers` и разрешите доступ
-   (Диск, таблицы, триггеры, внешние запросы).
-6. «Порядок первого запуска» из README пакета: `createSystemBackup` → `validateMigrations` →
-   `runFullMigration` → `runSafeTests` → `reconcileStock`.
+5. В проекте «MonChef»: `setupProductionReleaseStack` (разрешите доступ) → `v61RunStructuralTests` →
+   `installJournalTriggers`.
+6. Дальше — по `DEPLOY_V63.md` и README пакета (подпапка «Файлы пакета»).
 7. Свойства скрипта (Настройки проекта → Свойства скрипта) — по необходимости:
    `ORG_ID`, `LOCATION_ID` (по умолчанию ORG-001 / LOC-001), `YANDEX_API_KEY`, `YANDEX_FOLDER_ID` для OCR.
    `PIN_SALT` создаётся автоматически при первом входе.
+
+## Пилот на копии таблицы
+
+По умолчанию (`MC_USE_SHEET_COPY_ = true`) установщик один раз копирует рабочую таблицу из `SHEET_ID`
+в папку установки и подставляет ID копии в `Code.gs` — README пакета требует сначала пилот на копии.
+`false` — работа с самой рабочей таблицей.
+
+## Состав проекта
+
+Все `.gs`/`.html` пакета и `appsscript.json`, кроме дублей: `Code_V*.gs` (старые снимки `Code.gs`),
+`MonChef_V55_63_PRODUCTION_RELEASE.gs` (дословно вшит в `Code.gs`), `mon_cher_demo.html` (автономное демо).
+Они и прочие файлы сохраняются в «Файлы пакета».
 
 ## Обновление
 
