@@ -170,6 +170,12 @@ function posGetShift_(session) {
 function posCloseShift_(data, session) {
   return withLock_(function () {
     var shift = _posRequireOpenShift_(session);
+    // Пустые заказы (стол открыли, ничего не добавили) не держат смену: отменяются автоматически.
+    findRows_('POS_ORDERS', function (o) { return o.shift_id === shift.shift_id && (o.статус === 'открыт' || o.статус === 'пречек'); }).forEach(function (o) {
+      if (!_posActiveLines_(o.order_id).length) {
+        updateRow_('POS_ORDERS', o, { статус: 'отменён', комментарий: 'Пустой заказ — отменён при закрытии смены', version: (Number(o.version) || 0) + 1, обновлено: nowIso_() });
+      }
+    });
     var t = _posShiftTotals_(shift);
     if (t.открытых_заказов) throw new Error('Есть неоплаченные заказы (' + t.открытых_заказов + '). Оплатите или отмените их перед закрытием смены.');
     if (data.cashFact === undefined || data.cashFact === null || data.cashFact === '' || isNaN(Number(data.cashFact))) {
@@ -554,6 +560,11 @@ function posPay_(data, session) {
 
     // Продажа по каждой позиции. Цена — фактическая цена строки (снимок на момент заказа).
     var saleDate = _posShiftDate_(shift);
+    // Не отправленные на кухню позиции (заказ «с собой», касса без официанта) уходят на кухню при оплате.
+    lines.forEach(function (l) {
+      if (l.статус === 'новая') updateRow_('POS_ORDER_LINES', l, { статус: 'на_кухне', на_кухню_в: now });
+    });
+    lines = _posActiveLines_(order.order_id);
     lines.forEach(function (l) {
       var sale = createSale_({
         dishId: l.dish_id, qty: Number(l.qty), цена_продажи: round2_(Number(l.цена) * k), дата: saleDate,
@@ -592,6 +603,18 @@ function posPay_(data, session) {
       'итого ' + total + (bonus ? ', бонусами ' + bonus : '') + (change ? ', сдача ' + change : ''), 'success', session.cascade_id || '');
     return { order: findOne_('POS_ORDERS', 'order_id', order.order_id), payments: payRows, сдача: change, бонусы_списано: bonus, бонусы_начислено: accrued,
       guest: guest ? _posGuestView_(findOne_('GUESTS', 'guest_id', guest.guest_id), session) : null };
+  });
+}
+
+/** Убрать пустой заказ (без позиций): официант — свой, кассир и менеджмент — любой. */
+function posDiscardEmptyOrder_(data, session) {
+  return withLock_(function () {
+    var order = _posOrder_(data.orderId, session);
+    _posAssertWaiterOwns_(order, session);
+    if (order.статус !== 'открыт' && order.статус !== 'пречек') throw new Error('Заказ уже ' + order.статус + '.');
+    if (_posActiveLines_(order.order_id).length) throw new Error('В заказе есть позиции — отменить его может менеджер.');
+    updateRow_('POS_ORDERS', order, { статус: 'отменён', комментарий: 'Пустой заказ убран', version: (Number(order.version) || 0) + 1, обновлено: nowIso_() });
+    return { order: findOne_('POS_ORDERS', 'order_id', order.order_id) };
   });
 }
 
@@ -1488,7 +1511,7 @@ function runPosTests_() {
     'POS_REFUND', 'POS_GET_STAFF_REPORT', 'POS_GET_SHIFTS',
     'POS_FIND_GUEST', 'POS_SAVE_GUEST', 'POS_ATTACH_GUEST', 'POS_GET_GUEST', 'POS_GET_GUESTS', 'POS_ADJUST_BONUS',
     'POS_ANONYMIZE_GUEST', 'POS_GET_LOYALTY_SETTINGS', 'POS_SAVE_LOYALTY_SETTINGS', 'POS_GET_TIP_LINKS', 'POS_SAVE_TIP_LINK',
-    'POS_GET_QRMENU', 'POS_PUBLISH_QRMENU', 'POS_SAVE_QRMENU_SETTINGS'].forEach(function (a) {
+    'POS_GET_QRMENU', 'POS_PUBLISH_QRMENU', 'POS_SAVE_QRMENU_SETTINGS', 'POS_DISCARD_EMPTY_ORDER'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');

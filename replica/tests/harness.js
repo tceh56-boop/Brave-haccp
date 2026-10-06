@@ -30,11 +30,12 @@ const ss = {
   getSheets: () => Object.values(sheets), getId: () => 'SS', deleteSheet() {}
 };
 const props = {};
+// Как в Apps Script: значение кэша не больше 100 КБ, иначе put бросает исключение.
 const cacheStore = {};
 const ctx = {
   console, JSON, Math, Date, Object, Array, String, Number, Boolean, RegExp, Error, isNaN, parseFloat, parseInt, encodeURIComponent,
   SpreadsheetApp: { openById: () => ss, getActiveSpreadsheet: () => ss, flush() {} },
-  CacheService: { getScriptCache: () => ({ get: k => (k in cacheStore ? cacheStore[k] : null), put: (k, v) => { cacheStore[k] = v; }, remove: k => { delete cacheStore[k]; }, removeAll: ks => ks.forEach(k => delete cacheStore[k]), getAll: () => ({}), putAll() {} }) },
+  CacheService: { getScriptCache: () => ({ get: k => (k in cacheStore ? cacheStore[k] : null), put: (k, v) => { if (String(v).length > 100 * 1024) throw new Error('Argument too large: value'); cacheStore[k] = v; }, remove: k => { delete cacheStore[k]; }, removeAll: ks => ks.forEach(k => delete cacheStore[k]), getAll: () => ({}), putAll() {} }) },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {}, hasLock: () => true }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; }, getProperties: () => props, deleteProperty: k => { delete props[k]; }, setProperties() {} }) },
   Utilities: {

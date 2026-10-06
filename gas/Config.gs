@@ -947,6 +947,8 @@ var CONFIG = {
     POS_GET_TIP_LINKS: 'pos', POS_SAVE_TIP_LINK: 'pos',
     // Этап M8: QR-меню — публикация и QR столов у менеджмента.
     POS_GET_QRMENU: 'pos_admin', POS_PUBLISH_QRMENU: 'pos_admin', POS_SAVE_QRMENU_SETTINGS: 'pos_admin',
+    // Убрать пустой (без позиций) заказ — может тот, кто его открыл; заказ с позициями отменяет только менеджмент.
+    POS_DISCARD_EMPTY_ORDER: 'pos',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',

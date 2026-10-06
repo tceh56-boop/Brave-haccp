@@ -29,7 +29,7 @@ function getCachedProductIndex_(organizationId) {
     var name = _hardNormalizeProductName_(r.название);
     if (name) index.name[name] = r.product_id;
   });
-  cache.put(key, JSON.stringify(index), TSEKH_CACHE_INDEX_TTL_);
+  try { cache.put(key, JSON.stringify(index), TSEKH_CACHE_INDEX_TTL_); } catch (e) { /* больше 100 КБ — работаем без кэша */ }
   return index;
 }
 

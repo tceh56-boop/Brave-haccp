@@ -5524,7 +5524,8 @@ function posRenderTicket() {
   var acts = [];
   if (o && POS.lines.length && (o.статус === 'открыт' || o.статус === 'пречек')) acts.push('<button class="btn small secondary" onclick="posPrintPrecheck()">Печать пречека</button>');
   if (live && !POS.guest) acts.push('<button class="btn small secondary" onclick="posToggleGuest(true)">Гость</button>');
-  if (o && o.статус === 'открыт' && POS.lines.some(function (l) { return l.статус === 'новая'; }) && (POS.table || posIsWaiter())) acts.push('<button class="btn small" onclick="posSendToKitchen()">На кухню</button>');
+  if (o && o.статус === 'открыт' && POS.lines.some(function (l) { return l.статус === 'новая'; })) acts.push('<button class="btn small" onclick="posSendToKitchen()">На кухню</button>');
+  if (o && o.статус === 'открыт' && !POS.lines.length) acts.push('<button class="btn small secondary" onclick="posDiscardEmpty()">Убрать пустой заказ</button>');
   if (o && o.статус === 'открыт' && POS.lines.length && POS.table) acts.push('<button class="btn small secondary" onclick="posPrecheck()">Пречек</button>');
   if (live && POS.table) acts.push('<button class="btn small secondary" onclick="posMoveOrder()">Перенести</button>');
   if (o && o.статус === 'пречек' && hasClientModule('pos_admin')) acts.push('<button class="btn small secondary" onclick="posReopen()">Снять пречек</button>');
@@ -5890,6 +5891,11 @@ function posLoadReport() {
         return '<tr><td>' + posEsc(op) + (s.закрыта ? '–' + posEsc(new Date(s.закрыта).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) : '') + '</td><td>' + posEsc(s.статус) + '</td><td class="num">' + t.заказов + '</td><td class="num">' + posMoney(t.нал) + '</td><td class="num">' + posMoney(t.карта) + '</td><td class="num">' + posMoney(t.возвраты) + '</td><td class="num"><b>' + posMoney(t.выручка) + '</b></td></tr>';
       }).join('') + '</tbody></table>' : '<p class="pos-muted">Смен за период нет.</p>';
   }, function (e) { document.getElementById('posRepErr').textContent = e; });
+}
+
+function posDiscardEmpty() {
+  var o = POS.order; if (!o) return;
+  call('POS_DISCARD_EMPTY_ORDER', { orderId: o.order_id }, function () { posNewOrder(); posLoadOrders(); if (POS.tab === 'floor') posLoadFloor(); }, posErr);
 }
 
 function posCancelOrder() {

@@ -2,23 +2,47 @@
  * ЦЕХ — установщик. Вставляется в ПУСТОЙ проект Apps Script (Расширения → Apps Script в таблице).
  * Скачивает все файлы gas/ из GitHub и записывает их в этот же проект через Apps Script API.
  * ВНИМАНИЕ: заменяет ВСЕ файлы проекта (включая этот) содержимым репозитория.
+ *
+ * Закрытый (private) репозиторий: в «Настройки проекта → Свойства скрипта» добавьте
+ *   GITHUB_TOKEN — личный токен GitHub (fine-grained), доступ только к этому репозиторию,
+ *                  право Contents: Read-only, с ограниченным сроком действия;
+ *   TSEKH_REF    — (необязательно) ветка или коммит, по умолчанию — TSEKH_REF_ ниже.
+ * Токен хранится только в свойствах этого проекта и в код не попадает. Свойства видят все,
+ * у кого есть доступ на редактирование проекта/таблицы, — после установки токен можно удалить.
  */
 var TSEKH_REPO_ = 'tceh56-boop/Brave-haccp';
 var TSEKH_REF_ = 'claude/new-session-jd6imq';
 
+function tsekhGithubHeaders_(accept) {
+  var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  var h = { Accept: accept, 'X-GitHub-Api-Version': '2022-11-28' };
+  if (token) h.Authorization = 'Bearer ' + token;
+  return h;
+}
+
 function installTsekh() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (ss) PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', ss.getId());
+  var props = PropertiesService.getScriptProperties();
+  if (ss) props.setProperty('SPREADSHEET_ID', ss.getId());
+  var ref = props.getProperty('TSEKH_REF') || TSEKH_REF_;
 
-  var tree = JSON.parse(UrlFetchApp.fetch('https://api.github.com/repos/' + TSEKH_REPO_ + '/git/trees/' + TSEKH_REF_ + '?recursive=1',
-    { headers: { Accept: 'application/vnd.github+json' } }).getContentText());
+  var treeRes = UrlFetchApp.fetch('https://api.github.com/repos/' + TSEKH_REPO_ + '/git/trees/' + encodeURIComponent(ref) + '?recursive=1',
+    { headers: tsekhGithubHeaders_('application/vnd.github+json'), muteHttpExceptions: true });
+  if (treeRes.getResponseCode() === 404 || treeRes.getResponseCode() === 401) {
+    throw new Error('GitHub не отдал репозиторий (HTTP ' + treeRes.getResponseCode() + '). Если репозиторий закрытый, добавьте в свойства скрипта ' +
+      'GITHUB_TOKEN (fine-grained токен с правом Contents: Read-only на ' + TSEKH_REPO_ + '). Проверьте и ветку: ' + ref + '.');
+  }
+  if (treeRes.getResponseCode() !== 200) throw new Error('GitHub: HTTP ' + treeRes.getResponseCode() + ' — ' + treeRes.getContentText().slice(0, 300));
+  var tree = JSON.parse(treeRes.getContentText());
   var paths = tree.tree.filter(function (t) {
     return t.type === 'blob' && /^gas\/[^\/]+\.(gs|html|json)$/.test(t.path);
   }).map(function (t) { return t.path; });
   if (!paths.length) throw new Error('В репозитории не найдено файлов gas/.');
 
+  // Через API, а не raw.githubusercontent.com: так работает и закрытый репозиторий (с токеном).
   var responses = UrlFetchApp.fetchAll(paths.map(function (p) {
-    return { url: 'https://raw.githubusercontent.com/' + TSEKH_REPO_ + '/' + tree.sha + '/' + encodeURI(p), muteHttpExceptions: true };
+    return { url: 'https://api.github.com/repos/' + TSEKH_REPO_ + '/contents/' + p.split('/').map(encodeURIComponent).join('/') + '?ref=' + tree.sha,
+      headers: tsekhGithubHeaders_('application/vnd.github.raw'), muteHttpExceptions: true };
   }));
   var files = paths.map(function (p, i) {
     if (responses[i].getResponseCode() !== 200) throw new Error('Не скачан ' + p + ': HTTP ' + responses[i].getResponseCode());

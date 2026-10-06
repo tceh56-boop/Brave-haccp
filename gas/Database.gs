@@ -59,7 +59,10 @@ function getAllRows_(sheetKey) {
     rows.push(obj);
   }
 
-  cache.put(cacheKey, JSON.stringify(rows), CONFIG.CACHE_TTL_SECONDS);
+  // CacheService принимает значение не больше 100 КБ и на большем бросает исключение. Растущие
+  // листы (продажи, заказы кассы, журналы) быстро перерастают лимит — тогда лист просто не кэшируется
+  // и читается из таблицы, а не роняет каждую операцию, которая его читает.
+  try { cache.put(cacheKey, JSON.stringify(rows), CONFIG.CACHE_TTL_SECONDS); } catch (e) { /* слишком большой для кэша */ }
   return rows;
 }
 
