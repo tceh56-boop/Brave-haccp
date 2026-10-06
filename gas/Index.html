@@ -124,6 +124,36 @@
   .ttk-table th,.ttk-table td{border:1px solid #ddd;padding:6px;font-size:11px;vertical-align:top}
   .ttk-table th{background:#f7f3ee}
   @media(max-width:650px){.ttk-stage-row{grid-template-columns:32px 1fr 1fr}.ttk-stage-row input:nth-of-type(2),.ttk-stage-row input:nth-of-type(3){grid-column:2}.ttk-stage-row button{grid-column:3}}
+  /* ---------- Модуль «Касса» (Pos.gs). Роли цвета — replica/design/tokens.json ---------- */
+  :root{ --pos-text-muted:#6E5E50; --pos-border-input:#8A7A6A; --pos-success:#12823A; --pos-danger:#C62828; --pos-tap:48px; --pos-max:1180px; }
+  main.pos-wide{max-width:var(--pos-max);}
+  .pos-muted{color:var(--pos-text-muted);font-size:13px;}
+  .pos-shiftbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;}
+  .pos-shiftbar .pos-kpis{display:flex;gap:6px 16px;flex-wrap:wrap;flex:1;}
+  @media(max-width:600px){ .pos-shiftbar .pos-kpis{flex:1 1 100%;order:3;} }
+  .pos-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start;}
+  @media(min-width:900px){ .pos-layout{grid-template-columns:minmax(0,1fr) 380px;} .pos-ticket{position:sticky;top:64px;} }
+  .pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;}
+  .pos-dish{min-height:72px;padding:10px;border-radius:10px;border:1px solid var(--pos-border-input);background:var(--white);color:var(--black);
+    text-align:left;font-size:14px;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;gap:6px;overflow-wrap:anywhere;}
+  .pos-dish:active{transform:translateY(1px);}
+  .pos-dish .pos-price{color:var(--pos-text-muted);font-size:12px;font-weight:600;}
+  .pos-dish:disabled{opacity:.5;cursor:not-allowed;}
+  .pos-dish:focus-visible,.pos-qty button:focus-visible,.pos-seg button:focus-visible,.pos-order-row:focus-visible{outline:2px solid var(--yellow);outline-offset:2px;}
+  .pos-line{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #eee;}
+  .pos-line .pos-name{overflow-wrap:anywhere;font-size:14px;}
+  .pos-qty{display:flex;align-items:center;gap:4px;}
+  .pos-qty button{width:var(--pos-tap);height:var(--pos-tap);border-radius:10px;border:1px solid var(--pos-border-input);background:var(--white);font-size:20px;font-family:inherit;cursor:pointer;}
+  .pos-qty span{min-width:28px;text-align:center;font-weight:700;}
+  .pos-total{font-size:22px;font-weight:800;}
+  .pos-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0;}
+  .pos-seg button{min-height:var(--pos-tap);border-radius:10px;border:1px solid var(--brown);background:var(--white);color:var(--brown);font-weight:700;font-family:inherit;cursor:pointer;}
+  .pos-seg button[aria-pressed="true"]{background:var(--brown);color:var(--white);}
+  button.btn.pos-pay{min-height:56px;font-size:17px;}
+  .pos-ok{color:var(--pos-success);font-weight:700;}
+  .pos-bad{color:var(--pos-danger);font-weight:700;}
+  .pos-badge-open{background:var(--info);} .pos-badge-paid{background:var(--pos-success);} .pos-badge-cancel{background:var(--pos-danger);}
+  .pos-order-row{display:flex;justify-content:space-between;gap:8px;width:100%;padding:10px 0;border:none;border-bottom:1px solid #eee;background:none;font-family:inherit;font-size:14px;text-align:left;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -186,6 +216,7 @@
   <div class="menuHead">ЦЕХ</div>
   <div class="menuGroupLabel">Оперативное</div>
   <button class="menuItem active" data-view="dashboard" data-module="dashboard" onclick="navTo('dashboard')">Главная</button>
+  <button class="menuItem" data-view="pos" data-module="pos" onclick="navTo('pos')">Касса</button>
   <button class="menuItem" data-view="warehouse" data-module="warehouse_view" onclick="navTo('warehouse')">Склад</button>
   <button class="menuItem" data-view="marking" data-module="marking" onclick="navTo('marking')">🏷️ Маркировка</button>
   <button class="menuItem" data-view="writeoff" data-module="writeoffs" onclick="navTo('writeoff')">Списание</button>
@@ -1305,6 +1336,75 @@
     </div>
   </section>
 
+  <!-- Модуль «Касса» (Pos.gs, replica/architecture.md M1): смена + заказ «с собой» + оплата. -->
+  <section id="view-pos" class="hidden" aria-labelledby="posTitle">
+    <div class="card">
+      <div class="pos-shiftbar">
+        <h2 id="posTitle" style="margin:0;">Касса</h2>
+        <div id="posShiftInfo" class="pos-kpis pos-muted" aria-live="polite">Загрузка…</div>
+        <div id="posShiftActions"></div>
+      </div>
+      <div id="posShiftErr" class="err" role="alert"></div>
+    </div>
+
+    <div id="posNoShift" class="card hidden">
+      <h2>Смена не открыта</h2>
+      <p class="pos-muted">Откройте смену, чтобы принимать заказы. Укажите, сколько наличных в кассе сейчас.</p>
+      <label for="posCashStart" class="pos-muted">Наличные на начало смены, ₽</label>
+      <input id="posCashStart" type="number" min="0" step="0.01" inputmode="decimal" value="0">
+      <button class="btn" onclick="posOpenShift()">Открыть смену</button>
+    </div>
+
+    <div id="posCloseCard" class="card hidden">
+      <h2>Закрытие смены</h2>
+      <div id="posCloseSummary" class="pos-muted"></div>
+      <label for="posCashFact" class="pos-muted">Наличные в кассе фактически, ₽</label>
+      <input id="posCashFact" type="number" min="0" step="0.01" inputmode="decimal">
+      <button class="btn danger" onclick="posCloseShift()">Закрыть смену</button>
+      <button class="btn secondary" onclick="posToggleClose(false)">Не закрывать</button>
+      <div id="posCloseErr" class="err" role="alert"></div>
+    </div>
+
+    <div id="posWork" class="pos-layout hidden">
+      <div>
+        <div class="card">
+          <div id="posCats" class="subnav" role="tablist" aria-label="Категории меню"></div>
+          <div id="posDishes" class="pos-grid" aria-label="Блюда"></div>
+        </div>
+        <div class="card">
+          <div class="row-between"><h2 style="margin:0;">Заказы смены</h2>
+            <button class="btn small secondary" onclick="posLoadOrders()">Обновить</button></div>
+          <div id="posOrders" class="pos-muted">—</div>
+        </div>
+      </div>
+
+      <div class="card pos-ticket" aria-labelledby="posTicketTitle">
+        <div class="row-between">
+          <h2 id="posTicketTitle" style="margin:0;">Заказ</h2>
+          <button class="btn small secondary" onclick="posNewOrder()">Новый заказ</button>
+        </div>
+        <div id="posLines" aria-live="polite"><p class="pos-muted">Выберите блюда в меню — они появятся здесь.</p></div>
+        <div class="row-between" style="margin-top:10px;"><span>Итого</span><span id="posTotal" class="pos-total">0 ₽</span></div>
+        <div id="posPayBlock" class="hidden">
+          <div class="pos-seg" role="group" aria-label="Способ оплаты">
+            <button type="button" data-method="нал" onclick="posSetMethod('нал')">Наличные</button>
+            <button type="button" data-method="карта" onclick="posSetMethod('карта')">Карта</button>
+            <button type="button" data-method="прочее" onclick="posSetMethod('прочее')">Другое</button>
+          </div>
+          <div id="posCashBlock">
+            <label for="posCashGiven" class="pos-muted">Получено наличными, ₽</label>
+            <input id="posCashGiven" type="number" min="0" step="0.01" inputmode="decimal" oninput="POS.cashTouched = true; posRenderChange()">
+            <div id="posChange" class="pos-muted"></div>
+          </div>
+          <button id="posPayBtn" class="btn pos-pay" onclick="posPay()">Оплатить</button>
+          <button class="btn secondary" onclick="posCancelOrder()" data-module-gate="pos_admin">Отменить заказ</button>
+        </div>
+        <div id="posPayResult" aria-live="polite"></div>
+        <div id="posErr" class="err" role="alert"></div>
+      </div>
+    </div>
+  </section>
+
 </main>
 </div>
 
@@ -1330,14 +1430,16 @@
    */
   var CLIENT_ROLE_MODULES = {
     'ADMIN': 'all',
-    'ДИРЕКТОР': ['dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
+    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
     'ШЕФ-ПОВАР': ['dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
     'ПОВАР': ['recipes', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks'],
     'КЛАДОВЩИК': ['warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations'],
     'БУХГАЛТЕР': ['recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales'],
     'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products'],
-    'МЕНЕДЖЕР': ['dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
-    'ЛАБОРАНТ': ['lab']
+    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
+    'ЛАБОРАНТ': ['lab'],
+    'КАССИР': ['pos', 'pos_shift'],
+    'ОФИЦИАНТ': ['pos_waiter']
   };
 
   function applyRoleVisibility(role) {
@@ -1535,6 +1637,8 @@
     if (name === 'workshops') initWorkshopsView();
     if (name === 'notifsettings') initNotificationSettingsView();
     if (name === 'safety') initSafetyView();
+    document.querySelector('main').classList.toggle('pos-wide', name === 'pos');
+    if (name === 'pos') initPosView();
   }
 
   function loadRecoveryView() {
@@ -4529,6 +4633,238 @@ function renderMarkLabel(x){var m=x.marking||{};var qr='https://quickchart.io/qr
 function markVerifyUI(markingId,jobId){call('VERIFY_LABEL_PRINT',{markingId:markingId,printJobId:jobId,verified:true,scan:markingId},function(x){document.getElementById('markResult').insertAdjacentHTML('afterbegin','<div class="badge b-ok">Маркировка проверена и записана в HACCP-журнал.</div>');},function(e){alert(String(e));});}
 function markOpenContainerUI(){var id=(document.getElementById('markBatchId').value||'').trim();if(!id){alert('Укажите исходную партию тары.');return;}var qty=prompt('Количество вскрываемой тары/продукта:','1');if(!qty)return;var expiry=prompt('Годен до после вскрытия (ISO YYYY-MM-DDTHH:mm:ss) или оставьте пустым, если норматив настроен:','');call('OPEN_CONTAINER',{batchId:id,quantity:Number(qty),expiryDate:expiry||''},function(x){document.getElementById('markBatchId').value=x.batch_id;renderMarkLabel(x);},function(e){alert(String(e));});}
 function markLoadJournalUI(){var id=(document.getElementById('markBatchId').value||'').trim();call('GET_MARKING_JOURNAL',id?{batchId:id}:{},function(rows){document.getElementById('markResult').innerHTML='<pre style="white-space:pre-wrap">'+compEsc(JSON.stringify(rows,null,2))+'</pre>';},function(e){document.getElementById('markResult').textContent=String(e);});}
+</script>
+
+<script>
+/* ---------- Модуль «Касса» (Pos.gs). Все суммы считает сервер; клиент только показывает. ---------- */
+var POS = { menu: null, cat: null, shift: null, order: null, lines: [], method: 'нал', payOpId: null, busy: false, cashTouched: false };
+
+function posEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function posMoney(n) { return (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ₽'; }
+function posErr(msg) { document.getElementById('posErr').textContent = msg || ''; }
+
+function initPosView() {
+  posErr('');
+  call('POS_GET_SHIFT', {}, posApplyShift, function (e) { document.getElementById('posShiftInfo').textContent = e; });
+}
+
+function posApplyShift(data) {
+  POS.shift = data && data.shift;
+  var info = document.getElementById('posShiftInfo'), actions = document.getElementById('posShiftActions');
+  document.getElementById('posNoShift').classList.toggle('hidden', !!POS.shift);
+  document.getElementById('posWork').classList.toggle('hidden', !POS.shift);
+  if (!POS.shift) {
+    info.textContent = 'Смена закрыта';
+    actions.innerHTML = '';
+    document.getElementById('posCloseCard').classList.add('hidden');
+    return;
+  }
+  var t = data.totals || {};
+  info.innerHTML = '<span>Смена с ' + posEsc(new Date(POS.shift.открыта).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) + '</span>' +
+    '<span>Заказов: <b>' + (t.заказов || 0) + '</b></span>' +
+    '<span>Выручка: <b>' + posMoney(t.выручка) + '</b></span>' +
+    '<span>Нал: ' + posMoney(t.нал) + ' · Карта: ' + posMoney(t.карта) + '</span>' +
+    '<span>Средний чек: ' + posMoney(t.средний_чек) + '</span>';
+  actions.innerHTML = hasClientModule('pos_shift') ? '<button class="btn small secondary" onclick="posToggleClose(true)">Закрыть смену</button>' : '';
+  if (!POS.menu) posLoadMenu(); else posRenderMenu();
+  posLoadOrders();
+}
+
+function posOpenShift() {
+  var v = document.getElementById('posCashStart').value;
+  document.getElementById('posShiftErr').textContent = '';
+  call('POS_OPEN_SHIFT', { cashStart: Number(v) || 0 }, posApplyShift, function (e) { document.getElementById('posShiftErr').textContent = e; });
+}
+
+function posToggleClose(show) {
+  var card = document.getElementById('posCloseCard');
+  card.classList.toggle('hidden', !show);
+  document.getElementById('posCloseErr').textContent = '';
+  if (!show) return;
+  call('POS_GET_SHIFT', {}, function (d) {
+    var t = d.totals || {};
+    document.getElementById('posCloseSummary').innerHTML =
+      'Выручка: <b>' + posMoney(t.выручка) + '</b> (нал ' + posMoney(t.нал) + ', карта ' + posMoney(t.карта) + ', другое ' + posMoney(t.прочее) + ')<br>' +
+      'Наличных должно быть: <b>' + posMoney(t.нал_ожидается) + '</b>' +
+      (t.открытых_заказов ? '<br><span class="pos-bad">Неоплаченных заказов: ' + t.открытых_заказов + '</span>' : '');
+    document.getElementById('posCashFact').value = t.нал_ожидается || 0;
+    document.getElementById('posCashFact').focus();
+  });
+}
+
+function posCloseShift() {
+  var v = document.getElementById('posCashFact').value;
+  if (v === '') { document.getElementById('posCloseErr').textContent = 'Укажите сумму наличных.'; return; }
+  call('POS_CLOSE_SHIFT', { cashFact: Number(v) }, function (r) {
+    var d = Number(r.расхождение_нал) || 0;
+    alert('Смена закрыта. Выручка ' + posMoney(r.totals.выручка) + (d ? '. Расхождение по наличным: ' + posMoney(d) : '. Наличные сошлись.'));
+    POS.order = null; POS.lines = [];
+    document.getElementById('posCloseCard').classList.add('hidden');
+    initPosView();
+  }, function (e) { document.getElementById('posCloseErr').textContent = e; });
+}
+
+function posLoadMenu() {
+  document.getElementById('posDishes').innerHTML = '<p class="pos-muted">Загрузка меню…</p>';
+  call('POS_GET_MENU', {}, function (m) { POS.menu = m; POS.cat = m.categories[0] || null; posRenderMenu(); },
+    function (e) { document.getElementById('posDishes').innerHTML = '<p class="err">' + posEsc(e) + '</p>'; });
+}
+
+function posRenderMenu() {
+  var m = POS.menu;
+  if (!m) return;
+  document.getElementById('posCats').innerHTML = m.categories.map(function (c, i) {
+    return '<button role="tab" aria-selected="' + (c === POS.cat) + '" class="' + (c === POS.cat ? 'active' : '') + '" onclick="posPickCat(' + i + ')">' + posEsc(c) + '</button>';
+  }).join('');
+  var dishes = m.dishes.filter(function (d) { return d.категория === POS.cat; });
+  document.getElementById('posDishes').innerHTML = dishes.length ? dishes.map(function (d) {
+    return '<button class="pos-dish" onclick="posAdd(\'' + posEsc(d.dish_id) + '\')" aria-label="' + posEsc(d.название + ', ' + posMoney(d.цена)) + '">' +
+      '<span>' + posEsc(d.название) + '</span><span class="pos-price">' + posMoney(d.цена) + '</span></button>';
+  }).join('') : '<p class="pos-muted">В меню нет блюд с ценой продажи. Укажите цену в разделе «Рецепты и Тех.карты».</p>';
+}
+
+function posPickCat(i) { POS.cat = POS.menu.categories[i]; posRenderMenu(); }
+
+function posApplyOrder(v) {
+  POS.order = v.order; POS.lines = v.lines || [];
+  posSyncOrderRow(v.order);
+  POS.payOpId = null;
+  document.getElementById('posPayResult').innerHTML = '';
+  posRenderTicket();
+}
+
+function posRenderTicket() {
+  var o = POS.order, el = document.getElementById('posLines');
+  document.getElementById('posTicketTitle').textContent = o ? 'Заказ №' + o.номер : 'Заказ';
+  if (!o || !POS.lines.length) {
+    el.innerHTML = '<p class="pos-muted">Выберите блюда в меню — они появятся здесь.</p>';
+  } else {
+    var editable = o.статус === 'открыт';
+    el.innerHTML = POS.lines.map(function (l) {
+      return '<div class="pos-line"><span class="pos-name">' + posEsc(l.название_снимок) + '<br><span class="pos-muted">' + posMoney(l.цена) + '</span></span>' +
+        (editable ? '<span class="pos-qty"><button aria-label="Меньше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) - 1) + ')">−</button>' +
+          '<span>' + posEsc(l.qty) + '</span><button aria-label="Больше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) + 1) + ')">+</button></span>'
+          : '<span>× ' + posEsc(l.qty) + '</span>') +
+        '<b>' + posMoney(l.сумма) + '</b></div>';
+    }).join('');
+  }
+  document.getElementById('posTotal').textContent = posMoney(o ? o.итого : 0);
+  var canPay = !!(o && o.статус === 'открыт' && POS.lines.length);
+  document.getElementById('posPayBlock').classList.toggle('hidden', !canPay);
+  applyModuleGates();
+  if (canPay) posSetMethod(POS.method);
+}
+
+function posWithOrder(fn, onError) {
+  if (POS.order && POS.order.статус === 'открыт') return fn(POS.order);
+  call('POS_CREATE_ORDER', {}, function (v) { posApplyOrder(v); fn(v.order); posLoadOrders(); }, onError);
+}
+
+function posAdd(dishId) {
+  if (POS.busy) return;
+  posErr(''); POS.busy = true;
+  var done = function () { POS.busy = false; };
+  posWithOrder(function (o) {
+    call('POS_ADD_LINE', { orderId: o.order_id, dishId: dishId, qty: 1, version: o.version },
+      function (v) { done(); posApplyOrder(v); },
+      function (e) { done(); posErr(e); posReloadOrder(); });
+  }, function (e) { done(); posErr(e); });
+}
+
+function posQty(lineId, qty) {
+  posErr('');
+  call('POS_UPDATE_LINE', { lineId: lineId, qty: qty, version: POS.order.version }, posApplyOrder, function (e) { posErr(e); posReloadOrder(); });
+}
+
+function posReloadOrder() {
+  if (POS.order) call('POS_GET_ORDER', { orderId: POS.order.order_id }, posApplyOrder);
+}
+
+function posNewOrder() {
+  posErr('');
+  POS.order = null; POS.lines = []; POS.payOpId = null; POS.cashTouched = false;
+  document.getElementById('posCashGiven').value = '';
+  document.getElementById('posPayResult').innerHTML = '';
+  posRenderTicket();
+}
+
+function posSetMethod(m) {
+  POS.method = m;
+  document.querySelectorAll('#posPayBlock .pos-seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.method === m)); });
+  document.getElementById('posCashBlock').classList.toggle('hidden', m !== 'нал');
+  // Пока кассир сам не ввёл сумму, поле следует за итогом заказа.
+  var given = document.getElementById('posCashGiven');
+  if (m === 'нал' && POS.order && !POS.cashTouched) given.value = POS.order.итого;
+  posRenderChange();
+}
+
+function posRenderChange() {
+  var el = document.getElementById('posChange');
+  if (!POS.order || POS.method !== 'нал') { el.textContent = ''; return; }
+  var diff = (Number(document.getElementById('posCashGiven').value) || 0) - (Number(POS.order.итого) || 0);
+  el.innerHTML = diff >= 0 ? 'Сдача: <b>' + posMoney(diff) + '</b>' : '<span class="pos-bad">Не хватает ' + posMoney(-diff) + '</span>';
+}
+
+/** Повторное нажатие после сбоя связи отправляет тот же operationId — сервер не проведёт оплату дважды. */
+function posPay() {
+  var o = POS.order;
+  if (!o) return;
+  var btn = document.getElementById('posPayBtn');
+  var amount = POS.method === 'нал' ? Number(document.getElementById('posCashGiven').value) || 0 : Number(o.итого);
+  if (!POS.payOpId) POS.payOpId = 'POSPAY-' + o.order_id + '-' + Date.now();
+  posErr('');
+  btn.disabled = true; btn.textContent = 'Проводим оплату…';
+  call('POS_PAY', { orderId: o.order_id, version: o.version, operationId: POS.payOpId, payments: [{ способ: POS.method, сумма: amount }] },
+    function (r) {
+      btn.disabled = false; btn.textContent = 'Оплатить';
+      POS.order = r.order; POS.payOpId = null;
+      posSyncOrderRow(r.order);
+      posRenderTicket();
+      document.getElementById('posPayResult').innerHTML = '<p class="pos-ok">Оплачено ' + posMoney(r.order.итого) +
+        (r.сдача ? '. Сдача: ' + posMoney(r.сдача) : '') + '</p><p class="pos-muted">Пробейте чек на кассовом аппарате. Сырьё спишется по ТТК автоматически.</p>' +
+        '<button class="btn" onclick="posNewOrder()">Следующий заказ</button>';
+      document.getElementById('posCashGiven').value = ''; POS.cashTouched = false;
+      call('POS_GET_SHIFT', {}, posApplyShift);
+    },
+    function (e) { btn.disabled = false; btn.textContent = 'Повторить оплату'; posErr(e); });
+}
+
+function posCancelOrder() {
+  var o = POS.order;
+  if (!o) return;
+  var reason = POS.lines.length ? prompt('Причина отмены заказа №' + o.номер + ':') : '';
+  if (POS.lines.length && !reason) return;
+  call('POS_CANCEL_ORDER', { orderId: o.order_id, reason: reason }, function () { posNewOrder(); posLoadOrders(); }, posErr);
+}
+
+/** Обновляет строку заказа в списке смены без лишнего запроса к серверу. */
+function posSyncOrderRow(order) {
+  if (!order || !POS.orders) return;
+  for (var i = 0; i < POS.orders.length; i++) if (POS.orders[i].order_id === order.order_id) { POS.orders[i] = order; posRenderOrders(); return; }
+}
+
+function posLoadOrders() {
+  call('POS_GET_ORDERS', {}, function (rows) { POS.orders = rows || []; posRenderOrders(); },
+    function (e) { document.getElementById('posOrders').textContent = e; });
+}
+
+function posRenderOrders() {
+  (function (rows) {
+    var el = document.getElementById('posOrders');
+    if (!rows || !rows.length) { el.innerHTML = '<p class="pos-muted">В этой смене заказов пока нет.</p>'; return; }
+    var cls = { 'открыт': 'pos-badge-open', 'пречек': 'pos-badge-open', 'оплачен': 'pos-badge-paid', 'отменён': 'pos-badge-cancel', 'возврат': 'pos-badge-cancel' };
+    el.innerHTML = rows.slice(0, 50).map(function (o) {
+      return '<button class="pos-order-row" onclick="posOpenOrder(\'' + posEsc(o.order_id) + '\')">' +
+        '<span>№' + posEsc(o.номер) + ' · ' + posEsc(new Date(o.создано).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) + '</span>' +
+        '<span><span class="badge ' + (cls[o.статус] || 'b-info') + '">' + posEsc(o.статус) + '</span> <b>' + posMoney(o.итого) + '</b></span></button>';
+    }).join('');
+  })(POS.orders);
+}
+
+function posOpenOrder(orderId) {
+  posErr(''); POS.cashTouched = false;
+  call('POS_GET_ORDER', { orderId: orderId }, posApplyOrder, posErr);
+}
 </script>
 
 </body>

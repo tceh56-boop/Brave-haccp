@@ -211,7 +211,10 @@ var CONFIG = {
     // CacheService.put() в проде бросал бы исключение. См. Auth.gs — сессия теперь
     // дополнительно хранится здесь как надёжная опора (durable backing store),
     // CacheService остаётся быстрым кэшем поверх неё.
-    SESSIONS: 'SESSIONS'
+    SESSIONS: 'SESSIONS',
+
+    // Модуль «Касса» (Pos.gs, replica/architecture.md, этап M1): смены, заказы, оплаты.
+    POS_SHIFTS: 'POS_SHIFTS', POS_ORDERS: 'POS_ORDERS', POS_ORDER_LINES: 'POS_ORDER_LINES', POS_PAYMENTS: 'POS_PAYMENTS'
   },
 
   // Схема заголовков для initializeDatabase(). Порядок колонок = порядок в листе.
@@ -714,11 +717,27 @@ var CONFIG = {
     CORE100_DEPLOY_EVIDENCE: ['evidence_id','organization_id','location_id','evidence_type','payload_json','payload_hash','created_by','created_at'],
     CORE100_GO_LIVE_GATES: ['gate_id','organization_id','location_id','status','criteria_json','health_json','dr_json','uat_json','created_by','created_at'],
     SESSIONS: ['token', 'user_id', 'organization_id', 'роль', 'location_id',
-      'allowed_locations', 'expires', 'revoked', 'created_at']
+      'allowed_locations', 'expires', 'revoked', 'created_at'],
+
+    // Модуль «Касса» (Pos.gs). Деньги — рубли с round2_, как во всём ЦЕХ.
+    // POS_SHIFTS.статус: открыта | закрыта (не более одной открытой на точку).
+    POS_SHIFTS: ['shift_id','organization_id','location_id','кассир_id','открыта','закрыта',
+      'нал_начало','нал_конец_факт','итог_нал','итог_карта','итог_прочее',
+      'заказов','возвратов_сумма','статус','cascade_id'],
+    // POS_ORDERS.статус: открыт | пречек | оплачен | отменён | возврат; version — защита
+    // от одновременной правки одного заказа с двух устройств.
+    POS_ORDERS: ['order_id','organization_id','location_id','shift_id','table_id','официант_id',
+      'номер','гостей','статус','сумма','скидка','итого','комментарий',
+      'version','создано','обновлено','оплачен','cascade_id'],
+    POS_ORDER_LINES: ['line_id','order_id','organization_id','dish_id','название_снимок','qty',
+      'цена','модификаторы_json','сумма','статус','на_кухню_в','sale_ids','создано'],
+    POS_PAYMENTS: ['payment_id','order_id','organization_id','location_id','shift_id','способ',
+      'сумма','operation_id','создано','user_id']
   },
 
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
+    POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
     RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL',
@@ -853,6 +872,11 @@ var CONFIG = {
   // v2: warehouse разделён на warehouse_view/warehouse_receive — шеф-повар видит
   // склад, но не может создавать/менять накладные прихода (ТЗ §7/§31, ошибка №1 из §61).
   ACTION_MODULE: {
+    // Модуль «Касса» (Pos.gs). pos — касса, pos_shift — смена, pos_admin — отмены и сервис.
+    POS_GET_MENU: 'pos', POS_GET_SHIFT: 'pos', POS_CREATE_ORDER: 'pos', POS_ADD_LINE: 'pos', POS_UPDATE_LINE: 'pos',
+    POS_GET_ORDER: 'pos', POS_GET_ORDERS: 'pos', POS_PAY: 'pos',
+    POS_OPEN_SHIFT: 'pos_shift', POS_CLOSE_SHIFT: 'pos_shift',
+    POS_CANCEL_ORDER: 'pos_admin', POS_FULFILL_PENDING: 'pos_admin',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',
@@ -1187,7 +1211,7 @@ var CONFIG = {
     // и раньше через 'products' — но теперь это отдельное, явно выданное право, а не
     // побочный эффект обычного доступа к продуктам организации. ШЕФ-ПОВАР/КАЛЬКУЛЯТОР его
     // не получают (см. докстринг у CREATE_GLOBAL_PRODUCT в ACTION_MODULE выше).
-    'ДИРЕКТОР': ['enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
+    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
     'ШЕФ-ПОВАР': ['marking', 'critical_incidents', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales', 'safety', 'safety_admin', 'offline'],
     // ПОВАР: чтение ТТК/рецептур/полуфабрикатов и производственный контур.
     // Себестоимость и Food Cost доступны через ТТК/рецептуры, но права на изменение
@@ -1198,7 +1222,11 @@ var CONFIG = {
     'КЛАДОВЩИК': ['marking', 'critical_incidents', 'warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations', 'safety', 'offline'],
     'БУХГАЛТЕР': ['enterprise_control', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales', 'safety'],
     'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products', 'safety'],
-    'МЕНЕДЖЕР': ['enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
+    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
+    // Модуль «Касса»: кассир принимает заказы и оплату в своей точке, отмены — у менеджера.
+    'КАССИР': ['pos', 'pos_shift', 'safety', 'offline'],
+    // Официант: этап M2 (зал/столы) — пока только просмотр меню и своих заказов без оплаты.
+    'ОФИЦИАНТ': ['pos_waiter', 'safety', 'offline'],
     'ЛАБОРАНТ': ['lab', 'safety'],
     // RBAC v2: технолог/HACCP получает технологический + нормативный контур,
     // но не получает users/finance/admin integrations.
@@ -1207,7 +1235,8 @@ var CONFIG = {
 
   ROLE_LIST: [
     'ADMIN', 'ДИРЕКТОР', 'ШЕФ-ПОВАР', 'ПОВАР',
-    'КЛАДОВЩИК', 'ТЕХНОЛОГ_HACCP', 'БУХГАЛТЕР', 'КАЛЬКУЛЯТОР', 'МЕНЕДЖЕР', 'ЛАБОРАНТ'
+    'КЛАДОВЩИК', 'ТЕХНОЛОГ_HACCP', 'БУХГАЛТЕР', 'КАЛЬКУЛЯТОР', 'МЕНЕДЖЕР', 'ЛАБОРАНТ',
+    'КАССИР', 'ОФИЦИАНТ'
   ],
 
   // RBAC v2 — область данных. LOCATION = только выбранная точка;
@@ -1223,7 +1252,9 @@ var CONFIG = {
     'БУХГАЛТЕР': 'ORGANIZATION',
     'КАЛЬКУЛЯТОР': 'ORGANIZATION',
     'МЕНЕДЖЕР': 'ORGANIZATION',
-    'ЛАБОРАНТ': 'ORGANIZATION'
+    'ЛАБОРАНТ': 'ORGANIZATION',
+    'КАССИР': 'LOCATION',
+    'ОФИЦИАНТ': 'LOCATION'
   },
 
   // Точечные запреты поверх ROLE_MODULES. Нужны там, где роль должна читать

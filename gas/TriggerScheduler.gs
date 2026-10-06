@@ -12,7 +12,7 @@
  */
 
 var TRIGGER_SCHEDULE_ = {
-  tick15m_: ['journalReminderTrigger_', 'eventAutomationStage26Trigger_', 'automationWorkflowSlaStage27Trigger_'],
+  tick15m_: ['journalReminderTrigger_', 'eventAutomationStage26Trigger_', 'automationWorkflowSlaStage27Trigger_', 'posFulfillPendingSalesTrigger_'],
   tickHourly_: ['dailyAutoJournalTrigger_', 'overdueJournalTrigger_'],
   tick2hA_: ['criticalStockTrigger_', 'controlTowerStage23Trigger_', 'runAutomationDecisionTrigger_'],
   tick2hB_: ['enterpriseExecutionStage42to50Trigger_', 'digitalFactoryStage51to60Trigger_', 'autonomousOperationsStage81to90Trigger_'],
