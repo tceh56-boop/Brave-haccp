@@ -216,7 +216,10 @@ var CONFIG = {
     // Модуль «Касса» (Pos.gs, replica/architecture.md, этап M1): смены, заказы, оплаты.
     POS_SHIFTS: 'POS_SHIFTS', POS_ORDERS: 'POS_ORDERS', POS_ORDER_LINES: 'POS_ORDER_LINES', POS_PAYMENTS: 'POS_PAYMENTS',
     // Этап M2: зал и столы.
-    POS_HALLS: 'POS_HALLS', POS_TABLES: 'POS_TABLES'
+    POS_HALLS: 'POS_HALLS', POS_TABLES: 'POS_TABLES',
+    // Этап M3: модификаторы и их расход со склада.
+    MODIFIER_GROUPS: 'MODIFIER_GROUPS', MODIFIERS: 'MODIFIERS', DISH_MODIFIER_LINKS: 'DISH_MODIFIER_LINKS',
+    POS_MODIFIER_USAGE: 'POS_MODIFIER_USAGE'
   },
 
   // Схема заголовков для initializeDatabase(). Порядок колонок = порядок в листе.
@@ -738,12 +741,23 @@ var CONFIG = {
       'сумма','operation_id','создано','user_id'],
     // Залы и столы точки. Занятость стола не хранится — считается из открытых заказов смены.
     POS_HALLS: ['hall_id','organization_id','location_id','название','порядок','статус','создано'],
-    POS_TABLES: ['table_id','organization_id','location_id','hall_id','название','мест','порядок','статус','создано']
+    POS_TABLES: ['table_id','organization_id','location_id','hall_id','название','мест','порядок','статус','создано'],
+    // Модификаторы — общие для организации. Группа: сколько можно выбрать (мин..макс).
+    MODIFIER_GROUPS: ['group_id','organization_id','название','мин','макс','статус','создано'],
+    // цена_delta может быть отрицательной (например, «маленькая порция»). product_id/расход_qty —
+    // необязательно: продукт списывается со склада при исполнении продажи.
+    MODIFIERS: ['modifier_id','organization_id','group_id','название','цена_delta','product_id','расход_qty','единица','порядок','статус','создано'],
+    // Связь блюдо ↔ группа. Отвязка — статус «архив», строки не удаляются (как везде в ЦЕХ).
+    DISH_MODIFIER_LINKS: ['link_id','organization_id','dish_id','group_id','порядок','статус'],
+    // Расход продуктов модификаторов по оплаченным позициям. статус: ожидает | списано | ошибка.
+    POS_MODIFIER_USAGE: ['usage_id','organization_id','location_id','order_id','line_id','sale_id','modifier_id','product_id',
+      'qty','единица','статус','ошибка','создано','списано_в','cascade_id']
   },
 
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
+    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
     RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL',
@@ -887,6 +901,8 @@ var CONFIG = {
     POS_GET_FLOOR: 'pos', POS_SEND_TO_KITCHEN: 'pos', POS_PRECHECK: 'pos', POS_MOVE_ORDER: 'pos',
     POS_REOPEN_ORDER: 'pos_admin', POS_SAVE_HALL: 'pos_admin', POS_SAVE_TABLE: 'pos_admin',
     POS_GET_KITCHEN_QUEUE: 'pos_kitchen', POS_MARK_LINE_READY: 'pos_kitchen',
+    // Этап M3: модификаторы.
+    POS_GET_MODIFIERS: 'pos_admin', POS_SAVE_MODIFIER_GROUP: 'pos_admin', POS_SAVE_MODIFIER: 'pos_admin', POS_LINK_DISH_MODIFIERS: 'pos_admin',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',

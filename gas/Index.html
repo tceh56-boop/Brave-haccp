@@ -174,6 +174,19 @@
   .kitchen-line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee;font-size:16px;}
   .kitchen-line.done{color:var(--pos-text-muted);text-decoration:line-through;}
   .kitchen-line .btn{width:auto;margin:0;min-height:var(--pos-tap);}
+  .pos-mods{display:block;color:var(--pos-text-muted);font-size:12px;}
+  .pos-dish .pos-plus{color:var(--pos-text-muted);font-size:12px;}
+  #posModOverlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center;}
+  #posModOverlay.hidden{display:none !important;}
+  .pos-sheet{background:var(--white);width:100%;max-width:520px;max-height:88vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:16px;}
+  @media(min-width:700px){ #posModOverlay{align-items:center;} .pos-sheet{border-radius:16px;} }
+  .pos-mod-group{border:none;margin:0 0 12px;padding:0;}
+  .pos-mod-group legend{font-weight:700;margin-bottom:6px;padding:0;}
+  .pos-mod-opt{display:flex;align-items:center;gap:10px;min-height:var(--pos-tap);padding:6px 10px;border:1px solid #e5ddd3;border-radius:10px;margin-bottom:6px;cursor:pointer;}
+  .pos-mod-opt input{width:20px;height:20px;margin:0;flex:none;}
+  .pos-mod-opt span.n{flex:1;}
+  .pos-mod-opt:has(input:checked){border-color:var(--brown);background:var(--beige);}
+  .kitchen-mods{display:block;font-size:13px;color:var(--pos-text-muted);}
   .pos-order-row{display:flex;justify-content:space-between;gap:8px;width:100%;padding:10px 0;border:none;border-bottom:1px solid #eee;background:none;font-family:inherit;font-size:14px;text-align:left;cursor:pointer;}
 </style>
 </head>
@@ -1420,6 +1433,7 @@
       <button data-pos-tab="floor" onclick="posShowTab('floor')">Зал</button>
       <button data-pos-tab="order" onclick="posShowTab('order')">Заказ</button>
       <button data-pos-tab="hall" data-module-gate="pos_admin" onclick="posShowTab('hall')">Настройка зала</button>
+      <button data-pos-tab="mods" data-module-gate="pos_admin" onclick="posShowTab('mods')">Модификаторы</button>
       <button data-module-gate="pos_kitchen" onclick="navTo('kitchen')">Кухня →</button>
     </div>
 
@@ -1431,6 +1445,43 @@
       <div class="pos-legend pos-muted"><span>свободен</span><span class="lg-busy">занят</span><span class="lg-pre">пречек — ждёт оплаты</span></div>
       <div id="posTables" class="pos-table-grid" aria-live="polite"></div>
       <div id="posFloorErr" class="err" role="alert"></div>
+    </div>
+
+    <!-- M3: настройка модификаторов (группы, варианты, привязка к блюдам). -->
+    <div id="posModsPanel" class="hidden">
+      <div class="card">
+        <h2>Группы модификаторов</h2>
+        <p class="muted">Группа — это вопрос к гостю: «Размер», «Добавки», «Пожелания». Минимум 1 делает выбор обязательным, максимум 0 — без ограничения.</p>
+        <div id="posModGroupList"></div>
+        <div class="grid2">
+          <div><label for="posMgName" class="muted">Название группы</label><input id="posMgName" maxlength="60" placeholder="Например: Добавки"></div>
+          <div class="grid2">
+            <div><label for="posMgMin" class="muted">Мин.</label><input id="posMgMin" type="number" min="0" step="1" value="0"></div>
+            <div><label for="posMgMax" class="muted">Макс.</label><input id="posMgMax" type="number" min="0" step="1" value="1"></div>
+          </div>
+        </div>
+        <button class="btn secondary" onclick="posAddModGroup()">Добавить группу</button>
+      </div>
+      <div class="card">
+        <h2>Новый модификатор</h2>
+        <label for="posModGroup" class="muted">Группа</label><select id="posModGroup"></select>
+        <div class="grid2">
+          <div><label for="posModName" class="muted">Название</label><input id="posModName" maxlength="60" placeholder="Например: Двойной сыр"></div>
+          <div><label for="posModDelta" class="muted">Надбавка к цене, ₽ (можно минус)</label><input id="posModDelta" type="number" step="0.01" value="0"></div>
+        </div>
+        <div class="grid2">
+          <div><label for="posModProduct" class="muted">Списывать со склада (необязательно)</label><select id="posModProduct" onchange="posModProductChanged()"></select></div>
+          <div><label for="posModQty" class="muted">Расход на порцию</label><input id="posModQty" type="number" min="0" step="0.001" placeholder="0.05" disabled></div>
+        </div>
+        <button class="btn secondary" onclick="posAddModifier()">Добавить модификатор</button>
+      </div>
+      <div class="card">
+        <h2>Модификаторы блюда</h2>
+        <label for="posModDish" class="muted">Блюдо</label><select id="posModDish" onchange="posRenderDishLinks()"></select>
+        <div id="posModDishGroups" role="group" aria-label="Группы модификаторов блюда"></div>
+        <button class="btn" onclick="posSaveDishLinks()">Сохранить для блюда</button>
+      </div>
+      <div id="posModErr" class="err" role="alert"></div>
     </div>
 
     <div id="posHallPanel" class="hidden">
@@ -1506,6 +1557,16 @@
       </div>
     </div>
   </section>
+
+  <!-- M3: окно выбора модификаторов при добавлении блюда. -->
+  <div id="posModOverlay" class="hidden" onclick="if (event.target === this) posCloseModSheet()">
+    <div class="pos-sheet" role="dialog" aria-modal="true" aria-labelledby="posModTitle">
+      <div class="row-between"><h2 id="posModTitle" style="margin:0;"></h2><button class="btn small secondary" onclick="posCloseModSheet()" aria-label="Закрыть">✕</button></div>
+      <form id="posModForm" onsubmit="event.preventDefault(); posConfirmMods();" onchange="posRenderModTotal()"></form>
+      <div class="row-between" style="margin:8px 0;"><span id="posModHint" class="muted"></span><b id="posModTotal" class="pos-total"></b></div>
+      <button id="posModAdd" class="btn" onclick="posConfirmMods()">Добавить в заказ</button>
+    </div>
+  </div>
 
   <!-- Модуль «Касса», M2: очередь кухни. Обновляется каждые 10 секунд, пока экран открыт. -->
   <section id="view-kitchen" class="hidden" aria-labelledby="kitchenTitle">
@@ -4813,6 +4874,7 @@ function posApplyShift(data) {
 
 /** Вкладки кассы: зал / заказ / настройка зала. Опрос сервера идёт только на вкладке «Зал». */
 function posShowPanels(tab) {
+  document.getElementById('posModsPanel').classList.toggle('hidden', tab !== 'mods');
   document.getElementById('posFloorPanel').classList.toggle('hidden', tab !== 'floor');
   document.getElementById('posWork').classList.toggle('hidden', tab !== 'order');
   document.getElementById('posHallPanel').classList.toggle('hidden', tab !== 'hall');
@@ -4828,6 +4890,141 @@ function posShowTab(tab) {
   posShowPanels(tab);
   if (tab === 'floor') { posLoadFloor(); POS.timer = setInterval(function () { if (!document.hidden) posLoadFloor(); }, 10000); }
   if (tab === 'hall') posLoadHallAdmin();
+  if (tab === 'mods') posLoadModsAdmin();
+}
+
+// ---------- Модификаторы: выбор при добавлении блюда ----------
+var POS_MOD = { dish: null, opener: null };
+function posModsText(json) {
+  var list = [];
+  try { list = json ? JSON.parse(json) : []; } catch (e) { list = []; }
+  return list.map(function (m) { return m.название + (Number(m.цена_delta) ? ' (' + (m.цена_delta > 0 ? '+' : '−') + posMoney(Math.abs(m.цена_delta)) + ')' : ''); }).join(', ');
+}
+
+function posOpenModSheet(dish) {
+  POS_MOD.dish = dish; POS_MOD.opener = document.activeElement;
+  document.getElementById('posModTitle').textContent = dish.название;
+  document.getElementById('posModForm').innerHTML = dish.modifier_groups.map(function (g, gi) {
+    var single = g.макс === 1, rule = g.мин > 0 ? (single ? 'обязательно' : 'выберите от ' + g.мин + (g.макс ? ' до ' + g.макс : '')) : (g.макс ? 'до ' + g.макс : 'по желанию');
+    return '<fieldset class="pos-mod-group"><legend>' + posEsc(g.название) + ' <span class="muted">· ' + rule + '</span></legend>' +
+      g.modifiers.map(function (m) {
+        var d = Number(m.цена_delta) || 0;
+        return '<label class="pos-mod-opt"><input type="' + (single ? 'radio' : 'checkbox') + '" name="g' + gi + '" value="' + posEsc(m.modifier_id) + '" data-delta="' + d + '">' +
+          '<span class="n">' + posEsc(m.название) + '</span><span class="muted">' + (d ? (d > 0 ? '+' : '−') + posMoney(Math.abs(d)) : '') + '</span></label>';
+      }).join('') + '</fieldset>';
+  }).join('');
+  // Если в обязательной группе ровно один вариант — выбираем его сразу.
+  dish.modifier_groups.forEach(function (g, gi) {
+    if (g.мин >= 1 && g.modifiers.length === 1) { var i = document.querySelector('#posModForm input[name="g' + gi + '"]'); if (i) i.checked = true; }
+  });
+  document.getElementById('posModOverlay').classList.remove('hidden');
+  posRenderModTotal();
+  var first = document.querySelector('#posModForm input'); if (first) first.focus();
+}
+
+function posCloseModSheet() {
+  document.getElementById('posModOverlay').classList.add('hidden');
+  if (POS_MOD.opener && POS_MOD.opener.focus) POS_MOD.opener.focus();
+  POS_MOD.dish = null;
+}
+
+function posModSelection() {
+  var d = POS_MOD.dish, ids = [], delta = 0, problem = '';
+  d.modifier_groups.forEach(function (g, gi) {
+    var picked = Array.prototype.slice.call(document.querySelectorAll('#posModForm input[name="g' + gi + '"]:checked'));
+    if (g.макс > 1) picked.length >= g.макс
+      ? document.querySelectorAll('#posModForm input[name="g' + gi + '"]:not(:checked)').forEach(function (i) { i.disabled = true; })
+      : document.querySelectorAll('#posModForm input[name="g' + gi + '"]').forEach(function (i) { i.disabled = false; });
+    if (!problem && picked.length < g.мин) problem = g.мин === 1 ? 'Выберите: ' + g.название : g.название + ': выберите не меньше ' + g.мин;
+    picked.forEach(function (i) { ids.push(i.value); delta += Number(i.dataset.delta) || 0; });
+  });
+  return { ids: ids, price: Math.round((d.цена + delta) * 100) / 100, problem: problem };
+}
+
+function posRenderModTotal() {
+  if (!POS_MOD.dish) return;
+  var sel = posModSelection();
+  document.getElementById('posModTotal').textContent = posMoney(sel.price);
+  document.getElementById('posModHint').textContent = sel.problem;
+  document.getElementById('posModAdd').disabled = !!sel.problem;
+}
+
+function posConfirmMods() {
+  if (!POS_MOD.dish) return;
+  var sel = posModSelection();
+  if (sel.problem) { posRenderModTotal(); return; }
+  var dishId = POS_MOD.dish.dish_id;
+  posCloseModSheet();
+  posAdd(dishId, sel.ids);
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && !document.getElementById('posModOverlay').classList.contains('hidden')) posCloseModSheet();
+});
+
+// ---------- Модификаторы: настройка ----------
+function posModErr(msg) { document.getElementById('posModErr').textContent = msg || ''; }
+function posLoadModsAdmin() {
+  posModErr('');
+  call('POS_GET_MODIFIERS', {}, function (d) {
+    POS.mods = d;
+    document.getElementById('posModGroupList').innerHTML = d.groups.length ? d.groups.map(function (g) {
+      var rule = (g.мин ? 'обязательно, ' : '') + (g.макс ? 'до ' + g.макс : 'без ограничения');
+      return '<div class="taskrow"><b>' + posEsc(g.название) + '</b> <span class="muted">· ' + rule + '</span><div class="muted">' +
+        (g.modifiers.length ? g.modifiers.map(function (m) {
+          var dl = Number(m.цена_delta) || 0;
+          return posEsc(m.название) + (dl ? ' ' + (dl > 0 ? '+' : '−') + posMoney(Math.abs(dl)) : '') + (m.product_id ? ' · списывает ' + posEsc(m.расход_qty) + ' ' + posEsc(m.единица) : '');
+        }).join('; ') : 'вариантов пока нет') + '</div></div>';
+    }).join('') : '<p class="muted">Групп пока нет — добавьте первую.</p>';
+    document.getElementById('posModGroup').innerHTML = d.groups.map(function (g) { return '<option value="' + posEsc(g.group_id) + '">' + posEsc(g.название) + '</option>'; }).join('');
+    document.getElementById('posModProduct').innerHTML = '<option value="">— не списывать —</option>' + d.products.map(function (p) {
+      return '<option value="' + posEsc(p.product_id) + '">' + posEsc(p.название) + (p.единица ? ', ' + posEsc(p.единица) : '') + '</option>'; }).join('');
+    var dishSel = document.getElementById('posModDish'), keep = dishSel.value;
+    dishSel.innerHTML = d.dishes.map(function (x) { return '<option value="' + posEsc(x.dish_id) + '">' + posEsc(x.название) + '</option>'; }).join('');
+    if (keep) dishSel.value = keep;
+    posModProductChanged();
+    posRenderDishLinks();
+  }, posModErr);
+}
+
+function posModProductChanged() {
+  var on = !!document.getElementById('posModProduct').value, q = document.getElementById('posModQty');
+  q.disabled = !on; if (!on) q.value = '';
+}
+
+function posAddModGroup() {
+  var name = document.getElementById('posMgName').value.trim();
+  if (!name) { posModErr('Укажите название группы.'); return; }
+  call('POS_SAVE_MODIFIER_GROUP', { название: name, мин: Number(document.getElementById('posMgMin').value) || 0, макс: Number(document.getElementById('posMgMax').value) || 0 },
+    function () { document.getElementById('posMgName').value = ''; posLoadModsAdmin(); }, posModErr);
+}
+
+function posAddModifier() {
+  var groupId = document.getElementById('posModGroup').value, name = document.getElementById('posModName').value.trim();
+  if (!groupId) { posModErr('Сначала добавьте группу.'); return; }
+  if (!name) { posModErr('Укажите название модификатора.'); return; }
+  call('POS_SAVE_MODIFIER', { groupId: groupId, название: name, цена_delta: Number(document.getElementById('posModDelta').value) || 0,
+    productId: document.getElementById('posModProduct').value, расход_qty: Number(document.getElementById('posModQty').value) || 0 },
+    function () { document.getElementById('posModName').value = ''; document.getElementById('posModDelta').value = '0'; posLoadModsAdmin(); }, posModErr);
+}
+
+function posRenderDishLinks() {
+  var d = POS.mods, dishId = document.getElementById('posModDish').value, el = document.getElementById('posModDishGroups');
+  if (!d || !dishId) { el.innerHTML = '<p class="muted">Нет блюд.</p>'; return; }
+  var linked = d.links.filter(function (l) { return l.dish_id === dishId; }).map(function (l) { return l.group_id; });
+  el.innerHTML = d.groups.length ? d.groups.map(function (g) {
+    return '<label class="chkLabel"><input class="chk" type="checkbox" value="' + posEsc(g.group_id) + '"' + (linked.indexOf(g.group_id) !== -1 ? ' checked' : '') + '>' + posEsc(g.название) + '</label>';
+  }).join('') : '<p class="muted">Сначала создайте группы модификаторов.</p>';
+}
+
+function posSaveDishLinks() {
+  var dishId = document.getElementById('posModDish').value;
+  if (!dishId) return;
+  var ids = Array.prototype.map.call(document.querySelectorAll('#posModDishGroups input:checked'), function (i) { return i.value; });
+  call('POS_LINK_DISH_MODIFIERS', { dishId: dishId, groupIds: ids }, function () {
+    POS.menu = null; posLoadModsAdmin(); posModErr('');
+    document.getElementById('posModErr').innerHTML = '<span class="pos-ok">Сохранено. Касса покажет выбор при добавлении блюда.</span>';
+  }, posModErr);
 }
 
 function posStopPolling() { if (POS.timer) { clearInterval(POS.timer); POS.timer = null; } if (window.KITCHEN && KITCHEN.timer) { clearInterval(KITCHEN.timer); KITCHEN.timer = null; } }
@@ -4984,7 +5181,8 @@ function kitchenLoad() {
         '</b><span class="pos-muted">№' + posEsc(g.номер) + ' · ' + mins + ' мин</span></div>' +
         g.lines.map(function (l) {
           var done = l.статус === 'готово';
-          return '<div class="kitchen-line' + (done ? ' done' : '') + '"><span><b>' + posEsc(l.qty) + ' ×</b> ' + posEsc(l.название) + '</span>' +
+          var km = posModsText(l.модификаторы_json).replace(/ \([^)]*\)/g, '');
+          return '<div class="kitchen-line' + (done ? ' done' : '') + '"><span><b>' + posEsc(l.qty) + ' ×</b> ' + posEsc(l.название) + (km ? '<span class="kitchen-mods">' + posEsc(km) + '</span>' : '') + '</span>' +
             (done ? '<span class="pos-st pos-st-ready">готово</span>' : '<button class="btn small" onclick="kitchenReady(\'' + posEsc(l.line_id) + '\')" aria-label="Готово: ' + posEsc(l.название) + '">Готово</button>') + '</div>';
         }).join('') + '</div>';
     }).join('');
@@ -5043,12 +5241,19 @@ function posRenderMenu() {
   }).join('');
   var dishes = m.dishes.filter(function (d) { return d.категория === POS.cat; });
   document.getElementById('posDishes').innerHTML = dishes.length ? dishes.map(function (d) {
-    return '<button class="pos-dish" onclick="posAdd(\'' + posEsc(d.dish_id) + '\')" aria-label="' + posEsc(d.название + ', ' + posMoney(d.цена)) + '">' +
-      '<span>' + posEsc(d.название) + '</span><span class="pos-price">' + posMoney(d.цена) + '</span></button>';
+    var hasMods = d.modifier_groups && d.modifier_groups.length;
+    return '<button class="pos-dish" onclick="posPickDish(\'' + posEsc(d.dish_id) + '\')" aria-label="' + posEsc(d.название + ', ' + posMoney(d.цена) + (hasMods ? ', с выбором вариантов' : '')) + '">' +
+      '<span>' + posEsc(d.название) + '</span><span class="pos-price">' + posMoney(d.цена) + (hasMods ? ' <span class="pos-plus">· варианты</span>' : '') + '</span></button>';
   }).join('') : '<p class="pos-muted">В меню нет блюд с ценой продажи. Укажите цену в разделе «Рецепты и Тех.карты».</p>';
 }
 
 function posPickCat(i) { POS.cat = POS.menu.categories[i]; posRenderMenu(); }
+
+function posPickDish(dishId) {
+  var d = POS.menu && POS.menu.dishes.filter(function (x) { return x.dish_id === dishId; })[0];
+  if (d && d.modifier_groups && d.modifier_groups.length) return posOpenModSheet(d);
+  posAdd(dishId);
+}
 
 function posApplyOrder(v) {
   POS.order = v.order; POS.lines = v.lines || []; POS.table = v.table || null;
@@ -5069,7 +5274,8 @@ function posRenderTicket() {
     var editable = o.статус === 'открыт';
     el.innerHTML = POS.lines.map(function (l) {
       var badge = l.статус === 'на_кухне' ? ' <span class="pos-st pos-st-kitchen">готовится</span>' : l.статус === 'готово' ? ' <span class="pos-st pos-st-ready">готово</span>' : '';
-      return '<div class="pos-line"><span class="pos-name">' + posEsc(l.название_снимок) + badge + '<br><span class="pos-muted">' + posMoney(l.цена) + '</span></span>' +
+      var modsText = posModsText(l.модификаторы_json);
+      return '<div class="pos-line"><span class="pos-name">' + posEsc(l.название_снимок) + badge + (modsText ? '<span class="pos-mods">' + posEsc(modsText) + '</span>' : '') + '<span class="pos-mods">' + posMoney(l.цена) + '</span></span>' +
         (editable && l.статус === 'новая' ? '<span class="pos-qty"><button aria-label="Меньше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) - 1) + ')">−</button>' +
           '<span>' + posEsc(l.qty) + '</span><button aria-label="Больше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) + 1) + ')">+</button></span>'
           : '<span>× ' + posEsc(l.qty) + '</span>') +
@@ -5097,12 +5303,12 @@ function posWithOrder(fn, onError) {
   call('POS_CREATE_ORDER', {}, function (v) { posApplyOrder(v); fn(v.order); posLoadOrders(); }, onError);
 }
 
-function posAdd(dishId) {
+function posAdd(dishId, modifierIds) {
   if (POS.busy) return;
   posErr(''); POS.busy = true;
   var done = function () { POS.busy = false; };
   posWithOrder(function (o) {
-    call('POS_ADD_LINE', { orderId: o.order_id, dishId: dishId, qty: 1, version: o.version },
+    call('POS_ADD_LINE', { orderId: o.order_id, dishId: dishId, qty: 1, modifierIds: modifierIds || [], version: o.version },
       function (v) { done(); posApplyOrder(v); },
       function (e) { done(); posErr(e); posReloadOrder(); });
   }, function (e) { done(); posErr(e); });

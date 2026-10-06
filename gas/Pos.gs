@@ -4,7 +4,8 @@
 /**
  * ЦЕХ — Pos.gs
  * Модуль «Касса» (replica/architecture.md): M1 — смены, заказы «с собой», оплата;
- * M2 — залы и столы, официант (свои столы, отправка на кухню, пречек), очередь кухни.
+ * M2 — залы и столы, официант (свои столы, отправка на кухню, пречек), очередь кухни;
+ * M3 — модификаторы: группы с мин/макс, надбавка к цене, расход продукта со склада.
  *
  * Поток: открыть смену → заказ → позиции → оплата → по строке заказа создаётся продажа
  * в SALES (источник 'касса') через createSale_ — те же валидация/аудит, что у ручного
@@ -175,7 +176,8 @@ function posGetMenu_(session) {
   var dishes = getDishes_(session.organization_id).filter(function (d) {
     return d.статус !== 'архив' && Number(d.цена_продажи) > 0;
   }).map(function (d) {
-    return { dish_id: d.dish_id, название: d.название, цена: round2_(Number(d.цена_продажи)), категория_id: d.категория_id || '', категория: cats[d.категория_id] || 'Без категории' };
+    return { dish_id: d.dish_id, название: d.название, цена: round2_(Number(d.цена_продажи)), категория_id: d.категория_id || '', категория: cats[d.категория_id] || 'Без категории',
+      modifier_groups: _posDishModifierGroups_(d.dish_id, session.organization_id) };
   });
   dishes.sort(function (a, b) { return a.категория === b.категория ? String(a.название).localeCompare(String(b.название), 'ru') : String(a.категория).localeCompare(String(b.категория), 'ru'); });
   var categories = [];
@@ -219,6 +221,157 @@ function posCreateOrder_(data, session) {
   });
 }
 
+// ---------- Модификаторы (этап M3) ----------
+
+/** Группы модификаторов блюда с активными модификаторами, в порядке привязки. */
+function _posDishModifierGroups_(dishId, organizationId) {
+  var links = findRows_('DISH_MODIFIER_LINKS', function (l) { return l.dish_id === dishId && l.organization_id === organizationId && l.статус !== 'архив'; })
+    .sort(function (a, b) { return (Number(a.порядок) || 0) - (Number(b.порядок) || 0); });
+  if (!links.length) return [];
+  var groups = {}, mods = {};
+  findRows_('MODIFIER_GROUPS', function (g) { return g.organization_id === organizationId && g.статус !== 'архив'; }).forEach(function (g) { groups[g.group_id] = g; });
+  findRows_('MODIFIERS', function (m) { return m.organization_id === organizationId && m.статус !== 'архив'; }).forEach(function (m) { (mods[m.group_id] = mods[m.group_id] || []).push(m); });
+  return links.filter(function (l) { return groups[l.group_id] && (mods[l.group_id] || []).length; }).map(function (l) {
+    var g = groups[l.group_id];
+    return {
+      group_id: g.group_id, название: g.название, мин: Number(g.мин) || 0, макс: Number(g.макс) || 0,
+      modifiers: mods[g.group_id].sort(function (a, b) { return (Number(a.порядок) || 0) - (Number(b.порядок) || 0); }).map(function (m) {
+        return { modifier_id: m.modifier_id, название: m.название, цена_delta: round2_(Number(m.цена_delta) || 0) };
+      })
+    };
+  });
+}
+
+/**
+ * Проверяет выбор модификаторов для блюда: каждый модификатор — из группы, привязанной к блюду;
+ * в каждой группе выбрано от «мин» до «макс» (макс 0 — без ограничения). Возвращает снимок
+ * выбранных модификаторов (для строки заказа и списания) и суммарную надбавку к цене.
+ */
+function _posResolveModifiers_(dish, modifierIds, session) {
+  if (!Array.isArray(modifierIds)) throw new Error('Некорректный список модификаторов.');
+  var groups = _posDishModifierGroups_(dish.dish_id, session.organization_id);
+  var byId = {}, counts = {};
+  groups.forEach(function (g) { counts[g.group_id] = 0; });
+  modifierIds.forEach(function (id) {
+    if (byId[id]) throw new Error('Модификатор выбран дважды.');
+    var m = findOne_('MODIFIERS', 'modifier_id', id);
+    if (!m || m.organization_id !== session.organization_id || m.статус === 'архив' || !(m.group_id in counts)) {
+      throw new Error('Модификатор недоступен для блюда «' + dish.название + '».');
+    }
+    byId[id] = m; counts[m.group_id]++;
+  });
+  groups.forEach(function (g) {
+    var n = counts[g.group_id];
+    // Сообщение начинается с русской буквы — иначе humanizeError_ (API.gs) заменит его общей ошибкой.
+    if (n < g.мин) throw new Error('Группа «' + g.название + '»: выберите ' + (g.мин === 1 ? 'вариант' : 'не меньше ' + g.мин) + '.');
+    if (g.макс > 0 && n > g.макс) throw new Error('Группа «' + g.название + '»: можно выбрать не больше ' + g.макс + '.');
+  });
+  var delta = 0, list = [];
+  groups.forEach(function (g) {
+    modifierIds.forEach(function (id) {
+      var m = byId[id];
+      if (m.group_id !== g.group_id) return;
+      delta += Number(m.цена_delta) || 0;
+      list.push({ modifier_id: m.modifier_id, group_id: m.group_id, название: m.название, цена_delta: round2_(Number(m.цена_delta) || 0),
+        product_id: m.product_id || '', расход_qty: Number(m.расход_qty) || 0, единица: m.единица || '' });
+    });
+  });
+  return { delta: round2_(delta), list: list };
+}
+
+function posGetModifiers_(session) {
+  var groups = findRows_('MODIFIER_GROUPS', function (g) { return g.organization_id === session.organization_id && g.статус !== 'архив'; });
+  var mods = findRows_('MODIFIERS', function (m) { return m.organization_id === session.organization_id && m.статус !== 'архив'; });
+  var links = findRows_('DISH_MODIFIER_LINKS', function (l) { return l.organization_id === session.organization_id && l.статус !== 'архив'; });
+  return {
+    groups: groups.map(function (g) {
+      return { group_id: g.group_id, название: g.название, мин: Number(g.мин) || 0, макс: Number(g.макс) || 0,
+        modifiers: mods.filter(function (m) { return m.group_id === g.group_id; }).sort(function (a, b) { return (Number(a.порядок) || 0) - (Number(b.порядок) || 0); }) };
+    }),
+    links: links.map(function (l) { return { dish_id: l.dish_id, group_id: l.group_id, порядок: l.порядок }; }),
+    // Короткие справочники для формы настройки: у менеджера нет модулей products/recipes,
+    // поэтому отдаём здесь только то, что нужно для выбора (без цен закупки и рецептур).
+    dishes: getDishes_(session.organization_id).filter(function (d) { return d.статус !== 'архив'; })
+      .map(function (d) { return { dish_id: d.dish_id, название: d.название }; }),
+    products: getProducts_(session.organization_id).filter(function (p) { return p.статус !== 'архив'; })
+      .map(function (p) { return { product_id: p.product_id, название: p.название, единица: p.единица || '' }; })
+  };
+}
+
+function posSaveModifierGroup_(data, session) {
+  return withLock_(function () {
+    var name = String(data.название || '').trim();
+    if (!name) throw new Error('Укажите название группы.');
+    var min = Math.max(0, Math.floor(Number(data.мин) || 0)), max = Math.max(0, Math.floor(Number(data.макс) || 0));
+    if (max > 0 && min > max) throw new Error('Минимум не может быть больше максимума.');
+    var patch = { название: name.slice(0, 60), мин: min, макс: max, статус: data.статус === 'архив' ? 'архив' : 'активна' };
+    if (data.groupId) {
+      var g = findOne_('MODIFIER_GROUPS', 'group_id', data.groupId);
+      assertOwnedByOrg_(session, g, 'MODIFIER_GROUPS:' + data.groupId);
+      updateRow_('MODIFIER_GROUPS', g, patch);
+      return findOne_('MODIFIER_GROUPS', 'group_id', g.group_id);
+    }
+    var row = Object.assign({ group_id: generateId_('MODIFIER_GROUPS'), organization_id: session.organization_id, создано: nowIso_() }, patch);
+    insertRow_('MODIFIER_GROUPS', row);
+    auditLog_(session.user_id, 'Создана группа модификаторов', 'MODIFIER_GROUPS:' + row.group_id, null, row.название, 'success', session.cascade_id || '');
+    return row;
+  });
+}
+
+function posSaveModifier_(data, session) {
+  return withLock_(function () {
+    var name = String(data.название || '').trim();
+    if (!name) throw new Error('Укажите название модификатора.');
+    var group = findOne_('MODIFIER_GROUPS', 'group_id', data.groupId);
+    assertOwnedByOrg_(session, group, 'MODIFIER_GROUPS:' + data.groupId);
+    var delta = Number(data.цена_delta || 0);
+    if (isNaN(delta)) throw new Error('Некорректная надбавка к цене.');
+    var productId = data.productId || '', qty = Number(data.расход_qty || 0), unit = '';
+    if (productId) {
+      var product = getProductById_(productId);
+      assertOwnedByOrg_(session, product, 'PRODUCTS:' + productId);
+      if (!(qty > 0)) throw new Error('Укажите расход продукта на одну порцию.');
+      unit = product.единица || '';
+    } else { qty = 0; }
+    var patch = { group_id: group.group_id, название: name.slice(0, 60), цена_delta: round2_(delta), product_id: productId, расход_qty: qty, единица: unit,
+      порядок: Number(data.порядок) || 0, статус: data.статус === 'архив' ? 'архив' : 'активен' };
+    if (data.modifierId) {
+      var m = findOne_('MODIFIERS', 'modifier_id', data.modifierId);
+      assertOwnedByOrg_(session, m, 'MODIFIERS:' + data.modifierId);
+      updateRow_('MODIFIERS', m, patch);
+      return findOne_('MODIFIERS', 'modifier_id', m.modifier_id);
+    }
+    var row = Object.assign({ modifier_id: generateId_('MODIFIERS'), organization_id: session.organization_id, создано: nowIso_() }, patch);
+    insertRow_('MODIFIERS', row);
+    return row;
+  });
+}
+
+/** Задаёт полный список групп модификаторов блюда (порядок — как в groupIds). */
+function posLinkDishModifiers_(data, session) {
+  return withLock_(function () {
+    var dish = findOne_('DISHES', 'dish_id', data.dishId);
+    assertOwnedByOrg_(session, dish, 'DISHES:' + data.dishId);
+    var ids = Array.isArray(data.groupIds) ? data.groupIds : [];
+    ids.forEach(function (id) {
+      var g = findOne_('MODIFIER_GROUPS', 'group_id', id);
+      assertOwnedByOrg_(session, g, 'MODIFIER_GROUPS:' + id);
+    });
+    var existing = {};
+    findRows_('DISH_MODIFIER_LINKS', function (l) { return l.dish_id === dish.dish_id && l.organization_id === session.organization_id; })
+      .forEach(function (l) { existing[l.group_id] = l; });
+    Object.keys(existing).forEach(function (gid) {
+      if (ids.indexOf(gid) === -1 && existing[gid].статус !== 'архив') updateRow_('DISH_MODIFIER_LINKS', existing[gid], { статус: 'архив' });
+    });
+    ids.forEach(function (id, i) {
+      if (existing[id]) { updateRow_('DISH_MODIFIER_LINKS', existing[id], { порядок: i, статус: 'активна' }); return; }
+      insertRow_('DISH_MODIFIER_LINKS', { link_id: generateId_('DISH_MODIFIER_LINKS'), organization_id: session.organization_id, dish_id: dish.dish_id, group_id: id, порядок: i, статус: 'активна' });
+    });
+    auditLog_(session.user_id, 'Модификаторы блюда', 'DISHES:' + dish.dish_id, null, ids.join(','), 'success', session.cascade_id || '');
+    return _posDishModifierGroups_(dish.dish_id, session.organization_id);
+  });
+}
+
 function posAddLine_(data, session) {
   return withLock_(function () {
     var order = _posOrder_(data.orderId, session);
@@ -227,13 +380,17 @@ function posAddLine_(data, session) {
     var dish = findOne_('DISHES', 'dish_id', data.dishId);
     assertOwnedByOrg_(session, dish, 'DISHES:' + data.dishId);
     if (dish.статус === 'архив') throw new Error('Блюдо в архиве и не продаётся.');
-    var price = Number(dish.цена_продажи);
-    if (!(price > 0)) throw new Error('У блюда «' + dish.название + '» не указана цена продажи.');
+    var basePrice = Number(dish.цена_продажи);
+    if (!(basePrice > 0)) throw new Error('У блюда «' + dish.название + '» не указана цена продажи.');
     var qty = Number(data.qty || 1);
     if (!(qty > 0) || qty > 999) throw new Error('Количество должно быть от 1 до 999.');
+    var mods = _posResolveModifiers_(dish, data.modifierIds || [], session);
+    var price = round2_(basePrice + mods.delta);
+    if (price < 0) throw new Error('С выбранными модификаторами цена получается отрицательной.');
+    var modsJson = mods.list.length ? JSON.stringify(mods.list) : '';
 
-    // Та же позиция без модификаторов — увеличиваем количество, а не плодим строки.
-    var same = _posActiveLines_(order.order_id).filter(function (l) { return l.dish_id === dish.dish_id && !l.модификаторы_json && l.статус === 'новая'; })[0];
+    // Та же позиция с тем же набором модификаторов — увеличиваем количество, а не плодим строки.
+    var same = _posActiveLines_(order.order_id).filter(function (l) { return l.dish_id === dish.dish_id && String(l.модификаторы_json || '') === modsJson && l.статус === 'новая'; })[0];
     if (same) {
       var newQty = Number(same.qty) + qty;
       updateRow_('POS_ORDER_LINES', same, { qty: newQty, сумма: round2_(newQty * Number(same.цена)) });
@@ -245,8 +402,8 @@ function posAddLine_(data, session) {
         dish_id: dish.dish_id,
         название_снимок: dish.название,
         qty: qty,
-        цена: round2_(price),
-        модификаторы_json: '',
+        цена: price,
+        модификаторы_json: modsJson,
         сумма: round2_(price * qty),
         статус: 'новая',
         создано: nowIso_()
@@ -351,6 +508,18 @@ function posPay_(data, session) {
         locationId: session.location_id, источник: POS_SALE_SOURCE_, внешний_id: l.line_id
       }, session.user_id, session);
       updateRow_('POS_ORDER_LINES', l, { sale_ids: sale.sale_id });
+      // Продукты модификаторов («двойной сыр») — отдельной очередью на списание.
+      var mods = [];
+      try { mods = l.модификаторы_json ? JSON.parse(l.модификаторы_json) : []; } catch (e) { mods = []; }
+      mods.forEach(function (m) {
+        if (!m.product_id || !(Number(m.расход_qty) > 0)) return;
+        insertRow_('POS_MODIFIER_USAGE', {
+          usage_id: generateId_('POS_MODIFIER_USAGE'), organization_id: session.organization_id, location_id: session.location_id,
+          order_id: order.order_id, line_id: l.line_id, sale_id: sale.sale_id, modifier_id: m.modifier_id, product_id: m.product_id,
+          qty: round2_(Number(m.расход_qty) * Number(l.qty)), единица: m.единица || '', статус: 'ожидает', создано: now,
+          cascade_id: session.cascade_id || ''
+        });
+      });
     });
 
     updateRow_('POS_ORDERS', order, { статус: 'оплачен', оплачен: now, version: (Number(order.version) || 0) + 1, обновлено: now });
@@ -596,6 +765,40 @@ function posFulfillPendingSales_(session, limit) {
   return result;
 }
 
+/** Списывает продукты модификаторов оплаченных позиций. Задача кладовщику/шефу — один раз на ошибку. */
+function posFulfillModifierUsage_(session, limit) {
+  var pending = findRows_('POS_MODIFIER_USAGE', function (u) {
+    return u.organization_id === session.organization_id && u.location_id === session.location_id && (u.статус === 'ожидает' || u.статус === 'ошибка');
+  }).slice(0, limit || POS_FULFILL_BATCH_LIMIT_);
+  var result = { done: 0, failed: 0 };
+  pending.forEach(function (u) {
+    var wasFailed = u.статус === 'ошибка';
+    try {
+      withLock_(function () {
+        consumeStock_(u.product_id, u.location_id, Number(u.qty), OP_TYPES.ISSUE, session.user_id, session);
+        updateRow_('POS_MODIFIER_USAGE', findOne_('POS_MODIFIER_USAGE', 'usage_id', u.usage_id), { статус: 'списано', списано_в: nowIso_(), ошибка: '' });
+      });
+      result.done++;
+    } catch (e) {
+      result.failed++;
+      var msg = String((e && e.message) || e);
+      updateRow_('POS_MODIFIER_USAGE', findOne_('POS_MODIFIER_USAGE', 'usage_id', u.usage_id), { статус: 'ошибка', ошибка: msg });
+      if (!wasFailed) {
+        try {
+          var product = getProductById_(u.product_id);
+          createTask_({
+            organizationId: session.organization_id, locationId: session.location_id, type: 'production',
+            title: 'Касса: не списан продукт модификатора — ' + (product ? product.название : u.product_id),
+            description: 'Расход ' + u.qty + ' ' + (u.единица || '') + ' по продаже ' + u.sale_id + ' не списан: ' + msg + ' Система повторит списание автоматически.',
+            responsibleRole: 'ШЕФ-ПОВАР', priority: 'высокий', sourceEntityId: u.usage_id, userId: session.user_id
+          });
+        } catch (taskErr) { logSystemError_('posFulfillModifierUsage_', session.user_id, 'pos', taskErr, { usage_id: u.usage_id }); }
+      }
+    }
+  });
+  return result;
+}
+
 function posFulfillPendingSalesTrigger_() {
   try {
     getOrganizations_(null).forEach(function (org) {
@@ -603,6 +806,7 @@ function posFulfillPendingSalesTrigger_() {
         try {
           var s = { user_id: 'system', organization_id: org.organization_id, location_id: loc.location_id, role: 'ADMIN', 'роль': 'ADMIN', allowed_locations: [loc.location_id], cascade_id: '', operation_id: '' };
           posFulfillPendingSales_(s, POS_FULFILL_BATCH_LIMIT_);
+          posFulfillModifierUsage_(s, POS_FULFILL_BATCH_LIMIT_);
         } catch (e) { logSystemError_('posFulfillPendingSalesTrigger_', org.organization_id, 'pos', e); }
       });
     });
@@ -613,13 +817,15 @@ function posFulfillPendingSalesTrigger_() {
 
 function runPosTests_() {
   var out = []; function ok(n, c, d) { out.push({ name: n, status: c ? 'OK' : 'FAIL', detail: d || '' }); }
-  ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES'].forEach(function (k) {
+  ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES',
+    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE'].forEach(function (k) {
     ok('SCHEMA_' + k, Array.isArray(CONFIG.SCHEMA[k]) && CONFIG.SHEETS[k] === k && !!CONFIG.ID_PREFIXES[k], 'sheet, schema, id prefix');
   });
   ['POS_GET_MENU', 'POS_OPEN_SHIFT', 'POS_GET_SHIFT', 'POS_CLOSE_SHIFT', 'POS_CREATE_ORDER', 'POS_ADD_LINE', 'POS_UPDATE_LINE',
     'POS_GET_ORDER', 'POS_GET_ORDERS', 'POS_PAY', 'POS_CANCEL_ORDER', 'POS_FULFILL_PENDING',
     'POS_GET_FLOOR', 'POS_SEND_TO_KITCHEN', 'POS_PRECHECK', 'POS_MOVE_ORDER', 'POS_REOPEN_ORDER', 'POS_SAVE_HALL', 'POS_SAVE_TABLE',
-    'POS_GET_KITCHEN_QUEUE', 'POS_MARK_LINE_READY'].forEach(function (a) {
+    'POS_GET_KITCHEN_QUEUE', 'POS_MARK_LINE_READY',
+    'POS_GET_MODIFIERS', 'POS_SAVE_MODIFIER_GROUP', 'POS_SAVE_MODIFIER', 'POS_LINK_DISH_MODIFIERS'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');
