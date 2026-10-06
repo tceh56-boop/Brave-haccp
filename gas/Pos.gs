@@ -6,7 +6,8 @@
  * Модуль «Касса» (replica/architecture.md): M1 — смены, заказы «с собой», оплата;
  * M2 — залы и столы, официант (свои столы, отправка на кухню, пречек), очередь кухни;
  * M3 — модификаторы: группы с мин/макс, надбавка к цене, расход продукта со склада;
- * M4 — стоп-лист: ручной и авто по годному остатку и утверждённой ТТК.
+ * M4 — стоп-лист: ручной и авто по годному остатку и утверждённой ТТК;
+ * M5 — возвраты (сторно в SALES), отчёт по сотрудникам, итоги смены в «Экономику».
  *
  * Поток: открыть смену → заказ → позиции → оплата → по строке заказа создаётся продажа
  * в SALES (источник 'касса') через createSale_ — те же валидация/аудит, что у ручного
@@ -124,19 +125,22 @@ function posOpenShift_(data, session) {
 }
 
 /** Сводка по смене (X-отчёт): считается из оплат, а не из кэшированных полей. */
+/** Итоги смены по строкам оплат: нал/карта/прочее — нетто (возвраты — отрицательные строки). */
 function _posShiftTotals_(shift) {
-  var totals = { нал: 0, карта: 0, прочее: 0 };
+  var totals = { нал: 0, карта: 0, прочее: 0 }, gross = 0, refunds = 0;
   findRows_('POS_PAYMENTS', function (p) { return p.shift_id === shift.shift_id; }).forEach(function (p) {
-    totals[p.способ] = round2_((totals[p.способ] || 0) + (Number(p.сумма) || 0));
+    var sum = Number(p.сумма) || 0;
+    totals[p.способ] = round2_((totals[p.способ] || 0) + sum);
+    if (sum < 0) refunds = round2_(refunds - sum); else gross = round2_(gross + sum);
   });
   var orders = findRows_('POS_ORDERS', function (o) { return o.shift_id === shift.shift_id; });
-  var paid = orders.filter(function (o) { return o.статус === 'оплачен'; });
-  var revenue = round2_(totals.нал + totals.карта + totals.прочее);
+  var sold = orders.filter(function (o) { return o.статус === 'оплачен' || o.статус === 'возврат'; });
   return {
-    нал: totals.нал, карта: totals.карта, прочее: totals.прочее, выручка: revenue,
-    заказов: paid.length,
+    нал: totals.нал, карта: totals.карта, прочее: totals.прочее,
+    выручка: round2_(totals.нал + totals.карта + totals.прочее), продажи: gross, возвраты: refunds,
+    заказов: sold.length,
     открытых_заказов: orders.filter(function (o) { return o.статус === 'открыт' || o.статус === 'пречек'; }).length,
-    средний_чек: paid.length ? round2_(revenue / paid.length) : 0,
+    средний_чек: sold.length ? round2_(gross / sold.length) : 0,
     нал_ожидается: round2_((Number(shift.нал_начало) || 0) + totals.нал)
   };
 }
@@ -157,9 +161,22 @@ function posCloseShift_(data, session) {
       throw new Error('Укажите фактическую сумму наличных в кассе.');
     }
     var cashFact = round2_(Number(data.cashFact));
+    // Итоги смены — в движение денег «Экономики» (FinanceStage22): по одной строке на способ
+    // оплаты, нетто после возвратов. Сначала деньги, потом статус смены: если запись не прошла
+    // (например, закрытый период), смена останется открытой, а не «закрытой без денег».
+    var day = _posShiftDate_(shift), cashIds = [];
+    [['нал', 'наличные'], ['карта', 'карта'], ['прочее', 'прочие оплаты']].forEach(function (m) {
+      var net = t[m[0]];
+      if (!net) return;
+      var row = recordCashTransaction_({ amount: Math.abs(net), type: net > 0 ? 'INFLOW' : 'OUTFLOW', date: day, locationId: shift.location_id,
+        category: net > 0 ? 'Выручка кассы' : 'Возвраты кассы',
+        description: 'Смена ' + shift.shift_id + ' от ' + day + ': ' + m[1] + (t.возвраты ? ' (с учётом возвратов ' + t.возвраты + ' ₽)' : '') }, session);
+      cashIds.push(row.cash_id);
+    });
     updateRow_('POS_SHIFTS', shift, {
       закрыта: nowIso_(), нал_конец_факт: cashFact,
       итог_нал: t.нал, итог_карта: t.карта, итог_прочее: t.прочее, заказов: t.заказов,
+      возвратов_сумма: t.возвраты, cash_ids: cashIds.join(','),
       статус: 'закрыта'
     });
     var diff = round2_(cashFact - t.нал_ожидается);
@@ -500,7 +517,7 @@ function posPay_(data, session) {
         payment_id: generateId_('POS_PAYMENTS'), order_id: order.order_id,
         organization_id: session.organization_id, location_id: session.location_id, shift_id: shift.shift_id,
         способ: pair[0], сумма: pair[1], operation_id: session.operation_id || data.operationId || '',
-        создано: now, user_id: session.user_id
+        создано: now, user_id: session.user_id, тип: 'оплата'
       };
       insertRow_('POS_PAYMENTS', row);
       payRows.push(row);
@@ -724,6 +741,119 @@ function posMarkLineReady_(data, session) {
     updateRow_('POS_ORDER_LINES', line, { статус: 'готово', готово_в: nowIso_() });
     return { line_id: line.line_id, order_id: order.order_id, статус: 'готово' };
   });
+}
+
+// ---------- Возвраты и отчёты (этап M5) ----------
+
+/**
+ * Возврат оплаченного заказа — полностью или по позициям. Деньги: строка POS_PAYMENTS с
+ * отрицательной суммой в ТЕКУЩЕЙ смене (наличные выдаются из сегодняшней кассы). Выручка:
+ * сторно-строка SALES с отрицательными qty и суммой (P&L «Экономики» складывает суммы).
+ * Себестоимость не сторнируется: блюдо приготовлено, сырьё потрачено — это убыток, а не
+ * возврат на склад. Оплаченный заказ не переписывается: строки получают статус «возврат».
+ */
+function posRefund_(data, session) {
+  return withLock_(function () {
+    var order = _posOrder_(data.orderId, session);
+    if (order.статус !== 'оплачен') throw new Error(order.статус === 'возврат' ? 'По заказу уже сделан полный возврат.' : 'Вернуть можно только оплаченный заказ.');
+    var reason = String(data.reason || '').trim();
+    if (!reason) throw new Error('Укажите причину возврата.');
+    var method = data.method || '';
+    if (POS_PAYMENT_METHODS_.indexOf(method) === -1) throw new Error('Выберите, как вернуть деньги: наличными, на карту или другое.');
+    var shift = _posRequireOpenShift_(session);
+    var lines = findRows_('POS_ORDER_LINES', function (l) { return l.order_id === order.order_id && l.статус !== 'отменена' && l.статус !== 'возврат'; });
+    var want = Array.isArray(data.lineIds) && data.lineIds.length ? data.lineIds : lines.map(function (l) { return l.line_id; });
+    var picked = lines.filter(function (l) { return want.indexOf(l.line_id) !== -1; });
+    if (picked.length !== want.length) throw new Error('Часть позиций уже возвращена или не относится к заказу.');
+    if (!picked.length) throw new Error('Нет позиций для возврата.');
+    var amount = 0;
+    picked.forEach(function (l) { amount += Number(l.сумма) || 0; });
+    amount = round2_(amount);
+    // Безнал нельзя вернуть больше, чем им было оплачено по этому заказу.
+    if (method !== 'нал') {
+      var paidBy = 0;
+      findRows_('POS_PAYMENTS', function (p) { return p.order_id === order.order_id && p.способ === method; }).forEach(function (p) { paidBy += Number(p.сумма) || 0; });
+      if (round2_(paidBy) < amount) throw new Error('Способом «' + method + '» по заказу оплачено ' + round2_(paidBy) + ' ₽ — вернуть ' + amount + ' ₽ этим способом нельзя.');
+    }
+    var now = nowIso_();
+    var saleDate = _posShiftDate_(shift);
+    picked.forEach(function (l) {
+      var qty = Number(l.qty), price = Number(l.цена);
+      insertRow_('SALES', {
+        sale_id: generateId_('SALES'), organization_id: session.organization_id, location_id: session.location_id,
+        dish_id: l.dish_id, qty: -qty, цена_продажи: round2_(price), сумма: round2_(-price * qty), себестоимость_на_момент: 0,
+        источник: POS_SALE_SOURCE_ + '_возврат', внешний_id: l.line_id + '-R', дата: saleDate, user_id: session.user_id,
+        создано: now, исполнение_статус: 'не_требуется', cascade_id: session.cascade_id || ''
+      });
+      updateRow_('POS_ORDER_LINES', l, { статус: 'возврат', возврат_в: now });
+    });
+    var pay = { payment_id: generateId_('POS_PAYMENTS'), order_id: order.order_id, organization_id: session.organization_id,
+      location_id: session.location_id, shift_id: shift.shift_id, способ: method, сумма: -amount,
+      operation_id: session.operation_id || data.operationId || '', создано: now, user_id: session.user_id, тип: 'возврат', причина: reason.slice(0, 200) };
+    insertRow_('POS_PAYMENTS', pay);
+    var refunded = round2_((Number(order.возвращено) || 0) + amount);
+    var full = refunded >= round2_(Number(order.итого) || 0);
+    updateRow_('POS_ORDERS', order, { возвращено: refunded, статус: full ? 'возврат' : 'оплачен', version: (Number(order.version) || 0) + 1, обновлено: now });
+    auditLog_(session.user_id, full ? 'Полный возврат заказа' : 'Частичный возврат заказа', 'POS_ORDERS:' + order.order_id, 'оплачен',
+      amount + ' ₽, ' + method + ': ' + reason, 'success', session.cascade_id || '');
+    return { order: findOne_('POS_ORDERS', 'order_id', order.order_id), lines: findRows_('POS_ORDER_LINES', function (l) { return l.order_id === order.order_id; }),
+      возврат: amount, payment: pay };
+  });
+}
+
+/** Смены точки за период (для отчётов и возвратов по прошлым сменам). */
+function posGetShifts_(data, session) {
+  var from = data.dateFrom || '', to = data.dateTo || '';
+  return findRows_('POS_SHIFTS', function (s) {
+    if (s.organization_id !== session.organization_id || s.location_id !== session.location_id) return false;
+    var d = _posShiftDate_(s);
+    return (!from || d >= from) && (!to || d <= to);
+  }).sort(function (a, b) { return String(b.открыта).localeCompare(String(a.открыта)); }).map(function (s) {
+    return { shift_id: s.shift_id, дата: _posShiftDate_(s), открыта: s.открыта, закрыта: s.закрыта, статус: s.статус, totals: _posShiftTotals_(s) };
+  });
+}
+
+/**
+ * Отчёт по сотрудникам за период: официант (кто вёл заказ) — заказы, продажи, средний чек;
+ * кассир (кто принял деньги) — сколько принял по способам и сколько вернул.
+ */
+function posGetStaffReport_(data, session) {
+  var from = data.dateFrom || todayDateStr_(), to = data.dateTo || from;
+  var shifts = {};
+  findRows_('POS_SHIFTS', function (s) { return s.organization_id === session.organization_id && s.location_id === session.location_id; })
+    .forEach(function (s) { var d = _posShiftDate_(s); if (d >= from && d <= to) shifts[s.shift_id] = s; });
+  var names = {}, roles = {};
+  getAllRows_('USERS').forEach(function (u) { if (u.organization_id === session.organization_id) { names[u.user_id] = u.имя; roles[u.user_id] = u.роль; } });
+  var waiters = {}, cashiers = {};
+  findRows_('POS_ORDERS', function (o) { return shifts[o.shift_id] && (o.статус === 'оплачен' || o.статус === 'возврат'); }).forEach(function (o) {
+    var w = waiters[o.официант_id] || (waiters[o.официант_id] = { user_id: o.официант_id, имя: names[o.официант_id] || o.официант_id, роль: roles[o.официант_id] || '', заказов: 0, продажи: 0, возвраты: 0, гостей: 0 });
+    w.заказов++; w.продажи = round2_(w.продажи + (Number(o.итого) || 0)); w.возвраты = round2_(w.возвраты + (Number(o.возвращено) || 0)); w.гостей += Number(o.гостей) || 0;
+  });
+  findRows_('POS_PAYMENTS', function (p) { return shifts[p.shift_id]; }).forEach(function (p) {
+    var c = cashiers[p.user_id] || (cashiers[p.user_id] = { user_id: p.user_id, имя: names[p.user_id] || p.user_id, роль: roles[p.user_id] || '', нал: 0, карта: 0, прочее: 0, возвраты: 0, чеков: 0 });
+    var sum = Number(p.сумма) || 0;
+    if (sum < 0) c.возвраты = round2_(c.возвраты - sum); else c.чеков++;
+    c[p.способ] = round2_((c[p.способ] || 0) + sum);
+  });
+  var waiterList = Object.keys(waiters).map(function (k) { var w = waiters[k]; w.нетто = round2_(w.продажи - w.возвраты); w.средний_чек = w.заказов ? round2_(w.продажи / w.заказов) : 0; return w; })
+    .sort(function (a, b) { return b.нетто - a.нетто; });
+  var cashierList = Object.keys(cashiers).map(function (k) { var c = cashiers[k]; c.итого = round2_(c.нал + c.карта + c.прочее); return c; })
+    .sort(function (a, b) { return b.итого - a.итого; });
+  var total = { заказов: 0, продажи: 0, возвраты: 0 };
+  waiterList.forEach(function (w) { total.заказов += w.заказов; total.продажи = round2_(total.продажи + w.продажи); total.возвраты = round2_(total.возвраты + w.возвраты); });
+  total.нетто = round2_(total.продажи - total.возвраты);
+  total.средний_чек = total.заказов ? round2_(total.продажи / total.заказов) : 0;
+  return { from: from, to: to, смен: Object.keys(shifts).length, итого: total, официанты: waiterList, кассиры: cashierList };
+}
+
+/** Дописывает в существующие листы кассы колонки, добавленные в схему позже (только в конец). */
+function migratePosSchema_() {
+  var out = {};
+  ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES', 'MODIFIER_GROUPS', 'MODIFIERS',
+    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST'].forEach(function (k) {
+    try { out[k] = ensureSchemaColumns_(k); } catch (e) { out[k] = 'нет листа — запустите initializeDatabase()'; }
+  });
+  return out;
 }
 
 // ---------- Стоп-лист (этап M4) ----------
@@ -951,11 +1081,21 @@ function runPosTests_() {
     'POS_GET_FLOOR', 'POS_SEND_TO_KITCHEN', 'POS_PRECHECK', 'POS_MOVE_ORDER', 'POS_REOPEN_ORDER', 'POS_SAVE_HALL', 'POS_SAVE_TABLE',
     'POS_GET_KITCHEN_QUEUE', 'POS_MARK_LINE_READY',
     'POS_GET_MODIFIERS', 'POS_SAVE_MODIFIER_GROUP', 'POS_SAVE_MODIFIER', 'POS_LINK_DISH_MODIFIERS',
-    'POS_GET_STOP_LIST', 'POS_SET_STOP', 'POS_CLEAR_STOP', 'POS_RECALC_STOP_LIST'].forEach(function (a) {
+    'POS_GET_STOP_LIST', 'POS_SET_STOP', 'POS_CLEAR_STOP', 'POS_RECALC_STOP_LIST',
+    'POS_REFUND', 'POS_GET_STAFF_REPORT', 'POS_GET_SHIFTS'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');
   ok('SCHEDULER', TRIGGER_SCHEDULE_.tick15m_.indexOf('posFulfillPendingSalesTrigger_') !== -1, 'fulfillment job in 15m tick');
   ok('FULFILLMENT', typeof fulfillSaleByTtk_ === 'function' && typeof createSale_ === 'function', 'sales pipeline available');
+  ok('ECONOMICS', typeof recordCashTransaction_ === 'function', 'cash transactions for shift totals');
+  // Заголовки листов должны совпадать со схемой по порядку: insertRow_ пишет в порядке схемы.
+  // Если FAIL — запустите migratePosSchema_() (дописывает недостающие колонки в конец).
+  ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS'].forEach(function (k) {
+    try {
+      var head = getSheet_(k).getRange(1, 1, 1, CONFIG.SCHEMA[k].length).getValues()[0];
+      ok('COLUMNS_' + k, CONFIG.SCHEMA[k].every(function (h, i) { return head[i] === h; }), 'sheet headers match schema order');
+    } catch (e) { ok('COLUMNS_' + k, false, String(e.message || e)); }
+  });
   return out;
 }

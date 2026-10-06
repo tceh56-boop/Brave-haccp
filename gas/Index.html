@@ -146,7 +146,12 @@
   .pos-qty button{width:var(--pos-tap);height:var(--pos-tap);border-radius:10px;border:1px solid var(--pos-border-input);background:var(--white);font-size:20px;font-family:inherit;cursor:pointer;}
   .pos-qty span{min-width:28px;text-align:center;font-weight:700;}
   .pos-total{font-size:22px;font-weight:800;}
-  .pos-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0;}
+  .pos-seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;margin:10px 0;}
+  .pos-kpi-row{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;}
+  .pos-refund{border:1px solid var(--pos-border-input);border-radius:12px;padding:12px;margin-top:10px;}
+  .pos-st-refund{background:var(--pos-danger);color:#fff;}
+  .report-table td,.report-table th{padding:8px 6px;font-size:13px;}
+  .report-table td.num,.report-table th.num{text-align:right;white-space:nowrap;}
   .pos-seg button{min-height:var(--pos-tap);border-radius:10px;border:1px solid var(--brown);background:var(--white);color:var(--brown);font-weight:700;font-family:inherit;cursor:pointer;}
   .pos-seg button[aria-pressed="true"]{background:var(--brown);color:var(--white);}
   button.btn.pos-pay{min-height:56px;font-size:17px;}
@@ -1439,6 +1444,7 @@
       <button data-pos-tab="order" onclick="posShowTab('order')">Заказ</button>
       <button data-pos-tab="hall" data-module-gate="pos_admin" onclick="posShowTab('hall')">Настройка зала</button>
       <button data-pos-tab="mods" data-module-gate="pos_admin" onclick="posShowTab('mods')">Модификаторы</button>
+      <button data-pos-tab="report" data-module-gate="pos_admin" onclick="posShowTab('report')">Отчёт</button>
       <button data-module-gate="pos_kitchen" onclick="navTo('kitchen')">Кухня →</button>
       <button data-module-gate="pos_stop" onclick="navTo('stoplist')">Стоп-лист →</button>
     </div>
@@ -1451,6 +1457,23 @@
       <div class="pos-legend pos-muted"><span>свободен</span><span class="lg-busy">занят</span><span class="lg-pre">пречек — ждёт оплаты</span></div>
       <div id="posTables" class="pos-table-grid" aria-live="polite"></div>
       <div id="posFloorErr" class="err" role="alert"></div>
+    </div>
+
+    <!-- M5: отчёт по сотрудникам и сменам за период. -->
+    <div id="posReportPanel" class="hidden">
+      <div class="card">
+        <h2>Отчёт по сотрудникам</h2>
+        <div class="grid2">
+          <div><label for="posRepFrom" class="pos-muted">С</label><input id="posRepFrom" type="date"></div>
+          <div><label for="posRepTo" class="pos-muted">По</label><input id="posRepTo" type="date"></div>
+        </div>
+        <button class="btn secondary" onclick="posLoadReport()">Показать</button>
+        <div id="posRepTotal" aria-live="polite"></div>
+      </div>
+      <div class="card"><h2>Официанты и кто вёл заказ</h2><div id="posRepWaiters"></div></div>
+      <div class="card"><h2>Кто принимал деньги</h2><div id="posRepCashiers"></div></div>
+      <div class="card"><h2>Смены</h2><div id="posRepShifts"></div></div>
+      <div id="posRepErr" class="err" role="alert"></div>
     </div>
 
     <!-- M3: настройка модификаторов (группы, варианты, привязка к блюдам). -->
@@ -1549,6 +1572,14 @@
             <button type="button" data-method="нал" onclick="posSetMethod('нал')">Наличные</button>
             <button type="button" data-method="карта" onclick="posSetMethod('карта')">Карта</button>
             <button type="button" data-method="прочее" onclick="posSetMethod('прочее')">Другое</button>
+            <button type="button" data-method="смешанная" onclick="posSetMethod('смешанная')">Нал + карта</button>
+          </div>
+          <div id="posMixBlock" class="hidden">
+            <div class="grid2">
+              <div><label for="posMixCash" class="pos-muted">Наличными, ₽</label><input id="posMixCash" type="number" min="0" step="0.01" inputmode="decimal" oninput="posMixChanged('cash')"></div>
+              <div><label for="posMixCard" class="pos-muted">Картой, ₽</label><input id="posMixCard" type="number" min="0" step="0.01" inputmode="decimal" oninput="posMixChanged('card')"></div>
+            </div>
+            <div id="posMixInfo" class="pos-muted"></div>
           </div>
           <div id="posCashBlock">
             <label for="posCashGiven" class="pos-muted">Получено наличными, ₽</label>
@@ -1557,6 +1588,20 @@
           </div>
           <button id="posPayBtn" class="btn pos-pay" onclick="posPay()">Оплатить</button>
           <button class="btn secondary" onclick="posCancelOrder()" data-module-gate="pos_admin">Отменить заказ</button>
+        </div>
+        <div id="posRefundBlock" class="pos-refund hidden" aria-labelledby="posRefundTitle">
+          <h2 id="posRefundTitle" style="margin:0 0 6px;">Возврат</h2>
+          <div id="posRefundLines" role="group" aria-label="Позиции для возврата"></div>
+          <div class="pos-seg" role="group" aria-label="Как вернуть деньги">
+            <button type="button" data-rmethod="нал" onclick="posRefundMethod('нал')">Наличными</button>
+            <button type="button" data-rmethod="карта" onclick="posRefundMethod('карта')">На карту</button>
+            <button type="button" data-rmethod="прочее" onclick="posRefundMethod('прочее')">Другое</button>
+          </div>
+          <label for="posRefundReason" class="pos-muted">Причина</label>
+          <input id="posRefundReason" maxlength="200" placeholder="Например: блюдо холодное, гость отказался">
+          <p class="pos-muted">Деньги вернутся из текущей смены. Себестоимость не возвращается: блюдо уже приготовлено.</p>
+          <button id="posRefundBtn" class="btn danger" onclick="posDoRefund()">Вернуть</button>
+          <button class="btn secondary" onclick="posToggleRefund(false)">Не возвращать</button>
         </div>
         <div id="posPayResult" aria-live="polite"></div>
         <div id="posErr" class="err" role="alert"></div>
@@ -4894,6 +4939,7 @@ function posApplyShift(data) {
   info.innerHTML = t ? '<span>Смена с ' + since + '</span>' +
     '<span>Заказов: <b>' + (t.заказов || 0) + '</b></span>' +
     '<span>Выручка: <b>' + posMoney(t.выручка) + '</b></span>' +
+    (t.возвраты ? '<span>Возвраты: <b class="pos-bad">' + posMoney(t.возвраты) + '</b></span>' : '') +
     '<span>Нал: ' + posMoney(t.нал) + ' · Карта: ' + posMoney(t.карта) + '</span>' +
     '<span>Средний чек: ' + posMoney(t.средний_чек) + '</span>' : '<span>Смена с ' + since + '</span>';
   actions.innerHTML = hasClientModule('pos_shift') ? '<button class="btn small secondary" onclick="posToggleClose(true)">Закрыть смену</button>' : '';
@@ -4907,6 +4953,7 @@ function posApplyShift(data) {
 /** Вкладки кассы: зал / заказ / настройка зала. Опрос сервера идёт только на вкладке «Зал». */
 function posShowPanels(tab) {
   document.getElementById('posModsPanel').classList.toggle('hidden', tab !== 'mods');
+  document.getElementById('posReportPanel').classList.toggle('hidden', tab !== 'report');
   document.getElementById('posFloorPanel').classList.toggle('hidden', tab !== 'floor');
   document.getElementById('posWork').classList.toggle('hidden', tab !== 'order');
   document.getElementById('posHallPanel').classList.toggle('hidden', tab !== 'hall');
@@ -4924,6 +4971,7 @@ function posShowTab(tab) {
   if (tab === 'floor') { posLoadFloor(); POS.timer = setInterval(function () { if (!document.hidden) posLoadFloor(); }, 10000); }
   if (tab === 'hall') posLoadHallAdmin();
   if (tab === 'mods') posLoadModsAdmin();
+  if (tab === 'report') posInitReport();
 }
 
 // ---------- Модификаторы: выбор при добавлении блюда ----------
@@ -5285,7 +5333,9 @@ function posToggleClose(show) {
     var t = d.totals || {};
     document.getElementById('posCloseSummary').innerHTML =
       'Выручка: <b>' + posMoney(t.выручка) + '</b> (нал ' + posMoney(t.нал) + ', карта ' + posMoney(t.карта) + ', другое ' + posMoney(t.прочее) + ')<br>' +
-      'Наличных должно быть: <b>' + posMoney(t.нал_ожидается) + '</b>' +
+      (t.возвраты ? 'Продажи ' + posMoney(t.продажи) + ', возвраты ' + posMoney(t.возвраты) + '<br>' : '') +
+      'Наличных должно быть: <b>' + posMoney(t.нал_ожидается) + '</b><br>' +
+      'При закрытии итоги по способам оплаты уйдут в «Экономику» (движение денег).' +
       (t.открытых_заказов ? '<br><span class="pos-bad">Неоплаченных заказов: ' + t.открытых_заказов + '</span>' : '');
     document.getElementById('posCashFact').value = t.нал_ожидается || 0;
     document.getElementById('posCashFact').focus();
@@ -5338,6 +5388,7 @@ function posPickDish(dishId) {
 
 function posApplyOrder(v) {
   POS.order = v.order; POS.lines = v.lines || []; POS.table = v.table || null;
+  posToggleRefund(false);
   posSyncOrderRow(v.order);
   POS.payOpId = null;
   document.getElementById('posPayResult').innerHTML = '';
@@ -5354,7 +5405,7 @@ function posRenderTicket() {
   } else {
     var editable = o.статус === 'открыт';
     el.innerHTML = POS.lines.map(function (l) {
-      var badge = l.статус === 'на_кухне' ? ' <span class="pos-st pos-st-kitchen">готовится</span>' : l.статус === 'готово' ? ' <span class="pos-st pos-st-ready">готово</span>' : '';
+      var badge = l.статус === 'на_кухне' ? ' <span class="pos-st pos-st-kitchen">готовится</span>' : l.статус === 'готово' ? ' <span class="pos-st pos-st-ready">готово</span>' : l.статус === 'возврат' ? ' <span class="pos-st pos-st-refund">возврат</span>' : '';
       var modsText = posModsText(l.модификаторы_json);
       return '<div class="pos-line"><span class="pos-name">' + posEsc(l.название_снимок) + badge + (modsText ? '<span class="pos-mods">' + posEsc(modsText) + '</span>' : '') + '<span class="pos-mods">' + posMoney(l.цена) + '</span></span>' +
         (editable && l.статус === 'новая' ? '<span class="pos-qty"><button aria-label="Меньше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) - 1) + ')">−</button>' +
@@ -5370,6 +5421,8 @@ function posRenderTicket() {
   if (o && o.статус === 'открыт' && POS.lines.length && POS.table) acts.push('<button class="btn small secondary" onclick="posPrecheck()">Пречек</button>');
   if (live && POS.table) acts.push('<button class="btn small secondary" onclick="posMoveOrder()">Перенести</button>');
   if (o && o.статус === 'пречек' && hasClientModule('pos_admin')) acts.push('<button class="btn small secondary" onclick="posReopen()">Снять пречек</button>');
+  if (o && o.статус === 'оплачен' && hasClientModule('pos_admin') && POS.lines.some(function (l) { return l.статус !== 'возврат'; })) acts.push('<button class="btn small secondary" onclick="posToggleRefund(true)">Возврат</button>');
+  if (o && Number(o.возвращено)) acts.push('<span class="pos-muted">Возвращено: <b class="pos-bad">' + posMoney(o.возвращено) + '</b></span>');
   document.getElementById('posOrderActions').innerHTML = acts.join('');
   var canPay = !!(live && POS.lines.length && hasClientModule('pos_shift'));
   document.getElementById('posPayBlock').classList.toggle('hidden', !canPay);
@@ -5417,10 +5470,22 @@ function posSetMethod(m) {
   POS.method = m;
   document.querySelectorAll('#posPayBlock .pos-seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.method === m)); });
   document.getElementById('posCashBlock').classList.toggle('hidden', m !== 'нал');
+  document.getElementById('posMixBlock').classList.toggle('hidden', m !== 'смешанная');
+  if (m === 'смешанная' && POS.order) { document.getElementById('posMixCash').value = ''; document.getElementById('posMixCard').value = POS.order.итого; posMixChanged('card'); }
   // Пока кассир сам не ввёл сумму, поле следует за итогом заказа.
   var given = document.getElementById('posCashGiven');
   if (m === 'нал' && POS.order && !POS.cashTouched) given.value = POS.order.итого;
   posRenderChange();
+}
+
+/** Смешанная оплата: второе поле дополняет первое до суммы заказа. */
+function posMixChanged(which) {
+  var total = Number(POS.order && POS.order.итого) || 0;
+  var cash = document.getElementById('posMixCash'), card = document.getElementById('posMixCard');
+  if (which === 'cash') card.value = Math.max(0, Math.round((total - (Number(cash.value) || 0)) * 100) / 100);
+  else cash.value = Math.max(0, Math.round((total - (Number(card.value) || 0)) * 100) / 100);
+  var sum = (Number(cash.value) || 0) + (Number(card.value) || 0);
+  document.getElementById('posMixInfo').innerHTML = Math.abs(sum - total) < 0.005 ? 'Итого: ' + posMoney(sum) : '<span class="pos-bad">Сумма частей ' + posMoney(sum) + ' не равна заказу ' + posMoney(total) + '</span>';
 }
 
 function posRenderChange() {
@@ -5435,11 +5500,13 @@ function posPay() {
   var o = POS.order;
   if (!o) return;
   var btn = document.getElementById('posPayBtn');
-  var amount = POS.method === 'нал' ? Number(document.getElementById('posCashGiven').value) || 0 : Number(o.итого);
+  var payments;
+  if (POS.method === 'смешанная') payments = [{ способ: 'нал', сумма: Number(document.getElementById('posMixCash').value) || 0 }, { способ: 'карта', сумма: Number(document.getElementById('posMixCard').value) || 0 }];
+  else payments = [{ способ: POS.method, сумма: POS.method === 'нал' ? Number(document.getElementById('posCashGiven').value) || 0 : Number(o.итого) }];
   if (!POS.payOpId) POS.payOpId = 'POSPAY-' + o.order_id + '-' + Date.now();
   posErr('');
   btn.disabled = true; btn.textContent = 'Проводим оплату…';
-  call('POS_PAY', { orderId: o.order_id, version: o.version, operationId: POS.payOpId, payments: [{ способ: POS.method, сумма: amount }] },
+  call('POS_PAY', { orderId: o.order_id, version: o.version, operationId: POS.payOpId, payments: payments },
     function (r) {
       btn.disabled = false; btn.textContent = 'Оплатить';
       POS.order = r.order; POS.payOpId = null;
@@ -5452,6 +5519,82 @@ function posPay() {
       call('POS_GET_SHIFT', {}, posApplyShift);
     },
     function (e) { btn.disabled = false; btn.textContent = 'Повторить оплату'; posErr(e); });
+}
+
+// ---------- Возврат (M5) ----------
+var POS_REFUND = { method: null, opId: null };
+function posToggleRefund(show) {
+  var box = document.getElementById('posRefundBlock');
+  if (!box) return;
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  POS_REFUND.method = null; POS_REFUND.opId = null;
+  document.getElementById('posRefundReason').value = '';
+  document.getElementById('posRefundLines').innerHTML = POS.lines.filter(function (l) { return l.статус !== 'возврат'; }).map(function (l) {
+    return '<label class="pos-mod-opt"><input type="checkbox" checked value="' + posEsc(l.line_id) + '" data-sum="' + Number(l.сумма) + '" onchange="posRefundRender()">' +
+      '<span class="n">' + posEsc(l.qty) + ' × ' + posEsc(l.название_снимок) + '</span><span>' + posMoney(l.сумма) + '</span></label>';
+  }).join('');
+  document.querySelectorAll('#posRefundBlock [data-rmethod]').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+  posRefundRender();
+  box.scrollIntoView({ block: 'nearest' });
+}
+function posRefundMethod(m) {
+  POS_REFUND.method = m;
+  document.querySelectorAll('#posRefundBlock [data-rmethod]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.rmethod === m)); });
+  posRefundRender();
+}
+function posRefundRender() {
+  var sum = 0, n = 0;
+  document.querySelectorAll('#posRefundLines input:checked').forEach(function (i) { sum += Number(i.dataset.sum) || 0; n++; });
+  var btn = document.getElementById('posRefundBtn');
+  btn.textContent = n ? 'Вернуть ' + posMoney(sum) : 'Выберите позиции';
+  btn.disabled = !n || !POS_REFUND.method;
+}
+function posDoRefund() {
+  var o = POS.order; if (!o) return;
+  var ids = Array.prototype.map.call(document.querySelectorAll('#posRefundLines input:checked'), function (i) { return i.value; });
+  var all = document.querySelectorAll('#posRefundLines input').length === ids.length;
+  var reason = document.getElementById('posRefundReason').value.trim();
+  if (!reason) { posErr('Укажите причину возврата.'); return; }
+  if (!POS_REFUND.opId) POS_REFUND.opId = 'POSREF-' + o.order_id + '-' + Date.now();
+  var btn = document.getElementById('posRefundBtn');
+  btn.disabled = true; btn.textContent = 'Проводим возврат…'; posErr('');
+  call('POS_REFUND', { orderId: o.order_id, lineIds: all ? [] : ids, method: POS_REFUND.method, reason: reason, operationId: POS_REFUND.opId }, function (r) {
+    posApplyOrder({ order: r.order, lines: r.lines.filter(function (l) { return l.статус !== 'отменена'; }), table: POS.table });
+    document.getElementById('posPayResult').innerHTML = '<p class="pos-ok">Возврат проведён: ' + posMoney(r.возврат) + ' (' + posEsc(r.payment.способ) + ').</p><p class="pos-muted">Оформите чек возврата на кассовом аппарате.</p>';
+    call('POS_GET_SHIFT', {}, posApplyShift);
+  }, function (e) { posRefundRender(); posErr(e); });
+}
+
+// ---------- Отчёт по сотрудникам (M5) ----------
+function posInitReport() {
+  var today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  if (!document.getElementById('posRepFrom').value) document.getElementById('posRepFrom').value = today;
+  if (!document.getElementById('posRepTo').value) document.getElementById('posRepTo').value = today;
+  posLoadReport();
+}
+function posLoadReport() {
+  var from = document.getElementById('posRepFrom').value, to = document.getElementById('posRepTo').value;
+  document.getElementById('posRepErr').textContent = '';
+  call('POS_GET_STAFF_REPORT', { dateFrom: from, dateTo: to }, function (r) {
+    var t = r.итого;
+    document.getElementById('posRepTotal').innerHTML = '<div class="pos-kpi-row"><span>Смен: <b>' + r.смен + '</b></span><span>Заказов: <b>' + t.заказов + '</b></span>' +
+      '<span>Продажи: <b>' + posMoney(t.продажи) + '</b></span><span>Возвраты: <b>' + posMoney(t.возвраты) + '</b></span><span>Нетто: <b>' + posMoney(t.нетто) + '</b></span>' +
+      '<span>Средний чек: <b>' + posMoney(t.средний_чек) + '</b></span></div>';
+    document.getElementById('posRepWaiters').innerHTML = r.официанты.length ? '<table class="report-table"><thead><tr><th>Сотрудник</th><th class="num">Заказов</th><th class="num">Гостей</th><th class="num">Продажи</th><th class="num">Возвраты</th><th class="num">Нетто</th><th class="num">Средний чек</th></tr></thead><tbody>' +
+      r.официанты.map(function (w) { return '<tr><td>' + posEsc(w.имя) + ' <span class="pos-muted">' + posEsc(w.роль) + '</span></td><td class="num">' + w.заказов + '</td><td class="num">' + w.гостей + '</td><td class="num">' + posMoney(w.продажи) + '</td><td class="num">' + posMoney(w.возвраты) + '</td><td class="num"><b>' + posMoney(w.нетто) + '</b></td><td class="num">' + posMoney(w.средний_чек) + '</td></tr>'; }).join('') +
+      '</tbody></table>' : '<p class="pos-muted">За период оплаченных заказов нет.</p>';
+    document.getElementById('posRepCashiers').innerHTML = r.кассиры.length ? '<table class="report-table"><thead><tr><th>Сотрудник</th><th class="num">Чеков</th><th class="num">Наличные</th><th class="num">Карта</th><th class="num">Другое</th><th class="num">Возвраты</th><th class="num">Итого</th></tr></thead><tbody>' +
+      r.кассиры.map(function (c) { return '<tr><td>' + posEsc(c.имя) + ' <span class="pos-muted">' + posEsc(c.роль) + '</span></td><td class="num">' + c.чеков + '</td><td class="num">' + posMoney(c.нал) + '</td><td class="num">' + posMoney(c.карта) + '</td><td class="num">' + posMoney(c.прочее) + '</td><td class="num">' + posMoney(c.возвраты) + '</td><td class="num"><b>' + posMoney(c.итого) + '</b></td></tr>'; }).join('') +
+      '</tbody></table>' : '<p class="pos-muted">Оплат за период нет.</p>';
+  }, function (e) { document.getElementById('posRepErr').textContent = e; });
+  call('POS_GET_SHIFTS', { dateFrom: from, dateTo: to }, function (rows) {
+    document.getElementById('posRepShifts').innerHTML = rows.length ? '<table class="report-table"><thead><tr><th>Смена</th><th>Статус</th><th class="num">Заказов</th><th class="num">Наличные</th><th class="num">Карта</th><th class="num">Возвраты</th><th class="num">Выручка</th></tr></thead><tbody>' +
+      rows.map(function (s) {
+        var t = s.totals, op = new Date(s.открыта).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        return '<tr><td>' + posEsc(op) + (s.закрыта ? '–' + posEsc(new Date(s.закрыта).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) : '') + '</td><td>' + posEsc(s.статус) + '</td><td class="num">' + t.заказов + '</td><td class="num">' + posMoney(t.нал) + '</td><td class="num">' + posMoney(t.карта) + '</td><td class="num">' + posMoney(t.возвраты) + '</td><td class="num"><b>' + posMoney(t.выручка) + '</b></td></tr>';
+      }).join('') + '</tbody></table>' : '<p class="pos-muted">Смен за период нет.</p>';
+  }, function (e) { document.getElementById('posRepErr').textContent = e; });
 }
 
 function posCancelOrder() {

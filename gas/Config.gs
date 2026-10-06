@@ -730,17 +730,23 @@ var CONFIG = {
     // POS_SHIFTS.статус: открыта | закрыта (не более одной открытой на точку).
     POS_SHIFTS: ['shift_id','organization_id','location_id','кассир_id','открыта','закрыта',
       'нал_начало','нал_конец_факт','итог_нал','итог_карта','итог_прочее',
-      'заказов','возвратов_сумма','статус','cascade_id'],
+      'заказов','возвратов_сумма','статус','cascade_id',
+      // M5 (новые колонки — только в конец: insertRow_ пишет в порядке схемы, migratePosSchema_ дописывает заголовки).
+      'cash_ids'],
     // POS_ORDERS.статус: открыт | пречек | оплачен | отменён | возврат; version — защита
     // от одновременной правки одного заказа с двух устройств.
     POS_ORDERS: ['order_id','organization_id','location_id','shift_id','table_id','официант_id',
       'номер','гостей','статус','сумма','скидка','итого','комментарий',
-      'version','создано','обновлено','оплачен','cascade_id'],
-    // POS_ORDER_LINES.статус: новая | на_кухне | готово | отменена.
+      'version','создано','обновлено','оплачен','cascade_id',
+      'возвращено'],
+    // POS_ORDER_LINES.статус: новая | на_кухне | готово | отменена | возврат.
     POS_ORDER_LINES: ['line_id','order_id','organization_id','dish_id','название_снимок','qty',
-      'цена','модификаторы_json','сумма','статус','на_кухню_в','sale_ids','создано','готово_в'],
+      'цена','модификаторы_json','сумма','статус','на_кухню_в','sale_ids','создано','готово_в',
+      'возврат_в'],
+    // тип: оплата | возврат (у возврата сумма отрицательная — итоги смены считаются как сумма строк).
     POS_PAYMENTS: ['payment_id','order_id','organization_id','location_id','shift_id','способ',
-      'сумма','operation_id','создано','user_id'],
+      'сумма','operation_id','создано','user_id',
+      'тип','причина'],
     // Залы и столы точки. Занятость стола не хранится — считается из открытых заказов смены.
     POS_HALLS: ['hall_id','organization_id','location_id','название','порядок','статус','создано'],
     POS_TABLES: ['table_id','organization_id','location_id','hall_id','название','мест','порядок','статус','создано'],
@@ -910,6 +916,8 @@ var CONFIG = {
     POS_GET_MODIFIERS: 'pos_admin', POS_SAVE_MODIFIER_GROUP: 'pos_admin', POS_SAVE_MODIFIER: 'pos_admin', POS_LINK_DISH_MODIFIERS: 'pos_admin',
     // Этап M4: стоп-лист — ведут кухня и менеджмент (pos_stop); кассир видит стопы в меню кассы.
     POS_GET_STOP_LIST: 'pos_stop', POS_SET_STOP: 'pos_stop', POS_CLEAR_STOP: 'pos_stop', POS_RECALC_STOP_LIST: 'pos_stop',
+    // Этап M5: возвраты и отчёт по сотрудникам — менеджмент.
+    POS_REFUND: 'pos_admin', POS_GET_STAFF_REPORT: 'pos_admin', POS_GET_SHIFTS: 'pos_admin',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',
