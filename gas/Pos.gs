@@ -9,7 +9,8 @@
  * M4 — стоп-лист: ручной и авто по годному остатку и утверждённой ТТК;
  * M5 — возвраты (сторно в SALES), отчёт по сотрудникам, итоги смены в «Экономику»;
  * M6 — гости и бонусы (кешбэк, списание как скидка, пропорциональный пересчёт при возврате);
- * M7 — чаевые: ссылка сотрудника на внешний сервис, QR на пречеке (деньги ЦЕХ не принимает).
+ * M7 — чаевые: ссылка сотрудника на внешний сервис, QR на пречеке (деньги ЦЕХ не принимает);
+ * M8 — QR-меню: снимок меню точки в PUBLIC_MENU для отдельного публичного проекта qrmenu/.
  *
  * Поток: открыть смену → заказ → позиции → оплата → по строке заказа создаётся продажа
  * в SALES (источник 'касса') через createSale_ — те же валидация/аудит, что у ручного
@@ -1022,6 +1023,104 @@ function posSaveTipLink_(data, session) {
   });
 }
 
+// ---------- QR-меню (этап M8) ----------
+
+/**
+ * Снимок меню точки для гостей: только то, что видно в зале — название, категория, цена,
+ * выход, аллергены и пищевая ценность из утверждённой ТТК, варианты модификаторов.
+ * Не попадают: блюда в стоп-листе и без цены, себестоимость, поставщики, сотрудники.
+ */
+function _posPublicMenuData_(organizationId, locationId) {
+  var s = { organization_id: organizationId, location_id: locationId, роль: '' };
+  var loc = findOne_('LOCATIONS', 'location_id', locationId);
+  var stops = {};
+  _posActiveStops_(s).forEach(function (x) { stops[x.dish_id] = true; });
+  var cats = {};
+  getAllRows_('CATEGORIES').forEach(function (c) { cats[c.category_id] = c.название; });
+  var dishes = getDishes_(organizationId).filter(function (d) {
+    return d.статус !== 'архив' && Number(d.цена_продажи) > 0 && !stops[d.dish_id];
+  }).map(function (d) {
+    var ttk = null;
+    try { ttk = _ttkCurrent_(d.dish_id); } catch (e) { ttk = null; }
+    return {
+      id: d.dish_id, название: String(d.название), категория: cats[d.категория_id] || 'Другое', цена: round2_(Number(d.цена_продажи)),
+      выход: Number(d.выход) || '', аллергены: ttk ? String(ttk.аллергенная_информация || '') : '', пищевая_ценность: ttk ? String(ttk.пищевая_ценность || '') : '',
+      варианты: _posDishModifierGroups_(d.dish_id, organizationId).map(function (g) {
+        return { группа: g.название, список: g.modifiers.map(function (m) { return { название: m.название, цена_delta: m.цена_delta }; }) };
+      })
+    };
+  }).sort(function (a, b) { return a.категория === b.категория ? a.название.localeCompare(b.название, 'ru') : a.категория.localeCompare(b.категория, 'ru'); });
+  var tables = {};
+  findRows_('POS_TABLES', function (t) { return t.location_id === locationId && t.статус !== 'архив'; }).forEach(function (t) { tables[t.table_id] = String(t.название); });
+  return { заведение: loc ? String(loc.название) : '', обновлено: nowIso_(), блюда: dishes, столы: tables };
+}
+
+function _posPublicMenuRow_(organizationId, locationId) {
+  return findRows_('PUBLIC_MENU', function (r) { return r.organization_id === organizationId && r.location_id === locationId; })[0] || null;
+}
+
+/** Пересобирает снимок точки. Токен создаётся один раз и не меняется (иначе напечатанные QR перестанут работать). */
+function _posPublishMenu_(organizationId, locationId) {
+  var json = JSON.stringify(_posPublicMenuData_(organizationId, locationId));
+  if (json.length > 45000) throw new Error('Меню слишком большое для одной ячейки таблицы — сократите описания или число блюд.');
+  var row = _posPublicMenuRow_(organizationId, locationId);
+  if (row) { updateRow_('PUBLIC_MENU', row, { json: json, обновлено: nowIso_() }); return findOne_('PUBLIC_MENU', 'menu_id', row.menu_id); }
+  var created = { menu_id: generateId_('PUBLIC_MENU'), organization_id: organizationId, location_id: locationId,
+    token: Utilities.getUuid().replace(/-/g, ''), json: json, обновлено: nowIso_(), включено: true };
+  insertRow_('PUBLIC_MENU', created);
+  return created;
+}
+
+function _posQrMenuUrl_(organizationId) {
+  var row = _posSettingRow_(organizationId, 'qrmenu.url');
+  return row ? String(row.значение || '') : '';
+}
+
+function posGetQrMenu_(session) {
+  var row = _posPublicMenuRow_(session.organization_id, session.location_id);
+  var url = _posQrMenuUrl_(session.organization_id);
+  var data = null;
+  try { data = row ? JSON.parse(row.json) : null; } catch (e) { data = null; }
+  var tables = findRows_('POS_TABLES', function (t) { return t.location_id === session.location_id && t.organization_id === session.organization_id && t.статус !== 'архив'; })
+    .map(function (t) { return { table_id: t.table_id, название: t.название, ссылка: url && row ? url + '?m=' + row.token + '&t=' + encodeURIComponent(t.table_id) : '' }; });
+  return {
+    url: url, включено: row ? row.включено !== false && String(row.включено) !== 'false' : false, опубликовано: row ? row.обновлено : '',
+    ссылка_меню: url && row ? url + '?m=' + row.token : '', блюд: data ? data.блюда.length : 0, столы: tables
+  };
+}
+
+function posPublishQrMenu_(session) {
+  return withLock_(function () {
+    _posPublishMenu_(session.organization_id, session.location_id);
+    auditLog_(session.user_id, 'QR-меню опубликовано', 'PUBLIC_MENU:' + session.location_id, null, null, 'success', session.cascade_id || '');
+    return posGetQrMenu_(session);
+  });
+}
+
+/** Адрес развёрнутого публичного проекта qrmenu/ (…/exec) и включение меню точки. */
+function posSaveQrMenuSettings_(data, session) {
+  return withLock_(function () {
+    var url = String(data.url || '').trim();
+    if (url && !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) {
+      throw new Error('Вставьте адрес веб-приложения QR-меню вида https://script.google.com/macros/s/…/exec');
+    }
+    var row = _posSettingRow_(session.organization_id, 'qrmenu.url');
+    if (row) updateRow_('SETTINGS', row, { значение: url });
+    else insertRow_('SETTINGS', { organization_id: session.organization_id, location_id: '', ключ: 'qrmenu.url', значение: url });
+    var menu = _posPublicMenuRow_(session.organization_id, session.location_id) || _posPublishMenu_(session.organization_id, session.location_id);
+    if (data.включено !== undefined) updateRow_('PUBLIC_MENU', findOne_('PUBLIC_MENU', 'menu_id', menu.menu_id), { включено: !!data.включено });
+    return posGetQrMenu_(session);
+  });
+}
+
+/** Фон: обновить снимки всех точек, где меню уже опубликовано. */
+function posRefreshPublicMenus_() {
+  findRows_('PUBLIC_MENU', function () { return true; }).forEach(function (r) {
+    try { withLock_(function () { _posPublishMenu_(r.organization_id, r.location_id); }); }
+    catch (e) { logSystemError_('posRefreshPublicMenus_', r.organization_id, 'pos', e); }
+  });
+}
+
 // ---------- Возвраты и отчёты (этап M5) ----------
 
 /**
@@ -1153,7 +1252,7 @@ function posGetStaffReport_(data, session) {
 function migratePosSchema_() {
   var out = {};
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES', 'MODIFIER_GROUPS', 'MODIFIERS',
-    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS'].forEach(function (k) {
+    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS', 'PUBLIC_MENU'].forEach(function (k) {
     try { out[k] = ensureSchemaColumns_(k); } catch (e) { out[k] = 'нет листа — запустите initializeDatabase()'; }
   });
   return out;
@@ -1356,6 +1455,7 @@ function posFulfillModifierUsage_(session, limit) {
 }
 
 function posFulfillPendingSalesTrigger_() {
+  try { posRefreshPublicMenus_(); } catch (menuErr) { logSystemError_('posFulfillPendingSalesTrigger_', null, 'pos', menuErr); }
   try {
     getOrganizations_(null).forEach(function (org) {
       (getLocations_(org.organization_id) || []).forEach(function (loc) {
@@ -1376,7 +1476,7 @@ function posFulfillPendingSalesTrigger_() {
 function runPosTests_() {
   var out = []; function ok(n, c, d) { out.push({ name: n, status: c ? 'OK' : 'FAIL', detail: d || '' }); }
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES',
-    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS'].forEach(function (k) {
+    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS', 'PUBLIC_MENU'].forEach(function (k) {
     ok('SCHEMA_' + k, Array.isArray(CONFIG.SCHEMA[k]) && CONFIG.SHEETS[k] === k && !!CONFIG.ID_PREFIXES[k], 'sheet, schema, id prefix');
   });
   ['POS_GET_MENU', 'POS_OPEN_SHIFT', 'POS_GET_SHIFT', 'POS_CLOSE_SHIFT', 'POS_CREATE_ORDER', 'POS_ADD_LINE', 'POS_UPDATE_LINE',
@@ -1387,7 +1487,8 @@ function runPosTests_() {
     'POS_GET_STOP_LIST', 'POS_SET_STOP', 'POS_CLEAR_STOP', 'POS_RECALC_STOP_LIST',
     'POS_REFUND', 'POS_GET_STAFF_REPORT', 'POS_GET_SHIFTS',
     'POS_FIND_GUEST', 'POS_SAVE_GUEST', 'POS_ATTACH_GUEST', 'POS_GET_GUEST', 'POS_GET_GUESTS', 'POS_ADJUST_BONUS',
-    'POS_ANONYMIZE_GUEST', 'POS_GET_LOYALTY_SETTINGS', 'POS_SAVE_LOYALTY_SETTINGS', 'POS_GET_TIP_LINKS', 'POS_SAVE_TIP_LINK'].forEach(function (a) {
+    'POS_ANONYMIZE_GUEST', 'POS_GET_LOYALTY_SETTINGS', 'POS_SAVE_LOYALTY_SETTINGS', 'POS_GET_TIP_LINKS', 'POS_SAVE_TIP_LINK',
+    'POS_GET_QRMENU', 'POS_PUBLISH_QRMENU', 'POS_SAVE_QRMENU_SETTINGS'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');

@@ -225,7 +225,9 @@ var CONFIG = {
     // Этап M6: гости и бонусы.
     GUESTS: 'GUESTS', BONUS_TXNS: 'BONUS_TXNS',
     // Этап M7: ссылки сотрудников на сервис чаевых.
-    POS_TIP_LINKS: 'POS_TIP_LINKS'
+    POS_TIP_LINKS: 'POS_TIP_LINKS',
+    // Этап M8: снимок меню для публичного QR-меню (единственный лист, который читает проект qrmenu/).
+    PUBLIC_MENU: 'PUBLIC_MENU'
   },
 
   // Схема заголовков для initializeDatabase(). Порядок колонок = порядок в листе.
@@ -776,14 +778,17 @@ var CONFIG = {
     // тип: начисление | списание | отмена_начисления | возврат_списания | корректировка. сумма со знаком.
     BONUS_TXNS: ['txn_id','organization_id','guest_id','order_id','тип','сумма','остаток_после','создано','user_id','причина'],
     // Одна строка на сотрудника. ЦЕХ деньги не принимает — только показывает QR на страницу сервиса чаевых.
-    POS_TIP_LINKS: ['tip_id','user_id','organization_id','ссылка','сервис','обновлено','обновил_id']
+    POS_TIP_LINKS: ['tip_id','user_id','organization_id','ссылка','сервис','обновлено','обновил_id'],
+    // Одна строка на точку. token — случайный ключ в ссылке QR (?m=token), json — готовый снимок меню
+    // без цен закупки, себестоимости и данных сотрудников. Публичный проект читает только этот лист.
+    PUBLIC_MENU: ['menu_id','organization_id','location_id','token','json','обновлено','включено']
   },
 
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
     MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP',
-    GUESTS: 'GST', BONUS_TXNS: 'BTX', POS_TIP_LINKS: 'PTIP',
+    GUESTS: 'GST', BONUS_TXNS: 'BTX', POS_TIP_LINKS: 'PTIP', PUBLIC_MENU: 'PMENU',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
     RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL',
@@ -940,6 +945,8 @@ var CONFIG = {
     POS_GET_LOYALTY_SETTINGS: 'pos', POS_SAVE_LOYALTY_SETTINGS: 'pos_admin',
     // Этап M7: чаевые. Свою ссылку задаёт сам сотрудник; чужие — менеджмент (проверка в Pos.gs).
     POS_GET_TIP_LINKS: 'pos', POS_SAVE_TIP_LINK: 'pos',
+    // Этап M8: QR-меню — публикация и QR столов у менеджмента.
+    POS_GET_QRMENU: 'pos_admin', POS_PUBLISH_QRMENU: 'pos_admin', POS_SAVE_QRMENU_SETTINGS: 'pos_admin',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',

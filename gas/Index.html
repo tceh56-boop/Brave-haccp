@@ -1459,6 +1459,7 @@
       <button data-pos-tab="report" data-module-gate="pos_admin" onclick="posShowTab('report')">Отчёт</button>
       <button data-pos-tab="guests" data-module-gate="pos_admin" onclick="posShowTab('guests')">Гости</button>
       <button data-pos-tab="tips" onclick="posShowTab('tips')">Чаевые</button>
+      <button data-pos-tab="qrmenu" data-module-gate="pos_admin" onclick="posShowTab('qrmenu')">QR-меню</button>
       <button data-module-gate="pos_kitchen" onclick="navTo('kitchen')">Кухня →</button>
       <button data-module-gate="pos_stop" onclick="navTo('stoplist')">Стоп-лист →</button>
     </div>
@@ -1471,6 +1472,26 @@
       <div class="pos-legend pos-muted"><span>свободен</span><span class="lg-busy">занят</span><span class="lg-pre">пречек — ждёт оплаты</span></div>
       <div id="posTables" class="pos-table-grid" aria-live="polite"></div>
       <div id="posFloorErr" class="err" role="alert"></div>
+    </div>
+
+    <!-- M8: QR-меню для гостей (отдельный публичный проект qrmenu/, см. qrmenu/README.md). -->
+    <div id="posQrPanel" class="hidden">
+      <div class="card">
+        <h2>QR-меню для гостей</h2>
+        <p class="muted">Гости смотрят меню с телефона по QR на столе, без входа в ЦЕХ. Показываются блюда с ценой, выход, аллергены из ТТК и варианты; стоп-лист скрыт. Заказать с телефона нельзя. Меню само обновляется каждые 15 минут.</p>
+        <label for="qrUrl" class="muted">Адрес публичного приложения QR-меню (…/exec) — установка по инструкции qrmenu/README.md</label>
+        <input id="qrUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec">
+        <label class="chkLabel"><input id="qrOn" class="chk" type="checkbox" checked> Меню этой точки показывается гостям</label>
+        <button class="btn secondary" onclick="qrSave()">Сохранить</button>
+        <div id="qrStatus" class="taskrow" aria-live="polite"></div>
+        <button class="btn" onclick="qrPublish()">Опубликовать меню сейчас</button>
+      </div>
+      <div class="card">
+        <div class="row-between"><h2 style="margin:0;">QR-коды столов</h2><button class="btn small secondary" onclick="qrPrintTables()">Печать QR столов</button></div>
+        <p class="muted">У каждого стола свой код — гость видит номер стола в меню. Коды не меняются при обновлении меню.</p>
+        <div id="qrTables"></div>
+      </div>
+      <div id="qrErr" class="err" role="alert"></div>
     </div>
 
     <!-- M7: ссылки на сервис чаевых. ЦЕХ деньги не принимает — показывает QR на страницу сервиса. -->
@@ -5023,6 +5044,7 @@ function posShowPanels(tab) {
   document.getElementById('posReportPanel').classList.toggle('hidden', tab !== 'report');
   document.getElementById('posGuestsPanel').classList.toggle('hidden', tab !== 'guests');
   document.getElementById('posTipsPanel').classList.toggle('hidden', tab !== 'tips');
+  document.getElementById('posQrPanel').classList.toggle('hidden', tab !== 'qrmenu');
   document.getElementById('posFloorPanel').classList.toggle('hidden', tab !== 'floor');
   document.getElementById('posWork').classList.toggle('hidden', tab !== 'order');
   document.getElementById('posHallPanel').classList.toggle('hidden', tab !== 'hall');
@@ -5043,6 +5065,7 @@ function posShowTab(tab) {
   if (tab === 'report') posInitReport();
   if (tab === 'guests') { loyLoad(); guestsLoad(); }
   if (tab === 'tips') tipsLoad();
+  if (tab === 'qrmenu') qrLoad();
 }
 
 // ---------- Модификаторы: выбор при добавлении блюда ----------
@@ -5673,6 +5696,42 @@ function posPrintPrecheck() {
     '<div class="c"><button onclick="window.print()">Печать</button></div><script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script></body></html>';
   var w = window.open('', '_blank');
   if (!w) { posErr('Браузер заблокировал окно печати — разрешите всплывающие окна для ЦЕХ.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+// ---------- QR-меню (M8) ----------
+var QR = null;
+function qrErr(m) { document.getElementById('qrErr').textContent = m || ''; }
+function qrRender(d) {
+  QR = d;
+  document.getElementById('qrUrl').value = d.url || '';
+  document.getElementById('qrOn').checked = !!d.включено || !d.опубликовано;
+  document.getElementById('qrStatus').innerHTML = d.опубликовано
+    ? 'Опубликовано: <b>' + posEsc(new Date(d.опубликовано).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) + '</b> · блюд в меню: <b>' + d.блюд + '</b>' + (d.включено ? '' : ' · <span class="pos-bad">выключено</span>') +
+      (d.ссылка_меню ? '<br><a href="' + posEsc(d.ссылка_меню) + '" target="_blank" rel="noopener">Открыть меню как гость</a>' : '')
+    : '<span class="muted">Меню ещё не опубликовано.</span>';
+  document.getElementById('qrTables').innerHTML = d.столы.length ? d.столы.map(function (t) {
+    return '<div class="stop-row"><span>Стол <b>' + posEsc(t.название) + '</b></span>' + (t.ссылка ? '<a href="' + posEsc(t.ссылка) + '" target="_blank" rel="noopener">ссылка</a>' : '<span class="muted">сначала адрес и публикация</span>') + '</div>';
+  }).join('') : '<p class="muted">Столов нет — добавьте их на вкладке «Настройка зала».</p>';
+}
+function qrLoad() { qrErr(''); call('POS_GET_QRMENU', {}, qrRender, qrErr); }
+function qrSave() {
+  call('POS_SAVE_QRMENU_SETTINGS', { url: document.getElementById('qrUrl').value.trim(), включено: document.getElementById('qrOn').checked },
+    function (d) { qrRender(d); qrErr(''); }, qrErr);
+}
+function qrPublish() { call('POS_PUBLISH_QRMENU', {}, function (d) { qrRender(d); qrErr(''); }, qrErr); }
+/** Лист с QR столов для печати (A4, по 6 на лист). QR рисует тот же сервис, что этикетки и чаевые. */
+function qrPrintTables() {
+  if (!QR || !QR.столы.some(function (t) { return t.ссылка; })) { qrErr('Сначала сохраните адрес QR-меню и опубликуйте меню.'); return; }
+  var cards = QR.столы.filter(function (t) { return t.ссылка; }).map(function (t) {
+    return '<div class="q"><img alt="" src="' + posTipQr(t.ссылка, 400) + '"><div class="n">Стол ' + posEsc(t.название) + '</div><div class="h">Наведите камеру — откроется меню</div></div>';
+  }).join('');
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>QR-коды столов</title><style>' +
+    'body{font-family:Arial,sans-serif;margin:10mm}.g{display:grid;grid-template-columns:1fr 1fr;gap:8mm}.q{border:1px dashed #999;border-radius:6px;padding:6mm;text-align:center;break-inside:avoid}' +
+    'img{width:60mm;height:60mm}.n{font-size:20px;font-weight:bold;margin-top:3mm}.h{font-size:12px;color:#444}@media print{button{display:none}}</style></head><body>' +
+    '<button onclick="window.print()">Печать</button><div class="g">' + cards + '</div></body></html>';
+  var w = window.open('', '_blank');
+  if (!w) { qrErr('Браузер заблокировал окно печати — разрешите всплывающие окна для ЦЕХ.'); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
 
