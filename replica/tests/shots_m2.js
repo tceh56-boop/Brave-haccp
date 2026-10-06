@@ -72,7 +72,7 @@ const tok = { M: token('USR-M'), W: token('USR-W'), W2: token('USR-W2'), C: toke
   await w.click('#posTabs >> text=Зал'); await wait(500);
   await w.screenshot({ path: OUT + '/M2-waiter-floor-390.png' });
   await w.click('.pos-table >> text=2'); await wait(400);
-  await w.click('#posOrderActions >> text=Пречек'); await wait(400);
+  await w.click('#posOrderActions button:text-is("Пречек")'); await wait(400);
   const waiterHasPay = await w.isVisible('#posPayBtn');
 
   // 5. Менеджер: зал на компьютере, оплата стола 2.

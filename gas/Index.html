@@ -149,6 +149,11 @@
   .pos-seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;margin:10px 0;}
   .pos-kpi-row{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;}
   .pos-refund{border:1px solid var(--pos-border-input);border-radius:12px;padding:12px;margin-top:10px;}
+  .pos-tip{display:flex;gap:12px;align-items:center;border:1px dashed var(--pos-border-input);border-radius:12px;padding:10px;margin-top:10px;}
+  .pos-tip img{width:120px;height:120px;flex:none;background:#fff;}
+  .tip-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #eee;}
+  .tip-row input{margin:0;} .tip-row .btn{width:auto;margin:0;}
+  @media(max-width:600px){ .tip-row{grid-template-columns:1fr;} }
   .pos-guest-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--beige);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px;}
   .pos-guest-chip .btn{width:auto;margin:0;}
   .pos-consent{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--pos-text-muted);margin:6px 0 10px;}
@@ -1453,6 +1458,7 @@
       <button data-pos-tab="mods" data-module-gate="pos_admin" onclick="posShowTab('mods')">Модификаторы</button>
       <button data-pos-tab="report" data-module-gate="pos_admin" onclick="posShowTab('report')">Отчёт</button>
       <button data-pos-tab="guests" data-module-gate="pos_admin" onclick="posShowTab('guests')">Гости</button>
+      <button data-pos-tab="tips" onclick="posShowTab('tips')">Чаевые</button>
       <button data-module-gate="pos_kitchen" onclick="navTo('kitchen')">Кухня →</button>
       <button data-module-gate="pos_stop" onclick="navTo('stoplist')">Стоп-лист →</button>
     </div>
@@ -1465,6 +1471,16 @@
       <div class="pos-legend pos-muted"><span>свободен</span><span class="lg-busy">занят</span><span class="lg-pre">пречек — ждёт оплаты</span></div>
       <div id="posTables" class="pos-table-grid" aria-live="polite"></div>
       <div id="posFloorErr" class="err" role="alert"></div>
+    </div>
+
+    <!-- M7: ссылки на сервис чаевых. ЦЕХ деньги не принимает — показывает QR на страницу сервиса. -->
+    <div id="posTipsPanel" class="hidden">
+      <div class="card">
+        <h2>Чаевые</h2>
+        <p class="muted">Вставьте личную ссылку сотрудника из сервиса чаевых (например, CloudTips или Нетмонет). Гость увидит QR-код этой ссылки на пречеке и после оплаты. Деньги идут через сервис — касса ЦЕХ их не принимает и не учитывает в выручке.</p>
+        <div id="tipList"></div>
+        <div id="tipErr" class="err" role="alert"></div>
+      </div>
     </div>
 
     <!-- M6: гости и бонусная программа. -->
@@ -1639,6 +1655,7 @@
           <button id="posPayBtn" class="btn pos-pay" onclick="posPay()">Оплатить</button>
           <button class="btn secondary" onclick="posCancelOrder()" data-module-gate="pos_admin">Отменить заказ</button>
         </div>
+        <div id="posTipBlock"></div>
         <div id="posRefundBlock" class="pos-refund hidden" aria-labelledby="posRefundTitle">
           <h2 id="posRefundTitle" style="margin:0 0 6px;">Возврат</h2>
           <div id="posRefundLines" role="group" aria-label="Позиции для возврата"></div>
@@ -5005,6 +5022,7 @@ function posShowPanels(tab) {
   document.getElementById('posModsPanel').classList.toggle('hidden', tab !== 'mods');
   document.getElementById('posReportPanel').classList.toggle('hidden', tab !== 'report');
   document.getElementById('posGuestsPanel').classList.toggle('hidden', tab !== 'guests');
+  document.getElementById('posTipsPanel').classList.toggle('hidden', tab !== 'tips');
   document.getElementById('posFloorPanel').classList.toggle('hidden', tab !== 'floor');
   document.getElementById('posWork').classList.toggle('hidden', tab !== 'order');
   document.getElementById('posHallPanel').classList.toggle('hidden', tab !== 'hall');
@@ -5024,6 +5042,7 @@ function posShowTab(tab) {
   if (tab === 'mods') posLoadModsAdmin();
   if (tab === 'report') posInitReport();
   if (tab === 'guests') { loyLoad(); guestsLoad(); }
+  if (tab === 'tips') tipsLoad();
 }
 
 // ---------- Модификаторы: выбор при добавлении блюда ----------
@@ -5439,7 +5458,7 @@ function posPickDish(dishId) {
 }
 
 function posApplyOrder(v) {
-  POS.order = v.order; POS.lines = v.lines || []; POS.table = v.table || null; POS.guest = v.guest || null;
+  POS.order = v.order; POS.lines = v.lines || []; POS.table = v.table || null; POS.guest = v.guest || null; POS.tip = v.tip || null;
   if (!POS.order || POS.order.order_id !== POS.bonusOrder) { POS.bonusOrder = POS.order && POS.order.order_id; var b = document.getElementById('posBonus'); if (b) b.value = 0; }
   posToggleRefund(false);
   posSyncOrderRow(v.order);
@@ -5475,7 +5494,12 @@ function posRenderTicket() {
     chip.innerHTML = '<div class="pos-guest-chip"><span>👤 <b>' + posEsc(POS.guest.имя) + '</b> ' + posEsc(POS.guest.телефон) + ' · бонусов: <b>' + posEsc(POS.guest.бонусы) + '</b></span>' +
       (live ? '<button class="btn small secondary" onclick="posDetachGuest()" aria-label="Убрать гостя из заказа">Убрать</button>' : '') + '</div>';
   } else chip.innerHTML = '';
+  // Чаевые: QR на пречеке и после оплаты.
+  var showTip = POS.tip && o && (o.статус === 'пречек' || o.статус === 'оплачен');
+  document.getElementById('posTipBlock').innerHTML = showTip ? '<div class="pos-tip"><img alt="QR-код для чаевых. Сотрудник: ' + posEsc(POS.tip.имя) + '" src="' + posTipQr(POS.tip.ссылка, 240) + '">' +
+    '<div><b>Чаевые: ' + posEsc(POS.tip.имя) + '</b><div class="pos-mods">Наведите камеру телефона на код. Оплата — через ' + posEsc(POS.tip.сервис) + '.</div></div></div>' : '';
   var acts = [];
+  if (o && POS.lines.length && (o.статус === 'открыт' || o.статус === 'пречек')) acts.push('<button class="btn small secondary" onclick="posPrintPrecheck()">Печать пречека</button>');
   if (live && !POS.guest) acts.push('<button class="btn small secondary" onclick="posToggleGuest(true)">Гость</button>');
   if (o && o.статус === 'открыт' && POS.lines.some(function (l) { return l.статус === 'новая'; }) && (POS.table || posIsWaiter())) acts.push('<button class="btn small" onclick="posSendToKitchen()">На кухню</button>');
   if (o && o.статус === 'открыт' && POS.lines.length && POS.table) acts.push('<button class="btn small secondary" onclick="posPrecheck()">Пречек</button>');
@@ -5608,6 +5632,48 @@ function posPay() {
       call('POS_GET_SHIFT', {}, posApplyShift);
     },
     function (e) { btn.disabled = false; btn.textContent = 'Повторить оплату'; posErr(e); });
+}
+
+// ---------- Чаевые (M7) ----------
+/** QR рисует тот же внешний сервис, что и этикетки маркировки (renderMarkLabel). */
+function posTipQr(url, size) { return 'https://quickchart.io/qr?size=' + (size || 200) + '&margin=1&text=' + encodeURIComponent(url); }
+function tipsLoad() {
+  document.getElementById('tipErr').textContent = '';
+  call('POS_GET_TIP_LINKS', {}, function (rows) {
+    document.getElementById('tipList').innerHTML = rows.map(function (r) {
+      return '<div class="tip-row"><span><b>' + posEsc(r.имя) + '</b> <span class="pos-muted">' + posEsc(r.роль) + '</span>' + (r.ссылка ? '<span class="pos-mods">' + posEsc(r.сервис) + '</span>' : '<span class="pos-mods">ссылки нет</span>') + '</span>' +
+        '<input id="tip-' + posEsc(r.user_id) + '" type="url" inputmode="url" placeholder="https://…" value="' + posEsc(r.ссылка) + '" aria-label="Ссылка на чаевые: ' + posEsc(r.имя) + '">' +
+        '<button class="btn small secondary" onclick="tipSave(\'' + posEsc(r.user_id) + '\')">Сохранить</button></div>';
+    }).join('') || '<p class="muted">Сотрудников не найдено.</p>';
+  }, function (e) { document.getElementById('tipErr').textContent = e; });
+}
+function tipSave(userId) {
+  var v = document.getElementById('tip-' + userId).value.trim();
+  call('POS_SAVE_TIP_LINK', { userId: userId, ссылка: v }, function () { tipsLoad(); document.getElementById('tipErr').innerHTML = '<span class="pos-ok">Сохранено.</span>'; },
+    function (e) { document.getElementById('tipErr').textContent = e; });
+}
+/** Пречек для гостя: позиции, итог, бонусы, QR для чаевых. Печать через окно браузера (принтер чеков — по умолчанию). */
+function posPrintPrecheck() {
+  var o = POS.order; if (!o) return;
+  var rows = POS.lines.map(function (l) {
+    var mt = posModsText(l.модификаторы_json);
+    return '<tr><td>' + posEsc(l.название_снимок) + (mt ? '<div class="m">' + posEsc(mt) + '</div>' : '') + '</td><td class="r">' + posEsc(l.qty) + ' × ' + posMoney(l.цена) + '</td><td class="r">' + posMoney(l.сумма) + '</td></tr>';
+  }).join('');
+  var bonus = POS.guest ? posBonusValue() : 0;
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Пречек №' + posEsc(o.номер) + '</title><style>' +
+    'body{font-family:Arial,sans-serif;width:72mm;margin:0 auto;padding:4mm;color:#000;font-size:12px}h1{font-size:15px;text-align:center;margin:0 0 4px}' +
+    '.c{text-align:center}table{width:100%;border-collapse:collapse;margin:6px 0}td{padding:3px 0;vertical-align:top;border-bottom:1px dashed #999}.r{text-align:right;white-space:nowrap}' +
+    '.m{font-size:10px;color:#444}.t{font-size:16px;font-weight:bold;display:flex;justify-content:space-between;margin-top:6px}img{width:40mm;height:40mm}@media print{button{display:none}}</style></head><body>' +
+    '<h1>ПРЕЧЕК</h1><div class="c">Заказ №' + posEsc(o.номер) + (POS.table ? ' · стол ' + posEsc(POS.table.название) : '') + '<br>' + posEsc(new Date().toLocaleString('ru-RU')) + '</div>' +
+    '<table>' + rows + '</table>' +
+    (bonus ? '<div class="t" style="font-size:12px"><span>Бонусами</span><span>−' + posMoney(bonus) + '</span></div>' : '') +
+    '<div class="t"><span>К оплате</span><span>' + posMoney(posPayTotal()) + '</span></div>' +
+    '<p class="c">Это не кассовый чек.</p>' +
+    (POS.tip ? '<div class="c"><img alt="" src="' + posTipQr(POS.tip.ссылка, 300) + '"><div>Оставить чаевые: ' + posEsc(POS.tip.имя) + '</div></div>' : '') +
+    '<div class="c"><button onclick="window.print()">Печать</button></div><script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script></body></html>';
+  var w = window.open('', '_blank');
+  if (!w) { posErr('Браузер заблокировал окно печати — разрешите всплывающие окна для ЦЕХ.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 
 // ---------- Гость в заказе (M6) ----------

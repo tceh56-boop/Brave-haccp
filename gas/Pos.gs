@@ -8,7 +8,8 @@
  * M3 — модификаторы: группы с мин/макс, надбавка к цене, расход продукта со склада;
  * M4 — стоп-лист: ручной и авто по годному остатку и утверждённой ТТК;
  * M5 — возвраты (сторно в SALES), отчёт по сотрудникам, итоги смены в «Экономику»;
- * M6 — гости и бонусы (кешбэк, списание как скидка, пропорциональный пересчёт при возврате).
+ * M6 — гости и бонусы (кешбэк, списание как скидка, пропорциональный пересчёт при возврате);
+ * M7 — чаевые: ссылка сотрудника на внешний сервис, QR на пречеке (деньги ЦЕХ не принимает).
  *
  * Поток: открыть смену → заказ → позиции → оплата → по строке заказа создаётся продажа
  * в SALES (источник 'касса') через createSale_ — те же валидация/аудит, что у ручного
@@ -98,7 +99,10 @@ function _posTouchOrder_(order) {
 
 function _posOrderView_(order, session) {
   var table = order.table_id ? findOne_('POS_TABLES', 'table_id', order.table_id) : null;
-  var view = { order: order, lines: _posActiveLines_(order.order_id), table: table ? { table_id: table.table_id, название: table.название } : null, guest: null };
+  var view = { order: order, lines: _posActiveLines_(order.order_id), table: table ? { table_id: table.table_id, название: table.название } : null, guest: null, tip: null };
+  // Чаевые: ссылка того, кто ведёт заказ (официант / кассир «с собой»).
+  var tl = order.официант_id ? _posTipLink_(order.официант_id, order.organization_id) : null;
+  if (tl) { var w = findOne_('USERS', 'user_id', order.официант_id); view.tip = { имя: w ? w.имя : '', ссылка: tl.ссылка, сервис: tl.сервис }; }
   if (order.guest_id) {
     var g = findOne_('GUESTS', 'guest_id', order.guest_id);
     if (g && g.статус !== 'обезличен') {
@@ -971,6 +975,53 @@ function _posMaxBonus_(order, guest, settings) {
   return Math.max(0, Math.min(Math.floor(Number(guest.бонусы) || 0), cap));
 }
 
+// ---------- Чаевые (этап M7) ----------
+
+/** https-ссылка без пробелов, до 300 символов. Сервис — домен ссылки (для подсказки в интерфейсе). */
+function _posTipUrl_(raw) {
+  var url = String(raw || '').trim();
+  if (!url) return '';
+  if (!/^https:\/\/[^\s\/]+\.[^\s\/]+(\/\S*)?$/i.test(url)) throw new Error('Ссылка на чаевые должна начинаться с https:// и не содержать пробелов.');
+  if (url.length > 300) throw new Error('Слишком длинная ссылка на чаевые.');
+  return url;
+}
+
+function _posTipLink_(userId, organizationId) {
+  return findRows_('POS_TIP_LINKS', function (t) { return t.user_id === userId && t.organization_id === organizationId && t.ссылка; })[0] || null;
+}
+
+/** Менеджмент видит всех сотрудников точки; остальные — только себя. */
+function posGetTipLinks_(session) {
+  var admin = _posCanSeePd_(session);
+  var links = {};
+  findRows_('POS_TIP_LINKS', function (t) { return t.organization_id === session.organization_id; }).forEach(function (t) { links[t.user_id] = t; });
+  return getAllRows_('USERS').filter(function (u) {
+    if (u.organization_id !== session.organization_id || u.статус !== 'активен') return false;
+    if (!admin) return u.user_id === session.user_id;
+    return ['ОФИЦИАНТ', 'КАССИР', 'МЕНЕДЖЕР'].indexOf(u.роль) !== -1 || !!links[u.user_id];
+  }).map(function (u) {
+    var l = links[u.user_id];
+    return { user_id: u.user_id, имя: u.имя, роль: u.роль, ссылка: l ? l.ссылка : '', сервис: l ? l.сервис : '', обновлено: l ? l.обновлено : '' };
+  }).sort(function (a, b) { return String(a.имя).localeCompare(String(b.имя), 'ru'); });
+}
+
+function posSaveTipLink_(data, session) {
+  return withLock_(function () {
+    var userId = data.userId || session.user_id;
+    if (userId !== session.user_id && !_posCanSeePd_(session)) throw new Error('Чужую ссылку на чаевые может изменить менеджер.');
+    var user = findOne_('USERS', 'user_id', userId);
+    assertOwnedByOrg_(session, user, 'USERS:' + userId);
+    var url = _posTipUrl_(data.ссылка);
+    var service = url ? url.replace(/^https:\/\//i, '').split('/')[0].toLowerCase() : '';
+    var row = findRows_('POS_TIP_LINKS', function (t) { return t.user_id === userId && t.organization_id === session.organization_id; })[0];
+    var patch = { ссылка: url, сервис: service, обновлено: nowIso_(), обновил_id: session.user_id };
+    if (row) updateRow_('POS_TIP_LINKS', row, patch);
+    else insertRow_('POS_TIP_LINKS', Object.assign({ tip_id: generateId_('POS_TIP_LINKS'), user_id: userId, organization_id: session.organization_id }, patch));
+    auditLog_(session.user_id, 'Ссылка на чаевые', 'USERS:' + userId, null, url ? service : 'удалена', 'success', session.cascade_id || '');
+    return { user_id: userId, имя: user.имя, ссылка: url, сервис: service };
+  });
+}
+
 // ---------- Возвраты и отчёты (этап M5) ----------
 
 /**
@@ -1102,7 +1153,7 @@ function posGetStaffReport_(data, session) {
 function migratePosSchema_() {
   var out = {};
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES', 'MODIFIER_GROUPS', 'MODIFIERS',
-    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS'].forEach(function (k) {
+    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS'].forEach(function (k) {
     try { out[k] = ensureSchemaColumns_(k); } catch (e) { out[k] = 'нет листа — запустите initializeDatabase()'; }
   });
   return out;
@@ -1325,7 +1376,7 @@ function posFulfillPendingSalesTrigger_() {
 function runPosTests_() {
   var out = []; function ok(n, c, d) { out.push({ name: n, status: c ? 'OK' : 'FAIL', detail: d || '' }); }
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES',
-    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS'].forEach(function (k) {
+    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS'].forEach(function (k) {
     ok('SCHEMA_' + k, Array.isArray(CONFIG.SCHEMA[k]) && CONFIG.SHEETS[k] === k && !!CONFIG.ID_PREFIXES[k], 'sheet, schema, id prefix');
   });
   ['POS_GET_MENU', 'POS_OPEN_SHIFT', 'POS_GET_SHIFT', 'POS_CLOSE_SHIFT', 'POS_CREATE_ORDER', 'POS_ADD_LINE', 'POS_UPDATE_LINE',
@@ -1336,7 +1387,7 @@ function runPosTests_() {
     'POS_GET_STOP_LIST', 'POS_SET_STOP', 'POS_CLEAR_STOP', 'POS_RECALC_STOP_LIST',
     'POS_REFUND', 'POS_GET_STAFF_REPORT', 'POS_GET_SHIFTS',
     'POS_FIND_GUEST', 'POS_SAVE_GUEST', 'POS_ATTACH_GUEST', 'POS_GET_GUEST', 'POS_GET_GUESTS', 'POS_ADJUST_BONUS',
-    'POS_ANONYMIZE_GUEST', 'POS_GET_LOYALTY_SETTINGS', 'POS_SAVE_LOYALTY_SETTINGS'].forEach(function (a) {
+    'POS_ANONYMIZE_GUEST', 'POS_GET_LOYALTY_SETTINGS', 'POS_SAVE_LOYALTY_SETTINGS', 'POS_GET_TIP_LINKS', 'POS_SAVE_TIP_LINK'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');
