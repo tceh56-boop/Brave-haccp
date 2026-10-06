@@ -221,7 +221,9 @@ var CONFIG = {
     MODIFIER_GROUPS: 'MODIFIER_GROUPS', MODIFIERS: 'MODIFIERS', DISH_MODIFIER_LINKS: 'DISH_MODIFIER_LINKS',
     POS_MODIFIER_USAGE: 'POS_MODIFIER_USAGE',
     // Этап M4: стоп-лист.
-    STOP_LIST: 'STOP_LIST'
+    STOP_LIST: 'STOP_LIST',
+    // Этап M6: гости и бонусы.
+    GUESTS: 'GUESTS', BONUS_TXNS: 'BONUS_TXNS'
   },
 
   // Схема заголовков для initializeDatabase(). Порядок колонок = порядок в листе.
@@ -738,7 +740,9 @@ var CONFIG = {
     POS_ORDERS: ['order_id','organization_id','location_id','shift_id','table_id','официант_id',
       'номер','гостей','статус','сумма','скидка','итого','комментарий',
       'version','создано','обновлено','оплачен','cascade_id',
-      'возвращено'],
+      'возвращено',
+      // M6
+      'guest_id','бонусы_списано','бонусы_начислено'],
     // POS_ORDER_LINES.статус: новая | на_кухне | готово | отменена | возврат.
     POS_ORDER_LINES: ['line_id','order_id','organization_id','dish_id','название_снимок','qty',
       'цена','модификаторы_json','сумма','статус','на_кухню_в','sale_ids','создано','готово_в',
@@ -762,13 +766,20 @@ var CONFIG = {
       'qty','единица','статус','ошибка','создано','списано_в','cascade_id'],
     // Стоп-лист точки. Активен, пока «снято» пусто. источник: ручной | авто_остатки.
     // Авто-стопы ставит и снимает пересчёт по остаткам; ручные — только человек.
-    STOP_LIST: ['stop_id','organization_id','location_id','dish_id','причина','источник','создано','user_id','снято','снял_id']
+    STOP_LIST: ['stop_id','organization_id','location_id','dish_id','причина','источник','создано','user_id','снято','снял_id'],
+    // Гости (персональные данные, 152-ФЗ): создаются только с согласием (дата в согласие_пд).
+    // телефон — +7XXXXXXXXXX, уникален в организации. бонусы — кэш баланса, источник правды — BONUS_TXNS.
+    GUESTS: ['guest_id','organization_id','телефон','имя','день_рождения','согласие_пд','бонусы','всего_оплачено','визитов',
+      'последний_визит','статус','создано','комментарий','user_id'],
+    // тип: начисление | списание | отмена_начисления | возврат_списания | корректировка. сумма со знаком.
+    BONUS_TXNS: ['txn_id','organization_id','guest_id','order_id','тип','сумма','остаток_после','создано','user_id','причина']
   },
 
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
     MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP',
+    GUESTS: 'GST', BONUS_TXNS: 'BTX',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
     RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL',
@@ -918,6 +929,11 @@ var CONFIG = {
     POS_GET_STOP_LIST: 'pos_stop', POS_SET_STOP: 'pos_stop', POS_CLEAR_STOP: 'pos_stop', POS_RECALC_STOP_LIST: 'pos_stop',
     // Этап M5: возвраты и отчёт по сотрудникам — менеджмент.
     POS_REFUND: 'pos_admin', POS_GET_STAFF_REPORT: 'pos_admin', POS_GET_SHIFTS: 'pos_admin',
+    // Этап M6: гости и бонусы. Найти/завести/привязать гостя — касса и официант; список, корректировки,
+    // обезличивание и правила программы — менеджмент.
+    POS_FIND_GUEST: 'pos', POS_SAVE_GUEST: 'pos', POS_ATTACH_GUEST: 'pos', POS_GET_GUEST: 'pos',
+    POS_GET_GUESTS: 'pos_admin', POS_ADJUST_BONUS: 'pos_admin', POS_ANONYMIZE_GUEST: 'pos_admin',
+    POS_GET_LOYALTY_SETTINGS: 'pos', POS_SAVE_LOYALTY_SETTINGS: 'pos_admin',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',

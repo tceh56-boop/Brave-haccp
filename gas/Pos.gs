@@ -7,7 +7,8 @@
  * M2 — залы и столы, официант (свои столы, отправка на кухню, пречек), очередь кухни;
  * M3 — модификаторы: группы с мин/макс, надбавка к цене, расход продукта со склада;
  * M4 — стоп-лист: ручной и авто по годному остатку и утверждённой ТТК;
- * M5 — возвраты (сторно в SALES), отчёт по сотрудникам, итоги смены в «Экономику».
+ * M5 — возвраты (сторно в SALES), отчёт по сотрудникам, итоги смены в «Экономику»;
+ * M6 — гости и бонусы (кешбэк, списание как скидка, пропорциональный пересчёт при возврате).
  *
  * Поток: открыть смену → заказ → позиции → оплата → по строке заказа создаётся продажа
  * в SALES (источник 'касса') через createSale_ — те же валидация/аудит, что у ручного
@@ -95,9 +96,18 @@ function _posTouchOrder_(order) {
   return findOne_('POS_ORDERS', 'order_id', order.order_id);
 }
 
-function _posOrderView_(order) {
+function _posOrderView_(order, session) {
   var table = order.table_id ? findOne_('POS_TABLES', 'table_id', order.table_id) : null;
-  return { order: order, lines: _posActiveLines_(order.order_id), table: table ? { table_id: table.table_id, название: table.название } : null };
+  var view = { order: order, lines: _posActiveLines_(order.order_id), table: table ? { table_id: table.table_id, название: table.название } : null, guest: null };
+  if (order.guest_id) {
+    var g = findOne_('GUESTS', 'guest_id', order.guest_id);
+    if (g && g.статус !== 'обезличен') {
+      var s = session || { роль: '', organization_id: order.organization_id };
+      view.guest = _posGuestView_(g, s);
+      view.guest.можно_списать = _posMaxBonus_(order, g, posGetLoyaltySettings_({ organization_id: order.organization_id }));
+    }
+  }
+  return view;
 }
 
 // ---------- Смена ----------
@@ -238,7 +248,7 @@ function posCreateOrder_(data, session) {
       cascade_id: session.cascade_id || ''
     };
     insertRow_('POS_ORDERS', order);
-    return _posOrderView_(order);
+    return _posOrderView_(order, session);
   });
 }
 
@@ -432,7 +442,7 @@ function posAddLine_(data, session) {
         создано: nowIso_()
       });
     }
-    return _posOrderView_(_posTouchOrder_(order));
+    return _posOrderView_(_posTouchOrder_(order), session);
   });
 }
 
@@ -452,14 +462,14 @@ function posUpdateLine_(data, session) {
       if (!(qty > 0) || qty > 999) throw new Error('Количество должно быть от 1 до 999.');
       updateRow_('POS_ORDER_LINES', line, { qty: qty, сумма: round2_(qty * Number(line.цена)) });
     }
-    return _posOrderView_(_posTouchOrder_(order));
+    return _posOrderView_(_posTouchOrder_(order), session);
   });
 }
 
 function posGetOrder_(data, session) {
   var order = _posOrder_(data.orderId, session);
   _posAssertWaiterOwns_(order, session);
-  return _posOrderView_(order);
+  return _posOrderView_(order, session);
 }
 
 function posGetOrders_(data, session) {
@@ -493,7 +503,21 @@ function posPay_(data, session) {
     if (order.shift_id !== shift.shift_id) throw new Error('Заказ из прошлой смены — отмените его и создайте заново.');
     var lines = _posActiveLines_(order.order_id);
     if (!lines.length) throw new Error('В заказе нет позиций.');
-    var total = round2_(Number(order.итого) || 0);
+    var gross = round2_(Number(order.сумма) || 0);
+
+    // Бонусы гостя — скидка на заказ (не способ оплаты): в продажи и чек идут цены со скидкой.
+    var settings = posGetLoyaltySettings_(session);
+    var guest = order.guest_id ? findOne_('GUESTS', 'guest_id', order.guest_id) : null;
+    if (guest && guest.статус === 'обезличен') guest = null;
+    var bonus = Math.floor(Number(data.bonus) || 0);
+    if (bonus < 0) throw new Error('Некорректное количество бонусов.');
+    if (bonus && !guest) throw new Error('Чтобы списать бонусы, укажите гостя.');
+    if (bonus) {
+      var maxBonus = _posMaxBonus_(order, guest, settings);
+      if (bonus > maxBonus) throw new Error('Можно списать не больше ' + maxBonus + ' бонусов.');
+    }
+    var total = round2_(Math.max(0, gross - bonus));
+    var k = gross > 0 ? total / gross : 1;
 
     var sums = { нал: 0, карта: 0, прочее: 0 };
     (data.payments || []).forEach(function (p) {
@@ -527,7 +551,7 @@ function posPay_(data, session) {
     var saleDate = _posShiftDate_(shift);
     lines.forEach(function (l) {
       var sale = createSale_({
-        dishId: l.dish_id, qty: Number(l.qty), цена_продажи: Number(l.цена), дата: saleDate,
+        dishId: l.dish_id, qty: Number(l.qty), цена_продажи: round2_(Number(l.цена) * k), дата: saleDate,
         locationId: session.location_id, источник: POS_SALE_SOURCE_, внешний_id: l.line_id
       }, session.user_id, session);
       updateRow_('POS_ORDER_LINES', l, { sale_ids: sale.sale_id });
@@ -545,10 +569,24 @@ function posPay_(data, session) {
       });
     });
 
-    updateRow_('POS_ORDERS', order, { статус: 'оплачен', оплачен: now, version: (Number(order.version) || 0) + 1, обновлено: now });
+    // Бонусы: списание (скидка) и начисление кешбэка от суммы, оплаченной деньгами.
+    var accrued = 0;
+    if (guest) {
+      if (bonus) _posBonusTxn_(guest, 'списание', -bonus, order.order_id, 'Оплата заказа №' + order.номер, session);
+      if (settings.включено && settings.кешбэк_процент > 0) {
+        accrued = Math.floor(total * settings.кешбэк_процент / 100);
+        if (accrued) _posBonusTxn_(guest, 'начисление', accrued, order.order_id, 'Кешбэк ' + settings.кешбэк_процент + '% с заказа №' + order.номер, session);
+      }
+      var gf = findOne_('GUESTS', 'guest_id', guest.guest_id);
+      updateRow_('GUESTS', gf, { визитов: (Number(gf.визитов) || 0) + 1, всего_оплачено: round2_((Number(gf.всего_оплачено) || 0) + total), последний_визит: now });
+    }
+
+    updateRow_('POS_ORDERS', order, { статус: 'оплачен', оплачен: now, скидка: bonus, итого: total, бонусы_списано: bonus, бонусы_начислено: accrued,
+      version: (Number(order.version) || 0) + 1, обновлено: now });
     auditLog_(session.user_id, 'Оплачен заказ кассы', 'POS_ORDERS:' + order.order_id, 'открыт',
-      'итого ' + total + (change ? ', сдача ' + change : ''), 'success', session.cascade_id || '');
-    return { order: findOne_('POS_ORDERS', 'order_id', order.order_id), payments: payRows, сдача: change };
+      'итого ' + total + (bonus ? ', бонусами ' + bonus : '') + (change ? ', сдача ' + change : ''), 'success', session.cascade_id || '');
+    return { order: findOne_('POS_ORDERS', 'order_id', order.order_id), payments: payRows, сдача: change, бонусы_списано: bonus, бонусы_начислено: accrued,
+      guest: guest ? _posGuestView_(findOne_('GUESTS', 'guest_id', guest.guest_id), session) : null };
   });
 }
 
@@ -665,7 +703,7 @@ function posSendToKitchen_(data, session) {
     var now = nowIso_();
     fresh.forEach(function (l) { updateRow_('POS_ORDER_LINES', l, { статус: 'на_кухне', на_кухню_в: now }); });
     auditLog_(session.user_id, 'Заказ отправлен на кухню', 'POS_ORDERS:' + order.order_id, null, fresh.length + ' поз.', 'success', session.cascade_id || '');
-    return _posOrderView_(_posTouchOrder_(order));
+    return _posOrderView_(_posTouchOrder_(order), session);
   });
 }
 
@@ -681,7 +719,7 @@ function posPrecheck_(data, session) {
     lines.filter(function (l) { return l.статус === 'новая'; }).forEach(function (l) { updateRow_('POS_ORDER_LINES', l, { статус: 'на_кухне', на_кухню_в: now }); });
     updateRow_('POS_ORDERS', order, { статус: 'пречек', version: (Number(order.version) || 0) + 1, обновлено: now });
     auditLog_(session.user_id, 'Пречек', 'POS_ORDERS:' + order.order_id, 'открыт', 'итого ' + order.итого, 'success', session.cascade_id || '');
-    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id));
+    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id), session);
   });
 }
 
@@ -691,7 +729,7 @@ function posReopenOrder_(data, session) {
     if (order.статус !== 'пречек') throw new Error('Вернуть в работу можно только заказ на пречеке.');
     updateRow_('POS_ORDERS', order, { статус: 'открыт', version: (Number(order.version) || 0) + 1, обновлено: nowIso_() });
     auditLog_(session.user_id, 'Пречек снят', 'POS_ORDERS:' + order.order_id, 'пречек', 'открыт', 'success', session.cascade_id || '');
-    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id));
+    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id), session);
   });
 }
 
@@ -701,13 +739,13 @@ function posMoveOrder_(data, session) {
     _posAssertWaiterOwns_(order, session);
     if (order.статус !== 'открыт' && order.статус !== 'пречек') throw new Error('Перенести можно только неоплаченный заказ.');
     var table = _posTable_(data.tableId, session);
-    if (table.table_id === order.table_id) return _posOrderView_(order);
+    if (table.table_id === order.table_id) return _posOrderView_(order, session);
     var busy = _posTableOrder_(table.table_id, session);
     if (busy) throw new Error('Стол «' + table.название + '» занят (заказ №' + busy.номер + ').');
     var from = order.table_id;
     updateRow_('POS_ORDERS', order, { table_id: table.table_id, version: (Number(order.version) || 0) + 1, обновлено: nowIso_() });
     auditLog_(session.user_id, 'Заказ перенесён', 'POS_ORDERS:' + order.order_id, from || 'с собой', table.название, 'success', session.cascade_id || '');
-    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id));
+    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id), session);
   });
 }
 
@@ -743,6 +781,194 @@ function posMarkLineReady_(data, session) {
   });
 }
 
+// ---------- Гости и бонусы (этап M6) ----------
+
+var POS_LOYALTY_DEFAULTS_ = { включено: true, кешбэк_процент: 5, макс_списание_процент: 30 };
+
+function _posSettingRow_(organizationId, key) {
+  return findRows_('SETTINGS', function (r) { return r.organization_id === organizationId && !r.location_id && r.ключ === key; })[0] || null;
+}
+
+function posGetLoyaltySettings_(session) {
+  var out = {};
+  Object.keys(POS_LOYALTY_DEFAULTS_).forEach(function (k) {
+    var row = _posSettingRow_(session.organization_id, 'loyalty.' + k);
+    var def = POS_LOYALTY_DEFAULTS_[k];
+    if (!row || row.значение === '' || row.значение === null) { out[k] = def; return; }
+    out[k] = typeof def === 'boolean' ? (row.значение === true || String(row.значение) === 'true' || String(row.значение) === 'да') : Number(row.значение);
+  });
+  return out;
+}
+
+function posSaveLoyaltySettings_(data, session) {
+  return withLock_(function () {
+    var cb = Number(data.кешбэк_процент), mx = Number(data.макс_списание_процент);
+    if (isNaN(cb) || cb < 0 || cb > 50) throw new Error('Кешбэк — от 0 до 50%.');
+    if (isNaN(mx) || mx < 0 || mx > 100) throw new Error('Списание бонусами — от 0 до 100% чека.');
+    var vals = { включено: !!data.включено, кешбэк_процент: round2_(cb), макс_списание_процент: round2_(mx) };
+    Object.keys(vals).forEach(function (k) {
+      var row = _posSettingRow_(session.organization_id, 'loyalty.' + k);
+      if (row) updateRow_('SETTINGS', row, { значение: String(vals[k]) });
+      else insertRow_('SETTINGS', { organization_id: session.organization_id, location_id: '', ключ: 'loyalty.' + k, значение: String(vals[k]) });
+    });
+    auditLog_(session.user_id, 'Правила бонусной программы', 'SETTINGS:loyalty', null, JSON.stringify(vals), 'success', session.cascade_id || '');
+    return posGetLoyaltySettings_(session);
+  });
+}
+
+/** +7XXXXXXXXXX из «8 (912) 345-67-89», «+7 912…», «9123456789». Иначе ошибка. */
+function _posNormPhone_(raw) {
+  var d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 10) d = '7' + d;
+  if (d.length === 11 && d.charAt(0) === '8') d = '7' + d.slice(1);
+  if (d.length !== 11 || d.charAt(0) !== '7') throw new Error('Телефон нужен в формате +7 XXX XXX-XX-XX.');
+  return '+' + d;
+}
+
+/** Полный телефон гостя видят только роли с pos_admin; остальным — последние 4 цифры. */
+function _posCanSeePd_(session) {
+  var mods = CONFIG.ROLE_MODULES[session.роль];
+  return mods === 'all' || (Array.isArray(mods) && mods.indexOf('pos_admin') !== -1);
+}
+
+function _posGuestView_(g, session) {
+  if (!g) return null;
+  var full = _posCanSeePd_(session);
+  return {
+    guest_id: g.guest_id, имя: g.имя, телефон: full ? g.телефон : (g.телефон ? '••• ' + String(g.телефон).slice(-4) : ''),
+    день_рождения: full ? g.день_рождения : '', бонусы: round2_(Number(g.бонусы) || 0), визитов: Number(g.визитов) || 0,
+    всего_оплачено: full ? round2_(Number(g.всего_оплачено) || 0) : undefined, последний_визит: g.последний_визит, статус: g.статус
+  };
+}
+
+function _posGuest_(guestId, session) {
+  var g = findOne_('GUESTS', 'guest_id', guestId);
+  assertOwnedByOrg_(session, g, 'GUESTS:' + guestId);
+  if (g.статус === 'обезличен') throw new Error('Карточка гостя обезличена по его запросу.');
+  return g;
+}
+
+/** Проводка по бонусам и обновление кэша баланса (вызывать внутри withLock_). */
+function _posBonusTxn_(guest, type, amount, orderId, reason, session) {
+  amount = round2_(amount);
+  if (!amount) return null;
+  var fresh = findOne_('GUESTS', 'guest_id', guest.guest_id);
+  var balance = round2_((Number(fresh.бонусы) || 0) + amount);
+  if (balance < 0) throw new Error('Недостаточно бонусов: на счёте ' + round2_(Number(fresh.бонусы) || 0) + '.');
+  var row = { txn_id: generateId_('BONUS_TXNS'), organization_id: session.organization_id, guest_id: guest.guest_id, order_id: orderId || '',
+    тип: type, сумма: amount, остаток_после: balance, создано: nowIso_(), user_id: session.user_id, причина: String(reason || '').slice(0, 200) };
+  insertRow_('BONUS_TXNS', row);
+  updateRow_('GUESTS', fresh, { бонусы: balance });
+  return row;
+}
+
+function posFindGuest_(data, session) {
+  var q = String(data.phone || '').replace(/\D/g, '');
+  if (q.length < 4) throw new Error('Введите не меньше 4 цифр телефона.');
+  var exact = null;
+  try { exact = _posNormPhone_(q); } catch (e) { exact = null; }
+  return findRows_('GUESTS', function (g) {
+    if (g.organization_id !== session.organization_id || g.статус === 'обезличен') return false;
+    return exact ? g.телефон === exact : String(g.телефон).slice(-q.length) === q;
+  }).slice(0, 10).map(function (g) { return _posGuestView_(g, session); });
+}
+
+function posSaveGuest_(data, session) {
+  return withLock_(function () {
+    var name = String(data.имя || '').trim().slice(0, 60);
+    if (data.guestId) {
+      if (!_posCanSeePd_(session)) throw new Error('Изменять карточку гостя может менеджер.');
+      var g = _posGuest_(data.guestId, session);
+      var patch = {};
+      if (name) patch.имя = name;
+      if (data.телефон) {
+        var p = _posNormPhone_(data.телефон);
+        var dupe = findRows_('GUESTS', function (x) { return x.organization_id === session.organization_id && x.телефон === p && x.guest_id !== g.guest_id; })[0];
+        if (dupe) throw new Error('Гость с таким телефоном уже есть.');
+        patch.телефон = p;
+      }
+      if (data.день_рождения !== undefined) patch.день_рождения = String(data.день_рождения || '').slice(0, 10);
+      if (data.комментарий !== undefined) patch.комментарий = String(data.комментарий || '').slice(0, 300);
+      updateRow_('GUESTS', g, patch);
+      return _posGuestView_(findOne_('GUESTS', 'guest_id', g.guest_id), session);
+    }
+    if (data.consent !== true) throw new Error('Нужно согласие гостя на обработку персональных данных.');
+    var phone = _posNormPhone_(data.телефон);
+    if (!name) throw new Error('Укажите имя гостя.');
+    var exists = findRows_('GUESTS', function (x) { return x.organization_id === session.organization_id && x.телефон === phone && x.статус !== 'обезличен'; })[0];
+    if (exists) throw new Error('Гость с таким телефоном уже есть: ' + exists.имя + '.');
+    var row = { guest_id: generateId_('GUESTS'), organization_id: session.organization_id, телефон: phone, имя: name,
+      день_рождения: String(data.день_рождения || '').slice(0, 10), согласие_пд: nowIso_(), бонусы: 0, всего_оплачено: 0, визитов: 0,
+      последний_визит: '', статус: 'активен', создано: nowIso_(), комментарий: '', user_id: session.user_id };
+    insertRow_('GUESTS', row);
+    auditLog_(session.user_id, 'Новый гость (согласие на ПД получено)', 'GUESTS:' + row.guest_id, null, row.имя, 'success', session.cascade_id || '');
+    return _posGuestView_(row, session);
+  });
+}
+
+function posAttachGuest_(data, session) {
+  return withLock_(function () {
+    var order = _posOrder_(data.orderId, session);
+    _posAssertWaiterOwns_(order, session);
+    if (order.статус !== 'открыт' && order.статус !== 'пречек') throw new Error('Гостя можно указать только в неоплаченном заказе.');
+    var guestId = '';
+    if (data.guestId) guestId = _posGuest_(data.guestId, session).guest_id;
+    updateRow_('POS_ORDERS', order, { guest_id: guestId, version: (Number(order.version) || 0) + 1, обновлено: nowIso_() });
+    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id), session);
+  });
+}
+
+function posGetGuest_(data, session) {
+  var g = _posGuest_(data.guestId, session);
+  var view = _posGuestView_(g, session);
+  if (_posCanSeePd_(session)) {
+    view.история = findRows_('BONUS_TXNS', function (t) { return t.guest_id === g.guest_id; })
+      .sort(function (a, b) { return String(b.создано).localeCompare(String(a.создано)); }).slice(0, 50);
+    view.согласие_пд = g.согласие_пд; view.комментарий = g.комментарий;
+  }
+  return view;
+}
+
+function posGetGuests_(data, session) {
+  var q = String(data.query || '').toLowerCase().trim(), digits = q.replace(/\D/g, '');
+  return findRows_('GUESTS', function (g) {
+    if (g.organization_id !== session.organization_id || g.статус === 'обезличен') return false;
+    if (!q) return true;
+    return String(g.имя).toLowerCase().indexOf(q) !== -1 || (digits.length >= 3 && String(g.телефон).indexOf(digits) !== -1);
+  }).sort(function (a, b) { return String(b.последний_визит || b.создано).localeCompare(String(a.последний_визит || a.создано)); })
+    .slice(0, 200).map(function (g) { return _posGuestView_(g, session); });
+}
+
+function posAdjustBonus_(data, session) {
+  return withLock_(function () {
+    var g = _posGuest_(data.guestId, session);
+    var delta = Number(data.delta);
+    if (!delta || isNaN(delta)) throw new Error('Укажите, сколько бонусов добавить или списать.');
+    var reason = String(data.reason || '').trim();
+    if (!reason) throw new Error('Укажите причину корректировки.');
+    _posBonusTxn_(g, 'корректировка', delta, '', reason, session);
+    auditLog_(session.user_id, 'Корректировка бонусов', 'GUESTS:' + g.guest_id, null, delta + ': ' + reason, 'success', session.cascade_id || '');
+    return posGetGuest_({ guestId: g.guest_id }, session);
+  });
+}
+
+/** Удаление по запросу гостя (152-ФЗ): имя и телефон стираются, проводки остаются обезличенными. */
+function posAnonymizeGuest_(data, session) {
+  return withLock_(function () {
+    var g = _posGuest_(data.guestId, session);
+    updateRow_('GUESTS', g, { телефон: '', имя: 'Гость удалён', день_рождения: '', комментарий: '', статус: 'обезличен' });
+    auditLog_(session.user_id, 'Гость обезличен по запросу', 'GUESTS:' + g.guest_id, null, null, 'success', session.cascade_id || '');
+    return { guest_id: g.guest_id, статус: 'обезличен' };
+  });
+}
+
+/** Сколько бонусов можно списать в этом заказе: не больше баланса и не больше N% суммы. */
+function _posMaxBonus_(order, guest, settings) {
+  if (!guest || !settings.включено) return 0;
+  var cap = Math.floor((Number(order.сумма) || 0) * settings.макс_списание_процент / 100);
+  return Math.max(0, Math.min(Math.floor(Number(guest.бонусы) || 0), cap));
+}
+
 // ---------- Возвраты и отчёты (этап M5) ----------
 
 /**
@@ -766,9 +992,13 @@ function posRefund_(data, session) {
     var picked = lines.filter(function (l) { return want.indexOf(l.line_id) !== -1; });
     if (picked.length !== want.length) throw new Error('Часть позиций уже возвращена или не относится к заказу.');
     if (!picked.length) throw new Error('Нет позиций для возврата.');
-    var amount = 0;
-    picked.forEach(function (l) { amount += Number(l.сумма) || 0; });
-    amount = round2_(amount);
+    // С учётом скидки бонусами: возвращаем долю оплаченного деньгами.
+    var grossAll = Number(order.сумма) || 0, paidTotal = Number(order.итого) || 0;
+    var kk = grossAll > 0 ? paidTotal / grossAll : 1;
+    var pickedGross = 0;
+    picked.forEach(function (l) { pickedGross += Number(l.сумма) || 0; });
+    var isLast = picked.length === lines.length;
+    var amount = isLast ? round2_(paidTotal - (Number(order.возвращено) || 0)) : round2_(pickedGross * kk);
     // Безнал нельзя вернуть больше, чем им было оплачено по этому заказу.
     if (method !== 'нал') {
       var paidBy = 0;
@@ -778,7 +1008,7 @@ function posRefund_(data, session) {
     var now = nowIso_();
     var saleDate = _posShiftDate_(shift);
     picked.forEach(function (l) {
-      var qty = Number(l.qty), price = Number(l.цена);
+      var qty = Number(l.qty), price = round2_(Number(l.цена) * kk);
       insertRow_('SALES', {
         sale_id: generateId_('SALES'), organization_id: session.organization_id, location_id: session.location_id,
         dish_id: l.dish_id, qty: -qty, цена_продажи: round2_(price), сумма: round2_(-price * qty), себестоимость_на_момент: 0,
@@ -793,6 +1023,26 @@ function posRefund_(data, session) {
     insertRow_('POS_PAYMENTS', pay);
     var refunded = round2_((Number(order.возвращено) || 0) + amount);
     var full = refunded >= round2_(Number(order.итого) || 0);
+    // Бонусы: гостю возвращается доля списанных, начисленные за возвращённое — отменяются
+    // (не ниже нуля: если гость уже потратил, недостающее пишется в причину проводки).
+    if (order.guest_id) {
+      var g = findOne_('GUESTS', 'guest_id', order.guest_id);
+      if (g && g.статус !== 'обезличен') {
+        var done = { возврат_списания: 0, отмена_начисления: 0 };
+        findRows_('BONUS_TXNS', function (t) { return t.order_id === order.order_id && (t.тип in done); }).forEach(function (t) { done[t.тип] += Math.abs(Number(t.сумма) || 0); });
+        var share = grossAll > 0 ? pickedGross / grossAll : 1;
+        var spent = Number(order.бонусы_списано) || 0, acc = Number(order.бонусы_начислено) || 0;
+        var back = isLast ? spent - done.возврат_списания : Math.floor(spent * share);
+        var cancel = isLast ? acc - done.отмена_начисления : Math.floor(acc * share);
+        if (back > 0) _posBonusTxn_(g, 'возврат_списания', back, order.order_id, 'Возврат по заказу №' + order.номер, session);
+        if (cancel > 0) {
+          var bal = Number(findOne_('GUESTS', 'guest_id', g.guest_id).бонусы) || 0;
+          var can = Math.min(cancel, Math.floor(bal));
+          if (can > 0) _posBonusTxn_(g, 'отмена_начисления', -can, order.order_id, 'Возврат по заказу №' + order.номер + (can < cancel ? ' (не хватило ' + (cancel - can) + ' — бонусы уже потрачены)' : ''), session);
+        }
+        updateRow_('GUESTS', findOne_('GUESTS', 'guest_id', g.guest_id), { всего_оплачено: round2_(Math.max(0, (Number(g.всего_оплачено) || 0) - amount)) });
+      }
+    }
     updateRow_('POS_ORDERS', order, { возвращено: refunded, статус: full ? 'возврат' : 'оплачен', version: (Number(order.version) || 0) + 1, обновлено: now });
     auditLog_(session.user_id, full ? 'Полный возврат заказа' : 'Частичный возврат заказа', 'POS_ORDERS:' + order.order_id, 'оплачен',
       amount + ' ₽, ' + method + ': ' + reason, 'success', session.cascade_id || '');
@@ -850,7 +1100,7 @@ function posGetStaffReport_(data, session) {
 function migratePosSchema_() {
   var out = {};
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES', 'MODIFIER_GROUPS', 'MODIFIERS',
-    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST'].forEach(function (k) {
+    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS'].forEach(function (k) {
     try { out[k] = ensureSchemaColumns_(k); } catch (e) { out[k] = 'нет листа — запустите initializeDatabase()'; }
   });
   return out;
@@ -1073,7 +1323,7 @@ function posFulfillPendingSalesTrigger_() {
 function runPosTests_() {
   var out = []; function ok(n, c, d) { out.push({ name: n, status: c ? 'OK' : 'FAIL', detail: d || '' }); }
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES',
-    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST'].forEach(function (k) {
+    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS'].forEach(function (k) {
     ok('SCHEMA_' + k, Array.isArray(CONFIG.SCHEMA[k]) && CONFIG.SHEETS[k] === k && !!CONFIG.ID_PREFIXES[k], 'sheet, schema, id prefix');
   });
   ['POS_GET_MENU', 'POS_OPEN_SHIFT', 'POS_GET_SHIFT', 'POS_CLOSE_SHIFT', 'POS_CREATE_ORDER', 'POS_ADD_LINE', 'POS_UPDATE_LINE',
@@ -1082,7 +1332,9 @@ function runPosTests_() {
     'POS_GET_KITCHEN_QUEUE', 'POS_MARK_LINE_READY',
     'POS_GET_MODIFIERS', 'POS_SAVE_MODIFIER_GROUP', 'POS_SAVE_MODIFIER', 'POS_LINK_DISH_MODIFIERS',
     'POS_GET_STOP_LIST', 'POS_SET_STOP', 'POS_CLEAR_STOP', 'POS_RECALC_STOP_LIST',
-    'POS_REFUND', 'POS_GET_STAFF_REPORT', 'POS_GET_SHIFTS'].forEach(function (a) {
+    'POS_REFUND', 'POS_GET_STAFF_REPORT', 'POS_GET_SHIFTS',
+    'POS_FIND_GUEST', 'POS_SAVE_GUEST', 'POS_ATTACH_GUEST', 'POS_GET_GUEST', 'POS_GET_GUESTS', 'POS_ADJUST_BONUS',
+    'POS_ANONYMIZE_GUEST', 'POS_GET_LOYALTY_SETTINGS', 'POS_SAVE_LOYALTY_SETTINGS'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');
