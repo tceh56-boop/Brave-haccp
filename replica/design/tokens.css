@@ -1,0 +1,6 @@
+/* Модуль «Касса» — роли поверх :root ЦЕХ. Вставляется в <style> gas/Index.html. */
+:root{
+  --pos-text-muted:#6E5E50; --pos-border-input:#8A7A6A;
+  --pos-success:#12823A; --pos-danger:#C62828; --pos-on-warning:#1A1410;
+  --pos-tap:48px; --pos-max:1180px;
+}
