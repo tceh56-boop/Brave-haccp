@@ -174,6 +174,10 @@
   .kitchen-line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee;font-size:16px;}
   .kitchen-line.done{color:var(--pos-text-muted);text-decoration:line-through;}
   .kitchen-line .btn{width:auto;margin:0;min-height:var(--pos-tap);}
+  .pos-dish.stopped,.pos-dish.stopped:disabled{background:#F4EEE7;border-style:dashed;opacity:1;color:var(--pos-text-muted);}
+  .pos-stop-badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:700;background:var(--pos-danger);color:#fff;}
+  .stop-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eee;}
+  .stop-row .btn{width:auto;margin:0;min-height:var(--pos-tap);}
   .pos-mods{display:block;color:var(--pos-text-muted);font-size:12px;}
   .pos-dish .pos-plus{color:var(--pos-text-muted);font-size:12px;}
   #posModOverlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center;}
@@ -252,6 +256,7 @@
   <button class="menuItem active" data-view="dashboard" data-module="dashboard" onclick="navTo('dashboard')">Главная</button>
   <button class="menuItem" data-view="pos" data-module="pos" onclick="navTo('pos')">Касса и зал</button>
   <button class="menuItem" data-view="kitchen" data-module="pos_kitchen" onclick="navTo('kitchen')">Кухня: заказы</button>
+  <button class="menuItem" data-view="stoplist" data-module="pos_stop" onclick="navTo('stoplist')">Стоп-лист</button>
   <button class="menuItem" data-view="warehouse" data-module="warehouse_view" onclick="navTo('warehouse')">Склад</button>
   <button class="menuItem" data-view="marking" data-module="marking" onclick="navTo('marking')">🏷️ Маркировка</button>
   <button class="menuItem" data-view="writeoff" data-module="writeoffs" onclick="navTo('writeoff')">Списание</button>
@@ -1435,6 +1440,7 @@
       <button data-pos-tab="hall" data-module-gate="pos_admin" onclick="posShowTab('hall')">Настройка зала</button>
       <button data-pos-tab="mods" data-module-gate="pos_admin" onclick="posShowTab('mods')">Модификаторы</button>
       <button data-module-gate="pos_kitchen" onclick="navTo('kitchen')">Кухня →</button>
+      <button data-module-gate="pos_stop" onclick="navTo('stoplist')">Стоп-лист →</button>
     </div>
 
     <div id="posFloorPanel" class="card hidden">
@@ -1573,12 +1579,37 @@
     <div class="card">
       <div class="row-between">
         <h2 id="kitchenTitle" style="margin:0;">Кухня: заказы</h2>
-        <button class="btn small secondary" onclick="kitchenLoad()">Обновить</button>
+        <span><button class="btn small secondary" data-module-gate="pos_stop" onclick="navTo('stoplist')">Стоп-лист</button>
+        <button class="btn small secondary" onclick="kitchenLoad()">Обновить</button></span>
       </div>
       <div id="kitchenInfo" class="pos-muted" aria-live="polite"></div>
     </div>
     <div id="kitchenQueue" class="kitchen-grid"></div>
     <div id="kitchenErr" class="err" role="alert"></div>
+  </section>
+
+  <!-- Модуль «Касса», M4: стоп-лист точки. Авто — по годному остатку и утверждённой ТТК, ручной — с причиной. -->
+  <section id="view-stoplist" class="hidden" aria-labelledby="stopTitle">
+    <div class="card">
+      <div class="row-between">
+        <h2 id="stopTitle" style="margin:0;">Стоп-лист</h2>
+        <button class="btn small" onclick="stopRecalc()">Пересчитать по остаткам</button>
+      </div>
+      <p class="muted">Блюдо попадает в стоп автоматически, если на складе не хватает сырья даже на одну порцию по утверждённой ТТК, и выходит из стопа после прихода. Пока смена открыта, система пересчитывает стоп-лист каждые 15 минут.</p>
+      <div id="stopRecalcResult" aria-live="polite"></div>
+    </div>
+    <div class="card">
+      <h2>Сейчас в стопе</h2>
+      <div id="stopList" aria-live="polite">Загрузка…</div>
+    </div>
+    <div class="card">
+      <h2>Поставить в стоп вручную</h2>
+      <label for="stopDish" class="muted">Блюдо</label><select id="stopDish"></select>
+      <label for="stopReason" class="muted">Причина</label>
+      <input id="stopReason" maxlength="200" placeholder="Например: закончилось тесто, сломалась печь">
+      <button class="btn secondary" onclick="stopSet()">Поставить в стоп</button>
+    </div>
+    <div id="stopErr" class="err" role="alert"></div>
   </section>
 
 </main>
@@ -1606,13 +1637,13 @@
    */
   var CLIENT_ROLE_MODULES = {
     'ADMIN': 'all',
-    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
-    'ШЕФ-ПОВАР': ['pos_kitchen', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
-    'ПОВАР': ['pos_kitchen', 'recipes', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks'],
+    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
+    'ШЕФ-ПОВАР': ['pos_kitchen', 'pos_stop', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
+    'ПОВАР': ['pos_kitchen', 'pos_stop', 'recipes', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks'],
     'КЛАДОВЩИК': ['warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations'],
     'БУХГАЛТЕР': ['recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales'],
     'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products'],
-    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
+    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
     'ЛАБОРАНТ': ['lab'],
     'КАССИР': ['pos', 'pos_shift'],
     'ОФИЦИАНТ': ['pos']
@@ -1817,6 +1848,7 @@
     posStopPolling();
     if (name === 'pos') initPosView();
     if (name === 'kitchen') initKitchenView();
+    if (name === 'stoplist') stopLoad();
     if (name === 'recovery') loadEmergencyCenterUI();
     if (name === 'production') loadBreakdownPlansUI();
   }
@@ -4885,6 +4917,7 @@ function posShowPanels(tab) {
 }
 
 function posShowTab(tab) {
+  if (tab === 'order' && POS.tab !== 'order' && POS.menu) posLoadMenu(); // стоп-лист мог измениться
   POS.tab = tab;
   posStopPolling();
   posShowPanels(tab);
@@ -5189,6 +5222,50 @@ function kitchenLoad() {
   }, function (e) { document.getElementById('kitchenErr').textContent = e; });
 }
 
+// ---------- Стоп-лист ----------
+function stopErr(m) { document.getElementById('stopErr').textContent = m || ''; }
+function stopLoad() {
+  stopErr('');
+  call('POS_GET_STOP_LIST', {}, function (d) {
+    var el = document.getElementById('stopList');
+    el.innerHTML = d.stops.length ? d.stops.map(function (s) {
+      var when = new Date(s.создано).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return '<div class="stop-row"><span><b>' + posEsc(s.название) + '</b> <span class="badge ' + (s.источник === 'ручной' ? 'b-info' : 'pos-badge-cancel') + '">' + (s.источник === 'ручной' ? 'вручную' : 'нет сырья') + '</span>' +
+        '<span class="pos-mods">' + posEsc(s.причина) + '</span><span class="pos-mods">' + posEsc(when) + (s.кто ? ' · ' + posEsc(s.кто) : '') + '</span></span>' +
+        '<button class="btn small secondary" onclick="stopClear(\'' + posEsc(s.stop_id) + '\')" aria-label="Снять стоп: ' + posEsc(s.название) + '">Снять</button></div>';
+    }).join('') : '<p><span class="badge b-ok">Всё в продаже</span> Стоп-лист пуст.</p>';
+    var sel = document.getElementById('stopDish'), keep = sel.value;
+    sel.innerHTML = d.dishes.map(function (x) { return '<option value="' + posEsc(x.dish_id) + '">' + posEsc(x.название) + '</option>'; }).join('');
+    if (keep) sel.value = keep;
+  }, function (e) { document.getElementById('stopList').textContent = ''; stopErr(e); });
+}
+
+function stopRecalc() {
+  stopErr('');
+  var out = document.getElementById('stopRecalcResult');
+  out.innerHTML = '<p class="muted">Считаем по остаткам…</p>';
+  call('POS_RECALC_STOP_LIST', {}, function (r) {
+    var h = [];
+    if (r.stopped.length) h.push('<div class="taskrow"><b>В стоп:</b> ' + r.stopped.map(function (x) { return posEsc(x.название); }).join(', ') + '</div>');
+    if (r.lifted.length) h.push('<div class="taskrow"><b>Снова в продаже:</b> ' + r.lifted.map(function (x) { return posEsc(x.название); }).join(', ') + '</div>');
+    if (r.low.length) h.push('<div class="taskrow"><b>Заканчивается:</b> ' + r.low.map(function (x) { return posEsc(x.название) + ' — ' + x.порций + ' порц.'; }).join(', ') + '</div>');
+    if (r.no_ttk) h.push('<div class="muted">Без утверждённой ТТК (не проверяются автоматически): ' + r.no_ttk + '</div>');
+    out.innerHTML = h.length ? h.join('') : '<p class="muted">Изменений нет: сырья хватает на все блюда с ТТК.</p>';
+    stopLoad();
+  }, function (e) { out.innerHTML = ''; stopErr(e); });
+}
+
+function stopSet() {
+  var dishId = document.getElementById('stopDish').value, reason = document.getElementById('stopReason').value.trim();
+  if (!dishId) { stopErr('Выберите блюдо.'); return; }
+  if (!reason) { stopErr('Укажите причину стопа.'); return; }
+  call('POS_SET_STOP', { dishId: dishId, reason: reason }, function () { document.getElementById('stopReason').value = ''; stopLoad(); }, stopErr);
+}
+
+function stopClear(stopId) {
+  call('POS_CLEAR_STOP', { stopId: stopId }, stopLoad, stopErr);
+}
+
 function kitchenReady(lineId) {
   call('POS_MARK_LINE_READY', { lineId: lineId }, kitchenLoad, function (e) { document.getElementById('kitchenErr').textContent = e; kitchenLoad(); });
 }
@@ -5242,6 +5319,10 @@ function posRenderMenu() {
   var dishes = m.dishes.filter(function (d) { return d.категория === POS.cat; });
   document.getElementById('posDishes').innerHTML = dishes.length ? dishes.map(function (d) {
     var hasMods = d.modifier_groups && d.modifier_groups.length;
+    if (d.стоп) {
+      return '<button class="pos-dish stopped" disabled title="' + posEsc(d.стоп.причина) + '" aria-label="' + posEsc(d.название + ', в стоп-листе: ' + d.стоп.причина) + '">' +
+        '<span>' + posEsc(d.название) + '</span><span><span class="pos-stop-badge">стоп</span> <span class="pos-plus">' + posEsc(d.стоп.источник === 'авто_остатки' ? 'нет сырья' : d.стоп.причина) + '</span></span></button>';
+    }
     return '<button class="pos-dish" onclick="posPickDish(\'' + posEsc(d.dish_id) + '\')" aria-label="' + posEsc(d.название + ', ' + posMoney(d.цена) + (hasMods ? ', с выбором вариантов' : '')) + '">' +
       '<span>' + posEsc(d.название) + '</span><span class="pos-price">' + posMoney(d.цена) + (hasMods ? ' <span class="pos-plus">· варианты</span>' : '') + '</span></button>';
   }).join('') : '<p class="pos-muted">В меню нет блюд с ценой продажи. Укажите цену в разделе «Рецепты и Тех.карты».</p>';
@@ -5310,7 +5391,7 @@ function posAdd(dishId, modifierIds) {
   posWithOrder(function (o) {
     call('POS_ADD_LINE', { orderId: o.order_id, dishId: dishId, qty: 1, modifierIds: modifierIds || [], version: o.version },
       function (v) { done(); posApplyOrder(v); },
-      function (e) { done(); posErr(e); posReloadOrder(); });
+      function (e) { done(); posErr(e); posReloadOrder(); if (/стоп-листе/.test(String(e))) posLoadMenu(); });
   }, function (e) { done(); posErr(e); });
 }
 

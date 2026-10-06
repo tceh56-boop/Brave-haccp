@@ -5,7 +5,8 @@
  * ЦЕХ — Pos.gs
  * Модуль «Касса» (replica/architecture.md): M1 — смены, заказы «с собой», оплата;
  * M2 — залы и столы, официант (свои столы, отправка на кухню, пречек), очередь кухни;
- * M3 — модификаторы: группы с мин/макс, надбавка к цене, расход продукта со склада.
+ * M3 — модификаторы: группы с мин/макс, надбавка к цене, расход продукта со склада;
+ * M4 — стоп-лист: ручной и авто по годному остатку и утверждённой ТТК.
  *
  * Поток: открыть смену → заказ → позиции → оплата → по строке заказа создаётся продажа
  * в SALES (источник 'касса') через createSale_ — те же валидация/аудит, что у ручного
@@ -173,11 +174,14 @@ function posCloseShift_(data, session) {
 function posGetMenu_(session) {
   var cats = {};
   getAllRows_('CATEGORIES').forEach(function (c) { cats[c.category_id] = c.название; });
+  var stops = {};
+  _posActiveStops_(session).forEach(function (s) { if (!stops[s.dish_id] || s.источник === 'ручной') stops[s.dish_id] = s; });
   var dishes = getDishes_(session.organization_id).filter(function (d) {
     return d.статус !== 'архив' && Number(d.цена_продажи) > 0;
   }).map(function (d) {
     return { dish_id: d.dish_id, название: d.название, цена: round2_(Number(d.цена_продажи)), категория_id: d.категория_id || '', категория: cats[d.категория_id] || 'Без категории',
-      modifier_groups: _posDishModifierGroups_(d.dish_id, session.organization_id) };
+      modifier_groups: _posDishModifierGroups_(d.dish_id, session.organization_id),
+      стоп: stops[d.dish_id] ? { причина: stops[d.dish_id].причина, источник: stops[d.dish_id].источник } : null };
   });
   dishes.sort(function (a, b) { return a.категория === b.категория ? String(a.название).localeCompare(String(b.название), 'ru') : String(a.категория).localeCompare(String(b.категория), 'ru'); });
   var categories = [];
@@ -380,6 +384,8 @@ function posAddLine_(data, session) {
     var dish = findOne_('DISHES', 'dish_id', data.dishId);
     assertOwnedByOrg_(session, dish, 'DISHES:' + data.dishId);
     if (dish.статус === 'архив') throw new Error('Блюдо в архиве и не продаётся.');
+    var stop = _posActiveStops_(session).filter(function (s) { return s.dish_id === dish.dish_id; })[0];
+    if (stop) throw new Error('Блюдо «' + dish.название + '» в стоп-листе: ' + stop.причина);
     var basePrice = Number(dish.цена_продажи);
     if (!(basePrice > 0)) throw new Error('У блюда «' + dish.название + '» не указана цена продажи.');
     var qty = Number(data.qty || 1);
@@ -720,6 +726,123 @@ function posMarkLineReady_(data, session) {
   });
 }
 
+// ---------- Стоп-лист (этап M4) ----------
+
+var POS_LOW_PORTIONS_ = 5; // «осталось мало» — предупреждение в меню кассы
+
+function _posActiveStops_(session) {
+  return findRows_('STOP_LIST', function (s) {
+    return s.organization_id === session.organization_id && s.location_id === session.location_id && !s.снято;
+  });
+}
+
+/**
+ * Сколько порций блюда можно приготовить из ГОДНОГО остатка точки по утверждённой ТТК
+ * (брутто на порцию — та же функция, что и при списании продажи). null — посчитать нельзя
+ * (нет утверждённой ТТК или рецептуры): такое блюдо автоматически не стопится.
+ */
+function _posDishPortions_(dish, session) {
+  var ttk, recipe;
+  try {
+    ttk = getCurrentTtk_(dish.dish_id, session);
+    if (!ttk) return null;
+    recipe = getRecipeLines_('DISH', dish.dish_id, session);
+    if (!recipe.length) return null;
+  } catch (e) { return null; }
+  var lines = _saleGrossNetLines_(recipe, 1);
+  if (!lines.length) return null;
+  var portions = Infinity, short = null;
+  lines.forEach(function (l) {
+    var have = getUsableStockLevel_(l.product_id, session.location_id);
+    var n = Math.floor((have + 1e-9) / l.gross);
+    if (n < portions) { portions = n; short = { name: l.name, have: round2_(have), need: round2_(l.gross), unit: l.единица }; }
+  });
+  return { portions: portions === Infinity ? null : portions, short: short };
+}
+
+/**
+ * Пересчёт авто-стопов по остаткам: блюдо без хотя бы одной порции — в стоп с причиной
+ * (какого сырья не хватает), появилась порция — авто-стоп снимается. Ручные стопы не трогает.
+ */
+function posRecalcStopList_(session) {
+  return withLock_(function () {
+    var active = {};
+    _posActiveStops_(session).forEach(function (s) { (active[s.dish_id] = active[s.dish_id] || []).push(s); });
+    var result = { stopped: [], lifted: [], low: [], no_ttk: 0 };
+    getDishes_(session.organization_id).filter(function (d) { return d.статус !== 'архив' && Number(d.цена_продажи) > 0; }).forEach(function (d) {
+      var calc = _posDishPortions_(d, session);
+      if (!calc || calc.portions === null) { result.no_ttk++; return; }
+      var auto = (active[d.dish_id] || []).filter(function (s) { return s.источник === 'авто_остатки'; })[0];
+      if (calc.portions < 1) {
+        if (!auto) {
+          var sh = calc.short;
+          var row = { stop_id: generateId_('STOP_LIST'), organization_id: session.organization_id, location_id: session.location_id, dish_id: d.dish_id,
+            причина: 'Не хватает: ' + sh.name + ' (есть ' + sh.have + ' ' + (sh.unit || '') + ', нужно ' + sh.need + ' ' + (sh.unit || '') + ' на порцию)',
+            источник: 'авто_остатки', создано: nowIso_(), user_id: session.user_id };
+          insertRow_('STOP_LIST', row);
+          result.stopped.push({ dish_id: d.dish_id, название: d.название, причина: row.причина });
+        }
+      } else {
+        if (auto) {
+          updateRow_('STOP_LIST', auto, { снято: nowIso_(), снял_id: session.user_id });
+          result.lifted.push({ dish_id: d.dish_id, название: d.название });
+        }
+        if (calc.portions < POS_LOW_PORTIONS_) result.low.push({ dish_id: d.dish_id, название: d.название, порций: calc.portions });
+      }
+    });
+    if (result.stopped.length || result.lifted.length) {
+      auditLog_(session.user_id, 'Пересчёт стоп-листа', 'STOP_LIST:' + session.location_id, null,
+        'в стоп ' + result.stopped.length + ', снято ' + result.lifted.length, 'success', session.cascade_id || '');
+    }
+    return result;
+  });
+}
+
+function posGetStopList_(session) {
+  var dishes = {};
+  getDishes_(session.organization_id).forEach(function (d) { dishes[d.dish_id] = d.название; });
+  var names = {};
+  getAllRows_('USERS').forEach(function (u) { if (u.organization_id === session.organization_id) names[u.user_id] = u.имя; });
+  var stops = _posActiveStops_(session).map(function (s) {
+    return { stop_id: s.stop_id, dish_id: s.dish_id, название: dishes[s.dish_id] || s.dish_id, причина: s.причина, источник: s.источник,
+      создано: s.создано, кто: s.user_id === 'system' ? 'автоматически' : (names[s.user_id] || '') };
+  }).sort(function (a, b) { return String(b.создано).localeCompare(String(a.создано)); });
+  // Список блюд для ручного стопа: у повара нет доступа к меню кассы (модуль pos).
+  var menu = getDishes_(session.organization_id).filter(function (d) { return d.статус !== 'архив' && Number(d.цена_продажи) > 0; })
+    .map(function (d) { return { dish_id: d.dish_id, название: d.название }; })
+    .sort(function (a, b) { return String(a.название).localeCompare(String(b.название), 'ru'); });
+  return { stops: stops, dishes: menu };
+}
+
+function posSetStop_(data, session) {
+  return withLock_(function () {
+    var dish = findOne_('DISHES', 'dish_id', data.dishId);
+    assertOwnedByOrg_(session, dish, 'DISHES:' + data.dishId);
+    var reason = String(data.reason || '').trim();
+    if (!reason) throw new Error('Укажите причину стопа.');
+    var manual = _posActiveStops_(session).filter(function (s) { return s.dish_id === dish.dish_id && s.источник === 'ручной'; })[0];
+    if (manual) throw new Error('Блюдо «' + dish.название + '» уже в стоп-листе.');
+    var row = { stop_id: generateId_('STOP_LIST'), organization_id: session.organization_id, location_id: session.location_id, dish_id: dish.dish_id,
+      причина: reason.slice(0, 200), источник: 'ручной', создано: nowIso_(), user_id: session.user_id };
+    insertRow_('STOP_LIST', row);
+    auditLog_(session.user_id, 'Блюдо в стоп-листе', 'DISHES:' + dish.dish_id, null, row.причина, 'success', session.cascade_id || '');
+    return row;
+  });
+}
+
+/** Снимает стоп. Авто-стоп при нехватке сырья вернётся при следующем пересчёте — это честно. */
+function posClearStop_(data, session) {
+  return withLock_(function () {
+    var stop = findOne_('STOP_LIST', 'stop_id', data.stopId);
+    assertOwnedByOrg_(session, stop, 'STOP_LIST:' + data.stopId);
+    if (stop.location_id !== session.location_id) throw new Error('Стоп относится к другой точке.');
+    if (stop.снято) throw new Error('Стоп уже снят.');
+    updateRow_('STOP_LIST', stop, { снято: nowIso_(), снял_id: session.user_id });
+    auditLog_(session.user_id, 'Стоп снят', 'DISHES:' + stop.dish_id, stop.причина, 'снято', 'success', session.cascade_id || '');
+    return { stop_id: stop.stop_id, снято: true };
+  });
+}
+
 // ---------- Списание по ТТК (фон) ----------
 
 /**
@@ -807,6 +930,8 @@ function posFulfillPendingSalesTrigger_() {
           var s = { user_id: 'system', organization_id: org.organization_id, location_id: loc.location_id, role: 'ADMIN', 'роль': 'ADMIN', allowed_locations: [loc.location_id], cascade_id: '', operation_id: '' };
           posFulfillPendingSales_(s, POS_FULFILL_BATCH_LIMIT_);
           posFulfillModifierUsage_(s, POS_FULFILL_BATCH_LIMIT_);
+          // Стоп-лист пересчитываем только на работающей точке (открыта смена) — экономим время тика.
+          if (_posOpenShift_(s)) posRecalcStopList_(s);
         } catch (e) { logSystemError_('posFulfillPendingSalesTrigger_', org.organization_id, 'pos', e); }
       });
     });
@@ -818,14 +943,15 @@ function posFulfillPendingSalesTrigger_() {
 function runPosTests_() {
   var out = []; function ok(n, c, d) { out.push({ name: n, status: c ? 'OK' : 'FAIL', detail: d || '' }); }
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES',
-    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE'].forEach(function (k) {
+    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST'].forEach(function (k) {
     ok('SCHEMA_' + k, Array.isArray(CONFIG.SCHEMA[k]) && CONFIG.SHEETS[k] === k && !!CONFIG.ID_PREFIXES[k], 'sheet, schema, id prefix');
   });
   ['POS_GET_MENU', 'POS_OPEN_SHIFT', 'POS_GET_SHIFT', 'POS_CLOSE_SHIFT', 'POS_CREATE_ORDER', 'POS_ADD_LINE', 'POS_UPDATE_LINE',
     'POS_GET_ORDER', 'POS_GET_ORDERS', 'POS_PAY', 'POS_CANCEL_ORDER', 'POS_FULFILL_PENDING',
     'POS_GET_FLOOR', 'POS_SEND_TO_KITCHEN', 'POS_PRECHECK', 'POS_MOVE_ORDER', 'POS_REOPEN_ORDER', 'POS_SAVE_HALL', 'POS_SAVE_TABLE',
     'POS_GET_KITCHEN_QUEUE', 'POS_MARK_LINE_READY',
-    'POS_GET_MODIFIERS', 'POS_SAVE_MODIFIER_GROUP', 'POS_SAVE_MODIFIER', 'POS_LINK_DISH_MODIFIERS'].forEach(function (a) {
+    'POS_GET_MODIFIERS', 'POS_SAVE_MODIFIER_GROUP', 'POS_SAVE_MODIFIER', 'POS_LINK_DISH_MODIFIERS',
+    'POS_GET_STOP_LIST', 'POS_SET_STOP', 'POS_CLEAR_STOP', 'POS_RECALC_STOP_LIST'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');

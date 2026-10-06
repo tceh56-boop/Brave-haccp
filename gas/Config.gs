@@ -219,7 +219,9 @@ var CONFIG = {
     POS_HALLS: 'POS_HALLS', POS_TABLES: 'POS_TABLES',
     // Этап M3: модификаторы и их расход со склада.
     MODIFIER_GROUPS: 'MODIFIER_GROUPS', MODIFIERS: 'MODIFIERS', DISH_MODIFIER_LINKS: 'DISH_MODIFIER_LINKS',
-    POS_MODIFIER_USAGE: 'POS_MODIFIER_USAGE'
+    POS_MODIFIER_USAGE: 'POS_MODIFIER_USAGE',
+    // Этап M4: стоп-лист.
+    STOP_LIST: 'STOP_LIST'
   },
 
   // Схема заголовков для initializeDatabase(). Порядок колонок = порядок в листе.
@@ -751,13 +753,16 @@ var CONFIG = {
     DISH_MODIFIER_LINKS: ['link_id','organization_id','dish_id','group_id','порядок','статус'],
     // Расход продуктов модификаторов по оплаченным позициям. статус: ожидает | списано | ошибка.
     POS_MODIFIER_USAGE: ['usage_id','organization_id','location_id','order_id','line_id','sale_id','modifier_id','product_id',
-      'qty','единица','статус','ошибка','создано','списано_в','cascade_id']
+      'qty','единица','статус','ошибка','создано','списано_в','cascade_id'],
+    // Стоп-лист точки. Активен, пока «снято» пусто. источник: ручной | авто_остатки.
+    // Авто-стопы ставит и снимает пересчёт по остаткам; ручные — только человек.
+    STOP_LIST: ['stop_id','organization_id','location_id','dish_id','причина','источник','создано','user_id','снято','снял_id']
   },
 
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
-    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU',
+    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
     RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL',
@@ -903,6 +908,8 @@ var CONFIG = {
     POS_GET_KITCHEN_QUEUE: 'pos_kitchen', POS_MARK_LINE_READY: 'pos_kitchen',
     // Этап M3: модификаторы.
     POS_GET_MODIFIERS: 'pos_admin', POS_SAVE_MODIFIER_GROUP: 'pos_admin', POS_SAVE_MODIFIER: 'pos_admin', POS_LINK_DISH_MODIFIERS: 'pos_admin',
+    // Этап M4: стоп-лист — ведут кухня и менеджмент (pos_stop); кассир видит стопы в меню кассы.
+    POS_GET_STOP_LIST: 'pos_stop', POS_SET_STOP: 'pos_stop', POS_CLEAR_STOP: 'pos_stop', POS_RECALC_STOP_LIST: 'pos_stop',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',
@@ -1237,18 +1244,18 @@ var CONFIG = {
     // и раньше через 'products' — но теперь это отдельное, явно выданное право, а не
     // побочный эффект обычного доступа к продуктам организации. ШЕФ-ПОВАР/КАЛЬКУЛЯТОР его
     // не получают (см. докстринг у CREATE_GLOBAL_PRODUCT в ACTION_MODULE выше).
-    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
-    'ШЕФ-ПОВАР': ['pos_kitchen', 'marking', 'critical_incidents', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales', 'safety', 'safety_admin', 'offline'],
+    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
+    'ШЕФ-ПОВАР': ['pos_kitchen', 'pos_stop', 'marking', 'critical_incidents', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales', 'safety', 'safety_admin', 'offline'],
     // ПОВАР: чтение ТТК/рецептур/полуфабрикатов и производственный контур.
     // Себестоимость и Food Cost доступны через ТТК/рецептуры, но права на изменение
     // рецептур/ТТК и финансовые отчёты не выдаются.
-    'ПОВАР': ['pos_kitchen', 'marking', 'recipes', 'critical_incidents', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks', 'safety', 'offline'],
+    'ПОВАР': ['pos_kitchen', 'pos_stop', 'marking', 'recipes', 'critical_incidents', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks', 'safety', 'offline'],
     // КЛАДОВЩИК: склад + чтение ТТК/рецептур для понимания потребности и себестоимости
     // сырья. Производственный и финансовый контур остаётся закрытым.
     'КЛАДОВЩИК': ['marking', 'critical_incidents', 'warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations', 'safety', 'offline'],
     'БУХГАЛТЕР': ['enterprise_control', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales', 'safety'],
     'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products', 'safety'],
-    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
+    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
     // Модуль «Касса»: кассир принимает заказы и оплату в своей точке, отмены — у менеджера.
     'КАССИР': ['pos', 'pos_shift', 'safety', 'offline'],
     // Официант: зал, свои заказы, отправка на кухню и пречек. Оплата и смена — у кассира
