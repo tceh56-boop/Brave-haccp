@@ -397,6 +397,16 @@
       <div class="err" id="npErr"></div>
     </div>
 
+    <!-- Приёмка по накладной (перенесено из-за пределов <main>; сервер: SCAN_INVOICE_PREVIEW / CONFIRM_INVOICE_RECEIPT). -->
+    <div class="card" id="enterprise-intake" data-module-gate="warehouse_receive">
+      <h2>📷 Приёмка по накладной</h2>
+      <p class="muted">Сфотографируйте накладную или загрузите PDF. Система распознает документ, проверит его и предложит провести приход.</p>
+      <label class="fileBtn" for="invoice-file">Сфотографировать или выбрать накладную</label>
+      <input id="invoice-file" class="hidden" type="file" accept="image/*,application/pdf" capture="environment" onchange="invoiceFileChosen()">
+      <div id="invoice-file-name" class="muted"></div>
+      <button class="btn" onclick="scanAndReceiveInvoiceUI()">Распознать и проверить</button>
+      <div id="invoice-result" aria-live="polite"></div>
+    </div>
     <div class="card"><h2>Склад</h2><table id="tblWarehouse"><thead><tr><th>Продукт</th><th>Остаток</th></tr></thead><tbody></tbody></table></div>
   </section>
 
@@ -418,6 +428,19 @@
         <button class="btn secondary small" style="width:auto;" onclick="document.getElementById('recoveryDetailCard').classList.add('hidden')">Закрыть</button>
       </div>
       <div id="recoveryDetail"></div>
+    </div>
+    <!-- Аварийный центр (перенесено из-за пределов <main>; сервер: GET_EMERGENCY_CENTER / SYNC_OFFLINE_QUEUE). -->
+    <div class="card" id="stage11-center">
+      <div class="row-between">
+        <h2 style="margin:0;">🚨 Аварийный центр</h2>
+        <button class="btn secondary small" style="width:auto;" onclick="loadEmergencyCenterUI()">Обновить</button>
+      </div>
+      <p class="muted">Критические инциденты, карантин, отклонения, просроченные задачи, аварии оборудования и проблемные накладные — в одном месте.</p>
+      <div id="stage11-emergency" aria-live="polite"></div>
+      <div class="row-between" style="margin-top:10px;">
+        <span id="offline-queue-info" class="muted"></span>
+        <button class="btn secondary small" style="width:auto;" data-module-gate="offline" onclick="syncOfflineUI()">Отправить сохранённое без сети</button>
+      </div>
     </div>
   </section>
 
@@ -1044,6 +1067,18 @@
         </select>
       </div>
       <div id="productionList" class="muted">Загрузка…</div>
+    </div>
+    <!-- Карта разбора сырья (перенесено из-за пределов <main>; сервер: GET_BREAKDOWN_PLANS / GET_BREAKDOWN_PLAN_MAP). -->
+    <div class="card" id="breakdown-map-ui">
+      <h2>🥩 Карта разбора сырья</h2>
+      <label for="breakdown-plan-select" class="muted">Карта разбора</label>
+      <select id="breakdown-plan-select" onchange="loadBreakdownMapUI()"><option value="">— выберите карту —</option></select>
+      <div id="breakdown-plan-manual" class="hidden">
+        <label for="breakdown-plan-id" class="muted">ID карты разбора</label>
+        <input id="breakdown-plan-id" placeholder="Например: BRP-1A2B3C4D">
+        <button class="btn secondary" onclick="loadBreakdownMapUI()">Открыть карту</button>
+      </div>
+      <div id="breakdown-map-result" aria-live="polite"></div>
     </div>
   </section>
 
@@ -1721,6 +1756,8 @@
     posStopPolling();
     if (name === 'pos') initPosView();
     if (name === 'kitchen') initKitchenView();
+    if (name === 'recovery') loadEmergencyCenterUI();
+    if (name === 'production') loadBreakdownPlansUI();
   }
 
   function loadRecoveryView() {
@@ -4651,59 +4688,69 @@
 </script>
 
 
-<div id="enterprise-intake" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
-  <h3 style="margin-top:0">📷 Приёмка по накладной — СКАН → ПРОВЕРКА → ПОДТВЕРЖДЕНИЕ</h3>
-  <input id="invoice-file" type="file" accept="image/*,application/pdf" capture="environment">
-  <button onclick="scanAndReceiveInvoiceUI()">Сканировать и проверить</button>
-  <pre id="invoice-result" style="white-space:pre-wrap"></pre>
-</div>
-<div id="stage11-center" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
-  <h3 style="margin-top:0">🚨 Аварийный центр</h3>
-  <button onclick="loadEmergencyCenterUI()">Обновить</button>
-  <button onclick="syncOfflineUI()">Синхронизировать offline</button>
-  <div id="stage11-emergency" style="margin-top:10px"></div>
-</div>
 <script>
+/* Приёмка по накладной, аварийный центр, offline-очередь. Серверные действия прежние. */
 var LAST_INVOICE_DRAFT_ID='';
-function scanAndReceiveInvoiceUI(){var f=document.getElementById('invoice-file').files[0];if(!f){alert('Выберите фото/скан.');return;}var out=document.getElementById('invoice-result');out.textContent='Распознавание и контроль…';var r=new FileReader();r.onload=function(){call('SCAN_INVOICE_PREVIEW',{base64Image:String(r.result).split(',')[1],mimeType:f.type},function(x){LAST_INVOICE_DRAFT_ID=x.draft_id||'';var blocked=x.status==='BLOCKED'||(x.integrity&&['CONFLICT','DUPLICATE','REVIEW'].indexOf(x.integrity.status)!==-1);var h='<b>Статус:</b> '+compEsc(x.status)+'<br><b>Документ:</b> '+compEsc((x.document||{}).invoice_number||'—')+' от '+compEsc((x.document||{}).invoice_date||'—')+'<br><b>Целостность:</b> '+compEsc((x.integrity||{}).status||'—');if((x.integrity||{}).reasons&&x.integrity.reasons.length)h+='<div style="color:#b00">'+compEsc(x.integrity.reasons.join('; '))+'</div>';if((x.errors||[]).length)h+='<pre>'+compEsc(JSON.stringify(x.errors,null,2))+'</pre>';if(!blocked&&LAST_INVOICE_DRAFT_ID)h+='<button onclick="confirmInvoiceReceiptUI()">✅ Подтвердить приёмку</button>';out.innerHTML=h;},function(e){out.textContent=String(e);});};r.readAsDataURL(f);}
-function confirmInvoiceReceiptUI(){var out=document.getElementById('invoice-result');out.textContent='Повторная проверка и проведение…';call('CONFIRM_INVOICE_RECEIPT',{draftId:LAST_INVOICE_DRAFT_ID,confirmed:true},function(x){out.innerHTML='<b>✅ Проведено</b><pre>'+compEsc(JSON.stringify(x,null,2))+'</pre>';},function(e){out.innerHTML='<b style="color:#b00">⛔ '+compEsc(String(e))+'</b>';});}
-function loadEmergencyCenterUI(){call('GET_EMERGENCY_CENTER',{},function(x){document.getElementById('stage11-emergency').innerHTML='<pre>'+compEsc(JSON.stringify(x,null,2))+'</pre>';},function(e){document.getElementById('stage11-emergency').textContent=String(e);});}
-function queueOfflineUI(action,payload){var q=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QUEUE')||'[]');q.push({operationId:'OFF-'+Date.now(),action:action,payload:payload,createdAt:new Date().toISOString()});localStorage.setItem('TSEKH_OFFLINE_QUEUE',JSON.stringify(q));}
-function syncOfflineUI(){var q=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QUEUE')||'[]');if(!q.length){alert('Offline-очередь пуста.');return;}var token=localStorage.getItem('tsekh_token')||'';call('SYNC_OFFLINE_QUEUE',{queueIds:[],token:token},function(x){localStorage.removeItem('TSEKH_OFFLINE_QUEUE');alert('Синхронизация: '+JSON.stringify(x));},function(e){alert(String(e));});}
+var INTEGRITY_TEXT_={OK:'в порядке',CONFLICT:'расхождение с данными системы',DUPLICATE:'похоже на повтор уже проведённой накладной',REVIEW:'нужна проверка человеком'};
+var DRAFT_STATUS_TEXT_={DRAFT:'черновик',READY:'готова к проведению',BLOCKED:'заблокирована',POSTED:'проведена',PARTIAL:'проведена частично',RECOVERY_REQUIRED:'нужно восстановление'};
+function invoiceFileChosen(){var f=document.getElementById('invoice-file').files[0];document.getElementById('invoice-file-name').textContent=f?'Выбран файл: '+f.name:'';document.getElementById('invoice-result').innerHTML='';}
+function invoiceSummaryHtml_(x){
+  var doc=x.document||{},integ=x.integrity||{},h='';
+  h+='<div class="taskrow"><b>Накладная</b> № '+compEsc(doc.invoice_number||'—')+' от '+compEsc(doc.invoice_date||'—')+(doc.supplier_name?' · '+compEsc(doc.supplier_name):'')+'</div>';
+  h+='<div class="taskrow">Статус: <b>'+compEsc(DRAFT_STATUS_TEXT_[x.status]||x.status||'—')+'</b>'+(integ.status?' · Проверка: <b>'+compEsc(INTEGRITY_TEXT_[integ.status]||integ.status)+'</b>':'')+'</div>';
+  var lines=doc.lines||doc.items||x.lines||[];
+  if(lines.length){h+='<table style="margin-top:6px"><thead><tr><th>Позиция</th><th>Кол-во</th><th>Цена</th></tr></thead><tbody>'+lines.slice(0,50).map(function(l){return '<tr><td>'+compEsc(l.name||l.название||l.product_name||'—')+'</td><td>'+compEsc(l.qty||l.quantity||l.количество||'')+' '+compEsc(l.unit||l.единица||'')+'</td><td>'+compEsc(l.price||l.цена||'')+'</td></tr>';}).join('')+'</tbody></table>';}
+  if(integ.reasons&&integ.reasons.length)h+='<div class="err">'+integ.reasons.map(compEsc).join('<br>')+'</div>';
+  if((x.errors||[]).length)h+='<div class="err">'+x.errors.map(function(e){return compEsc(typeof e==='string'?e:(e.message||e.error||JSON.stringify(e)));}).join('<br>')+'</div>';
+  return h;
+}
+function scanAndReceiveInvoiceUI(){var f=document.getElementById('invoice-file').files[0];var out=document.getElementById('invoice-result');if(!f){out.innerHTML='<div class="err">Сначала сфотографируйте или выберите накладную.</div>';return;}out.innerHTML='<p class="muted">Распознаём и проверяем…</p>';var r=new FileReader();r.onload=function(){call('SCAN_INVOICE_PREVIEW',{base64Image:String(r.result).split(',')[1],mimeType:f.type},function(x){LAST_INVOICE_DRAFT_ID=x.draft_id||'';var blocked=x.status==='BLOCKED'||(x.integrity&&['CONFLICT','DUPLICATE','REVIEW'].indexOf(x.integrity.status)!==-1);var h=invoiceSummaryHtml_(x);if(!blocked&&LAST_INVOICE_DRAFT_ID)h+='<button class="btn" style="margin-top:10px" onclick="confirmInvoiceReceiptUI()">✅ Подтвердить и провести приход</button>';else if(blocked)h+='<p class="muted">Провести нельзя, пока не устранены замечания выше.</p>';out.innerHTML=h;},function(e){out.innerHTML='<div class="err">'+compEsc(String(e))+'</div>';});};r.readAsDataURL(f);}
+function confirmInvoiceReceiptUI(){var out=document.getElementById('invoice-result');out.innerHTML='<p class="muted">Повторная проверка и проведение…</p>';call('CONFIRM_INVOICE_RECEIPT',{draftId:LAST_INVOICE_DRAFT_ID,confirmed:true},function(x){var d=x.draft||x;out.innerHTML='<p><span class="badge b-ok">Проведено</span></p>'+invoiceSummaryHtml_({document:x.document||{},status:d.status,integrity:x.integrity,lines:x.lines});if(typeof loadWarehouse==='function')loadWarehouse();},function(e){out.innerHTML='<div class="err">⛔ '+compEsc(String(e))+'</div>';});}
+
+var EMERGENCY_GROUPS_=[['critical_incidents','Критические инциденты','b-crit'],['quarantines','Карантин','b-warn'],['deviations','Отклонения в журналах','b-warn'],['journal_deviations','Отклонения в журналах','b-warn'],['overdue_tasks','Просроченные задачи','b-warn'],['equipment_incidents','Аварии оборудования','b-crit'],['invoice_intake','Накладные с замечаниями','b-info']];
+function emergencyItemTitle_(r){return r.title||r.название||r.описание||r.description||r.reason||r.invoice_number||r.product_name||r.equipment_name||r.status||r.статус||'—';}
+function loadEmergencyCenterUI(){var el=document.getElementById('stage11-emergency');el.innerHTML='<p class="muted">Загрузка…</p>';updateOfflineQueueInfo_();call('GET_EMERGENCY_CENTER',{},function(x){var seen={},total=0,h='';EMERGENCY_GROUPS_.forEach(function(g){var rows=x[g[0]];if(!Array.isArray(rows)||seen[g[1]])return;seen[g[1]]=1;total+=rows.length;if(!rows.length)return;h+='<div class="taskrow"><div class="row-between"><b>'+g[1]+'</b><span class="badge '+g[2]+'">'+rows.length+'</span></div>'+rows.slice(0,5).map(function(r){return '<div class="muted">• '+compEsc(String(emergencyItemTitle_(r)).slice(0,140))+'</div>';}).join('')+(rows.length>5?'<div class="muted">и ещё '+(rows.length-5)+'</div>':'')+'</div>';});el.innerHTML=total?h:'<p><span class="badge b-ok">Всё спокойно</span> Аварийных ситуаций нет.</p>';},function(e){el.innerHTML='<div class="err">'+compEsc(String(e))+'</div>';});}
+function queueOfflineUI(action,payload){var q=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QUEUE')||'[]');q.push({operationId:'OFF-'+Date.now(),action:action,payload:payload,createdAt:new Date().toISOString()});localStorage.setItem('TSEKH_OFFLINE_QUEUE',JSON.stringify(q));updateOfflineQueueInfo_();}
+function updateOfflineQueueInfo_(){var el=document.getElementById('offline-queue-info');if(!el)return;var n=0;try{n=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QUEUE')||'[]').length;}catch(e){}el.textContent=n?'Сохранено без сети: '+n:'Без сети ничего не сохранено.';}
+function syncOfflineUI(){var q=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QUEUE')||'[]');if(!q.length){updateOfflineQueueInfo_();alert('Сохранённых без сети операций нет.');return;}var token=localStorage.getItem('tsekh_token')||'';call('SYNC_OFFLINE_QUEUE',{queueIds:[],token:token},function(x){localStorage.removeItem('TSEKH_OFFLINE_QUEUE');updateOfflineQueueInfo_();var n=(x&&(x.synced||x.processed||x.count));alert('Отправлено'+(n!=null?': '+n:'')+'.');},function(e){alert(String(e));});}
 window.addEventListener('online',function(){if(localStorage.getItem('TSEKH_OFFLINE_QUEUE'))syncOfflineUI();});
 </script>
 
-<div id="breakdown-map-ui" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
-  <h3 style="margin-top:0">🥩 Карта разбора сырья</h3>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-    <input id="breakdown-plan-id" placeholder="ID карты разбора" style="min-width:280px;padding:8px;">
-    <button onclick="loadBreakdownMapUI()">Открыть карту</button>
-  </div>
-  <div id="breakdown-map-result" style="margin-top:12px"></div>
-</div>
 <script>
+var BREAKDOWN_STATUS_TEXT_={DRAFT:'черновик',APPROVED:'утверждена',ARCHIVED:'в архиве',черновик:'черновик',утверждена:'утверждена'};
+function loadBreakdownPlansUI(){
+  var sel=document.getElementById('breakdown-plan-select');
+  call('GET_BREAKDOWN_PLANS',{},function(rows){
+    rows=rows||[];
+    document.getElementById('breakdown-plan-manual').classList.add('hidden');
+    sel.classList.remove('hidden');
+    sel.innerHTML='<option value="">'+(rows.length?'— выберите карту —':'Карт разбора пока нет')+'</option>'+rows.map(function(r){var p=r.plan||r;return '<option value="'+compEsc(p.plan_id)+'">'+compEsc(p.название||p.plan_id)+' · v'+compEsc(p.version||1)+' · '+compEsc(BREAKDOWN_STATUS_TEXT_[p.status]||p.status||'')+'</option>';}).join('');
+  },function(){sel.classList.add('hidden');document.getElementById('breakdown-plan-manual').classList.remove('hidden');});
+}
 function loadBreakdownMapUI(){
-  var id=(document.getElementById('breakdown-plan-id').value||'').trim();
+  var sel=document.getElementById('breakdown-plan-select');
+  var id=((sel&&!sel.classList.contains('hidden')?sel.value:document.getElementById('breakdown-plan-id').value)||'').trim();
   var out=document.getElementById('breakdown-map-result');
-  if(!id){out.textContent='Укажите ID утверждённой или черновой карты разбора.';return;}
+  if(!id){out.innerHTML='';return;}
   call('GET_BREAKDOWN_PLAN_MAP',{planId:id},function(x){
     var b=x||{};
     var plan=b.plan||{};
     var steps=b.steps||[];
     var map=b.map||[];
-    var html='<div style="padding:10px;border:1px solid #eee;border-radius:8px"><b>'+compEsc(plan.название||'Карта разбора')+'</b> · версия '+compEsc(plan.version||'')+' · статус '+compEsc(plan.status||'')+'</div>';
-    html+='<div style="margin-top:10px;display:grid;gap:8px">';
+    var html='<div class="taskrow"><b>'+compEsc(plan.название||'Карта разбора')+'</b> · версия '+compEsc(plan.version||'')+' · '+compEsc(BREAKDOWN_STATUS_TEXT_[plan.status]||plan.status||'')+'</div>';
+    if(!steps.length) html+='<p class="muted">В карте пока нет этапов разбора.</p>';
+    html+='<div>';
     steps.forEach(function(st){
       var node=map.find(function(m){return m.step && m.step.step_id===st.step_id;})||{outputs:[]};
-      html+='<div style="padding:10px;border:1px solid #ddd;border-radius:8px"><div><b>'+compEsc(st.step_no)+'. '+compEsc(st.название)+'</b> <span class="muted">['+compEsc(st.stage_type)+']</span></div>';
+      html+='<div class="taskrow"><div><b>'+compEsc(st.step_no)+'. '+compEsc(st.название)+'</b> <span class="muted">'+compEsc(st.stage_type)+'</span></div>';
       if(st.описание) html+='<div class="muted">'+compEsc(st.описание)+'</div>';
       if(st.expected_loss_pct!=='' && st.expected_loss_pct!==undefined) html+='<div>Нормативные потери: <b>'+compEsc(st.expected_loss_pct)+'%</b></div>';
-      if(node.outputs && node.outputs.length){html+='<ul style="margin:6px 0 0 18px">';node.outputs.forEach(function(o){html+='<li>'+compEsc(o.название||o.output_id_ref)+' — '+compEsc(o.planned_qty)+' '+compEsc(o.единица||'')+'</li>';});html+='</ul>';}
+      if(node.outputs && node.outputs.length){html+='<ul style="margin:6px 0 0 18px;padding:0;">';node.outputs.forEach(function(o){html+='<li>'+compEsc(o.название||o.output_id_ref)+' — '+compEsc(o.planned_qty)+' '+compEsc(o.единица||'')+'</li>';});html+='</ul>';}
       html+='</div>';
     });
     html+='</div>';
     out.innerHTML=html;
-  },function(e){out.textContent=String(e);});
+  },function(e){out.innerHTML='<div class="err">'+compEsc(String(e))+'</div>';});
 }
 </script>
 
