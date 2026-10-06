@@ -214,7 +214,9 @@ var CONFIG = {
     SESSIONS: 'SESSIONS',
 
     // Модуль «Касса» (Pos.gs, replica/architecture.md, этап M1): смены, заказы, оплаты.
-    POS_SHIFTS: 'POS_SHIFTS', POS_ORDERS: 'POS_ORDERS', POS_ORDER_LINES: 'POS_ORDER_LINES', POS_PAYMENTS: 'POS_PAYMENTS'
+    POS_SHIFTS: 'POS_SHIFTS', POS_ORDERS: 'POS_ORDERS', POS_ORDER_LINES: 'POS_ORDER_LINES', POS_PAYMENTS: 'POS_PAYMENTS',
+    // Этап M2: зал и столы.
+    POS_HALLS: 'POS_HALLS', POS_TABLES: 'POS_TABLES'
   },
 
   // Схема заголовков для initializeDatabase(). Порядок колонок = порядок в листе.
@@ -729,15 +731,19 @@ var CONFIG = {
     POS_ORDERS: ['order_id','organization_id','location_id','shift_id','table_id','официант_id',
       'номер','гостей','статус','сумма','скидка','итого','комментарий',
       'version','создано','обновлено','оплачен','cascade_id'],
+    // POS_ORDER_LINES.статус: новая | на_кухне | готово | отменена.
     POS_ORDER_LINES: ['line_id','order_id','organization_id','dish_id','название_снимок','qty',
-      'цена','модификаторы_json','сумма','статус','на_кухню_в','sale_ids','создано'],
+      'цена','модификаторы_json','сумма','статус','на_кухню_в','sale_ids','создано','готово_в'],
     POS_PAYMENTS: ['payment_id','order_id','organization_id','location_id','shift_id','способ',
-      'сумма','operation_id','создано','user_id']
+      'сумма','operation_id','создано','user_id'],
+    // Залы и столы точки. Занятость стола не хранится — считается из открытых заказов смены.
+    POS_HALLS: ['hall_id','organization_id','location_id','название','порядок','статус','создано'],
+    POS_TABLES: ['table_id','organization_id','location_id','hall_id','название','мест','порядок','статус','создано']
   },
 
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
-    POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY',
+    POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
     RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL',
@@ -877,6 +883,10 @@ var CONFIG = {
     POS_GET_ORDER: 'pos', POS_GET_ORDERS: 'pos', POS_PAY: 'pos',
     POS_OPEN_SHIFT: 'pos_shift', POS_CLOSE_SHIFT: 'pos_shift',
     POS_CANCEL_ORDER: 'pos_admin', POS_FULFILL_PENDING: 'pos_admin',
+    // Этап M2: зал, официант, кухня.
+    POS_GET_FLOOR: 'pos', POS_SEND_TO_KITCHEN: 'pos', POS_PRECHECK: 'pos', POS_MOVE_ORDER: 'pos',
+    POS_REOPEN_ORDER: 'pos_admin', POS_SAVE_HALL: 'pos_admin', POS_SAVE_TABLE: 'pos_admin',
+    POS_GET_KITCHEN_QUEUE: 'pos_kitchen', POS_MARK_LINE_READY: 'pos_kitchen',
     LOGIN: 'auth', GET_SESSION: 'auth', SELECT_LOCATION: 'auth', LOGOUT: 'auth',
 
     CREATE_USER: 'users', CREATE_POSITION:'users', GET_POSITIONS:'users', UPDATE_POSITION:'users', UPDATE_EMPLOYEE_PROFILE:'users', TRANSFER_EMPLOYEE:'users', GET_EMPLOYEE_READINESS:'safety', GET_EMPLOYEE_EQUIPMENT_PERMISSIONS:'safety', CHECK_EMPLOYEE_OPERATION_SAFETY:'safety', CHANGE_PIN: 'users', RESET_PIN: 'users',
@@ -1211,22 +1221,23 @@ var CONFIG = {
     // и раньше через 'products' — но теперь это отдельное, явно выданное право, а не
     // побочный эффект обычного доступа к продуктам организации. ШЕФ-ПОВАР/КАЛЬКУЛЯТОР его
     // не получают (см. докстринг у CREATE_GLOBAL_PRODUCT в ACTION_MODULE выше).
-    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
-    'ШЕФ-ПОВАР': ['marking', 'critical_incidents', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales', 'safety', 'safety_admin', 'offline'],
+    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
+    'ШЕФ-ПОВАР': ['pos_kitchen', 'marking', 'critical_incidents', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales', 'safety', 'safety_admin', 'offline'],
     // ПОВАР: чтение ТТК/рецептур/полуфабрикатов и производственный контур.
     // Себестоимость и Food Cost доступны через ТТК/рецептуры, но права на изменение
     // рецептур/ТТК и финансовые отчёты не выдаются.
-    'ПОВАР': ['marking', 'recipes', 'critical_incidents', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks', 'safety', 'offline'],
+    'ПОВАР': ['pos_kitchen', 'marking', 'recipes', 'critical_incidents', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks', 'safety', 'offline'],
     // КЛАДОВЩИК: склад + чтение ТТК/рецептур для понимания потребности и себестоимости
     // сырья. Производственный и финансовый контур остаётся закрытым.
     'КЛАДОВЩИК': ['marking', 'critical_incidents', 'warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations', 'safety', 'offline'],
     'БУХГАЛТЕР': ['enterprise_control', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales', 'safety'],
     'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products', 'safety'],
-    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
+    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
     // Модуль «Касса»: кассир принимает заказы и оплату в своей точке, отмены — у менеджера.
     'КАССИР': ['pos', 'pos_shift', 'safety', 'offline'],
-    // Официант: этап M2 (зал/столы) — пока только просмотр меню и своих заказов без оплаты.
-    'ОФИЦИАНТ': ['pos_waiter', 'safety', 'offline'],
+    // Официант: зал, свои заказы, отправка на кухню и пречек. Оплата и смена — у кассира
+    // (см. ROLE_ACTION_DENY), чужие столы — запрет в Pos.gs::_posAssertWaiterOwns_.
+    'ОФИЦИАНТ': ['pos', 'safety', 'offline'],
     'ЛАБОРАНТ': ['lab', 'safety'],
     // RBAC v2: технолог/HACCP получает технологический + нормативный контур,
     // но не получает users/finance/admin integrations.
@@ -1260,6 +1271,8 @@ var CONFIG = {
   // Точечные запреты поверх ROLE_MODULES. Нужны там, где роль должна читать
   // технологический/стоимостной контур, но не иметь права менять мастер-данные.
   ROLE_ACTION_DENY: {
+    // Официант собирает заказ и отправляет на кухню, но деньги принимает кассир.
+    'ОФИЦИАНТ': ['POS_PAY', 'POS_OPEN_SHIFT', 'POS_CLOSE_SHIFT'],
     'ПОВАР': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP'],
     'КЛАДОВЩИК': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE'],
     // КАЛЬКУЛЯТОР меняет калькуляцию/рецептуру, но не утверждает технологию или HACCP/ППК.

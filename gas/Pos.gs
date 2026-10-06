@@ -3,7 +3,8 @@
 
 /**
  * ЦЕХ — Pos.gs
- * Модуль «Касса» (этап M1, см. replica/architecture.md): смены, заказы «с собой», оплата.
+ * Модуль «Касса» (replica/architecture.md): M1 — смены, заказы «с собой», оплата;
+ * M2 — залы и столы, официант (свои столы, отправка на кухню, пречек), очередь кухни.
  *
  * Поток: открыть смену → заказ → позиции → оплата → по строке заказа создаётся продажа
  * в SALES (источник 'касса') через createSale_ — те же валидация/аудит, что у ручного
@@ -46,6 +47,29 @@ function _posOrder_(orderId, session) {
   return order;
 }
 
+/** Официант работает только со своими заказами; кассир и менеджер — с любыми заказами точки. */
+function _posAssertWaiterOwns_(order, session) {
+  if (session.роль === 'ОФИЦИАНТ' && order.официант_id && order.официант_id !== session.user_id) {
+    throw new Error('Этот стол обслуживает другой официант.');
+  }
+}
+
+/** Стол этой точки, активный. */
+function _posTable_(tableId, session) {
+  var table = findOne_('POS_TABLES', 'table_id', tableId);
+  assertOwnedByOrg_(session, table, 'POS_TABLES:' + tableId);
+  if (table.location_id !== session.location_id) throw new Error('Стол относится к другой точке.');
+  if (table.статус === 'архив') throw new Error('Стол «' + table.название + '» в архиве.');
+  return table;
+}
+
+/** Открытый (или на пречеке) заказ на столе, если есть. На столе не больше одного такого заказа. */
+function _posTableOrder_(tableId, session) {
+  return findRows_('POS_ORDERS', function (o) {
+    return o.location_id === session.location_id && o.table_id === tableId && (o.статус === 'открыт' || o.статус === 'пречек');
+  })[0] || null;
+}
+
 function _posAssertEditable_(order, version) {
   if (order.статус !== 'открыт') throw new Error('Заказ уже ' + order.статус + ' — изменить его нельзя.');
   if (version !== undefined && version !== null && version !== '' && Number(version) !== Number(order.version)) {
@@ -69,7 +93,8 @@ function _posTouchOrder_(order) {
 }
 
 function _posOrderView_(order) {
-  return { order: order, lines: _posActiveLines_(order.order_id) };
+  var table = order.table_id ? findOne_('POS_TABLES', 'table_id', order.table_id) : null;
+  return { order: order, lines: _posActiveLines_(order.order_id), table: table ? { table_id: table.table_id, название: table.название } : null };
 }
 
 // ---------- Смена ----------
@@ -117,6 +142,7 @@ function _posShiftTotals_(shift) {
 function posGetShift_(session) {
   var shift = _posOpenShift_(session);
   if (!shift) return { shift: null };
+  if (session.роль === 'ОФИЦИАНТ') return { shift: { shift_id: shift.shift_id, открыта: shift.открыта, статус: shift.статус }, totals: null };
   return { shift: shift, totals: _posShiftTotals_(shift) };
 }
 
@@ -162,13 +188,22 @@ function posGetMenu_(session) {
 function posCreateOrder_(data, session) {
   return withLock_(function () {
     var shift = _posRequireOpenShift_(session);
+    var tableId = '';
+    if (data.tableId) {
+      var table = _posTable_(data.tableId, session);
+      var busy = _posTableOrder_(table.table_id, session);
+      if (busy) throw new Error('На столе «' + table.название + '» уже есть открытый заказ №' + busy.номер + '.');
+      tableId = table.table_id;
+    } else if (session.роль === 'ОФИЦИАНТ') {
+      throw new Error('Выберите стол.');
+    }
     var number = findRows_('POS_ORDERS', function (o) { return o.shift_id === shift.shift_id; }).length + 1;
     var order = {
       order_id: generateId_('POS_ORDERS'),
       organization_id: session.organization_id,
       location_id: session.location_id,
       shift_id: shift.shift_id,
-      table_id: '',
+      table_id: tableId,
       официант_id: session.user_id,
       номер: number,
       гостей: Math.max(0, Math.floor(Number(data.guests) || 0)),
@@ -187,6 +222,7 @@ function posCreateOrder_(data, session) {
 function posAddLine_(data, session) {
   return withLock_(function () {
     var order = _posOrder_(data.orderId, session);
+    _posAssertWaiterOwns_(order, session);
     _posAssertEditable_(order, data.version);
     var dish = findOne_('DISHES', 'dish_id', data.dishId);
     assertOwnedByOrg_(session, dish, 'DISHES:' + data.dishId);
@@ -225,11 +261,12 @@ function posUpdateLine_(data, session) {
     var line = findOne_('POS_ORDER_LINES', 'line_id', data.lineId);
     assertOwnedByOrg_(session, line, 'POS_ORDER_LINES:' + data.lineId);
     var order = _posOrder_(line.order_id, session);
+    _posAssertWaiterOwns_(order, session);
     _posAssertEditable_(order, data.version);
     if (line.статус === 'отменена') throw new Error('Позиция уже удалена.');
+    if (line.статус !== 'новая') throw new Error('Позиция уже на кухне — изменить её нельзя. Добавьте новую или попросите менеджера отменить заказ.');
     var qty = Number(data.qty);
     if (qty === 0) {
-      if (line.статус !== 'новая') throw new Error('Позиция уже отправлена на кухню — удалить её может менеджер отменой.');
       updateRow_('POS_ORDER_LINES', line, { статус: 'отменена' });
     } else {
       if (!(qty > 0) || qty > 999) throw new Error('Количество должно быть от 1 до 999.');
@@ -240,7 +277,9 @@ function posUpdateLine_(data, session) {
 }
 
 function posGetOrder_(data, session) {
-  return _posOrderView_(_posOrder_(data.orderId, session));
+  var order = _posOrder_(data.orderId, session);
+  _posAssertWaiterOwns_(order, session);
+  return _posOrderView_(order);
 }
 
 function posGetOrders_(data, session) {
@@ -249,7 +288,8 @@ function posGetOrders_(data, session) {
   if (!shiftId) return [];
   return findRows_('POS_ORDERS', function (o) {
     return o.organization_id === session.organization_id && o.location_id === session.location_id && o.shift_id === shiftId &&
-      (!data.status || o.статус === data.status);
+      (!data.status || o.статус === data.status) &&
+      (session.роль !== 'ОФИЦИАНТ' || o.официант_id === session.user_id);
   }).sort(function (a, b) { return Number(b.номер) - Number(a.номер); });
 }
 
@@ -265,7 +305,10 @@ function posPay_(data, session) {
   return withLock_(function () {
     var order = _posOrder_(data.orderId, session);
     if (order.статус === 'оплачен') throw new Error('Заказ уже оплачен.');
-    _posAssertEditable_(order, data.version);
+    if (order.статус !== 'открыт' && order.статус !== 'пречек') throw new Error('Заказ ' + order.статус + ' — оплатить его нельзя.');
+    if (data.version !== undefined && data.version !== null && data.version !== '' && Number(data.version) !== Number(order.version)) {
+      throw new Error('Заказ изменён на другом устройстве. Обновите экран.');
+    }
     var shift = _posRequireOpenShift_(session);
     if (order.shift_id !== shift.shift_id) throw new Error('Заказ из прошлой смены — отмените его и создайте заново.');
     var lines = _posActiveLines_(order.order_id);
@@ -327,6 +370,184 @@ function posCancelOrder_(data, session) {
     updateRow_('POS_ORDERS', order, { статус: 'отменён', комментарий: reason ? String((order.комментарий ? order.комментарий + ' | ' : '') + 'Отмена: ' + reason).slice(0, 300) : order.комментарий, version: (Number(order.version) || 0) + 1, обновлено: nowIso_() });
     auditLog_(session.user_id, 'Отменён заказ кассы', 'POS_ORDERS:' + order.order_id, order.статус, reason || 'пустой заказ', 'success', session.cascade_id || '');
     return { order: findOne_('POS_ORDERS', 'order_id', order.order_id) };
+  });
+}
+
+// ---------- Зал, официант, кухня (этап M2) ----------
+
+function posSaveHall_(data, session) {
+  return withLock_(function () {
+    var name = String(data.название || '').trim();
+    if (!name) throw new Error('Укажите название зала.');
+    if (data.hallId) {
+      var hall = findOne_('POS_HALLS', 'hall_id', data.hallId);
+      assertOwnedByOrg_(session, hall, 'POS_HALLS:' + data.hallId);
+      if (hall.location_id !== session.location_id) throw new Error('Зал относится к другой точке.');
+      updateRow_('POS_HALLS', hall, { название: name.slice(0, 60), порядок: Number(data.порядок) || hall.порядок || 0, статус: data.статус === 'архив' ? 'архив' : 'активен' });
+      return findOne_('POS_HALLS', 'hall_id', hall.hall_id);
+    }
+    var row = { hall_id: generateId_('POS_HALLS'), organization_id: session.organization_id, location_id: session.location_id,
+      название: name.slice(0, 60), порядок: Number(data.порядок) || 0, статус: 'активен', создано: nowIso_() };
+    insertRow_('POS_HALLS', row);
+    return row;
+  });
+}
+
+function posSaveTable_(data, session) {
+  return withLock_(function () {
+    var name = String(data.название || '').trim();
+    if (!name) throw new Error('Укажите номер или название стола.');
+    var hall = findOne_('POS_HALLS', 'hall_id', data.hallId);
+    assertOwnedByOrg_(session, hall, 'POS_HALLS:' + data.hallId);
+    if (hall.location_id !== session.location_id) throw new Error('Зал относится к другой точке.');
+    var seats = Math.max(0, Math.floor(Number(data.мест) || 0));
+    var dup = findRows_('POS_TABLES', function (t) {
+      return t.location_id === session.location_id && t.статус !== 'архив' && String(t.название).toLowerCase() === name.toLowerCase() && t.table_id !== data.tableId;
+    });
+    if (dup.length) throw new Error('Стол «' + name + '» в этой точке уже есть.');
+    if (data.tableId) {
+      var table = findOne_('POS_TABLES', 'table_id', data.tableId);
+      assertOwnedByOrg_(session, table, 'POS_TABLES:' + data.tableId);
+      if (data.статус === 'архив' && _posTableOrder_(table.table_id, session)) throw new Error('На столе открытый заказ — убрать стол сейчас нельзя.');
+      updateRow_('POS_TABLES', table, { hall_id: hall.hall_id, название: name.slice(0, 30), мест: seats, порядок: Number(data.порядок) || table.порядок || 0, статус: data.статус === 'архив' ? 'архив' : 'активен' });
+      return findOne_('POS_TABLES', 'table_id', table.table_id);
+    }
+    var row = { table_id: generateId_('POS_TABLES'), organization_id: session.organization_id, location_id: session.location_id,
+      hall_id: hall.hall_id, название: name.slice(0, 30), мест: seats, порядок: Number(data.порядок) || 0, статус: 'активен', создано: nowIso_() };
+    insertRow_('POS_TABLES', row);
+    return row;
+  });
+}
+
+/**
+ * Схема зала: залы → столы со статусом (свободен | занят | пречек), суммой, официантом,
+ * временем с открытия и счётчиками позиций на кухне / готовых к выдаче.
+ */
+function posGetFloor_(session) {
+  var halls = findRows_('POS_HALLS', function (h) { return h.location_id === session.location_id && h.organization_id === session.organization_id && h.статус !== 'архив'; });
+  var tables = findRows_('POS_TABLES', function (t) { return t.location_id === session.location_id && t.organization_id === session.organization_id && t.статус !== 'архив'; });
+  var openOrders = {};
+  findRows_('POS_ORDERS', function (o) { return o.location_id === session.location_id && o.table_id && (o.статус === 'открыт' || o.статус === 'пречек'); })
+    .forEach(function (o) { openOrders[o.table_id] = o; });
+  var names = {};
+  getAllRows_('USERS').forEach(function (u) { if (u.organization_id === session.organization_id) names[u.user_id] = u.имя; });
+  var byOrder = {};
+  var ids = Object.keys(openOrders).map(function (k) { return openOrders[k].order_id; });
+  if (ids.length) {
+    findRows_('POS_ORDER_LINES', function (l) { return ids.indexOf(l.order_id) !== -1 && l.статус !== 'отменена'; }).forEach(function (l) {
+      var c = byOrder[l.order_id] || (byOrder[l.order_id] = { новых: 0, на_кухне: 0, готово: 0 });
+      if (l.статус === 'новая') c.новых++; else if (l.статус === 'на_кухне') c.на_кухне++; else if (l.статус === 'готово') c.готово++;
+    });
+  }
+  var bySort = function (a, b) { return (Number(a.порядок) || 0) - (Number(b.порядок) || 0) || String(a.название).localeCompare(String(b.название), 'ru', { numeric: true }); };
+  halls.sort(bySort); tables.sort(bySort);
+  return {
+    shift_open: !!_posOpenShift_(session),
+    halls: halls.map(function (h) {
+      return {
+        hall_id: h.hall_id, название: h.название, порядок: h.порядок,
+        tables: tables.filter(function (t) { return t.hall_id === h.hall_id; }).map(function (t) {
+          var o = openOrders[t.table_id];
+          var c = o ? (byOrder[o.order_id] || { новых: 0, на_кухне: 0, готово: 0 }) : null;
+          return {
+            table_id: t.table_id, название: t.название, мест: t.мест,
+            статус: !o ? 'свободен' : (o.статус === 'пречек' ? 'пречек' : 'занят'),
+            order_id: o ? o.order_id : '', номер: o ? o.номер : '', итого: o ? o.итого : 0,
+            официант_id: o ? o.официант_id : '', официант: o ? (names[o.официант_id] || '') : '',
+            мой: !!(o && o.официант_id === session.user_id),
+            открыт_в: o ? o.создано : '', позиции: c
+          };
+        })
+      };
+    })
+  };
+}
+
+function posSendToKitchen_(data, session) {
+  return withLock_(function () {
+    var order = _posOrder_(data.orderId, session);
+    _posAssertWaiterOwns_(order, session);
+    _posAssertEditable_(order, data.version);
+    var fresh = _posActiveLines_(order.order_id).filter(function (l) { return l.статус === 'новая'; });
+    if (!fresh.length) throw new Error('Новых позиций для кухни нет.');
+    var now = nowIso_();
+    fresh.forEach(function (l) { updateRow_('POS_ORDER_LINES', l, { статус: 'на_кухне', на_кухню_в: now }); });
+    auditLog_(session.user_id, 'Заказ отправлен на кухню', 'POS_ORDERS:' + order.order_id, null, fresh.length + ' поз.', 'success', session.cascade_id || '');
+    return _posOrderView_(_posTouchOrder_(order));
+  });
+}
+
+/** Пречек: заказ закрыт для официанта, ждёт оплаты на кассе. Неотправленные позиции уходят на кухню. */
+function posPrecheck_(data, session) {
+  return withLock_(function () {
+    var order = _posOrder_(data.orderId, session);
+    _posAssertWaiterOwns_(order, session);
+    _posAssertEditable_(order, data.version);
+    var lines = _posActiveLines_(order.order_id);
+    if (!lines.length) throw new Error('В заказе нет позиций.');
+    var now = nowIso_();
+    lines.filter(function (l) { return l.статус === 'новая'; }).forEach(function (l) { updateRow_('POS_ORDER_LINES', l, { статус: 'на_кухне', на_кухню_в: now }); });
+    updateRow_('POS_ORDERS', order, { статус: 'пречек', version: (Number(order.version) || 0) + 1, обновлено: now });
+    auditLog_(session.user_id, 'Пречек', 'POS_ORDERS:' + order.order_id, 'открыт', 'итого ' + order.итого, 'success', session.cascade_id || '');
+    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id));
+  });
+}
+
+function posReopenOrder_(data, session) {
+  return withLock_(function () {
+    var order = _posOrder_(data.orderId, session);
+    if (order.статус !== 'пречек') throw new Error('Вернуть в работу можно только заказ на пречеке.');
+    updateRow_('POS_ORDERS', order, { статус: 'открыт', version: (Number(order.version) || 0) + 1, обновлено: nowIso_() });
+    auditLog_(session.user_id, 'Пречек снят', 'POS_ORDERS:' + order.order_id, 'пречек', 'открыт', 'success', session.cascade_id || '');
+    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id));
+  });
+}
+
+function posMoveOrder_(data, session) {
+  return withLock_(function () {
+    var order = _posOrder_(data.orderId, session);
+    _posAssertWaiterOwns_(order, session);
+    if (order.статус !== 'открыт' && order.статус !== 'пречек') throw new Error('Перенести можно только неоплаченный заказ.');
+    var table = _posTable_(data.tableId, session);
+    if (table.table_id === order.table_id) return _posOrderView_(order);
+    var busy = _posTableOrder_(table.table_id, session);
+    if (busy) throw new Error('Стол «' + table.название + '» занят (заказ №' + busy.номер + ').');
+    var from = order.table_id;
+    updateRow_('POS_ORDERS', order, { table_id: table.table_id, version: (Number(order.version) || 0) + 1, обновлено: nowIso_() });
+    auditLog_(session.user_id, 'Заказ перенесён', 'POS_ORDERS:' + order.order_id, from || 'с собой', table.название, 'success', session.cascade_id || '');
+    return _posOrderView_(findOne_('POS_ORDERS', 'order_id', order.order_id));
+  });
+}
+
+/** Очередь кухни: позиции «на кухне» и недавно готовые (за 15 минут), старые сверху. */
+function posGetKitchenQueue_(session) {
+  var orders = {};
+  findRows_('POS_ORDERS', function (o) { return o.location_id === session.location_id && o.organization_id === session.organization_id && (o.статус === 'открыт' || o.статус === 'пречек' || o.статус === 'оплачен'); })
+    .forEach(function (o) { orders[o.order_id] = o; });
+  var tables = {};
+  findRows_('POS_TABLES', function (t) { return t.location_id === session.location_id; }).forEach(function (t) { tables[t.table_id] = t.название; });
+  var since = Date.now() - 15 * 60 * 1000;
+  var lines = findRows_('POS_ORDER_LINES', function (l) {
+    if (!orders[l.order_id]) return false;
+    if (l.статус === 'на_кухне') return true;
+    return l.статус === 'готово' && new Date(l.готово_в).getTime() >= since;
+  });
+  lines.sort(function (a, b) { return String(a.на_кухню_в).localeCompare(String(b.на_кухню_в)); });
+  return lines.map(function (l) {
+    var o = orders[l.order_id];
+    return { line_id: l.line_id, order_id: l.order_id, номер: o.номер, стол: o.table_id ? (tables[o.table_id] || '') : 'с собой',
+      название: l.название_снимок, qty: l.qty, модификаторы_json: l.модификаторы_json, статус: l.статус, на_кухню_в: l.на_кухню_в, готово_в: l.готово_в };
+  });
+}
+
+function posMarkLineReady_(data, session) {
+  return withLock_(function () {
+    var line = findOne_('POS_ORDER_LINES', 'line_id', data.lineId);
+    assertOwnedByOrg_(session, line, 'POS_ORDER_LINES:' + data.lineId);
+    var order = _posOrder_(line.order_id, session);
+    if (line.статус !== 'на_кухне') throw new Error('Позиция не в очереди кухни.');
+    updateRow_('POS_ORDER_LINES', line, { статус: 'готово', готово_в: nowIso_() });
+    return { line_id: line.line_id, order_id: order.order_id, статус: 'готово' };
   });
 }
 
@@ -392,11 +613,13 @@ function posFulfillPendingSalesTrigger_() {
 
 function runPosTests_() {
   var out = []; function ok(n, c, d) { out.push({ name: n, status: c ? 'OK' : 'FAIL', detail: d || '' }); }
-  ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS'].forEach(function (k) {
+  ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES'].forEach(function (k) {
     ok('SCHEMA_' + k, Array.isArray(CONFIG.SCHEMA[k]) && CONFIG.SHEETS[k] === k && !!CONFIG.ID_PREFIXES[k], 'sheet, schema, id prefix');
   });
   ['POS_GET_MENU', 'POS_OPEN_SHIFT', 'POS_GET_SHIFT', 'POS_CLOSE_SHIFT', 'POS_CREATE_ORDER', 'POS_ADD_LINE', 'POS_UPDATE_LINE',
-    'POS_GET_ORDER', 'POS_GET_ORDERS', 'POS_PAY', 'POS_CANCEL_ORDER', 'POS_FULFILL_PENDING'].forEach(function (a) {
+    'POS_GET_ORDER', 'POS_GET_ORDERS', 'POS_PAY', 'POS_CANCEL_ORDER', 'POS_FULFILL_PENDING',
+    'POS_GET_FLOOR', 'POS_SEND_TO_KITCHEN', 'POS_PRECHECK', 'POS_MOVE_ORDER', 'POS_REOPEN_ORDER', 'POS_SAVE_HALL', 'POS_SAVE_TABLE',
+    'POS_GET_KITCHEN_QUEUE', 'POS_MARK_LINE_READY'].forEach(function (a) {
     ok('ACTION_' + a, typeof ACTION_HANDLERS[a] === 'function' && !!CONFIG.ACTION_MODULE[a], 'handler + module');
   });
   ok('ROLES', CONFIG.ROLE_LIST.indexOf('КАССИР') !== -1 && CONFIG.ROLE_LIST.indexOf('ОФИЦИАНТ') !== -1, 'new roles registered');

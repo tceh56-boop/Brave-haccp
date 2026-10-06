@@ -125,7 +125,7 @@
   .ttk-table th{background:#f7f3ee}
   @media(max-width:650px){.ttk-stage-row{grid-template-columns:32px 1fr 1fr}.ttk-stage-row input:nth-of-type(2),.ttk-stage-row input:nth-of-type(3){grid-column:2}.ttk-stage-row button{grid-column:3}}
   /* ---------- Модуль «Касса» (Pos.gs). Роли цвета — replica/design/tokens.json ---------- */
-  :root{ --pos-text-muted:#6E5E50; --pos-border-input:#8A7A6A; --pos-success:#12823A; --pos-danger:#C62828; --pos-tap:48px; --pos-max:1180px; }
+  :root{ --pos-text-muted:#6E5E50; --pos-border-input:#8A7A6A; --pos-success:#12823A; --pos-danger:#C62828; --pos-on-warning:#1A1410; --pos-tap:48px; --pos-max:1180px; }
   main.pos-wide{max-width:var(--pos-max);}
   .pos-muted{color:var(--pos-text-muted);font-size:13px;}
   .pos-shiftbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;}
@@ -153,6 +153,27 @@
   .pos-ok{color:var(--pos-success);font-weight:700;}
   .pos-bad{color:var(--pos-danger);font-weight:700;}
   .pos-badge-open{background:var(--info);} .pos-badge-paid{background:var(--pos-success);} .pos-badge-cancel{background:var(--pos-danger);}
+  .pos-table-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+  .pos-table{min-height:104px;padding:12px;border-radius:14px;border:1px solid var(--pos-border-input);background:var(--white);color:var(--black);
+    text-align:left;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;gap:4px;}
+  .pos-table .pos-tname{font-size:20px;font-weight:800;}
+  .pos-table.busy{border:2px solid var(--yellow);background:#FFF8EA;}
+  .pos-table.precheck{border:2px solid var(--burgundy);background:#FBEFF0;}
+  .pos-table.alien{opacity:.6;cursor:not-allowed;}
+  .pos-table:focus-visible{outline:2px solid var(--yellow);outline-offset:2px;}
+  .pos-legend{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 12px;}
+  .pos-legend span::before{content:'';display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle;border:1px solid var(--pos-border-input);}
+  .pos-legend .lg-busy::before{background:#FFF8EA;border:2px solid var(--yellow);} .pos-legend .lg-pre::before{background:#FBEFF0;border:2px solid var(--burgundy);}
+  .pos-actions{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;}
+  .pos-actions .btn{flex:1 1 auto;width:auto;margin:0;}
+  .pos-st{display:inline-block;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:700;}
+  .pos-st-kitchen{background:var(--warn);color:var(--pos-on-warning);} .pos-st-ready{background:var(--pos-success);color:#fff;}
+  .kitchen-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+  .kitchen-ticket{background:var(--white);border-radius:14px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);border-top:6px solid var(--warn);}
+  .kitchen-ticket.late{border-top-color:var(--pos-danger);}
+  .kitchen-line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee;font-size:16px;}
+  .kitchen-line.done{color:var(--pos-text-muted);text-decoration:line-through;}
+  .kitchen-line .btn{width:auto;margin:0;min-height:var(--pos-tap);}
   .pos-order-row{display:flex;justify-content:space-between;gap:8px;width:100%;padding:10px 0;border:none;border-bottom:1px solid #eee;background:none;font-family:inherit;font-size:14px;text-align:left;cursor:pointer;}
 </style>
 </head>
@@ -216,7 +237,8 @@
   <div class="menuHead">ЦЕХ</div>
   <div class="menuGroupLabel">Оперативное</div>
   <button class="menuItem active" data-view="dashboard" data-module="dashboard" onclick="navTo('dashboard')">Главная</button>
-  <button class="menuItem" data-view="pos" data-module="pos" onclick="navTo('pos')">Касса</button>
+  <button class="menuItem" data-view="pos" data-module="pos" onclick="navTo('pos')">Касса и зал</button>
+  <button class="menuItem" data-view="kitchen" data-module="pos_kitchen" onclick="navTo('kitchen')">Кухня: заказы</button>
   <button class="menuItem" data-view="warehouse" data-module="warehouse_view" onclick="navTo('warehouse')">Склад</button>
   <button class="menuItem" data-view="marking" data-module="marking" onclick="navTo('marking')">🏷️ Маркировка</button>
   <button class="menuItem" data-view="writeoff" data-module="writeoffs" onclick="navTo('writeoff')">Списание</button>
@@ -1336,7 +1358,7 @@
     </div>
   </section>
 
-  <!-- Модуль «Касса» (Pos.gs, replica/architecture.md M1): смена + заказ «с собой» + оплата. -->
+  <!-- Модуль «Касса» (Pos.gs, replica/architecture.md): M1 смена + заказ + оплата; M2 зал, официант, настройка зала. -->
   <section id="view-pos" class="hidden" aria-labelledby="posTitle">
     <div class="card">
       <div class="pos-shiftbar">
@@ -1349,10 +1371,53 @@
 
     <div id="posNoShift" class="card hidden">
       <h2>Смена не открыта</h2>
-      <p class="pos-muted">Откройте смену, чтобы принимать заказы. Укажите, сколько наличных в кассе сейчас.</p>
-      <label for="posCashStart" class="pos-muted">Наличные на начало смены, ₽</label>
-      <input id="posCashStart" type="number" min="0" step="0.01" inputmode="decimal" value="0">
-      <button class="btn" onclick="posOpenShift()">Открыть смену</button>
+      <div id="posOpenShiftForm">
+        <p class="pos-muted">Откройте смену, чтобы принимать заказы. Укажите, сколько наличных в кассе сейчас.</p>
+        <label for="posCashStart" class="pos-muted">Наличные на начало смены, ₽</label>
+        <input id="posCashStart" type="number" min="0" step="0.01" inputmode="decimal" value="0">
+        <button class="btn" onclick="posOpenShift()">Открыть смену</button>
+      </div>
+      <p id="posNoShiftWait" class="pos-muted hidden">Смену открывает кассир. Как только она будет открыта, обновите экран.</p>
+      <button id="posNoShiftHall" class="btn small secondary hidden" data-module-gate="pos_admin" onclick="posShowTab('hall')">Настроить зал и столы</button>
+    </div>
+
+    <div id="posTabs" class="subnav hidden" role="tablist" aria-label="Разделы кассы">
+      <button data-pos-tab="floor" onclick="posShowTab('floor')">Зал</button>
+      <button data-pos-tab="order" onclick="posShowTab('order')">Заказ</button>
+      <button data-pos-tab="hall" data-module-gate="pos_admin" onclick="posShowTab('hall')">Настройка зала</button>
+      <button data-module-gate="pos_kitchen" onclick="navTo('kitchen')">Кухня →</button>
+    </div>
+
+    <div id="posFloorPanel" class="card hidden">
+      <div class="row-between">
+        <div id="posHalls" class="subnav" style="margin:0;" role="tablist" aria-label="Залы"></div>
+        <button id="posTakeawayBtn" class="btn small" onclick="posTakeaway()">Заказ с собой</button>
+      </div>
+      <div class="pos-legend pos-muted"><span>свободен</span><span class="lg-busy">занят</span><span class="lg-pre">пречек — ждёт оплаты</span></div>
+      <div id="posTables" class="pos-table-grid" aria-live="polite"></div>
+      <div id="posFloorErr" class="err" role="alert"></div>
+    </div>
+
+    <div id="posHallPanel" class="hidden">
+      <div class="card">
+        <h2>Залы</h2>
+        <div id="posHallList" class="pos-muted"></div>
+        <label for="posHallName" class="pos-muted">Новый зал</label>
+        <input id="posHallName" maxlength="60" placeholder="Например: Основной зал, Веранда">
+        <button class="btn secondary" onclick="posAddHall()">Добавить зал</button>
+      </div>
+      <div class="card">
+        <h2>Столы</h2>
+        <label for="posTableHall" class="pos-muted">Зал</label>
+        <select id="posTableHall"></select>
+        <div class="grid2">
+          <div><label for="posTableName" class="pos-muted">Номер стола</label><input id="posTableName" maxlength="30" placeholder="1"></div>
+          <div><label for="posTableSeats" class="pos-muted">Мест</label><input id="posTableSeats" type="number" min="0" step="1" value="4"></div>
+        </div>
+        <button class="btn secondary" onclick="posAddTable()">Добавить стол</button>
+        <div id="posTableList"></div>
+        <div id="posHallErr" class="err" role="alert"></div>
+      </div>
     </div>
 
     <div id="posCloseCard" class="card hidden">
@@ -1383,8 +1448,10 @@
           <h2 id="posTicketTitle" style="margin:0;">Заказ</h2>
           <button class="btn small secondary" onclick="posNewOrder()">Новый заказ</button>
         </div>
+        <div id="posOrderMeta" class="pos-muted"></div>
         <div id="posLines" aria-live="polite"><p class="pos-muted">Выберите блюда в меню — они появятся здесь.</p></div>
         <div class="row-between" style="margin-top:10px;"><span>Итого</span><span id="posTotal" class="pos-total">0 ₽</span></div>
+        <div id="posOrderActions" class="pos-actions"></div>
         <div id="posPayBlock" class="hidden">
           <div class="pos-seg" role="group" aria-label="Способ оплаты">
             <button type="button" data-method="нал" onclick="posSetMethod('нал')">Наличные</button>
@@ -1403,6 +1470,19 @@
         <div id="posErr" class="err" role="alert"></div>
       </div>
     </div>
+  </section>
+
+  <!-- Модуль «Касса», M2: очередь кухни. Обновляется каждые 10 секунд, пока экран открыт. -->
+  <section id="view-kitchen" class="hidden" aria-labelledby="kitchenTitle">
+    <div class="card">
+      <div class="row-between">
+        <h2 id="kitchenTitle" style="margin:0;">Кухня: заказы</h2>
+        <button class="btn small secondary" onclick="kitchenLoad()">Обновить</button>
+      </div>
+      <div id="kitchenInfo" class="pos-muted" aria-live="polite"></div>
+    </div>
+    <div id="kitchenQueue" class="kitchen-grid"></div>
+    <div id="kitchenErr" class="err" role="alert"></div>
   </section>
 
 </main>
@@ -1430,16 +1510,16 @@
    */
   var CLIENT_ROLE_MODULES = {
     'ADMIN': 'all',
-    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
-    'ШЕФ-ПОВАР': ['dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
-    'ПОВАР': ['recipes', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks'],
+    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
+    'ШЕФ-ПОВАР': ['pos_kitchen', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
+    'ПОВАР': ['pos_kitchen', 'recipes', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks'],
     'КЛАДОВЩИК': ['warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations'],
     'БУХГАЛТЕР': ['recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales'],
     'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products'],
-    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
+    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
     'ЛАБОРАНТ': ['lab'],
     'КАССИР': ['pos', 'pos_shift'],
-    'ОФИЦИАНТ': ['pos_waiter']
+    'ОФИЦИАНТ': ['pos']
   };
 
   function applyRoleVisibility(role) {
@@ -1637,8 +1717,10 @@
     if (name === 'workshops') initWorkshopsView();
     if (name === 'notifsettings') initNotificationSettingsView();
     if (name === 'safety') initSafetyView();
-    document.querySelector('main').classList.toggle('pos-wide', name === 'pos');
+    document.querySelector('main').classList.toggle('pos-wide', name === 'pos' || name === 'kitchen');
+    posStopPolling();
     if (name === 'pos') initPosView();
+    if (name === 'kitchen') initKitchenView();
   }
 
   function loadRecoveryView() {
@@ -4637,7 +4719,9 @@ function markLoadJournalUI(){var id=(document.getElementById('markBatchId').valu
 
 <script>
 /* ---------- Модуль «Касса» (Pos.gs). Все суммы считает сервер; клиент только показывает. ---------- */
-var POS = { menu: null, cat: null, shift: null, order: null, lines: [], method: 'нал', payOpId: null, busy: false, cashTouched: false };
+var POS = { menu: null, cat: null, shift: null, order: null, lines: [], table: null, method: 'нал', payOpId: null, busy: false, cashTouched: false,
+  tab: null, floor: null, hall: null, timer: null };
+function posIsWaiter() { return SESSION.роль === 'ОФИЦИАНТ'; }
 
 function posEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function posMoney(n) { return (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ₽'; }
@@ -4652,22 +4736,216 @@ function posApplyShift(data) {
   POS.shift = data && data.shift;
   var info = document.getElementById('posShiftInfo'), actions = document.getElementById('posShiftActions');
   document.getElementById('posNoShift').classList.toggle('hidden', !!POS.shift);
-  document.getElementById('posWork').classList.toggle('hidden', !POS.shift);
+  document.getElementById('posTabs').classList.toggle('hidden', !POS.shift);
   if (!POS.shift) {
     info.textContent = 'Смена закрыта';
     actions.innerHTML = '';
     document.getElementById('posCloseCard').classList.add('hidden');
+    var canOpen = hasClientModule('pos_shift');
+    document.getElementById('posOpenShiftForm').classList.toggle('hidden', !canOpen);
+    document.getElementById('posNoShiftWait').classList.toggle('hidden', canOpen);
+    document.getElementById('posNoShiftHall').classList.remove('hidden');
+    applyModuleGates();
+    if (POS.tab !== 'hall') posShowPanels(null);
     return;
   }
-  var t = data.totals || {};
-  info.innerHTML = '<span>Смена с ' + posEsc(new Date(POS.shift.открыта).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) + '</span>' +
+  var since = posEsc(new Date(POS.shift.открыта).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+  var t = data.totals;
+  info.innerHTML = t ? '<span>Смена с ' + since + '</span>' +
     '<span>Заказов: <b>' + (t.заказов || 0) + '</b></span>' +
     '<span>Выручка: <b>' + posMoney(t.выручка) + '</b></span>' +
     '<span>Нал: ' + posMoney(t.нал) + ' · Карта: ' + posMoney(t.карта) + '</span>' +
-    '<span>Средний чек: ' + posMoney(t.средний_чек) + '</span>';
+    '<span>Средний чек: ' + posMoney(t.средний_чек) + '</span>' : '<span>Смена с ' + since + '</span>';
   actions.innerHTML = hasClientModule('pos_shift') ? '<button class="btn small secondary" onclick="posToggleClose(true)">Закрыть смену</button>' : '';
+  document.getElementById('posTakeawayBtn').classList.toggle('hidden', posIsWaiter());
+  applyModuleGates();
   if (!POS.menu) posLoadMenu(); else posRenderMenu();
   posLoadOrders();
+  posShowTab(POS.tab || (posIsWaiter() ? 'floor' : 'order'));
+}
+
+/** Вкладки кассы: зал / заказ / настройка зала. Опрос сервера идёт только на вкладке «Зал». */
+function posShowPanels(tab) {
+  document.getElementById('posFloorPanel').classList.toggle('hidden', tab !== 'floor');
+  document.getElementById('posWork').classList.toggle('hidden', tab !== 'order');
+  document.getElementById('posHallPanel').classList.toggle('hidden', tab !== 'hall');
+  document.querySelectorAll('#posTabs button[data-pos-tab]').forEach(function (b) {
+    var on = b.dataset.posTab === tab;
+    b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on));
+  });
+}
+
+function posShowTab(tab) {
+  POS.tab = tab;
+  posStopPolling();
+  posShowPanels(tab);
+  if (tab === 'floor') { posLoadFloor(); POS.timer = setInterval(function () { if (!document.hidden) posLoadFloor(); }, 10000); }
+  if (tab === 'hall') posLoadHallAdmin();
+}
+
+function posStopPolling() { if (POS.timer) { clearInterval(POS.timer); POS.timer = null; } if (window.KITCHEN && KITCHEN.timer) { clearInterval(KITCHEN.timer); KITCHEN.timer = null; } }
+
+function posLoadFloor() {
+  call('POS_GET_FLOOR', {}, function (f) {
+    POS.floor = f;
+    document.getElementById('posFloorErr').textContent = '';
+    if (!POS.hall || !f.halls.some(function (h) { return h.hall_id === POS.hall; })) POS.hall = f.halls[0] ? f.halls[0].hall_id : null;
+    posRenderFloor();
+  }, function (e) { document.getElementById('posFloorErr').textContent = e; });
+}
+
+function posRenderFloor() {
+  var f = POS.floor;
+  if (!f) return;
+  document.getElementById('posHalls').innerHTML = f.halls.length > 1 ? f.halls.map(function (h, i) {
+    return '<button role="tab" aria-selected="' + (h.hall_id === POS.hall) + '" class="' + (h.hall_id === POS.hall ? 'active' : '') + '" onclick="posPickHall(' + i + ')">' + posEsc(h.название) + '</button>';
+  }).join('') : (f.halls[0] ? '<b>' + posEsc(f.halls[0].название) + '</b>' : '');
+  var hall = f.halls.filter(function (h) { return h.hall_id === POS.hall; })[0];
+  var el = document.getElementById('posTables');
+  if (!hall) {
+    el.innerHTML = '<p class="pos-muted">В зале пока нет столов.' + (hasClientModule('pos_admin') ? ' Добавьте их на вкладке «Настройка зала».' : ' Попросите менеджера добавить столы.') + '</p>';
+    return;
+  }
+  if (!hall.tables.length) { el.innerHTML = '<p class="pos-muted">В этом зале пока нет столов.</p>'; return; }
+  var now = Date.now();
+  el.innerHTML = hall.tables.map(function (t) {
+    var alien = posIsWaiter() && t.статус !== 'свободен' && !t.мой;
+    var cls = 'pos-table' + (t.статус === 'занят' ? ' busy' : t.статус === 'пречек' ? ' precheck' : '') + (alien ? ' alien' : '');
+    var body = '<span class="pos-tname">' + posEsc(t.название) + '</span>';
+    if (t.статус === 'свободен') body += '<span class="pos-muted">свободен' + (t.мест ? ' · ' + posEsc(t.мест) + ' мест' : '') + '</span>';
+    else {
+      var mins = t.открыт_в ? Math.max(0, Math.round((now - new Date(t.открыт_в).getTime()) / 60000)) : 0;
+      body += '<b>' + posMoney(t.итого) + '</b><span class="pos-muted">№' + posEsc(t.номер) + ' · ' + mins + ' мин · ' + posEsc(t.официант) + '</span>';
+      if (t.позиции && (t.позиции.на_кухне || t.позиции.готово)) body += '<span>' + (t.позиции.на_кухне ? '<span class="pos-st pos-st-kitchen">готовится ' + t.позиции.на_кухне + '</span> ' : '') + (t.позиции.готово ? '<span class="pos-st pos-st-ready">готово ' + t.позиции.готово + '</span>' : '') + '</span>';
+      if (t.статус === 'пречек') body += '<span class="pos-muted">пречек — ждёт оплаты</span>';
+    }
+    var label = 'Стол ' + t.название + ', ' + t.статус + (t.статус !== 'свободен' ? ', ' + posMoney(t.итого) : '');
+    return '<button class="' + cls + '"' + (alien ? ' disabled' : '') + ' aria-label="' + posEsc(label) + '" onclick="posOpenTable(\'' + posEsc(t.table_id) + '\',\'' + posEsc(t.order_id) + '\')">' + body + '</button>';
+  }).join('');
+}
+
+function posPickHall(i) { POS.hall = POS.floor.halls[i].hall_id; posRenderFloor(); }
+
+/** Свободный стол — новый заказ на нём; занятый — открыть его заказ. */
+function posOpenTable(tableId, orderId) {
+  document.getElementById('posFloorErr').textContent = '';
+  posErr(''); POS.cashTouched = false;
+  if (orderId) { call('POS_GET_ORDER', { orderId: orderId }, function (v) { posApplyOrder(v); posShowTab('order'); }, function (e) { document.getElementById('posFloorErr').textContent = e; }); return; }
+  call('POS_CREATE_ORDER', { tableId: tableId }, function (v) { posApplyOrder(v); posLoadOrders(); posShowTab('order'); },
+    function (e) { document.getElementById('posFloorErr').textContent = e; posLoadFloor(); });
+}
+
+function posTakeaway() { posNewOrder(); posShowTab('order'); }
+
+function posSendToKitchen() {
+  var o = POS.order; if (!o) return;
+  posErr('');
+  call('POS_SEND_TO_KITCHEN', { orderId: o.order_id, version: o.version }, posApplyOrder, function (e) { posErr(e); posReloadOrder(); });
+}
+
+function posPrecheck() {
+  var o = POS.order; if (!o) return;
+  posErr('');
+  call('POS_PRECHECK', { orderId: o.order_id, version: o.version }, function (v) {
+    posApplyOrder(v);
+    if (posIsWaiter()) document.getElementById('posPayResult').innerHTML = '<p class="pos-ok">Пречек готов. Заказ ждёт оплаты на кассе.</p>';
+  }, function (e) { posErr(e); posReloadOrder(); });
+}
+
+function posReopen() {
+  var o = POS.order; if (!o) return;
+  call('POS_REOPEN_ORDER', { orderId: o.order_id }, posApplyOrder, posErr);
+}
+
+function posMoveOrder() {
+  var o = POS.order; if (!o) return;
+  var free = [];
+  ((POS.floor && POS.floor.halls) || []).forEach(function (h) { h.tables.forEach(function (t) { if (t.статус === 'свободен') free.push(t); }); });
+  var name = prompt('На какой стол перенести заказ №' + o.номер + '?' + (free.length ? ' Свободны: ' + free.map(function (t) { return t.название; }).join(', ') : ''));
+  if (!name) return;
+  var target = free.filter(function (t) { return String(t.название).toLowerCase() === String(name).trim().toLowerCase(); })[0];
+  if (!target) { posErr('Свободный стол «' + name + '» не найден. Откройте вкладку «Зал», чтобы обновить схему.'); return; }
+  call('POS_MOVE_ORDER', { orderId: o.order_id, tableId: target.table_id }, function (v) { posApplyOrder(v); posLoadFloor(); }, posErr);
+}
+
+// ---------- Настройка зала ----------
+function posLoadHallAdmin() {
+  document.getElementById('posHallErr').textContent = '';
+  call('POS_GET_FLOOR', {}, function (f) {
+    POS.floor = f;
+    document.getElementById('posHallList').innerHTML = f.halls.length ? f.halls.map(function (h) {
+      return '<div class="row-between taskrow"><span><b>' + posEsc(h.название) + '</b> · столов: ' + h.tables.length + '</span></div>';
+    }).join('') : '<p>Залов пока нет — добавьте первый.</p>';
+    var sel = document.getElementById('posTableHall');
+    sel.innerHTML = f.halls.map(function (h) { return '<option value="' + posEsc(h.hall_id) + '">' + posEsc(h.название) + '</option>'; }).join('');
+    document.getElementById('posTableList').innerHTML = f.halls.map(function (h) {
+      if (!h.tables.length) return '';
+      return '<div class="pos-muted" style="margin-top:10px;">' + posEsc(h.название) + '</div>' + h.tables.map(function (t) {
+        return '<div class="row-between taskrow"><span>Стол <b>' + posEsc(t.название) + '</b>' + (t.мест ? ' · ' + posEsc(t.мест) + ' мест' : '') + '</span>' +
+          '<button class="btn small secondary" onclick="posArchiveTable(\'' + posEsc(t.table_id) + '\',\'' + posEsc(h.hall_id) + '\')" aria-label="Убрать стол ' + posEsc(t.название) + '">Убрать</button></div>';
+      }).join('');
+    }).join('');
+  }, function (e) { document.getElementById('posHallErr').textContent = e; });
+}
+
+function posAddHall() {
+  var name = document.getElementById('posHallName').value.trim();
+  if (!name) { document.getElementById('posHallErr').textContent = 'Укажите название зала.'; return; }
+  call('POS_SAVE_HALL', { название: name }, function () { document.getElementById('posHallName').value = ''; posLoadHallAdmin(); },
+    function (e) { document.getElementById('posHallErr').textContent = e; });
+}
+
+function posAddTable() {
+  var hallId = document.getElementById('posTableHall').value, name = document.getElementById('posTableName').value.trim();
+  if (!hallId) { document.getElementById('posHallErr').textContent = 'Сначала добавьте зал.'; return; }
+  if (!name) { document.getElementById('posHallErr').textContent = 'Укажите номер стола.'; return; }
+  call('POS_SAVE_TABLE', { hallId: hallId, название: name, мест: Number(document.getElementById('posTableSeats').value) || 0 }, function () {
+    var n = document.getElementById('posTableName'); n.value = /^\d+$/.test(name) ? String(Number(name) + 1) : ''; n.focus();
+    posLoadHallAdmin();
+  }, function (e) { document.getElementById('posHallErr').textContent = e; });
+}
+
+function posArchiveTable(tableId, hallId) {
+  var t = null;
+  POS.floor.halls.forEach(function (h) { h.tables.forEach(function (x) { if (x.table_id === tableId) t = x; }); });
+  if (!t || !confirm('Убрать стол ' + t.название + ' из зала?')) return;
+  call('POS_SAVE_TABLE', { tableId: tableId, hallId: hallId, название: t.название, мест: t.мест, статус: 'архив' }, posLoadHallAdmin,
+    function (e) { document.getElementById('posHallErr').textContent = e; });
+}
+
+// ---------- Кухня ----------
+var KITCHEN = { timer: null };
+function initKitchenView() {
+  kitchenLoad();
+  KITCHEN.timer = setInterval(function () { if (!document.hidden) kitchenLoad(); }, 10000);
+}
+
+function kitchenLoad() {
+  call('POS_GET_KITCHEN_QUEUE', {}, function (rows) {
+    document.getElementById('kitchenErr').textContent = '';
+    var groups = [], byOrder = {};
+    rows.forEach(function (r) {
+      if (!byOrder[r.order_id]) { byOrder[r.order_id] = { order_id: r.order_id, номер: r.номер, стол: r.стол, с: r.на_кухню_в, lines: [] }; groups.push(byOrder[r.order_id]); }
+      byOrder[r.order_id].lines.push(r);
+    });
+    var waiting = rows.filter(function (r) { return r.статус === 'на_кухне'; }).length;
+    document.getElementById('kitchenInfo').textContent = waiting ? 'Готовится позиций: ' + waiting + '. Экран обновляется сам каждые 10 секунд.' : 'Очередь пуста — новых заказов нет.';
+    var now = Date.now();
+    document.getElementById('kitchenQueue').innerHTML = groups.filter(function (g) { return g.lines.some(function (l) { return l.статус === 'на_кухне'; }); }).map(function (g) {
+      var mins = Math.max(0, Math.round((now - new Date(g.с).getTime()) / 60000));
+      return '<div class="kitchen-ticket' + (mins >= 20 ? ' late' : '') + '"><div class="row-between"><b>' + (g.стол === 'с собой' ? 'С собой' : 'Стол ' + posEsc(g.стол)) +
+        '</b><span class="pos-muted">№' + posEsc(g.номер) + ' · ' + mins + ' мин</span></div>' +
+        g.lines.map(function (l) {
+          var done = l.статус === 'готово';
+          return '<div class="kitchen-line' + (done ? ' done' : '') + '"><span><b>' + posEsc(l.qty) + ' ×</b> ' + posEsc(l.название) + '</span>' +
+            (done ? '<span class="pos-st pos-st-ready">готово</span>' : '<button class="btn small" onclick="kitchenReady(\'' + posEsc(l.line_id) + '\')" aria-label="Готово: ' + posEsc(l.название) + '">Готово</button>') + '</div>';
+        }).join('') + '</div>';
+    }).join('');
+  }, function (e) { document.getElementById('kitchenErr').textContent = e; });
+}
+
+function kitchenReady(lineId) {
+  call('POS_MARK_LINE_READY', { lineId: lineId }, kitchenLoad, function (e) { document.getElementById('kitchenErr').textContent = e; kitchenLoad(); });
 }
 
 function posOpenShift() {
@@ -4726,7 +5004,7 @@ function posRenderMenu() {
 function posPickCat(i) { POS.cat = POS.menu.categories[i]; posRenderMenu(); }
 
 function posApplyOrder(v) {
-  POS.order = v.order; POS.lines = v.lines || [];
+  POS.order = v.order; POS.lines = v.lines || []; POS.table = v.table || null;
   posSyncOrderRow(v.order);
   POS.payOpId = null;
   document.getElementById('posPayResult').innerHTML = '';
@@ -4735,21 +5013,31 @@ function posApplyOrder(v) {
 
 function posRenderTicket() {
   var o = POS.order, el = document.getElementById('posLines');
-  document.getElementById('posTicketTitle').textContent = o ? 'Заказ №' + o.номер : 'Заказ';
+  document.getElementById('posTicketTitle').textContent = o ? 'Заказ №' + o.номер + (POS.table ? ' · стол ' + POS.table.название : ' · с собой') : 'Заказ';
+  var statusText = { 'открыт': '', 'пречек': 'Пречек — ждёт оплаты', 'оплачен': 'Оплачен', 'отменён': 'Отменён', 'возврат': 'Возврат' };
+  document.getElementById('posOrderMeta').textContent = o ? (statusText[o.статус] || '') : (posIsWaiter() ? 'Выберите стол на вкладке «Зал».' : '');
   if (!o || !POS.lines.length) {
     el.innerHTML = '<p class="pos-muted">Выберите блюда в меню — они появятся здесь.</p>';
   } else {
     var editable = o.статус === 'открыт';
     el.innerHTML = POS.lines.map(function (l) {
-      return '<div class="pos-line"><span class="pos-name">' + posEsc(l.название_снимок) + '<br><span class="pos-muted">' + posMoney(l.цена) + '</span></span>' +
-        (editable ? '<span class="pos-qty"><button aria-label="Меньше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) - 1) + ')">−</button>' +
+      var badge = l.статус === 'на_кухне' ? ' <span class="pos-st pos-st-kitchen">готовится</span>' : l.статус === 'готово' ? ' <span class="pos-st pos-st-ready">готово</span>' : '';
+      return '<div class="pos-line"><span class="pos-name">' + posEsc(l.название_снимок) + badge + '<br><span class="pos-muted">' + posMoney(l.цена) + '</span></span>' +
+        (editable && l.статус === 'новая' ? '<span class="pos-qty"><button aria-label="Меньше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) - 1) + ')">−</button>' +
           '<span>' + posEsc(l.qty) + '</span><button aria-label="Больше: ' + posEsc(l.название_снимок) + '" onclick="posQty(\'' + posEsc(l.line_id) + '\',' + (Number(l.qty) + 1) + ')">+</button></span>'
           : '<span>× ' + posEsc(l.qty) + '</span>') +
         '<b>' + posMoney(l.сумма) + '</b></div>';
     }).join('');
   }
   document.getElementById('posTotal').textContent = posMoney(o ? o.итого : 0);
-  var canPay = !!(o && o.статус === 'открыт' && POS.lines.length);
+  var live = !!(o && (o.статус === 'открыт' || o.статус === 'пречек'));
+  var acts = [];
+  if (o && o.статус === 'открыт' && POS.lines.some(function (l) { return l.статус === 'новая'; }) && (POS.table || posIsWaiter())) acts.push('<button class="btn small" onclick="posSendToKitchen()">На кухню</button>');
+  if (o && o.статус === 'открыт' && POS.lines.length && POS.table) acts.push('<button class="btn small secondary" onclick="posPrecheck()">Пречек</button>');
+  if (live && POS.table) acts.push('<button class="btn small secondary" onclick="posMoveOrder()">Перенести</button>');
+  if (o && o.статус === 'пречек' && hasClientModule('pos_admin')) acts.push('<button class="btn small secondary" onclick="posReopen()">Снять пречек</button>');
+  document.getElementById('posOrderActions').innerHTML = acts.join('');
+  var canPay = !!(live && POS.lines.length && hasClientModule('pos_shift'));
   document.getElementById('posPayBlock').classList.toggle('hidden', !canPay);
   applyModuleGates();
   if (canPay) posSetMethod(POS.method);
@@ -4757,6 +5045,8 @@ function posRenderTicket() {
 
 function posWithOrder(fn, onError) {
   if (POS.order && POS.order.статус === 'открыт') return fn(POS.order);
+  if (POS.order && POS.order.статус === 'пречек') return onError('Заказ на пречеке — изменить его нельзя.');
+  if (posIsWaiter()) return onError('Сначала выберите стол на вкладке «Зал».');
   call('POS_CREATE_ORDER', {}, function (v) { posApplyOrder(v); fn(v.order); posLoadOrders(); }, onError);
 }
 
@@ -4782,7 +5072,8 @@ function posReloadOrder() {
 
 function posNewOrder() {
   posErr('');
-  POS.order = null; POS.lines = []; POS.payOpId = null; POS.cashTouched = false;
+  POS.order = null; POS.lines = []; POS.table = null; POS.payOpId = null; POS.cashTouched = false;
+  if (posIsWaiter()) { posShowTab('floor'); }
   document.getElementById('posCashGiven').value = '';
   document.getElementById('posPayResult').innerHTML = '';
   posRenderTicket();
