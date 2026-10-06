@@ -923,7 +923,9 @@ function posGetGuest_(data, session) {
   var view = _posGuestView_(g, session);
   if (_posCanSeePd_(session)) {
     view.история = findRows_('BONUS_TXNS', function (t) { return t.guest_id === g.guest_id; })
-      .sort(function (a, b) { return String(b.создано).localeCompare(String(a.создано)); }).slice(0, 50);
+      // Новые сверху; при одинаковом времени — по порядку записи в листе (__row), иначе «списание» и
+      // «начисление» одной оплаты меняются местами и остаток читается неверно.
+      .sort(function (a, b) { return String(b.создано).localeCompare(String(a.создано)) || (b.__row - a.__row); }).slice(0, 50);
     view.согласие_пд = g.согласие_пд; view.комментарий = g.комментарий;
   }
   return view;

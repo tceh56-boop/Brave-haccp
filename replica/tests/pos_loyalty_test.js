@@ -64,6 +64,8 @@ step('менеджер начисляет 300 бонусов вручную с �
   assert(/причину/.test(apiErr('POS_ADJUST_BONUS', { guestId: guest.guest_id, delta: 300 }, tM)));
   const g = api('POS_ADJUST_BONUS', { guestId: guest.guest_id, delta: 300, reason: 'Компенсация за ожидание' }, tM);
   assert.equal(g.бонусы, 342); assert.equal(g.история[0].тип, 'корректировка');
+  // История: новые сверху и остатки последовательны (каждый остаток = следующий + сумма).
+  for (let i = 0; i + 1 < g.история.length; i++) assert.equal(g.история[i].остаток_после, g.история[i + 1].остаток_после + g.история[i].сумма);
 });
 let o2;
 step('заказ 2 (1000 ₽): можно списать 300 (30%), списываем 300 → платит 700, начислено 35', () => {
@@ -102,7 +104,9 @@ step('полный остаток возврата: деньги 490, бонус
 });
 step('баланс = сумма проводок', () => {
   const sum = G.findRows_('BONUS_TXNS', t => t.guest_id === guest.guest_id).reduce((a, t) => a + t.сумма, 0);
-  assert.equal(sum, api('POS_GET_GUEST', { guestId: guest.guest_id }, tM).бонусы);
+  const g = api('POS_GET_GUEST', { guestId: guest.guest_id }, tM);
+  assert.equal(sum, g.бонусы);
+  for (let i = 0; i + 1 < g.история.length; i++) assert.equal(g.история[i].остаток_после, g.история[i + 1].остаток_после + g.история[i].сумма, 'порядок истории');
 });
 step('отмена начисления не уводит баланс в минус, если бонусы уже потрачены', () => {
   const g2 = api('POS_SAVE_GUEST', { имя: 'Мария', телефон: '+79990001122', consent: true }, tK);

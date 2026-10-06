@@ -149,6 +149,13 @@
   .pos-seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;margin:10px 0;}
   .pos-kpi-row{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;}
   .pos-refund{border:1px solid var(--pos-border-input);border-radius:12px;padding:12px;margin-top:10px;}
+  .pos-guest-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--beige);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px;}
+  .pos-guest-chip .btn{width:auto;margin:0;}
+  .pos-consent{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--pos-text-muted);margin:6px 0 10px;}
+  .pos-consent input{width:20px;height:20px;margin:0;flex:none;}
+  .pos-bonus-row{display:flex;gap:8px;align-items:flex-end;}
+  .pos-bonus-row > div{flex:1;}
+  .pos-bonus-row .btn{width:auto;margin:0 0 8px;}
   .pos-st-refund{background:var(--pos-danger);color:#fff;}
   .report-table td,.report-table th{padding:8px 6px;font-size:13px;}
   .report-table td.num,.report-table th.num{text-align:right;white-space:nowrap;}
@@ -1445,6 +1452,7 @@
       <button data-pos-tab="hall" data-module-gate="pos_admin" onclick="posShowTab('hall')">Настройка зала</button>
       <button data-pos-tab="mods" data-module-gate="pos_admin" onclick="posShowTab('mods')">Модификаторы</button>
       <button data-pos-tab="report" data-module-gate="pos_admin" onclick="posShowTab('report')">Отчёт</button>
+      <button data-pos-tab="guests" data-module-gate="pos_admin" onclick="posShowTab('guests')">Гости</button>
       <button data-module-gate="pos_kitchen" onclick="navTo('kitchen')">Кухня →</button>
       <button data-module-gate="pos_stop" onclick="navTo('stoplist')">Стоп-лист →</button>
     </div>
@@ -1457,6 +1465,27 @@
       <div class="pos-legend pos-muted"><span>свободен</span><span class="lg-busy">занят</span><span class="lg-pre">пречек — ждёт оплаты</span></div>
       <div id="posTables" class="pos-table-grid" aria-live="polite"></div>
       <div id="posFloorErr" class="err" role="alert"></div>
+    </div>
+
+    <!-- M6: гости и бонусная программа. -->
+    <div id="posGuestsPanel" class="hidden">
+      <div class="card">
+        <h2>Бонусная программа</h2>
+        <label class="chkLabel"><input id="loyOn" class="chk" type="checkbox"> Программа включена</label>
+        <div class="grid2">
+          <div><label for="loyCb" class="muted">Кешбэк бонусами, % от оплаты деньгами</label><input id="loyCb" type="number" min="0" max="50" step="0.5"></div>
+          <div><label for="loyMax" class="muted">Можно оплатить бонусами, % чека</label><input id="loyMax" type="number" min="0" max="100" step="1"></div>
+        </div>
+        <button class="btn secondary" onclick="loySave()">Сохранить правила</button>
+        <p class="muted">1 бонус = 1 ₽ скидки. Бонусы начисляются после оплаты; при возврате пересчитываются.</p>
+      </div>
+      <div class="card">
+        <div class="row-between"><h2 style="margin:0;">Гости</h2></div>
+        <input id="guestsQuery" placeholder="Имя или цифры телефона" oninput="clearTimeout(window.__gq); window.__gq = setTimeout(guestsLoad, 300)">
+        <div id="guestsList"></div>
+      </div>
+      <div id="guestCard" class="card hidden"></div>
+      <div id="guestsErr" class="err" role="alert"></div>
     </div>
 
     <!-- M5: отчёт по сотрудникам и сменам за период. -->
@@ -1564,8 +1593,22 @@
           <button class="btn small secondary" onclick="posNewOrder()">Новый заказ</button>
         </div>
         <div id="posOrderMeta" class="pos-muted"></div>
+        <div id="posGuestChip"></div>
+        <div id="posGuestBlock" class="pos-refund hidden" aria-labelledby="posGuestTitle">
+          <h2 id="posGuestTitle" style="margin:0 0 6px;">Гость</h2>
+          <label for="posGuestPhone" class="pos-muted">Телефон гостя (или последние 4 цифры)</label>
+          <div class="pos-bonus-row"><div><input id="posGuestPhone" type="tel" inputmode="tel" placeholder="+7 912 345-67-89" onkeydown="if (event.key === 'Enter') posGuestSearch()"></div>
+            <button class="btn small" onclick="posGuestSearch()">Найти</button></div>
+          <div id="posGuestResults" aria-live="polite"></div>
+          <div id="posGuestNew" class="hidden">
+            <label for="posGuestName" class="pos-muted">Имя</label><input id="posGuestName" maxlength="60">
+            <label class="pos-consent"><input id="posGuestConsent" type="checkbox"><span>Гость согласен на обработку персональных данных (имя и телефон) для участия в бонусной программе.</span></label>
+            <button class="btn" onclick="posGuestCreate()">Завести гостя и добавить к заказу</button>
+          </div>
+          <button class="btn secondary" onclick="posToggleGuest(false)">Закрыть</button>
+        </div>
         <div id="posLines" aria-live="polite"><p class="pos-muted">Выберите блюда в меню — они появятся здесь.</p></div>
-        <div class="row-between" style="margin-top:10px;"><span>Итого</span><span id="posTotal" class="pos-total">0 ₽</span></div>
+        <div class="row-between" style="margin-top:10px;"><span id="posTotalLabel">Итого</span><span id="posTotal" class="pos-total">0 ₽</span></div>
         <div id="posOrderActions" class="pos-actions"></div>
         <div id="posPayBlock" class="hidden">
           <div class="pos-seg" role="group" aria-label="Способ оплаты">
@@ -1573,6 +1616,13 @@
             <button type="button" data-method="карта" onclick="posSetMethod('карта')">Карта</button>
             <button type="button" data-method="прочее" onclick="posSetMethod('прочее')">Другое</button>
             <button type="button" data-method="смешанная" onclick="posSetMethod('смешанная')">Нал + карта</button>
+          </div>
+          <div id="posBonusBlock" class="hidden">
+            <div class="pos-bonus-row">
+              <div><label for="posBonus" class="pos-muted">Списать бонусами</label><input id="posBonus" type="number" min="0" step="1" value="0" oninput="posBonusChanged()"></div>
+              <button class="btn small secondary" onclick="posBonusMax()">Максимум</button>
+            </div>
+            <div id="posBonusInfo" class="pos-muted"></div>
           </div>
           <div id="posMixBlock" class="hidden">
             <div class="grid2">
@@ -4954,6 +5004,7 @@ function posApplyShift(data) {
 function posShowPanels(tab) {
   document.getElementById('posModsPanel').classList.toggle('hidden', tab !== 'mods');
   document.getElementById('posReportPanel').classList.toggle('hidden', tab !== 'report');
+  document.getElementById('posGuestsPanel').classList.toggle('hidden', tab !== 'guests');
   document.getElementById('posFloorPanel').classList.toggle('hidden', tab !== 'floor');
   document.getElementById('posWork').classList.toggle('hidden', tab !== 'order');
   document.getElementById('posHallPanel').classList.toggle('hidden', tab !== 'hall');
@@ -4972,6 +5023,7 @@ function posShowTab(tab) {
   if (tab === 'hall') posLoadHallAdmin();
   if (tab === 'mods') posLoadModsAdmin();
   if (tab === 'report') posInitReport();
+  if (tab === 'guests') { loyLoad(); guestsLoad(); }
 }
 
 // ---------- Модификаторы: выбор при добавлении блюда ----------
@@ -5387,7 +5439,8 @@ function posPickDish(dishId) {
 }
 
 function posApplyOrder(v) {
-  POS.order = v.order; POS.lines = v.lines || []; POS.table = v.table || null;
+  POS.order = v.order; POS.lines = v.lines || []; POS.table = v.table || null; POS.guest = v.guest || null;
+  if (!POS.order || POS.order.order_id !== POS.bonusOrder) { POS.bonusOrder = POS.order && POS.order.order_id; var b = document.getElementById('posBonus'); if (b) b.value = 0; }
   posToggleRefund(false);
   posSyncOrderRow(v.order);
   POS.payOpId = null;
@@ -5415,8 +5468,15 @@ function posRenderTicket() {
     }).join('');
   }
   document.getElementById('posTotal').textContent = posMoney(o ? o.итого : 0);
+  document.getElementById('posTotalLabel').textContent = o && Number(o.скидка) ? 'Итого (−' + o.скидка + ' бонусами)' : 'Итого';
   var live = !!(o && (o.статус === 'открыт' || o.статус === 'пречек'));
+  var chip = document.getElementById('posGuestChip');
+  if (POS.guest) {
+    chip.innerHTML = '<div class="pos-guest-chip"><span>👤 <b>' + posEsc(POS.guest.имя) + '</b> ' + posEsc(POS.guest.телефон) + ' · бонусов: <b>' + posEsc(POS.guest.бонусы) + '</b></span>' +
+      (live ? '<button class="btn small secondary" onclick="posDetachGuest()" aria-label="Убрать гостя из заказа">Убрать</button>' : '') + '</div>';
+  } else chip.innerHTML = '';
   var acts = [];
+  if (live && !POS.guest) acts.push('<button class="btn small secondary" onclick="posToggleGuest(true)">Гость</button>');
   if (o && o.статус === 'открыт' && POS.lines.some(function (l) { return l.статус === 'новая'; }) && (POS.table || posIsWaiter())) acts.push('<button class="btn small" onclick="posSendToKitchen()">На кухню</button>');
   if (o && o.статус === 'открыт' && POS.lines.length && POS.table) acts.push('<button class="btn small secondary" onclick="posPrecheck()">Пречек</button>');
   if (live && POS.table) acts.push('<button class="btn small secondary" onclick="posMoveOrder()">Перенести</button>');
@@ -5426,6 +5486,9 @@ function posRenderTicket() {
   document.getElementById('posOrderActions').innerHTML = acts.join('');
   var canPay = !!(live && POS.lines.length && hasClientModule('pos_shift'));
   document.getElementById('posPayBlock').classList.toggle('hidden', !canPay);
+  var maxB = POS.guest ? Number(POS.guest.можно_списать) || 0 : 0;
+  document.getElementById('posBonusBlock').classList.toggle('hidden', !(canPay && maxB > 0));
+  if (canPay) posBonusChanged(true);
   applyModuleGates();
   if (canPay) posSetMethod(POS.method);
 }
@@ -5459,7 +5522,8 @@ function posReloadOrder() {
 
 function posNewOrder() {
   posErr('');
-  POS.order = null; POS.lines = []; POS.table = null; POS.payOpId = null; POS.cashTouched = false;
+  POS.order = null; POS.lines = []; POS.table = null; POS.guest = null; POS.payOpId = null; POS.cashTouched = false;
+  document.getElementById('posBonus').value = 0; posToggleGuest(false);
   if (posIsWaiter()) { posShowTab('floor'); }
   document.getElementById('posCashGiven').value = '';
   document.getElementById('posPayResult').innerHTML = '';
@@ -5471,16 +5535,40 @@ function posSetMethod(m) {
   document.querySelectorAll('#posPayBlock .pos-seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.method === m)); });
   document.getElementById('posCashBlock').classList.toggle('hidden', m !== 'нал');
   document.getElementById('posMixBlock').classList.toggle('hidden', m !== 'смешанная');
-  if (m === 'смешанная' && POS.order) { document.getElementById('posMixCash').value = ''; document.getElementById('posMixCard').value = POS.order.итого; posMixChanged('card'); }
+  if (m === 'смешанная' && POS.order) { document.getElementById('posMixCash').value = ''; document.getElementById('posMixCard').value = posPayTotal(); posMixChanged('card'); }
   // Пока кассир сам не ввёл сумму, поле следует за итогом заказа.
   var given = document.getElementById('posCashGiven');
-  if (m === 'нал' && POS.order && !POS.cashTouched) given.value = POS.order.итого;
+  if (m === 'нал' && POS.order && !POS.cashTouched) given.value = posPayTotal();
   posRenderChange();
 }
 
+/** К оплате деньгами: итог заказа минус бонусы. */
+function posPayTotal() {
+  var t = Number(POS.order && POS.order.итого) || 0;
+  return Math.max(0, Math.round((t - posBonusValue()) * 100) / 100);
+}
+function posBonusValue() {
+  var el = document.getElementById('posBonus'); if (!el || !POS.guest) return 0;
+  var max = Number(POS.guest.можно_списать) || 0, v = Math.floor(Number(el.value) || 0);
+  return Math.max(0, Math.min(v, max));
+}
+function posBonusChanged(silent) {
+  var el = document.getElementById('posBonus');
+  if (!POS.guest) { document.getElementById('posBonusInfo').textContent = ''; return; }
+  var max = Number(POS.guest.можно_списать) || 0, v = Math.floor(Number(el.value) || 0);
+  if (v > max) { el.value = max; v = max; }
+  document.getElementById('posBonusInfo').innerHTML = 'Доступно: ' + max + ' (до ' + posEsc(POS.loyMax || 30) + '% чека). К оплате деньгами: <b>' + posMoney(posPayTotal()) + '</b>';
+  document.getElementById('posTotal').textContent = posMoney(posPayTotal());
+  document.getElementById('posTotalLabel').textContent = posBonusValue() ? 'К оплате (−' + posBonusValue() + ' бонусами)' : 'Итого';
+  if (!POS.cashTouched) document.getElementById('posCashGiven').value = posPayTotal();
+  if (POS.method === 'смешанная') { document.getElementById('posMixCash').value = ''; document.getElementById('posMixCard').value = posPayTotal(); posMixChanged('card'); }
+  posRenderChange();
+}
+function posBonusMax() { document.getElementById('posBonus').value = POS.guest ? POS.guest.можно_списать : 0; posBonusChanged(); }
+
 /** Смешанная оплата: второе поле дополняет первое до суммы заказа. */
 function posMixChanged(which) {
-  var total = Number(POS.order && POS.order.итого) || 0;
+  var total = posPayTotal();
   var cash = document.getElementById('posMixCash'), card = document.getElementById('posMixCard');
   if (which === 'cash') card.value = Math.max(0, Math.round((total - (Number(cash.value) || 0)) * 100) / 100);
   else cash.value = Math.max(0, Math.round((total - (Number(card.value) || 0)) * 100) / 100);
@@ -5491,7 +5579,7 @@ function posMixChanged(which) {
 function posRenderChange() {
   var el = document.getElementById('posChange');
   if (!POS.order || POS.method !== 'нал') { el.textContent = ''; return; }
-  var diff = (Number(document.getElementById('posCashGiven').value) || 0) - (Number(POS.order.итого) || 0);
+  var diff = (Number(document.getElementById('posCashGiven').value) || 0) - posPayTotal();
   el.innerHTML = diff >= 0 ? 'Сдача: <b>' + posMoney(diff) + '</b>' : '<span class="pos-bad">Не хватает ' + posMoney(-diff) + '</span>';
 }
 
@@ -5502,23 +5590,105 @@ function posPay() {
   var btn = document.getElementById('posPayBtn');
   var payments;
   if (POS.method === 'смешанная') payments = [{ способ: 'нал', сумма: Number(document.getElementById('posMixCash').value) || 0 }, { способ: 'карта', сумма: Number(document.getElementById('posMixCard').value) || 0 }];
-  else payments = [{ способ: POS.method, сумма: POS.method === 'нал' ? Number(document.getElementById('posCashGiven').value) || 0 : Number(o.итого) }];
+  else payments = [{ способ: POS.method, сумма: POS.method === 'нал' ? Number(document.getElementById('posCashGiven').value) || 0 : posPayTotal() }];
   if (!POS.payOpId) POS.payOpId = 'POSPAY-' + o.order_id + '-' + Date.now();
   posErr('');
   btn.disabled = true; btn.textContent = 'Проводим оплату…';
-  call('POS_PAY', { orderId: o.order_id, version: o.version, operationId: POS.payOpId, payments: payments },
+  call('POS_PAY', { orderId: o.order_id, version: o.version, operationId: POS.payOpId, payments: payments, bonus: posBonusValue() },
     function (r) {
       btn.disabled = false; btn.textContent = 'Оплатить';
       POS.order = r.order; POS.payOpId = null;
       posSyncOrderRow(r.order);
       posRenderTicket();
       document.getElementById('posPayResult').innerHTML = '<p class="pos-ok">Оплачено ' + posMoney(r.order.итого) +
-        (r.сдача ? '. Сдача: ' + posMoney(r.сдача) : '') + '</p><p class="pos-muted">Пробейте чек на кассовом аппарате. Сырьё спишется по ТТК автоматически.</p>' +
+        (r.сдача ? '. Сдача: ' + posMoney(r.сдача) : '') + '</p>' +
+        (r.guest ? '<p class="pos-muted">' + posEsc(r.guest.имя) + ': ' + (r.бонусы_списано ? 'списано ' + r.бонусы_списано + ', ' : '') + 'начислено ' + r.бонусы_начислено + ' бонусов, на счёте ' + r.guest.бонусы + '.</p>' : '') + '<p class="pos-muted">Пробейте чек на кассовом аппарате. Сырьё спишется по ТТК автоматически.</p>' +
         '<button class="btn" onclick="posNewOrder()">Следующий заказ</button>';
       document.getElementById('posCashGiven').value = ''; POS.cashTouched = false;
       call('POS_GET_SHIFT', {}, posApplyShift);
     },
     function (e) { btn.disabled = false; btn.textContent = 'Повторить оплату'; posErr(e); });
+}
+
+// ---------- Гость в заказе (M6) ----------
+function posToggleGuest(show) {
+  var box = document.getElementById('posGuestBlock'); if (!box) return;
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  document.getElementById('posGuestResults').innerHTML = '';
+  document.getElementById('posGuestNew').classList.add('hidden');
+  document.getElementById('posGuestPhone').value = ''; document.getElementById('posGuestPhone').focus();
+}
+function posGuestSearch() {
+  var phone = document.getElementById('posGuestPhone').value, out = document.getElementById('posGuestResults');
+  posErr('');
+  call('POS_FIND_GUEST', { phone: phone }, function (rows) {
+    var digits = String(phone).replace(/\D/g, '');
+    out.innerHTML = rows.length ? rows.map(function (g) {
+      return '<div class="stop-row"><span><b>' + posEsc(g.имя) + '</b> ' + posEsc(g.телефон) + '<span class="pos-mods">бонусов: ' + posEsc(g.бонусы) + ' · визитов: ' + posEsc(g.визитов) + '</span></span>' +
+        '<button class="btn small" onclick="posAttachGuest(\'' + posEsc(g.guest_id) + '\')">Выбрать</button></div>';
+    }).join('') : '<p class="pos-muted">Гость не найден.</p>';
+    document.getElementById('posGuestNew').classList.toggle('hidden', rows.length > 0 || digits.length < 10);
+  }, posErr);
+}
+function posAttachGuest(guestId) {
+  var o = POS.order; if (!o) return;
+  call('POS_ATTACH_GUEST', { orderId: o.order_id, guestId: guestId }, function (v) { posToggleGuest(false); posApplyOrder(v); }, posErr);
+}
+function posDetachGuest() {
+  var o = POS.order; if (!o) return;
+  call('POS_ATTACH_GUEST', { orderId: o.order_id, guestId: '' }, posApplyOrder, posErr);
+}
+function posGuestCreate() {
+  var name = document.getElementById('posGuestName').value.trim();
+  if (!document.getElementById('posGuestConsent').checked) { posErr('Отметьте согласие гостя на обработку персональных данных.'); return; }
+  call('POS_SAVE_GUEST', { имя: name, телефон: document.getElementById('posGuestPhone').value, consent: true }, function (g) {
+    document.getElementById('posGuestName').value = ''; document.getElementById('posGuestConsent').checked = false;
+    posAttachGuest(g.guest_id);
+  }, posErr);
+}
+
+// ---------- Гости и правила программы (менеджер, M6) ----------
+function guestsErr(m) { document.getElementById('guestsErr').textContent = m || ''; }
+function loyLoad() {
+  call('POS_GET_LOYALTY_SETTINGS', {}, function (s) {
+    POS.loyMax = s.макс_списание_процент;
+    document.getElementById('loyOn').checked = !!s.включено; document.getElementById('loyCb').value = s.кешбэк_процент; document.getElementById('loyMax').value = s.макс_списание_процент;
+  }, guestsErr);
+}
+function loySave() {
+  call('POS_SAVE_LOYALTY_SETTINGS', { включено: document.getElementById('loyOn').checked, кешбэк_процент: Number(document.getElementById('loyCb').value), макс_списание_процент: Number(document.getElementById('loyMax').value) },
+    function () { loyLoad(); guestsErr(''); document.getElementById('guestsErr').innerHTML = '<span class="pos-ok">Правила сохранены.</span>'; }, guestsErr);
+}
+function guestsLoad() {
+  call('POS_GET_GUESTS', { query: document.getElementById('guestsQuery').value }, function (rows) {
+    document.getElementById('guestsList').innerHTML = rows.length ? '<table class="report-table"><thead><tr><th>Гость</th><th>Телефон</th><th class="num">Бонусы</th><th class="num">Визитов</th><th class="num">Оплачено</th><th></th></tr></thead><tbody>' +
+      rows.map(function (g) { return '<tr><td>' + posEsc(g.имя) + '</td><td>' + posEsc(g.телефон) + '</td><td class="num">' + posEsc(g.бонусы) + '</td><td class="num">' + posEsc(g.визитов) + '</td><td class="num">' + posMoney(g.всего_оплачено) + '</td><td><button class="btn small secondary" onclick="guestOpen(\'' + posEsc(g.guest_id) + '\')">Открыть</button></td></tr>'; }).join('') +
+      '</tbody></table>' : '<p class="muted">Гостей не найдено.</p>';
+  }, guestsErr);
+}
+var GUEST_TXN_TEXT_ = { начисление: 'начисление', списание: 'списание', отмена_начисления: 'отмена начисления', возврат_списания: 'возврат списанных', корректировка: 'корректировка' };
+function guestOpen(id) {
+  call('POS_GET_GUEST', { guestId: id }, function (g) {
+    var el = document.getElementById('guestCard'); el.classList.remove('hidden');
+    el.innerHTML = '<div class="row-between"><h2 style="margin:0;">' + posEsc(g.имя) + '</h2><span class="pos-total">' + posEsc(g.бонусы) + ' бон.</span></div>' +
+      '<div class="muted">' + posEsc(g.телефон) + ' · визитов ' + posEsc(g.визитов) + ' · оплачено ' + posMoney(g.всего_оплачено) + ' · согласие на ПД от ' + posEsc(String(g.согласие_пд || '').slice(0, 10)) + '</div>' +
+      '<div class="grid2" style="margin-top:10px;"><div><label for="gAdj" class="muted">Добавить (+) или списать (−) бонусов</label><input id="gAdj" type="number" step="1"></div>' +
+      '<div><label for="gAdjR" class="muted">Причина</label><input id="gAdjR" maxlength="200"></div></div>' +
+      '<button class="btn secondary" onclick="guestAdjust(\'' + posEsc(g.guest_id) + '\')">Провести корректировку</button>' +
+      '<h2 style="margin-top:14px;">История бонусов</h2>' + ((g.история || []).length ? '<table class="report-table"><thead><tr><th>Когда</th><th>Операция</th><th class="num">Сумма</th><th class="num">Остаток</th><th>Причина</th></tr></thead><tbody>' +
+      g.история.map(function (t) { return '<tr><td>' + posEsc(new Date(t.создано).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) + '</td><td>' + posEsc(GUEST_TXN_TEXT_[t.тип] || t.тип) + '</td><td class="num">' + (t.сумма > 0 ? '+' : '') + posEsc(t.сумма) + '</td><td class="num">' + posEsc(t.остаток_после) + '</td><td>' + posEsc(t.причина) + '</td></tr>'; }).join('') +
+      '</tbody></table>' : '<p class="muted">Операций пока нет.</p>') +
+      '<button class="btn small secondary" style="margin-top:12px;" onclick="guestAnonymize(\'' + posEsc(g.guest_id) + '\')">Удалить данные гостя по его запросу</button>';
+    el.scrollIntoView({ block: 'nearest' });
+  }, guestsErr);
+}
+function guestAdjust(id) {
+  call('POS_ADJUST_BONUS', { guestId: id, delta: Number(document.getElementById('gAdj').value), reason: document.getElementById('gAdjR').value }, function () { guestOpen(id); guestsLoad(); guestsErr(''); }, guestsErr);
+}
+function guestAnonymize(id) {
+  if (!confirm('Стереть имя и телефон гостя? Бонусы станут недоступны, отменить нельзя.')) return;
+  call('POS_ANONYMIZE_GUEST', { guestId: id }, function () { document.getElementById('guestCard').classList.add('hidden'); guestsLoad(); }, guestsErr);
 }
 
 // ---------- Возврат (M5) ----------
