@@ -299,6 +299,10 @@ var ACTION_HANDLERS = {
   POS_PUBLISH_QRMENU: function (data, session) { return posPublishQrMenu_(session); },
   POS_SAVE_QRMENU_SETTINGS: function (data, session) { return posSaveQrMenuSettings_(data || {}, session); },
   POS_DISCARD_EMPTY_ORDER: function (data, session) { return posDiscardEmptyOrder_(data || {}, session); },
+
+  // ---------- Stage 20: дашборд руководителя и каталог отчётов (ReportsDashboard.gs) ----------
+  GET_EXECUTIVE_DASHBOARD: function (data, session) { return getExecutiveDashboard_(session, data || {}); },
+  GET_MANAGEMENT_REPORTS: function (data, session) { return getManagementReports_(session, data || {}); },
   GET_SALE_TRACE: function (data, session) { return getSaleTrace_(session, data || {}); },
   GET_SALES: function (data, session) { return getSales_(session.organization_id, resolveLocationScope_(session, data.locationId), data.dateFrom, data.dateTo); },
   IMPORT_SALES_PREVIEW: function (data, session) { return importSalesPreview_(session.organization_id, session.location_id, data.rows, data.fileName, session.user_id); },

@@ -154,6 +154,9 @@
   .tip-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #eee;}
   .tip-row input{margin:0;} .tip-row .btn{width:auto;margin:0;}
   @media(max-width:600px){ .tip-row{grid-template-columns:1fr;} }
+  .ex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px;}
+  .ex-tile{border:1px solid #eee;border-radius:12px;padding:10px;min-width:0;}
+  .ex-tile .kpi{font-size:20px;overflow-wrap:anywhere;}
   .pos-guest-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--beige);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px;}
   .pos-guest-chip .btn{width:auto;margin:0;}
   .pos-consent{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--pos-text-muted);margin:6px 0 10px;}
@@ -314,6 +317,31 @@
         <div><div class="kpi" id="kpiMargin">—</div><div class="kpi-label">Средняя маржа, %</div></div>
         <div><div class="kpi" id="kpiStock">—</div><div class="kpi-label">Стоимость склада, ₽</div></div>
       </div>
+    </div>
+
+    <!-- Stage 20 (перенесено): дашборд руководителя — ReportsDashboard.gs::getExecutiveDashboard_ -->
+    <div class="card" id="executiveDashboardCard" data-module-gate="reports">
+      <div class="row-between">
+        <div><h2 style="margin:0;">Дашборд руководителя</h2><div class="muted">Деньги, касса, склад, HACCP, отклонения и инциденты — за период.</div></div>
+        <select id="exPeriod" style="width:auto;margin:0;" onchange="loadExecutiveDashboard()" aria-label="Период дашборда">
+          <option value="0">Сегодня</option><option value="6">7 дней</option><option value="29">30 дней</option>
+        </select>
+      </div>
+      <div class="ex-grid">
+        <div class="ex-tile"><div class="kpi-label">Выручка</div><div class="kpi" id="exRevenue">—</div><div class="muted" id="exMargin"></div></div>
+        <div class="ex-tile"><div class="kpi-label">Валовая прибыль</div><div class="kpi" id="exGrossProfit">—</div></div>
+        <div class="ex-tile"><div class="kpi-label">Касса: средний чек</div><div class="kpi" id="exAvgCheck">—</div><div class="muted" id="exPosInfo"></div></div>
+        <div class="ex-tile"><div class="kpi-label">Возвраты кассы</div><div class="kpi" id="exRefunds">—</div></div>
+        <div class="ex-tile"><div class="kpi-label">Списания и отходы</div><div class="kpi" id="exWriteoffs">—</div></div>
+        <div class="ex-tile"><div class="kpi-label">Открытые отклонения</div><div class="kpi" id="exDeviations">—</div></div>
+        <div class="ex-tile"><div class="kpi-label">Критические инциденты</div><div class="kpi" id="exIncidents">—</div></div>
+        <div class="ex-tile"><div class="kpi-label">Ожидают журналы</div><div class="kpi" id="exJournals">—</div></div>
+      </div>
+      <div id="executiveAlerts" style="margin-top:10px;" aria-live="polite"></div>
+      <details style="margin-top:10px;" ontoggle="if (this.open) loadManagementReports()">
+        <summary style="cursor:pointer;font-weight:700;">Все управленческие отчёты</summary>
+        <div id="managementReportsList" class="muted">Загрузка…</div>
+      </details>
     </div>
     <div class="card" id="controlTowerCard">
       <div class="row-between">
@@ -2151,6 +2179,7 @@
   }
 
   function loadDashboard() {
+    if (typeof loadExecutiveDashboard === 'function') loadExecutiveDashboard();
     loadControlTower();
     loadAutomationDecisions();
     loadEventAutomationRules();
@@ -5736,6 +5765,49 @@ function qrPrintTables() {
   w.document.open(); w.document.write(html); w.document.close();
 }
 
+// ---------- Дашборд руководителя (Stage 20, перенесено) ----------
+/** Только «последние N дней»: даты считает сервер по своему часовому поясу (браузер может быть в другом). */
+function exPeriod() {
+  return { days: Number(document.getElementById('exPeriod').value) || 0 };
+}
+function loadExecutiveDashboard() {
+  if (!hasClientModule('reports') || !document.getElementById('exRevenue')) return;
+  call('GET_EXECUTIVE_DASHBOARD', exPeriod(), function (d) {
+    var k = d.kpi || {}, o = d.operations || {}, p = d.pos;
+    document.getElementById('exRevenue').textContent = posMoney(k.revenue);
+    document.getElementById('exMargin').textContent = k.revenue ? 'маржа ' + k.gross_margin_pct + '%' : '';
+    document.getElementById('exGrossProfit').textContent = posMoney(k.gross_profit);
+    document.getElementById('exAvgCheck').textContent = p ? posMoney(p.средний_чек) : '—';
+    document.getElementById('exPosInfo').textContent = p ? 'заказов ' + p.заказов + ' · смен ' + p.смен + (p.новых_гостей ? ' · новых гостей ' + p.новых_гостей : '') : '';
+    document.getElementById('exRefunds').textContent = p ? posMoney(p.возвраты) : '—';
+    document.getElementById('exWriteoffs').textContent = posMoney((Number(k.writeoffs) || 0) + (Number(k.waste) || 0));
+    document.getElementById('exDeviations').textContent = o.open_deviations || 0;
+    document.getElementById('exIncidents').textContent = o.open_incidents || 0;
+    document.getElementById('exJournals').textContent = o.pending_journals || 0;
+    var a = [];
+    if (o.open_incidents) a.push('<span class="badge b-crit">Критические инциденты: ' + o.open_incidents + '</span>');
+    if (o.quarantines) a.push('<span class="badge pos-badge-cancel">Карантин: ' + o.quarantines + '</span>');
+    if (o.open_deviations) a.push('<span class="badge pos-st pos-st-kitchen">Открытые отклонения: ' + o.open_deviations + '</span>');
+    if (o.pending_journals) a.push('<span class="badge pos-st pos-st-kitchen">Не заполнены контрольные точки: ' + o.pending_journals + '</span>');
+    if (o.open_corrective_actions) a.push('<span class="badge pos-st pos-st-kitchen">Корректирующие действия: ' + o.open_corrective_actions + '</span>');
+    if (p && p.в_стопе) a.push('<span class="badge pos-st pos-st-kitchen">Блюд в стоп-листе: ' + p.в_стопе + '</span>');
+    if (p && p.открытых_смен) a.push('<span class="badge b-info">Открыта смена кассы</span>');
+    if (d.compliance && d.compliance.без_документов) a.push('<span class="badge pos-st pos-st-kitchen">Продукты без документов: ' + d.compliance.без_документов + '</span>');
+    (d.errors || []).forEach(function (e) { a.push('<span class="badge pos-badge-cancel" title="' + posEsc(e.ошибка) + '">Раздел «' + posEsc(e.раздел) + '» не загрузился</span>'); });
+    document.getElementById('executiveAlerts').innerHTML = a.length ? a.join(' ') : '<span class="badge pos-badge-paid">Критических управленческих сигналов нет</span>';
+  }, function (e) { document.getElementById('executiveAlerts').textContent = 'Дашборд не загрузился: ' + e; });
+}
+function loadManagementReports() {
+  if (!hasClientModule('reports')) return;
+  call('GET_MANAGEMENT_REPORTS', exPeriod(), function (res) {
+    var groups = {}, order = [];
+    (res.catalog || []).forEach(function (r) { if (!groups[r.group]) { groups[r.group] = []; order.push(r.group); } groups[r.group].push(r); });
+    document.getElementById('managementReportsList').innerHTML = order.map(function (g) {
+      return '<div class="taskrow"><b>' + posEsc(g) + '</b><div>' + groups[g].map(function (r) { return '<span class="chip" style="display:inline-block;margin:4px 4px 0 0;cursor:default;">' + posEsc(r.name) + '</span>'; }).join('') + '</div></div>';
+    }).join('') || 'Каталог пуст.';
+  }, function (e) { document.getElementById('managementReportsList').textContent = 'Ошибка: ' + e; });
+}
+
 // ---------- Гость в заказе (M6) ----------
 function posToggleGuest(show) {
   var box = document.getElementById('posGuestBlock'); if (!box) return;
@@ -5863,16 +5935,14 @@ function posDoRefund() {
 }
 
 // ---------- Отчёт по сотрудникам (M5) ----------
-function posInitReport() {
-  var today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  if (!document.getElementById('posRepFrom').value) document.getElementById('posRepFrom').value = today;
-  if (!document.getElementById('posRepTo').value) document.getElementById('posRepTo').value = today;
-  posLoadReport();
-}
+/** Без дат сервер берёт «сегодня» по своему часовому поясу и возвращает период — им и заполняем поля. */
+function posInitReport() { posLoadReport(); }
 function posLoadReport() {
   var from = document.getElementById('posRepFrom').value, to = document.getElementById('posRepTo').value;
   document.getElementById('posRepErr').textContent = '';
   call('POS_GET_STAFF_REPORT', { dateFrom: from, dateTo: to }, function (r) {
+    document.getElementById('posRepFrom').value = r.from; document.getElementById('posRepTo').value = r.to;
+    call('POS_GET_SHIFTS', { dateFrom: r.from, dateTo: r.to }, posRenderShifts, function (e) { document.getElementById('posRepErr').textContent = e; });
     var t = r.итого;
     document.getElementById('posRepTotal').innerHTML = '<div class="pos-kpi-row"><span>Смен: <b>' + r.смен + '</b></span><span>Заказов: <b>' + t.заказов + '</b></span>' +
       '<span>Продажи: <b>' + posMoney(t.продажи) + '</b></span><span>Возвраты: <b>' + posMoney(t.возвраты) + '</b></span><span>Нетто: <b>' + posMoney(t.нетто) + '</b></span>' +
@@ -5884,13 +5954,15 @@ function posLoadReport() {
       r.кассиры.map(function (c) { return '<tr><td>' + posEsc(c.имя) + ' <span class="pos-muted">' + posEsc(c.роль) + '</span></td><td class="num">' + c.чеков + '</td><td class="num">' + posMoney(c.нал) + '</td><td class="num">' + posMoney(c.карта) + '</td><td class="num">' + posMoney(c.прочее) + '</td><td class="num">' + posMoney(c.возвраты) + '</td><td class="num"><b>' + posMoney(c.итого) + '</b></td></tr>'; }).join('') +
       '</tbody></table>' : '<p class="pos-muted">Оплат за период нет.</p>';
   }, function (e) { document.getElementById('posRepErr').textContent = e; });
-  call('POS_GET_SHIFTS', { dateFrom: from, dateTo: to }, function (rows) {
+}
+function posRenderShifts(rows) {
+  (function () {
     document.getElementById('posRepShifts').innerHTML = rows.length ? '<table class="report-table"><thead><tr><th>Смена</th><th>Статус</th><th class="num">Заказов</th><th class="num">Наличные</th><th class="num">Карта</th><th class="num">Возвраты</th><th class="num">Выручка</th></tr></thead><tbody>' +
       rows.map(function (s) {
         var t = s.totals, op = new Date(s.открыта).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
         return '<tr><td>' + posEsc(op) + (s.закрыта ? '–' + posEsc(new Date(s.закрыта).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })) : '') + '</td><td>' + posEsc(s.статус) + '</td><td class="num">' + t.заказов + '</td><td class="num">' + posMoney(t.нал) + '</td><td class="num">' + posMoney(t.карта) + '</td><td class="num">' + posMoney(t.возвраты) + '</td><td class="num"><b>' + posMoney(t.выручка) + '</b></td></tr>';
       }).join('') + '</tbody></table>' : '<p class="pos-muted">Смен за период нет.</p>';
-  }, function (e) { document.getElementById('posRepErr').textContent = e; });
+  })();
 }
 
 function posDiscardEmpty() {
