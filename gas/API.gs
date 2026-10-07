@@ -103,7 +103,11 @@ var ACTION_HANDLERS = {
   // Products.gs), но это действие ни разу не пробрасывало data.штрихкод дальше — любой
   // продукт, созданный через API, всегда получал пустой штрихкод. Добавлено пробрасывание.
   CREATE_PRODUCT: function (data, session) { var r = createProduct_({ organization_id: session.organization_id, название: data.название, категория_id: data.категория_id, единица: data.единица, закупочная_цена: data.цена, поставщик_id: data.поставщик_id, срок_хранения_дней: data.срок_хранения_дней, мин_остаток: data.мин_остаток, штрихкод: data.штрихкод, userId: session.user_id }); invalidateProductIndex_(session.organization_id); return r; },
-  UPDATE_PRODUCT_PRICE: function (data, session) { return updateProductPrice_(data.productId, data.newPrice, session.user_id, session); },
+  UPDATE_PRODUCT_PRICE: function (data, session) {
+    var res = updateProductPrice_(data.productId, data.newPrice, session.user_id, session);
+    try { fcAfterPriceChange_(data.productId, session); } catch (e) { Logger.log('fcAfterPriceChange_: ' + e.message); } // M11
+    return res;
+  },
   GET_PRICE_HISTORY: function (data, session) { return getPriceHistory_(data.productId, session, data.limit); },
   GET_PRICE_CASCADE: function (data, session) { return getPriceCascade_(data.productId, session); },
   GET_ANALYTICS_DASHBOARD: function (data, session) { return getAnalyticsDashboard_(session, data || {}); },
@@ -282,6 +286,12 @@ var ACTION_HANDLERS = {
   POS_SAVE_MODIFIER: function (data, session) { return posSaveModifier_(data || {}, session); },
   POS_LINK_DISH_MODIFIERS: function (data, session) { return posLinkDishModifiers_(data || {}, session); },
   // Волна 3, M9 — заготовочный лист (KitchenPrep.gs)
+  // Волна 3, M11 — фуд-кост и «Используй сегодня» (FoodCostControl.gs)
+  FC_GET_OVERVIEW: function (data, session) { return fcGetOverview_(session); },
+  FC_CHECK_ALERTS: function (data, session) { return fcCheckAlerts_(session); },
+  FC_GET_SETTINGS: function (data, session) { return fcGetSettings_(session); },
+  FC_SAVE_SETTINGS: function (data, session) { return fcSaveSettings_(data || {}, session); },
+  FC_USE_TODAY: function (data, session) { return fcUseToday_(session); },
   // Волна 3, M10 — ознакомление с ТТК и аттестация (StaffTraining.gs)
   TRAINING_GET_MY: function (data, session) { return trainingGetMy_(session); },
   TRAINING_GET_CARD: function (data, session) { return trainingGetCard_(data || {}, session); },
@@ -337,7 +347,11 @@ var ACTION_HANDLERS = {
       return { product_id: p.product_id, название: p.название, остаток: round2_(getStockLevel_(p.product_id, session.location_id)), единица: p.единица };
     });
   },
-  RECEIVE_GOODS: function (data, session) { return receiveGoods_(data.productId, session.location_id, data.qty, data.price, data.expiryDate, session.user_id, session, { declarationId: data.declarationId, certificateId: data.certificateId, veterinaryDocumentId: data.veterinaryDocumentId, supplierId: data.supplierId }, data.productionDate); },
+  RECEIVE_GOODS: function (data, session) {
+    var res = receiveGoods_(data.productId, session.location_id, data.qty, data.price, data.expiryDate, session.user_id, session, { declarationId: data.declarationId, certificateId: data.certificateId, veterinaryDocumentId: data.veterinaryDocumentId, supplierId: data.supplierId }, data.productionDate);
+    try { fcAfterPriceChange_(data.productId, session); } catch (e) { Logger.log('fcAfterPriceChange_: ' + e.message); } // M11: цена прихода могла поднять фуд-кост
+    return res;
+  },
   RECEIVE_GOODS_BATCH: function (data, session) { return receiveGoodsBatch_(data.lines, session.location_id, session.user_id, session); },
   // P0.3 — fromLocationId ВСЕГДА session.location_id (откуда сессия, а не что пришлёт клиент, ТЗ P0.1); toLocationId — клиентский, проверяется на принадлежность той же организации внутри transferStock_.
   TRANSFER_STOCK: function (data, session) { return transferStock_(data.productId, session.location_id, data.toLocationId, data.qty, session.user_id, session); },

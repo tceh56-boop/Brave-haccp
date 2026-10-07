@@ -168,6 +168,12 @@
   .tr-opt{display:flex;gap:8px;align-items:center;}
   .tr-opt input[type=text]{margin:4px 0;}
   .tr-opt input[type=radio]{width:auto;margin:0;}
+  .fc-row{border:1px solid #eee;border-radius:12px;padding:10px 12px;margin:8px 0;background:#fff;}
+  .fc-row.over{border-color:#e9b3ad;}
+  .fc-nums{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:4px;}
+  .fc-pct{font-size:20px;font-weight:800;}
+  .fc-pct.over{color:#b3261e;}
+  .ut-row{border-top:1px solid #f0f0f0;padding:8px 0;}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
   .prep-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
   .prep-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid #eee;border-radius:12px;padding:10px 12px;margin:8px 0;background:#fff;}
@@ -300,6 +306,7 @@
   <button class="menuItem" data-view="stoplist" data-module="pos_stop" onclick="navTo('stoplist')">Стоп-лист</button>
   <button class="menuItem" data-view="prep" data-module="production" onclick="navTo('prep')">Заготовки на смену</button>
   <button class="menuItem" data-view="training" data-module="recipes" onclick="navTo('training')">Обучение по ТТК</button>
+  <button class="menuItem" data-view="foodcost" data-module="foodcost" onclick="navTo('foodcost')">Фуд-кост блюд</button>
   <button class="menuItem" data-view="warehouse" data-module="warehouse_view" onclick="navTo('warehouse')">Склад</button>
   <button class="menuItem" data-view="marking" data-module="marking" onclick="navTo('marking')">🏷️ Маркировка</button>
   <button class="menuItem" data-view="writeoff" data-module="writeoffs" onclick="navTo('writeoff')">Списание</button>
@@ -1788,6 +1795,11 @@
     </div>
     <div id="prepList"></div>
     <div id="prepErr" class="err" role="alert"></div>
+    <div class="card" id="useTodayCard">
+      <div class="row-between"><h3 style="margin:0;">Используй сегодня</h3><span id="useTodaySum" class="pos-mods"></span></div>
+      <p class="muted" style="margin:6px 0;">Продукты и полуфабрикаты со сроком годности до конца завтрашнего дня — и блюда, в которые их можно пустить вместо списания.</p>
+      <div id="useTodayList">Загрузка…</div>
+    </div>
     <details class="card" id="prepParsCard">
       <summary style="cursor:pointer;font-weight:700;">Нормы запаса полуфабрикатов</summary>
       <p class="muted">Сколько полуфабриката должно быть готово к началу смены сверх прогноза. Меняет шеф-повар.</p>
@@ -1822,6 +1834,30 @@
         <button class="btn small" onclick="trSaveQuestion()">Добавить вопрос</button>
       </details>
     </div>
+  </section>
+
+  <!-- Волна 3, M11: контроль фуд-коста — FoodCostControl.gs. -->
+  <section id="view-foodcost" class="hidden" aria-labelledby="fcTitle">
+    <div class="card">
+      <div class="row-between">
+        <h2 id="fcTitle" style="margin:0;">Фуд-кост блюд</h2>
+        <button class="btn small secondary" onclick="fcCheck()">Проверить и предупредить шефа</button>
+      </div>
+      <p class="muted" style="margin:6px 0 0;">Себестоимость — по текущим ценам продуктов. Если фуд-кост блюда выше цели, система предлагает цену и показывает, что подорожало за 30 дней. После прихода по новой цене проверка запускается сама.</p>
+      <div class="ex-grid">
+        <div class="ex-tile"><div class="kpi-label">Цель</div><div class="kpi" id="fcTarget">—</div></div>
+        <div class="ex-tile"><div class="kpi-label">Средний фуд-кост меню</div><div class="kpi" id="fcAvg">—</div></div>
+        <div class="ex-tile"><div class="kpi-label">Выше цели</div><div class="kpi" id="fcOver">—</div></div>
+      </div>
+      <div id="fcSettings" data-module-gate="economics" style="margin-top:10px;" class="prep-head">
+        <label for="fcTargetInput" style="margin:0;">Цель фуд-коста, %</label>
+        <input type="number" id="fcTargetInput" min="5" max="90" step="1" style="width:90px;margin:0;">
+        <button class="btn small" onclick="fcSaveTarget()">Сохранить цель</button>
+      </div>
+      <div id="fcInfo" aria-live="polite" style="margin-top:8px;"></div>
+    </div>
+    <div id="fcList"></div>
+    <div id="fcErr" class="err" role="alert"></div>
   </section>
 
   <!-- Модуль «Касса», M4: стоп-лист точки. Авто — по годному остатку и утверждённой ТТК, ручной — с причиной. -->
@@ -1873,12 +1909,12 @@
    */
   var CLIENT_ROLE_MODULES = {
     'ADMIN': 'all',
-    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
-    'ШЕФ-ПОВАР': ['pos_kitchen', 'pos_stop', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
+    'ДИРЕКТОР': ['foodcost', 'pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
+    'ШЕФ-ПОВАР': ['foodcost', 'pos_kitchen', 'pos_stop', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
     'ПОВАР': ['pos_kitchen', 'pos_stop', 'recipes', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks'],
     'КЛАДОВЩИК': ['warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations'],
-    'БУХГАЛТЕР': ['recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales'],
-    'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products'],
+    'БУХГАЛТЕР': ['foodcost', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales'],
+    'КАЛЬКУЛЯТОР': ['foodcost', 'recipes', 'economics', 'products'],
     'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
     'ЛАБОРАНТ': ['lab'],
     'КАССИР': ['pos', 'pos_shift'],
@@ -2087,6 +2123,7 @@
     if (name === 'stoplist') stopLoad();
     if (name === 'prep') initPrepView();
     if (name === 'training') initTrainingView();
+    if (name === 'foodcost') fcLoad();
     if (name === 'recovery') loadEmergencyCenterUI();
     if (name === 'production') loadBreakdownPlansUI();
   }
@@ -5842,6 +5879,60 @@ function qrPrintTables() {
   w.document.open(); w.document.write(html); w.document.close();
 }
 
+// ---------- Фуд-кост и «Используй сегодня» (волна 3, M11) ----------
+function fcPct(n) { return (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' %'; }
+function fcErr(t) { document.getElementById('fcErr').textContent = t || ''; }
+function fcLoad() {
+  fcErr('');
+  call('FC_GET_OVERVIEW', {}, function (o) {
+    document.getElementById('fcTarget').textContent = fcPct(o.цель_процент);
+    document.getElementById('fcAvg').textContent = fcPct(o.средний_food_cost);
+    document.getElementById('fcOver').textContent = o.выше_цели + ' из ' + o.блюд;
+    document.getElementById('fcTargetInput').value = o.цель_процент;
+    var canPrice = hasClientModule('economics');
+    document.getElementById('fcList').innerHTML = o.rows.length ? o.rows.map(function (r) {
+      var extra = '';
+      if (r.подорожания && r.подорожания.length) extra += '<div class="pos-mods">Подорожало за 30 дней: ' + r.подорожания.map(function (p) { return posEsc(p.название) + ' ' + posMoney(p.было) + ' → ' + posMoney(p.стало) + ' (+' + fcPct(p.рост_pct) + ')'; }).join('; ') + '</div>';
+      if (r.рост_с_ттк_pct) extra += '<div class="pos-mods">С момента утверждения ТТК себестоимость ' + (r.рост_с_ттк_pct > 0 ? 'выросла' : 'снизилась') + ' на ' + fcPct(Math.abs(r.рост_с_ттк_pct)) + '</div>';
+      var act = r.выше_цели ? '<span class="badge pos-badge-cancel">Выше цели</span> Цена для цели: <b>' + posMoney(r.рекомендованная_цена) + '</b>' +
+        (canPrice ? ' <button class="btn small" onclick="fcSetPrice(\'' + posEsc(r.dish_id) + '\', ' + r.рекомендованная_цена + ', \'' + posEsc(r.название) + '\')">Установить ' + posMoney(r.рекомендованная_цена) + '</button>' : '') : '';
+      return '<div class="fc-row' + (r.выше_цели ? ' over' : '') + '"><div class="row-between"><b>' + posEsc(r.название) + '</b><span class="fc-pct' + (r.выше_цели ? ' over' : '') + '">' + fcPct(r.food_cost) + '</span></div>' +
+        '<div class="fc-nums"><span>Цена ' + posMoney(r.цена) + '</span><span>Себестоимость ' + posMoney(r.себестоимость) + '</span><span>Маржа ' + posMoney(r.маржа) + '</span></div>' +
+        (act ? '<div style="margin-top:6px;">' + act + '</div>' : '') + extra + '</div>';
+    }).join('') : '<div class="card">Нет блюд с ценой продажи.</div>';
+  }, fcErr);
+}
+function fcCheck() {
+  fcErr('');
+  call('FC_CHECK_ALERTS', {}, function (r) {
+    document.getElementById('fcInfo').innerHTML = r.предупреждений
+      ? '<span class="badge pos-badge-cancel">Новых предупреждений: ' + r.предупреждений + '</span> Шефу поставлены задачи.'
+      : '<span class="badge pos-badge-paid">Новых превышений нет</span> Проверено блюд: ' + r.проверено + '.';
+    fcLoad();
+  }, fcErr);
+}
+function fcSaveTarget() {
+  fcErr('');
+  call('FC_SAVE_SETTINGS', { цель_процент: Number(document.getElementById('fcTargetInput').value) }, function () { fcLoad(); }, fcErr);
+}
+function fcSetPrice(dishId, price, name) {
+  if (!confirm('Установить цену «' + name + '» ' + price + ' ₽? Новая цена сразу появится в кассе.')) return;
+  fcErr('');
+  call('UPDATE_DISH', { dishId: dishId, patch: { цена_продажи: price } }, function () { fcCheck(); }, fcErr);
+}
+function utLoad() {
+  call('FC_USE_TODAY', {}, function (r) {
+    document.getElementById('useTodaySum').textContent = r.rows.length ? 'под угрозой списания: ' + posMoney(r.под_риском_руб) : '';
+    document.getElementById('useTodayList').innerHTML = r.rows.length ? r.rows.map(function (x) {
+      var uses = x.блюда.map(function (d) { return posEsc(d.название) + ' — до ' + d.порций + ' порц.'; });
+      x.заготовки.forEach(function (p) { uses.push('заготовка «' + posEsc(p.название) + '»'); });
+      return '<div class="ut-row"><div class="row-between"><span><b>' + posEsc(x.название) + '</b> <span class="pos-mods">' + prepFmt(x.количество) + ' ' + posEsc(x.единица) + '</span></span>' +
+        '<span class="badge ' + (x.сегодня ? 'pos-badge-cancel' : 'pos-st pos-st-kitchen') + '">' + (x.сегодня ? 'срок сегодня' : 'срок завтра') + '</span></div>' +
+        '<div class="pos-mods">' + (uses.length ? 'Пустить в: ' + uses.join(', ') : 'Нет блюд с этим продуктом — решите заранее, чтобы не списывать.') + '</div></div>';
+    }).join('') : '<span class="badge pos-badge-paid">Срочного нет</span> До конца завтра сроки ни у чего не истекают.';
+  }, function (e) { document.getElementById('useTodayList').textContent = 'Ошибка: ' + e; });
+}
+
 // ---------- Обучение по ТТК (волна 3, M10) ----------
 var TR_STATUS = { не_ознакомлен: ['Не ознакомлен', 'pos-st pos-st-kitchen'], устарело: ['Новая версия', 'pos-badge-cancel'], ознакомлен: ['Ознакомлен', 'b-info'], аттестован: ['Аттестован', 'pos-badge-paid'] };
 var TR = { quiz: null };
@@ -5982,6 +6073,7 @@ function prepErr(t) { document.getElementById('prepErr').textContent = t || ''; 
 function initPrepView() {
   document.getElementById('prepParsCard').style.display = SESSION.роль === 'ПОВАР' ? 'none' : '';
   prepLoad();
+  utLoad();
   if (SESSION.роль !== 'ПОВАР') prepLoadPars();
 }
 function prepRender(r) {
