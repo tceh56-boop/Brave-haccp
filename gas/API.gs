@@ -141,7 +141,11 @@ var ACTION_HANDLERS = {
   GET_TTK_EDITOR_CONTEXT: function (data, session) { return getTtkEditorContext_(data.dishId, session, data.ttkVersionId); },
   UPDATE_TTK_DRAFT: function (data, session) { return updateTtkDraft_(data.ttkVersionId, data || {}, session); },
   SUBMIT_TTK_FOR_APPROVAL: function (data, session) { return submitTtkForApproval_(data.ttkVersionId, session); },
-  APPROVE_TTK_VERSION: function (data, session) { return approveTtkVersion_(data.ttkVersionId, session); },
+  APPROVE_TTK_VERSION: function (data, session) {
+    var res = approveTtkVersion_(data.ttkVersionId, session);
+    try { trainingOnTtkApproved_(data.ttkVersionId, session); } catch (e) { Logger.log('trainingOnTtkApproved_: ' + e.message); } // M10: задача поварам
+    return res;
+  },
   CREATE_BREAKDOWN_PLAN: function (data, session) { return createBreakdownPlan_(data || {}, session); },
   GET_BREAKDOWN_PLANS: function (data, session) { return getBreakdownPlans_(session, data && data.inputProductId); },
   APPROVE_BREAKDOWN_PLAN: function (data, session) { return approveBreakdownPlan_(data.planId, session); },
@@ -278,6 +282,15 @@ var ACTION_HANDLERS = {
   POS_SAVE_MODIFIER: function (data, session) { return posSaveModifier_(data || {}, session); },
   POS_LINK_DISH_MODIFIERS: function (data, session) { return posLinkDishModifiers_(data || {}, session); },
   // Волна 3, M9 — заготовочный лист (KitchenPrep.gs)
+  // Волна 3, M10 — ознакомление с ТТК и аттестация (StaffTraining.gs)
+  TRAINING_GET_MY: function (data, session) { return trainingGetMy_(session); },
+  TRAINING_GET_CARD: function (data, session) { return trainingGetCard_(data || {}, session); },
+  TRAINING_ACK: function (data, session) { return trainingAck_(data || {}, session); },
+  TRAINING_START_QUIZ: function (data, session) { return trainingStartQuiz_(data || {}, session); },
+  TRAINING_SUBMIT_QUIZ: function (data, session) { return trainingSubmitQuiz_(data || {}, session); },
+  TRAINING_GET_MATRIX: function (data, session) { return trainingGetMatrix_(session); },
+  TRAINING_GET_QUESTIONS: function (data, session) { return trainingGetQuestions_(data || {}, session); },
+  TRAINING_SAVE_QUESTION: function (data, session) { return trainingSaveQuestion_(data || {}, session); },
   PREP_GET_LIST: function (data, session) { return prepGetList_(data || {}, session); },
   PREP_BUILD_LIST: function (data, session) { return prepBuildList_(data || {}, session); },
   PREP_MARK_DONE: function (data, session) { return prepMarkDone_(data || {}, session); },
