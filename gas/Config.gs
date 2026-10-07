@@ -228,6 +228,10 @@ var CONFIG = {
     TRAINING_QUESTIONS: 'TRAINING_QUESTIONS',
     TRAINING_ATTEMPTS: 'TRAINING_ATTEMPTS',
     FOODCOST_ALERTS: 'FOODCOST_ALERTS',
+    ALCO_PRODUCTS: 'ALCO_PRODUCTS',
+    ALCO_LICENSES: 'ALCO_LICENSES',
+    ALCO_MARKS: 'ALCO_MARKS',
+    ALCO_OUTBOX: 'ALCO_OUTBOX',
     // Этап M6: гости и бонусы.
     GUESTS: 'GUESTS', BONUS_TXNS: 'BONUS_TXNS',
     // Этап M7: ссылки сотрудников на сервис чаевых.
@@ -786,6 +790,11 @@ var CONFIG = {
     TRAINING_ATTEMPTS: ['attempt_id','organization_id','location_id','user_id','dish_id','ttk_version_id','вопросы_json','правильных','всего','результат','создано','завершено'],
     // Волна 3, M11 — предупреждения о фуд-косте выше цели (FoodCostControl.gs).
     FOODCOST_ALERTS: ['alert_id','organization_id','dish_id','себестоимость','food_cost','цель','рекомендованная_цена','task_id','статус','создано','снято'],
+    // M12 — алкоголь (Alco.gs): карточки, лицензии, марки бутылок/кег, очередь отправки в ЕГАИС / «Честный знак».
+    ALCO_PRODUCTS: ['alco_id','organization_id','product_id','алкокод','код_вида','категория','объём_тары_л','крепость','производитель','маркировка','статус','обновлено'],
+    ALCO_LICENSES: ['license_id','organization_id','location_id','номер','вид','выдана','действует_до','орган','статус','создано','user_id'],
+    ALCO_MARKS: ['mark_id','organization_id','location_id','product_id','марка','ключ','система','batch_id','объём_л','статус','принята','принял_id','вскрыта','вскрыл_id','ттн'],
+    ALCO_OUTBOX: ['doc_id','organization_id','location_id','тип','система','mark_id','product_id','алкокод','объём_л','дата','срок_отправки','статус','отправлено','номер_квитанции','user_id','создано'],
     // Гости (персональные данные, 152-ФЗ): создаются только с согласием (дата в согласие_пд).
     // телефон — +7XXXXXXXXXX, уникален в организации. бонусы — кэш баланса, источник правды — BONUS_TXNS.
     GUESTS: ['guest_id','organization_id','телефон','имя','день_рождения','согласие_пд','бонусы','всего_оплачено','визитов',
@@ -802,7 +811,7 @@ var CONFIG = {
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
-    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP', PREP_PARS: 'PPAR', PREP_LISTS: 'PREP', TTK_ACKS: 'TACK', TRAINING_QUESTIONS: 'TRQ', TRAINING_ATTEMPTS: 'TRA', FOODCOST_ALERTS: 'FCA',
+    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP', PREP_PARS: 'PPAR', PREP_LISTS: 'PREP', TTK_ACKS: 'TACK', TRAINING_QUESTIONS: 'TRQ', TRAINING_ATTEMPTS: 'TRA', FOODCOST_ALERTS: 'FCA', ALCO_PRODUCTS: 'ALCP', ALCO_LICENSES: 'ALCL', ALCO_MARKS: 'ALCM', ALCO_OUTBOX: 'ALCO',
     GUESTS: 'GST', BONUS_TXNS: 'BTX', POS_TIP_LINKS: 'PTIP', PUBLIC_MENU: 'PMENU',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
@@ -880,6 +889,7 @@ var CONFIG = {
     JOURNAL_DEVIATION_WARNING: 'предупреждение_отклонение_журнала',
     JOURNAL_OVERDUE: 'просроченный_журнал',
     EXPIRING_BATCH: 'истекает_срок_партии',
+    ALCO: 'алкоголь_егаис', // M12: лицензия, неотправленные вскрытия
 
     // Секондарные фичи, раунд 3 (Архитектура v4 §8) — Лабораторный модуль v2.
     LAB_RESULT_FAILED: 'провал_лабораторного_теста',
@@ -906,6 +916,7 @@ var CONFIG = {
   // ТЗ §21 — кто получает какой тип уведомления по умолчанию (преднастройка,
   // администратор переопределяет через NOTIFICATION_SETTINGS.recipients)
   DEFAULT_RECIPIENTS: {
+    'алкоголь_егаис': ['ДИРЕКТОР', 'МЕНЕДЖЕР'],
     'критическое_отклонение_журнала': ['ШЕФ-ПОВАР', 'ДИРЕКТОР'],
     // P0.6 — новый тип (см. NOTIFICATION_TYPES выше): предупреждение НЕ поднимается до
     // ДИРЕКТОРА по умолчанию, в отличие от настоящего критического отклонения — это
@@ -950,6 +961,8 @@ var CONFIG = {
     // Этап M3: модификаторы.
     POS_GET_MODIFIERS: 'pos_admin', POS_SAVE_MODIFIER_GROUP: 'pos_admin', POS_SAVE_MODIFIER: 'pos_admin', POS_LINK_DISH_MODIFIERS: 'pos_admin',
     // Этап M4: стоп-лист — ведут кухня и менеджмент (pos_stop); кассир видит стопы в меню кассы.
+    ALCO_GET_OVERVIEW: 'alco_open', ALCO_OPEN: 'alco_open', ALCO_GET_MARKS: 'alco_open',
+    ALCO_SAVE_LICENSE: 'alco', ALCO_SAVE_PRODUCT: 'alco', ALCO_GET_PRODUCTS: 'alco', ALCO_GET_BATCHES: 'alco', ALCO_RECEIVE_MARKS: 'alco', ALCO_GET_OUTBOX: 'alco', ALCO_MARK_SENT: 'alco', ALCO_GET_JOURNAL: 'alco',
     FC_GET_OVERVIEW: 'recipes', FC_CHECK_ALERTS: 'recipes', FC_GET_SETTINGS: 'recipes', FC_SAVE_SETTINGS: 'economics', FC_USE_TODAY: 'production',
     TRAINING_GET_MY: 'recipes', TRAINING_GET_CARD: 'recipes', TRAINING_ACK: 'recipes', TRAINING_START_QUIZ: 'recipes', TRAINING_SUBMIT_QUIZ: 'recipes',
     TRAINING_GET_MATRIX: 'recipes', TRAINING_GET_QUESTIONS: 'recipes', TRAINING_SAVE_QUESTION: 'recipes',
@@ -1304,7 +1317,7 @@ var CONFIG = {
     // и раньше через 'products' — но теперь это отдельное, явно выданное право, а не
     // побочный эффект обычного доступа к продуктам организации. ШЕФ-ПОВАР/КАЛЬКУЛЯТОР его
     // не получают (см. докстринг у CREATE_GLOBAL_PRODUCT в ACTION_MODULE выше).
-    'ДИРЕКТОР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
+    'ДИРЕКТОР': ['alco', 'alco_open', 'pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'enterprise_control', 'audit_admin', 'configuration_admin', 'master_data_admin', 'automation_approve', 'marking', 'critical_incidents', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'global_catalog', 'recovery', 'safety', 'safety_admin', 'offline'],
     'ШЕФ-ПОВАР': ['pos_kitchen', 'pos_stop', 'marking', 'critical_incidents', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales', 'safety', 'safety_admin', 'offline'],
     // ПОВАР: чтение ТТК/рецептур/полуфабрикатов и производственный контур.
     // Себестоимость и Food Cost доступны через ТТК/рецептуры, но права на изменение
@@ -1312,15 +1325,15 @@ var CONFIG = {
     'ПОВАР': ['pos_kitchen', 'pos_stop', 'marking', 'recipes', 'critical_incidents', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks', 'safety', 'offline'],
     // КЛАДОВЩИК: склад + чтение ТТК/рецептур для понимания потребности и себестоимости
     // сырья. Производственный и финансовый контур остаётся закрытым.
-    'КЛАДОВЩИК': ['marking', 'critical_incidents', 'warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations', 'safety', 'offline'],
-    'БУХГАЛТЕР': ['enterprise_control', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales', 'safety'],
+    'КЛАДОВЩИК': ['alco', 'alco_open', 'marking', 'critical_incidents', 'warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations', 'safety', 'offline'],
+    'БУХГАЛТЕР': ['alco', 'alco_open', 'enterprise_control', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales', 'safety'],
     'КАЛЬКУЛЯТОР': ['recipes', 'economics', 'products', 'safety'],
-    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
+    'МЕНЕДЖЕР': ['alco', 'alco_open', 'pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'enterprise_control', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales', 'safety', 'offline'],
     // Модуль «Касса»: кассир принимает заказы и оплату в своей точке, отмены — у менеджера.
-    'КАССИР': ['pos', 'pos_shift', 'safety', 'offline'],
+    'КАССИР': ['alco_open', 'pos', 'pos_shift', 'safety', 'offline'],
     // Официант: зал, свои заказы, отправка на кухню и пречек. Оплата и смена — у кассира
     // (см. ROLE_ACTION_DENY), чужие столы — запрет в Pos.gs::_posAssertWaiterOwns_.
-    'ОФИЦИАНТ': ['pos', 'safety', 'offline'],
+    'ОФИЦИАНТ': ['alco_open', 'pos', 'safety', 'offline'],
     'ЛАБОРАНТ': ['lab', 'safety'],
     // RBAC v2: технолог/HACCP получает технологический + нормативный контур,
     // но не получает users/finance/admin integrations.

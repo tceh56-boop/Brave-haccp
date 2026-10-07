@@ -286,6 +286,18 @@ var ACTION_HANDLERS = {
   POS_SAVE_MODIFIER: function (data, session) { return posSaveModifier_(data || {}, session); },
   POS_LINK_DISH_MODIFIERS: function (data, session) { return posLinkDishModifiers_(data || {}, session); },
   // Волна 3, M9 — заготовочный лист (KitchenPrep.gs)
+  // M12 — алкоголь (Alco.gs)
+  ALCO_GET_OVERVIEW: function (data, session) { return alcoGetOverview_(session); },
+  ALCO_OPEN: function (data, session) { return alcoOpen_(data || {}, session); },
+  ALCO_GET_MARKS: function (data, session) { return alcoGetMarks_(data || {}, session); },
+  ALCO_SAVE_LICENSE: function (data, session) { return alcoSaveLicense_(data || {}, session); },
+  ALCO_SAVE_PRODUCT: function (data, session) { return alcoSaveProduct_(data || {}, session); },
+  ALCO_GET_PRODUCTS: function (data, session) { return alcoGetProducts_(session); },
+  ALCO_GET_BATCHES: function (data, session) { return alcoGetBatches_(session); },
+  ALCO_RECEIVE_MARKS: function (data, session) { return alcoReceiveMarks_(data || {}, session); },
+  ALCO_GET_OUTBOX: function (data, session) { return alcoGetOutbox_(data || {}, session); },
+  ALCO_MARK_SENT: function (data, session) { return alcoMarkSent_(data || {}, session); },
+  ALCO_GET_JOURNAL: function (data, session) { return alcoGetJournal_(data || {}, session); },
   // Волна 3, M11 — фуд-кост и «Используй сегодня» (FoodCostControl.gs)
   FC_GET_OVERVIEW: function (data, session) { return fcGetOverview_(session); },
   FC_CHECK_ALERTS: function (data, session) { return fcCheckAlerts_(session); },

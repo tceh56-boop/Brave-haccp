@@ -31,6 +31,7 @@ var DAILY_TRIGGER_HOURS_ = {
   kpiTargetsStage41Trigger_: 6,
   expiryCheckTrigger_: 7,
   declarationExpiryTrigger_: 8,
+  alcoDailyTrigger_: 9, // M12: лицензия, неотправленные вскрытия
   managementEconomicsTrigger_: 9,
   demandPlanningTrigger_: 10,
   financeStage22Trigger_: 11

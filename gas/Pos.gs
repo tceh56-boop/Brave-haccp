@@ -424,6 +424,7 @@ function posAddLine_(data, session) {
     if (dish.статус === 'архив') throw new Error('Блюдо в архиве и не продаётся.');
     var stop = _posActiveStops_(session).filter(function (s) { return s.dish_id === dish.dish_id; })[0];
     if (stop) throw new Error('Блюдо «' + dish.название + '» в стоп-листе: ' + stop.причина);
+    if (typeof _alcoAssertSaleAllowed_ === 'function') _alcoAssertSaleAllowed_(dish, session); // M12: алкоголь — только при действующей лицензии
     var basePrice = Number(dish.цена_продажи);
     if (!(basePrice > 0)) throw new Error('У блюда «' + dish.название + '» не указана цена продажи.');
     var qty = Number(data.qty || 1);
@@ -1275,7 +1276,7 @@ function posGetStaffReport_(data, session) {
 function migratePosSchema_() {
   var out = {};
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES', 'MODIFIER_GROUPS', 'MODIFIERS',
-    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS', 'PUBLIC_MENU', 'PREP_PARS', 'PREP_LISTS', 'TTK_ACKS', 'TRAINING_QUESTIONS', 'TRAINING_ATTEMPTS', 'FOODCOST_ALERTS'].forEach(function (k) {
+    'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS', 'PUBLIC_MENU', 'PREP_PARS', 'PREP_LISTS', 'TTK_ACKS', 'TRAINING_QUESTIONS', 'TRAINING_ATTEMPTS', 'FOODCOST_ALERTS', 'ALCO_PRODUCTS', 'ALCO_LICENSES', 'ALCO_MARKS', 'ALCO_OUTBOX'].forEach(function (k) {
     try { out[k] = ensureSchemaColumns_(k); } catch (e) { out[k] = 'нет листа — запустите initializeDatabase()'; }
   });
   return out;
@@ -1499,7 +1500,7 @@ function posFulfillPendingSalesTrigger_() {
 function runPosTests_() {
   var out = []; function ok(n, c, d) { out.push({ name: n, status: c ? 'OK' : 'FAIL', detail: d || '' }); }
   ['POS_SHIFTS', 'POS_ORDERS', 'POS_ORDER_LINES', 'POS_PAYMENTS', 'POS_HALLS', 'POS_TABLES',
-    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS', 'PUBLIC_MENU', 'PREP_PARS', 'PREP_LISTS', 'TTK_ACKS', 'TRAINING_QUESTIONS', 'TRAINING_ATTEMPTS', 'FOODCOST_ALERTS'].forEach(function (k) {
+    'MODIFIER_GROUPS', 'MODIFIERS', 'DISH_MODIFIER_LINKS', 'POS_MODIFIER_USAGE', 'STOP_LIST', 'GUESTS', 'BONUS_TXNS', 'POS_TIP_LINKS', 'PUBLIC_MENU', 'PREP_PARS', 'PREP_LISTS', 'TTK_ACKS', 'TRAINING_QUESTIONS', 'TRAINING_ATTEMPTS', 'FOODCOST_ALERTS', 'ALCO_PRODUCTS', 'ALCO_LICENSES', 'ALCO_MARKS', 'ALCO_OUTBOX'].forEach(function (k) {
     ok('SCHEMA_' + k, Array.isArray(CONFIG.SCHEMA[k]) && CONFIG.SHEETS[k] === k && !!CONFIG.ID_PREFIXES[k], 'sheet, schema, id prefix');
   });
   ['POS_GET_MENU', 'POS_OPEN_SHIFT', 'POS_GET_SHIFT', 'POS_CLOSE_SHIFT', 'POS_CREATE_ORDER', 'POS_ADD_LINE', 'POS_UPDATE_LINE',
@@ -1511,6 +1512,7 @@ function runPosTests_() {
     'PREP_GET_LIST', 'PREP_BUILD_LIST', 'PREP_MARK_DONE', 'PREP_SKIP', 'PREP_GET_PARS', 'PREP_SAVE_PAR',
     'TRAINING_GET_MY', 'TRAINING_GET_CARD', 'TRAINING_ACK', 'TRAINING_START_QUIZ', 'TRAINING_SUBMIT_QUIZ', 'TRAINING_GET_MATRIX', 'TRAINING_GET_QUESTIONS', 'TRAINING_SAVE_QUESTION',
     'FC_GET_OVERVIEW', 'FC_CHECK_ALERTS', 'FC_GET_SETTINGS', 'FC_SAVE_SETTINGS', 'FC_USE_TODAY',
+    'ALCO_GET_OVERVIEW', 'ALCO_OPEN', 'ALCO_GET_MARKS', 'ALCO_SAVE_LICENSE', 'ALCO_SAVE_PRODUCT', 'ALCO_GET_PRODUCTS', 'ALCO_GET_BATCHES', 'ALCO_RECEIVE_MARKS', 'ALCO_GET_OUTBOX', 'ALCO_MARK_SENT', 'ALCO_GET_JOURNAL',
     'POS_REFUND', 'POS_GET_STAFF_REPORT', 'POS_GET_SHIFTS',
     'POS_FIND_GUEST', 'POS_SAVE_GUEST', 'POS_ATTACH_GUEST', 'POS_GET_GUEST', 'POS_GET_GUESTS', 'POS_ADJUST_BONUS',
     'POS_ANONYMIZE_GUEST', 'POS_GET_LOYALTY_SETTINGS', 'POS_SAVE_LOYALTY_SETTINGS', 'POS_GET_TIP_LINKS', 'POS_SAVE_TIP_LINK',

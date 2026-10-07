@@ -174,6 +174,9 @@
   .fc-pct{font-size:20px;font-weight:800;}
   .fc-pct.over{color:#b3261e;}
   .ut-row{border-top:1px solid #f0f0f0;padding:8px 0;}
+  #alcoScan{font-size:18px;padding:14px;}
+  .alco-ok{border:2px solid #2e7d32;border-radius:12px;padding:10px 12px;background:#f1f8f1;}
+  .alco-bad{border:2px solid #b3261e;border-radius:12px;padding:10px 12px;background:#fdf1f0;}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
   .prep-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
   .prep-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid #eee;border-radius:12px;padding:10px 12px;margin:8px 0;background:#fff;}
@@ -307,6 +310,7 @@
   <button class="menuItem" data-view="prep" data-module="production" onclick="navTo('prep')">Заготовки на смену</button>
   <button class="menuItem" data-view="training" data-module="recipes" onclick="navTo('training')">Обучение по ТТК</button>
   <button class="menuItem" data-view="foodcost" data-module="foodcost" onclick="navTo('foodcost')">Фуд-кост блюд</button>
+  <button class="menuItem" data-view="alco" data-module="alco_open" onclick="navTo('alco')">Алкоголь</button>
   <button class="menuItem" data-view="warehouse" data-module="warehouse_view" onclick="navTo('warehouse')">Склад</button>
   <button class="menuItem" data-view="marking" data-module="marking" onclick="navTo('marking')">🏷️ Маркировка</button>
   <button class="menuItem" data-view="writeoff" data-module="writeoffs" onclick="navTo('writeoff')">Списание</button>
@@ -1860,6 +1864,87 @@
     <div id="fcErr" class="err" role="alert"></div>
   </section>
 
+  <!-- M12: алкоголь — Alco.gs. Лицензия, марки, вскрытие тары, очередь в ЕГАИС / «Честный знак», журнал. -->
+  <section id="view-alco" class="hidden" aria-labelledby="alcoTitle">
+    <div class="card">
+      <h2 id="alcoTitle" style="margin:0;">Алкоголь</h2>
+      <div id="alcoBanner" style="margin-top:8px;" aria-live="polite"></div>
+    </div>
+    <div id="alcoTabs" class="subnav" role="tablist" aria-label="Разделы алкоголя">
+      <button data-alco-tab="open" onclick="alcoTab('open')">Вскрытие тары</button>
+      <button data-alco-tab="receive" data-module-gate="alco" onclick="alcoTab('receive')">Приём марок</button>
+      <button data-alco-tab="outbox" data-module-gate="alco" onclick="alcoTab('outbox')">К отправке</button>
+      <button data-alco-tab="journal" data-module-gate="alco" onclick="alcoTab('journal')">Журнал продаж</button>
+      <button data-alco-tab="setup" data-module-gate="alco" onclick="alcoTab('setup')">Лицензия и карточки</button>
+    </div>
+    <div class="card alco-panel" data-alco-panel="open">
+      <label for="alcoScan"><b>Отсканируйте марку открываемой бутылки или код кеги</b></label>
+      <input id="alcoScan" autocomplete="off" placeholder="Сканер вводит код и нажимает Enter" onkeydown="if (event.key === 'Enter') { event.preventDefault(); alcoOpenScan(); }">
+      <button class="btn" onclick="alcoOpenScan()">Вскрыть</button>
+      <div id="alcoOpenResult" aria-live="assertive" style="margin-top:10px;"></div>
+      <h3 style="margin:14px 0 6px;">Вскрыто сегодня</h3>
+      <div id="alcoOpenedToday" class="muted">—</div>
+    </div>
+    <div class="card alco-panel hidden" data-alco-panel="receive">
+      <p class="muted" style="margin-top:0;">Отсканируйте марки бутылок партии — по одной в строке. Принять можно не больше, чем бутылок в партии; одну марку дважды не примет.</p>
+      <label for="alcoBatch">Партия</label><select id="alcoBatch"></select>
+      <label for="alcoTtn">ТТН (необязательно)</label><input id="alcoTtn" maxlength="60" placeholder="Номер товарно-транспортной накладной">
+      <label for="alcoMarks">Марки</label><textarea id="alcoMarks" rows="6" placeholder="Каждая марка с новой строки"></textarea>
+      <div class="row-between"><span id="alcoMarksCount" class="pos-mods">0 марок</span><button class="btn small" onclick="alcoReceive()">Принять марки</button></div>
+      <div id="alcoReceiveResult" aria-live="polite"></div>
+    </div>
+    <div class="card alco-panel hidden" data-alco-panel="outbox">
+      <p class="muted" style="margin-top:0;">Вскрытие тары передаётся в ЕГАИС, подключение кеги — в «Честный знак» в день вскрытия. Пока моста к УТМ нет: отправьте документы и отметьте их здесь с номером квитанции.</p>
+      <div id="alcoOutbox">Загрузка…</div>
+      <div class="prep-head" style="margin-top:8px;">
+        <label for="alcoReceipt" class="sr-only">Номер квитанции</label>
+        <input id="alcoReceipt" maxlength="80" placeholder="Номер квитанции / документа" style="flex:1;min-width:180px;margin:0;">
+        <button class="btn small" onclick="alcoMarkSent()">Отметить отправленными</button>
+        <button class="btn small secondary" onclick="alcoOutboxCsv()">Скачать CSV</button>
+      </div>
+    </div>
+    <div class="card alco-panel hidden" data-alco-panel="journal">
+      <div class="prep-head">
+        <label for="alcoFrom" class="sr-only">С</label><input type="date" id="alcoFrom" style="width:auto;margin:0;">
+        <label for="alcoTo" class="sr-only">По</label><input type="date" id="alcoTo" style="width:auto;margin:0;">
+        <button class="btn small" onclick="alcoJournal()">Показать</button>
+        <button class="btn small secondary" onclick="alcoJournalCsv()">Скачать CSV</button>
+      </div>
+      <p class="muted">Объём продаж — по кассе и ТТК (возвраты вычитаются); вскрыто — по сканам марок. Сверьте форму с действующим приказом Росалкогольтабакконтроля перед сдачей.</p>
+      <div id="alcoCheck"></div>
+      <div id="alcoJournalTable" class="tr-matrix-wrap"></div>
+    </div>
+    <div class="alco-panel hidden" data-alco-panel="setup">
+      <div class="card">
+        <h3 style="margin-top:0;">Лицензия точки</h3>
+        <div id="alcoLicense" class="muted"></div>
+        <label for="alcoLicNo">Номер</label><input id="alcoLicNo" maxlength="60">
+        <div class="prep-head">
+          <span><label for="alcoLicFrom">Выдана</label><input type="date" id="alcoLicFrom" style="width:auto;"></span>
+          <span><label for="alcoLicTo">Действует до</label><input type="date" id="alcoLicTo" style="width:auto;"></span>
+        </div>
+        <label for="alcoLicOrg">Кем выдана</label><input id="alcoLicOrg" maxlength="200">
+        <button class="btn small" onclick="alcoSaveLicense()">Сохранить лицензию</button>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;">Карточки алкоголя</h3>
+        <p class="muted">Продукт склада в литрах + алкокод, код вида, ёмкость тары, крепость. Пиво маркируется в «Честном знаке», остальное — акцизными марками ЕГАИС.</p>
+        <label for="alcoProd">Продукт</label><select id="alcoProd" onchange="alcoFillCard()"></select>
+        <div class="prep-head">
+          <span><label for="alcoCat">Категория</label><select id="alcoCat" style="width:auto;"><option value="крепкий">крепкий</option><option value="вино">вино</option><option value="слабоалкогольный">слабоалкогольный</option><option value="пиво_разлив">пиво на розлив (кега)</option><option value="пиво_тара">пиво в таре</option></select></span>
+          <span><label for="alcoKind">Код вида</label><input id="alcoKind" maxlength="3" inputmode="numeric" style="width:80px;"></span>
+          <span><label for="alcoVol">Ёмкость, л</label><input id="alcoVol" type="number" step="0.05" min="0.05" style="width:90px;"></span>
+          <span><label for="alcoAbv">Крепость, %</label><input id="alcoAbv" type="number" step="0.1" min="0.5" style="width:90px;"></span>
+        </div>
+        <label for="alcoCode">Алкокод</label><input id="alcoCode" maxlength="19" inputmode="numeric">
+        <label for="alcoMaker">Производитель</label><input id="alcoMaker" maxlength="200">
+        <button class="btn small" onclick="alcoSaveCard()">Сохранить карточку</button>
+        <div id="alcoCards" style="margin-top:10px;"></div>
+      </div>
+    </div>
+    <div id="alcoErr" class="err" role="alert"></div>
+  </section>
+
   <!-- Модуль «Касса», M4: стоп-лист точки. Авто — по годному остатку и утверждённой ТТК, ручной — с причиной. -->
   <section id="view-stoplist" class="hidden" aria-labelledby="stopTitle">
     <div class="card">
@@ -1909,16 +1994,16 @@
    */
   var CLIENT_ROLE_MODULES = {
     'ADMIN': 'all',
-    'ДИРЕКТОР': ['foodcost', 'pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
+    'ДИРЕКТОР': ['alco', 'alco_open', 'foodcost', 'pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'economics', 'reports', 'warehouse_view', 'warehouse_receive', 'production', 'writeoffs', 'purchasing', 'inventory', 'journals', 'journal_admin', 'ai', 'products', 'recipes', 'workshops_use', 'workshops_manage', 'equipment', 'notifications_admin', 'plan_menu', 'users', 'tasks', 'lab', 'ppk', 'haccp_rules', 'integrations', 'compliance', 'locations', 'sales', 'recovery'],
     'ШЕФ-ПОВАР': ['foodcost', 'pos_kitchen', 'pos_stop', 'dashboard', 'production', 'warehouse_view', 'inventory', 'writeoffs', 'recipes', 'products', 'journals', 'workshops_use', 'equipment', 'plan_menu', 'tasks', 'lab', 'sales'],
     'ПОВАР': ['pos_kitchen', 'pos_stop', 'recipes', 'products', 'inventory', 'writeoffs', 'journals', 'production', 'workshops_use', 'tasks'],
-    'КЛАДОВЩИК': ['warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations'],
-    'БУХГАЛТЕР': ['foodcost', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales'],
+    'КЛАДОВЩИК': ['alco', 'alco_open', 'warehouse_view', 'warehouse_receive', 'inventory', 'purchasing', 'recipes', 'products', 'workshops_use', 'locations'],
+    'БУХГАЛТЕР': ['alco', 'alco_open', 'foodcost', 'recipes', 'economics', 'reports', 'purchasing', 'writeoffs', 'inventory', 'sales'],
     'КАЛЬКУЛЯТОР': ['foodcost', 'recipes', 'economics', 'products'],
-    'МЕНЕДЖЕР': ['pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
+    'МЕНЕДЖЕР': ['alco', 'alco_open', 'pos', 'pos_shift', 'pos_admin', 'pos_kitchen', 'pos_stop', 'dashboard', 'purchasing', 'production', 'plan_menu', 'sales'],
     'ЛАБОРАНТ': ['lab'],
-    'КАССИР': ['pos', 'pos_shift'],
-    'ОФИЦИАНТ': ['pos']
+    'КАССИР': ['alco_open', 'pos', 'pos_shift'],
+    'ОФИЦИАНТ': ['alco_open', 'pos']
   };
 
   function applyRoleVisibility(role) {
@@ -2124,6 +2209,7 @@
     if (name === 'prep') initPrepView();
     if (name === 'training') initTrainingView();
     if (name === 'foodcost') fcLoad();
+    if (name === 'alco') initAlcoView();
     if (name === 'recovery') loadEmergencyCenterUI();
     if (name === 'production') loadBreakdownPlansUI();
   }
@@ -5877,6 +5963,148 @@ function qrPrintTables() {
   var w = window.open('', '_blank');
   if (!w) { qrErr('Браузер заблокировал окно печати — разрешите всплывающие окна для ЦЕХ.'); return; }
   w.document.open(); w.document.write(html); w.document.close();
+}
+
+// ---------- Алкоголь (M12) ----------
+var ALCO = { tab: 'open', products: [], outbox: [], journal: null };
+var ALCO_CAT = { крепкий: 'крепкий', вино: 'вино', слабоалкогольный: 'слабоалкогольный', пиво_разлив: 'пиво на розлив', пиво_тара: 'пиво в таре' };
+function alcoErr(t) { document.getElementById('alcoErr').textContent = t || ''; }
+function alcoL(n) { return (Math.round((Number(n) || 0) * 1000) / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 3 }) + ' л'; }
+function alcoTime(iso) { return iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''; }
+function initAlcoView() { alcoBanner(); alcoTab('open'); }
+function alcoTab(tab) {
+  ALCO.tab = tab; alcoErr('');
+  document.querySelectorAll('#alcoTabs button[data-alco-tab]').forEach(function (b) { var on = b.dataset.alcoTab === tab; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+  document.querySelectorAll('#view-alco .alco-panel').forEach(function (p) { p.classList.toggle('hidden', p.dataset.alcoPanel !== tab); });
+  if (tab === 'open') { alcoOpenedToday(); setTimeout(function () { document.getElementById('alcoScan').focus(); }, 50); }
+  if (tab === 'receive') alcoLoadBatches();
+  if (tab === 'outbox') alcoLoadOutbox();
+  if (tab === 'journal') alcoJournal();
+  if (tab === 'setup') alcoLoadSetup();
+}
+function alcoBanner() {
+  call('ALCO_GET_OVERVIEW', {}, function (o) {
+    var h = [];
+    if (!o.лицензия) h.push('<span class="badge pos-badge-cancel">Нет действующей лицензии</span> Касса не продаёт блюда с алкоголем.');
+    else h.push('<span class="badge ' + (o.лицензия.осталось_дней <= 30 ? 'pos-st pos-st-kitchen' : 'pos-badge-paid') + '">Лицензия № ' + posEsc(o.лицензия.номер) + ' до ' + posEsc(o.лицензия.действует_до) + '</span>' + (o.лицензия.осталось_дней <= 30 ? ' Осталось ' + o.лицензия.осталось_дней + ' дн. — продлите.' : ''));
+    h.push('<span class="pos-mods">Бутылок на складе с марками: ' + o.на_складе + ' · вскрыто сегодня: ' + o.вскрыто_сегодня + '</span>');
+    if (o.к_отправке) h.push('<span class="badge ' + (o.просрочено ? 'pos-badge-cancel' : 'b-info') + '">К отправке: ' + o.к_отправке + (o.просрочено ? ', просрочено: ' + o.просрочено : '') + '</span>');
+    document.getElementById('alcoBanner').innerHTML = h.join(' ');
+  }, alcoErr);
+}
+function alcoOpenScan() {
+  var el = document.getElementById('alcoScan'), v = el.value.trim(), out = document.getElementById('alcoOpenResult');
+  if (!v) return;
+  el.value = '';
+  call('ALCO_OPEN', { mark: v }, function (r) {
+    out.innerHTML = '<div class="alco-ok"><b>Вскрыто: ' + posEsc(r.название) + '</b> · ' + alcoL(r.объём_л) + '<div class="pos-mods">' + posEsc(r.напоминание) + '</div></div>';
+    alcoOpenedToday(); alcoBanner(); el.focus();
+  }, function (e) { out.innerHTML = '<div class="alco-bad"><b>Не вскрыто.</b> ' + posEsc(e) + '</div>'; el.focus(); });
+}
+function alcoOpenedToday() {
+  call('ALCO_GET_MARKS', { статус: 'вскрыта', сегодня: true }, function (list) { // «сегодня» — по времени сервера (см. B4)
+    document.getElementById('alcoOpenedToday').innerHTML = list.length ? list.map(function (m) {
+      return '<div class="ut-row"><b>' + posEsc(m.название) + '</b> <span class="pos-mods">' + alcoL(m.объём_л) + ' · ' + alcoTime(m.вскрыта) + ' · ' + (m.система === 'ЧЗ' ? 'кега, «Честный знак»' : 'ЕГАИС') + ' · ' + posEsc(m.марка_кратко) + '</span></div>';
+    }).join('') : 'Сегодня ещё ничего не вскрывали.';
+  }, alcoErr);
+}
+function alcoLoadBatches() {
+  call('ALCO_GET_BATCHES', {}, function (rows) {
+    document.getElementById('alcoBatch').innerHTML = rows.length ? rows.map(function (b) {
+      return '<option value="' + posEsc(b.batch_id) + '">' + posEsc(b.название) + ' · ' + posEsc(b.дата_прихода) + ' · ' + b.бутылок + ' шт., принято марок ' + b.принято_марок + '</option>';
+    }).join('') : '<option value="">Нет партий без марок — сначала оформите приход и карточку алкоголя</option>';
+  }, alcoErr);
+  var ta = document.getElementById('alcoMarks');
+  ta.oninput = function () { var n = ta.value.split(/\n/).filter(function (x) { return x.trim(); }).length; document.getElementById('alcoMarksCount').textContent = n + ' марок'; };
+}
+function alcoReceive() {
+  alcoErr('');
+  var marks = document.getElementById('alcoMarks').value.split(/\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+  call('ALCO_RECEIVE_MARKS', { batchId: document.getElementById('alcoBatch').value, marks: marks, ттн: document.getElementById('alcoTtn').value }, function (r) {
+    document.getElementById('alcoReceiveResult').innerHTML = '<div class="alco-ok">Принято марок: <b>' + r.принято + '</b> (в партии ' + r.всего_в_партии + ' из ' + r.ёмкость_партии + ').</div>';
+    document.getElementById('alcoMarks').value = ''; document.getElementById('alcoMarksCount').textContent = '0 марок';
+    alcoLoadBatches(); alcoBanner();
+  }, alcoErr);
+}
+function alcoLoadOutbox() {
+  call('ALCO_GET_OUTBOX', {}, function (rows) {
+    ALCO.outbox = rows;
+    document.getElementById('alcoOutbox').innerHTML = rows.length ? rows.map(function (d) {
+      return '<label class="ut-row" style="display:flex;gap:10px;align-items:flex-start;font-weight:400;cursor:pointer;"><input type="checkbox" class="alco-doc" value="' + posEsc(d.doc_id) + '" checked style="width:auto;margin-top:4px;">' +
+        '<span><b>' + (d.тип === 'подключение_кеги' ? 'Подключение кеги' : 'Вскрытие тары') + ': ' + posEsc(d.название) + '</b> ' + (d.просрочено ? '<span class="badge pos-badge-cancel">просрочено</span>' : '') +
+        '<div class="pos-mods">' + posEsc(d.система) + ' · ' + posEsc(d.дата) + ' · ' + alcoL(d.объём_л) + (d.алкокод ? ' · алкокод ' + posEsc(d.алкокод) : '') + '</div></span></label>';
+    }).join('') : '<span class="badge pos-badge-paid">Всё отправлено</span>';
+  }, alcoErr);
+}
+function alcoMarkSent() {
+  alcoErr('');
+  var ids = Array.prototype.map.call(document.querySelectorAll('.alco-doc:checked'), function (c) { return c.value; });
+  call('ALCO_MARK_SENT', { docIds: ids, квитанция: document.getElementById('alcoReceipt').value }, function () { document.getElementById('alcoReceipt').value = ''; alcoLoadOutbox(); alcoBanner(); }, alcoErr);
+}
+function alcoDownload(name, rows) {
+  var csv = '\ufeff' + rows.map(function (r) { return r.map(function (c) { c = String(c == null ? '' : c); return /[;"\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(';'); }).join('\r\n');
+  var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+function alcoOutboxCsv() {
+  alcoDownload('alco-k-otpravke.csv', [['Тип', 'Система', 'Дата', 'Наименование', 'Алкокод', 'Объём, л', 'Марка / код']].concat(ALCO.outbox.map(function (d) {
+    return [d.тип === 'подключение_кеги' ? 'Подключение кеги' : 'Вскрытие тары', d.система, d.дата, d.название, d.алкокод, d.объём_л, d.марка];
+  })));
+}
+function alcoJournal() {
+  alcoErr('');
+  var f = document.getElementById('alcoFrom').value, t = document.getElementById('alcoTo').value;
+  call('ALCO_GET_JOURNAL', { dateFrom: f, dateTo: t }, function (j) {
+    ALCO.journal = j;
+    document.getElementById('alcoFrom').value = j.from; document.getElementById('alcoTo').value = j.to;
+    var bad = j.сверка.filter(function (c) { return c.продано_больше; });
+    document.getElementById('alcoCheck').innerHTML = bad.length ? '<div class="alco-bad"><b>Продано больше, чем вскрыто за период:</b> ' + bad.map(function (c) { return posEsc(c.название) + ' (продано ' + alcoL(c.продано_л) + ', вскрыто ' + alcoL(c.вскрыто_л) + ')'; }).join('; ') + '. Проверьте, все ли бутылки отсканированы при вскрытии.</div>' : (j.rows.length ? '<span class="badge pos-badge-paid">Расхождений нет</span>' : '');
+    document.getElementById('alcoJournalTable').innerHTML = j.rows.length ? '<table class="report-table"><thead><tr><th>Дата</th><th>Наименование</th><th>Код вида</th><th>Ёмкость</th><th>Продано</th><th>Вскрыто</th></tr></thead><tbody>' + j.rows.map(function (r) {
+      return '<tr><td>' + posEsc(r.дата) + '</td><td>' + posEsc(r.название) + '</td><td>' + posEsc(r.код_вида) + '</td><td>' + alcoL(r.объём_тары_л) + '</td><td>' + alcoL(r.продано_л) + '</td><td>' + alcoL(r.вскрыто_л) + (r.вскрыто_шт ? ' (' + r.вскрыто_шт + ' шт.)' : '') + '</td></tr>';
+    }).join('') + '</tbody></table>' : '<p class="muted">За период нет продаж и вскрытий алкоголя.</p>';
+  }, alcoErr);
+}
+function alcoJournalCsv() {
+  if (!ALCO.journal) return;
+  alcoDownload('alco-zhurnal-' + ALCO.journal.from + '_' + ALCO.journal.to + '.csv', [['Дата', 'Наименование', 'Код вида', 'Алкокод', 'Ёмкость тары, л', 'Крепость, %', 'Продано, л', 'Вскрыто, л', 'Вскрыто, шт.']].concat(ALCO.journal.rows.map(function (r) {
+    return [r.дата, r.название, r.код_вида, r.алкокод, r.объём_тары_л, r.крепость, r.продано_л, r.вскрыто_л, r.вскрыто_шт];
+  })));
+}
+function alcoLoadSetup() {
+  call('ALCO_GET_OVERVIEW', {}, function (o) {
+    document.getElementById('alcoLicense').innerHTML = o.лицензия ? 'Действует № <b>' + posEsc(o.лицензия.номер) + '</b> до ' + posEsc(o.лицензия.действует_до) + '. Новая запись заменит её.' : 'Действующей лицензии нет.';
+  }, alcoErr);
+  call('ALCO_GET_PRODUCTS', {}, function (rows) {
+    ALCO.products = rows;
+    var sel = document.getElementById('alcoProd'), keep = sel.value;
+    sel.innerHTML = rows.length ? rows.map(function (p) { return '<option value="' + posEsc(p.product_id) + '">' + posEsc(p.название) + (p.карточка ? '' : ' — нет карточки') + '</option>'; }).join('') : '<option value="">Нет продуктов в литрах</option>';
+    if (keep) sel.value = keep;
+    alcoFillCard();
+    var withCard = rows.filter(function (p) { return p.карточка; });
+    document.getElementById('alcoCards').innerHTML = withCard.map(function (p) {
+      var c = p.карточка;
+      return '<div class="ut-row"><b>' + posEsc(p.название) + '</b> <span class="pos-mods">' + posEsc(ALCO_CAT[c.категория] || c.категория) + ' · код ' + posEsc(c.код_вида) + ' · ' + alcoL(c.объём_тары_л) + ' · ' + Number(c.крепость).toLocaleString('ru-RU') + ' % · ' + (c.маркировка === 'ЧЗ' ? '«Честный знак»' : 'ЕГАИС') + (c.алкокод ? ' · алкокод ' + posEsc(c.алкокод) : '') + '</span></div>';
+    }).join('');
+  }, alcoErr);
+}
+function alcoFillCard() {
+  var p = ALCO.products.filter(function (x) { return x.product_id === document.getElementById('alcoProd').value; })[0], c = p && p.карточка;
+  document.getElementById('alcoCat').value = c ? c.категория : 'крепкий';
+  document.getElementById('alcoKind').value = c ? c.код_вида : '';
+  document.getElementById('alcoVol').value = c ? c.объём_тары_л : '';
+  document.getElementById('alcoAbv').value = c ? c.крепость : '';
+  document.getElementById('alcoCode').value = c ? c.алкокод : '';
+  document.getElementById('alcoMaker').value = c ? c.производитель : '';
+}
+function alcoSaveCard() {
+  alcoErr('');
+  call('ALCO_SAVE_PRODUCT', { productId: document.getElementById('alcoProd').value, категория: document.getElementById('alcoCat').value, код_вида: document.getElementById('alcoKind').value,
+    объём_тары_л: Number(String(document.getElementById('alcoVol').value).replace(',', '.')), крепость: Number(String(document.getElementById('alcoAbv').value).replace(',', '.')),
+    алкокод: document.getElementById('alcoCode').value, производитель: document.getElementById('alcoMaker').value }, function () { alcoLoadSetup(); }, alcoErr);
+}
+function alcoSaveLicense() {
+  alcoErr('');
+  call('ALCO_SAVE_LICENSE', { номер: document.getElementById('alcoLicNo').value, выдана: document.getElementById('alcoLicFrom').value, действует_до: document.getElementById('alcoLicTo').value, орган: document.getElementById('alcoLicOrg').value },
+    function () { alcoLoadSetup(); alcoBanner(); }, alcoErr);
 }
 
 // ---------- Фуд-кост и «Используй сегодня» (волна 3, M11) ----------
