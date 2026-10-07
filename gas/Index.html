@@ -157,6 +157,16 @@
   .ex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px;}
   .ex-tile{border:1px solid #eee;border-radius:12px;padding:10px;min-width:0;}
   .ex-tile .kpi{font-size:20px;overflow-wrap:anywhere;}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+  .prep-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .prep-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid #eee;border-radius:12px;padding:10px 12px;margin:8px 0;background:#fff;}
+  .prep-row.done{opacity:.65;}
+  .prep-row .prep-name{font-weight:700;}
+  .prep-row .prep-qty{font-size:22px;font-weight:800;white-space:nowrap;}
+  .prep-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .prep-act input{width:90px;margin:0;}
+  .prep-par{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;}
+  .prep-par input{width:100px;margin:0;}
   .pos-guest-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--beige);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px;}
   .pos-guest-chip .btn{width:auto;margin:0;}
   .pos-consent{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--pos-text-muted);margin:6px 0 10px;}
@@ -277,6 +287,7 @@
   <button class="menuItem" data-view="pos" data-module="pos" onclick="navTo('pos')">Касса и зал</button>
   <button class="menuItem" data-view="kitchen" data-module="pos_kitchen" onclick="navTo('kitchen')">Кухня: заказы</button>
   <button class="menuItem" data-view="stoplist" data-module="pos_stop" onclick="navTo('stoplist')">Стоп-лист</button>
+  <button class="menuItem" data-view="prep" data-module="production" onclick="navTo('prep')">Заготовки на смену</button>
   <button class="menuItem" data-view="warehouse" data-module="warehouse_view" onclick="navTo('warehouse')">Склад</button>
   <button class="menuItem" data-view="marking" data-module="marking" onclick="navTo('marking')">🏷️ Маркировка</button>
   <button class="menuItem" data-view="writeoff" data-module="writeoffs" onclick="navTo('writeoff')">Списание</button>
@@ -1749,6 +1760,29 @@
     <div id="kitchenErr" class="err" role="alert"></div>
   </section>
 
+  <!-- Волна 3, M9: заготовочный лист смены — KitchenPrep.gs. Прогноз по дню недели + норма − годный остаток. -->
+  <section id="view-prep" class="hidden" aria-labelledby="prepTitle">
+    <div class="card">
+      <div class="row-between">
+        <h2 id="prepTitle" style="margin:0;">Заготовки на смену</h2>
+        <span class="prep-head">
+          <label for="prepDate" class="sr-only">Дата</label>
+          <input type="date" id="prepDate" onchange="prepLoad()" style="width:auto;margin:0;">
+          <button class="btn small" id="prepBuildBtn" onclick="prepBuild()">Сформировать</button>
+        </span>
+      </div>
+      <p class="muted" style="margin:8px 0 0;">К заготовке = прогноз продаж (по тому же дню недели за 4 недели) + норма запаса − годный остаток на складе. «Сделано» списывает сырьё по рецепту полуфабриката и выпускает партию с маркировкой.</p>
+      <div id="prepInfo" aria-live="polite" style="margin-top:8px;"></div>
+    </div>
+    <div id="prepList"></div>
+    <div id="prepErr" class="err" role="alert"></div>
+    <details class="card" id="prepParsCard">
+      <summary style="cursor:pointer;font-weight:700;">Нормы запаса полуфабрикатов</summary>
+      <p class="muted">Сколько полуфабриката должно быть готово к началу смены сверх прогноза. Меняет шеф-повар.</p>
+      <div id="prepPars" class="muted">Загрузка…</div>
+    </details>
+  </section>
+
   <!-- Модуль «Касса», M4: стоп-лист точки. Авто — по годному остатку и утверждённой ТТК, ручной — с причиной. -->
   <section id="view-stoplist" class="hidden" aria-labelledby="stopTitle">
     <div class="card">
@@ -2010,6 +2044,7 @@
     if (name === 'pos') initPosView();
     if (name === 'kitchen') initKitchenView();
     if (name === 'stoplist') stopLoad();
+    if (name === 'prep') initPrepView();
     if (name === 'recovery') loadEmergencyCenterUI();
     if (name === 'production') loadBreakdownPlansUI();
   }
@@ -5763,6 +5798,66 @@ function qrPrintTables() {
   var w = window.open('', '_blank');
   if (!w) { qrErr('Браузер заблокировал окно печати — разрешите всплывающие окна для ЦЕХ.'); return; }
   w.document.open(); w.document.write(html); w.document.close();
+}
+
+// ---------- Заготовки на смену (волна 3, M9) ----------
+function prepFmt(n) { return (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 }); }
+function prepErr(t) { document.getElementById('prepErr').textContent = t || ''; }
+function initPrepView() {
+  document.getElementById('prepParsCard').style.display = SESSION.роль === 'ПОВАР' ? 'none' : '';
+  prepLoad();
+  if (SESSION.роль !== 'ПОВАР') prepLoadPars();
+}
+function prepRender(r) {
+  document.getElementById('prepDate').value = r.date; // «сегодня» — по времени сервера (см. B4)
+  var info = document.getElementById('prepInfo');
+  var todo = r.rows.filter(function (x) { return x.статус !== 'сделано' && x.статус !== 'пропущено' && x.к_заготовке > 0; }).length;
+  info.innerHTML = r.сформирован
+    ? '<span class="badge b-info">Лист сформирован</span> ' + (todo ? 'Осталось заготовить: ' + todo : '<span class="badge pos-badge-paid">Всё заготовлено</span>')
+    : '<span class="badge pos-st pos-st-kitchen">Предварительный расчёт</span> Нажмите «Сформировать», чтобы повара могли отмечать выполнение.';
+  document.getElementById('prepBuildBtn').textContent = r.сформирован ? 'Пересчитать' : 'Сформировать';
+  var rows = r.rows.filter(function (x) { return r.сформирован || x.к_заготовке > 0; });
+  document.getElementById('prepList').innerHTML = rows.length ? rows.map(function (x) {
+    var meta = 'прогноз ' + prepFmt(x.прогноз) + ' · норма ' + prepFmt(x.норма) + ' · на складе ' + prepFmt(x.остаток) + ' ' + posEsc(x.единица);
+    var act = '';
+    if (r.сформирован && x.статус === 'сделано') act = '<span class="badge pos-badge-paid">Сделано: ' + prepFmt(x.сделано) + ' ' + posEsc(x.единица) + '</span>';
+    else if (r.сформирован && x.статус === 'пропущено') act = '<span class="badge pos-badge-cancel">Пропущено</span><button class="btn small secondary" onclick="prepSkip(\'' + posEsc(x.prep_id) + '\')">Вернуть</button>';
+    else if (r.сформирован) act = '<label class="sr-only" for="pq-' + posEsc(x.prep_id) + '">Заготовлено, ' + posEsc(x.единица) + '</label>' +
+      '<input type="number" inputmode="decimal" min="0" step="0.1" id="pq-' + posEsc(x.prep_id) + '" value="' + (Math.round(x.к_заготовке * 100) / 100) + '">' +
+      '<button class="btn small" onclick="prepDone(\'' + posEsc(x.prep_id) + '\', \'' + posEsc(x.название) + '\')">Сделано</button>' +
+      '<button class="btn small secondary" onclick="prepSkip(\'' + posEsc(x.prep_id) + '\')">Пропустить</button>';
+    return '<div class="prep-row' + (x.статус === 'сделано' || x.статус === 'пропущено' ? ' done' : '') + '"><span><div class="prep-name">' + posEsc(x.название) + '</div><div class="pos-mods">' + meta + '</div></span>' +
+      '<span class="prep-qty">' + prepFmt(x.к_заготовке) + ' ' + posEsc(x.единица) + '</span><span class="prep-act">' + act + '</span></div>';
+  }).join('') : '<div class="card"><span class="badge pos-badge-paid">Заготовки не нужны</span> Остатков хватает на прогноз и нормы.</div>';
+}
+function prepLoad() {
+  prepErr('');
+  call('PREP_GET_LIST', { date: document.getElementById('prepDate').value }, prepRender, function (e) { prepErr(e); });
+}
+function prepBuild() {
+  prepErr('');
+  call('PREP_BUILD_LIST', { date: document.getElementById('prepDate').value }, prepRender, function (e) { prepErr(e); });
+}
+function prepDone(id, name) {
+  prepErr('');
+  var qty = Number(String(document.getElementById('pq-' + id).value).replace(',', '.'));
+  call('PREP_MARK_DONE', { prepId: id, qty: qty }, function () { prepLoad(); }, function (e) { prepErr(name + ': ' + e); });
+}
+function prepSkip(id) {
+  prepErr('');
+  call('PREP_SKIP', { prepId: id }, function () { prepLoad(); }, function (e) { prepErr(e); });
+}
+function prepLoadPars() {
+  call('PREP_GET_PARS', {}, function (rows) {
+    document.getElementById('prepPars').innerHTML = rows.length ? rows.map(function (p) {
+      return '<div class="prep-par"><label for="pp-' + posEsc(p.pf_id) + '">' + posEsc(p.название) + ', ' + posEsc(p.единица) + '</label>' +
+        '<input type="number" min="0" step="0.1" inputmode="decimal" id="pp-' + posEsc(p.pf_id) + '" value="' + p.норма + '" onchange="prepSavePar(\'' + posEsc(p.pf_id) + '\', this)"></div>';
+    }).join('') : 'Полуфабрикатов пока нет — добавьте их в разделе «Рецепты».';
+  }, function (e) { document.getElementById('prepPars').textContent = 'Ошибка: ' + e; });
+}
+function prepSavePar(pfId, el) {
+  prepErr('');
+  call('PREP_SAVE_PAR', { pfId: pfId, норма: Number(String(el.value).replace(',', '.')) }, function () { el.style.borderColor = '#2e7d32'; prepLoad(); }, function (e) { el.style.borderColor = '#c62828'; prepErr(e); });
 }
 
 // ---------- Дашборд руководителя (Stage 20, перенесено) ----------

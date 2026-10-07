@@ -277,6 +277,13 @@ var ACTION_HANDLERS = {
   POS_SAVE_MODIFIER_GROUP: function (data, session) { return posSaveModifierGroup_(data || {}, session); },
   POS_SAVE_MODIFIER: function (data, session) { return posSaveModifier_(data || {}, session); },
   POS_LINK_DISH_MODIFIERS: function (data, session) { return posLinkDishModifiers_(data || {}, session); },
+  // Волна 3, M9 — заготовочный лист (KitchenPrep.gs)
+  PREP_GET_LIST: function (data, session) { return prepGetList_(data || {}, session); },
+  PREP_BUILD_LIST: function (data, session) { return prepBuildList_(data || {}, session); },
+  PREP_MARK_DONE: function (data, session) { return prepMarkDone_(data || {}, session); },
+  PREP_SKIP: function (data, session) { return prepSkip_(data || {}, session); },
+  PREP_GET_PARS: function (data, session) { return prepGetPars_(session); },
+  PREP_SAVE_PAR: function (data, session) { return prepSavePar_(data || {}, session); },
   POS_GET_STOP_LIST: function (data, session) { return posGetStopList_(session); },
   POS_SET_STOP: function (data, session) { return posSetStop_(data || {}, session); },
   POS_CLEAR_STOP: function (data, session) { return posClearStop_(data || {}, session); },

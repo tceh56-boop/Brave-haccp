@@ -222,6 +222,8 @@ var CONFIG = {
     POS_MODIFIER_USAGE: 'POS_MODIFIER_USAGE',
     // Этап M4: стоп-лист.
     STOP_LIST: 'STOP_LIST',
+    PREP_PARS: 'PREP_PARS',
+    PREP_LISTS: 'PREP_LISTS',
     // Этап M6: гости и бонусы.
     GUESTS: 'GUESTS', BONUS_TXNS: 'BONUS_TXNS',
     // Этап M7: ссылки сотрудников на сервис чаевых.
@@ -771,6 +773,9 @@ var CONFIG = {
     // Стоп-лист точки. Активен, пока «снято» пусто. источник: ручной | авто_остатки.
     // Авто-стопы ставит и снимает пересчёт по остаткам; ручные — только человек.
     STOP_LIST: ['stop_id','organization_id','location_id','dish_id','причина','источник','создано','user_id','снято','снял_id'],
+    // Волна 3, M9 — заготовочный лист: нормы запаса ПФ на начало смены и лист на дату.
+    PREP_PARS: ['par_id','organization_id','location_id','pf_id','норма','статус','обновлено','user_id'],
+    PREP_LISTS: ['prep_id','organization_id','location_id','дата','pf_id','название','единица','прогноз','норма','остаток','к_заготовке','сделано','статус','production_id','user_id','обновлено'],
     // Гости (персональные данные, 152-ФЗ): создаются только с согласием (дата в согласие_пд).
     // телефон — +7XXXXXXXXXX, уникален в организации. бонусы — кэш баланса, источник правды — BONUS_TXNS.
     GUESTS: ['guest_id','organization_id','телефон','имя','день_рождения','согласие_пд','бонусы','всего_оплачено','визитов',
@@ -787,7 +792,7 @@ var CONFIG = {
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
-    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP',
+    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP', PREP_PARS: 'PPAR', PREP_LISTS: 'PREP',
     GUESTS: 'GST', BONUS_TXNS: 'BTX', POS_TIP_LINKS: 'PTIP', PUBLIC_MENU: 'PMENU',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
@@ -935,6 +940,7 @@ var CONFIG = {
     // Этап M3: модификаторы.
     POS_GET_MODIFIERS: 'pos_admin', POS_SAVE_MODIFIER_GROUP: 'pos_admin', POS_SAVE_MODIFIER: 'pos_admin', POS_LINK_DISH_MODIFIERS: 'pos_admin',
     // Этап M4: стоп-лист — ведут кухня и менеджмент (pos_stop); кассир видит стопы в меню кассы.
+    PREP_GET_LIST: 'production', PREP_BUILD_LIST: 'production', PREP_MARK_DONE: 'production', PREP_SKIP: 'production', PREP_GET_PARS: 'production', PREP_SAVE_PAR: 'production',
     POS_GET_STOP_LIST: 'pos_stop', POS_SET_STOP: 'pos_stop', POS_CLEAR_STOP: 'pos_stop', POS_RECALC_STOP_LIST: 'pos_stop',
     // Этап M5: возвраты и отчёт по сотрудникам — менеджмент.
     POS_REFUND: 'pos_admin', POS_GET_STAFF_REPORT: 'pos_admin', POS_GET_SHIFTS: 'pos_admin',
@@ -1337,12 +1343,12 @@ var CONFIG = {
   ROLE_ACTION_DENY: {
     // Официант собирает заказ и отправляет на кухню, но деньги принимает кассир.
     'ОФИЦИАНТ': ['POS_PAY', 'POS_OPEN_SHIFT', 'POS_CLOSE_SHIFT'],
-    'ПОВАР': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP'],
+    'ПОВАР': ['PREP_SAVE_PAR','RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP'],
     'КЛАДОВЩИК': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE'],
     // КАЛЬКУЛЯТОР меняет калькуляцию/рецептуру, но не утверждает технологию или HACCP/ППК.
     'КАЛЬКУЛЯТОР': ['APPROVE_TTK_VERSION','SUBMIT_TTK_FOR_APPROVAL','APPROVE_BREAKDOWN_PLAN','APPROVE_PRODUCTION_PLAN','CREATE_TTK_HACCP_LINK','CREATE_TTK_SANPIN_LINK','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION'],
     // ПОВАР работает с утверждёнными технологическими данными и своим производством.
-    'ПОВАР': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION','GET_ECONOMICS','GET_PNL','GET_ABC_ANALYSIS'],
+    'ПОВАР': ['PREP_SAVE_PAR','RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION','GET_ECONOMICS','GET_PNL','GET_ABC_ANALYSIS'],
     // Технолог/HACCP управляет ТТК + ППК/HACCP, но не финансами и не пользователями.
     'ТЕХНОЛОГ_HACCP': ['UPDATE_PRODUCT_PRICE','CREATE_GLOBAL_PRODUCT','UPDATE_GLOBAL_PRODUCT','CREATE_EXPENSE','GET_ECONOMICS','GET_PNL','GET_ABC_ANALYSIS','CREATE_USER','UPDATE_EMPLOYEE_PROFILE','DEACTIVATE_USER','ACTIVATE_USER','APPROVE_PRODUCTION_PLAN','CREATE_PRODUCTION_PLAN'],
     // Кладовщик не меняет цену номенклатуры: закупочная цена формируется приходом/калькуляцией.
