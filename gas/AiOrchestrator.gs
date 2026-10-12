@@ -70,7 +70,20 @@ var AI_CHAT_EXAMPLES = [
  * session — уже разрешённая сессия (session.token обязателен для вызова вложенных
  * инструментов, см. докстринг файла выше).
  */
-function processAiChatMessage_(messageText, confirm, session) {
+function processAiChatMessage_(messageText, confirm, session, history) {
+  // Настоящая модель (AiAgent.gs), если настроена. confirm — путь подтверждения прежнего режима, его не трогаем.
+  var llmNote = '';
+  if (!confirm && typeof aiAgentChat_ === 'function') {
+    var ag = aiAgentChat_(messageText, history, session);
+    if (ag && ag.intent !== 'LLM_ERROR') return ag;
+    if (ag) llmNote = 'ИИ-модель сейчас недоступна — отвечаю в упрощённом режиме. ';
+  }
+  var res = _aiChatMock_(messageText, confirm, session);
+  if (llmNote && res && res.reply) res.reply = llmNote + res.reply;
+  return res;
+}
+
+function _aiChatMock_(messageText, confirm, session) {
   var text = String(messageText || '').trim();
   if (!text) {
     return { intent: 'EMPTY', reply: 'Сообщение пустое. Примеры того, что я понимаю: ' + AI_CHAT_EXAMPLES.join('; ') + '.' };

@@ -44,6 +44,7 @@ Lockbox (секреты) ──▶ переменные TSEKH_PROP_*            
 | `YC_ACCESS_KEY_ID`, `YC_SECRET_ACCESS_KEY` | подпись запросов к Object Storage и Postbox | статический ключ сервисного аккаунта (роли `storage.editor`, `postbox.sender`) |
 | `TSEKH_MAIL_FROM`, `TSEKH_POSTBOX_ENDPOINT` (`https://postbox.cloud.yandex.net`) | почта | адрес на домене, подтверждённом в Postbox |
 | `TSEKH_PROP_<ИМЯ>` | секреты интеграций (ключ Vision, токен Telegram) | Lockbox |
+| `TSEKH_PROP_YANDEX_AI_API_KEY`, `TSEKH_PROP_YANDEX_FOLDER_ID`, `TSEKH_PROP_YANDEX_AI_MODEL` (`yandexgpt/latest`), `TSEKH_PROP_YANDEX_AI_ENDPOINT` | ИИ-директор (Yandex AI Studio) | API-ключ сервисного аккаунта с ролью `ai.languageModels.user`, ID каталога |
 Подпись запросов (AWS SigV4) проверена на официальном примере AWS; адрес и формат API Postbox сверьте с документацией перед запуском.
 
 ## Проверка на компьютере
@@ -92,5 +93,5 @@ DATABASE_URL=postgres://.../tsekh CRON_SECRET=длинная-строка node c
 1. Хранилище файлов (Object Storage), почта (Postbox), PDF.
 2. Таблицы с индексами для больших листов (продажи, журналы, аудит) — под той же прослойкой.
 3. Мост к УТМ ЕГАИС — вызывает `/api` с ключом точки.
-4. ИИ-агент на Yandex AI Studio: инструменты = те же действия `/api` с правами пользователя; сначала только чтение,
-   изменения — предложениями с подтверждением человеком; в ЕГАИС / «Честный знак» и цены — никогда сам.
+4. ~~ИИ-агент на Yandex AI Studio~~ — сделано (`gas/AiAgent.gs`, работает и в Apps Script): 13 инструментов чтения с правами спросившего,
+   изменения — только предложениями (задача, заявка, лист заготовок, проверка фуд-коста, стоп) с кнопкой «Выполнить», журнал `AI_AGENT_LOG`, 60 вопросов в час.

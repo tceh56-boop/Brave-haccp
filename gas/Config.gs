@@ -232,6 +232,7 @@ var CONFIG = {
     ALCO_LICENSES: 'ALCO_LICENSES',
     ALCO_MARKS: 'ALCO_MARKS',
     ALCO_OUTBOX: 'ALCO_OUTBOX',
+    AI_AGENT_LOG: 'AI_AGENT_LOG',
     // Этап M6: гости и бонусы.
     GUESTS: 'GUESTS', BONUS_TXNS: 'BONUS_TXNS',
     // Этап M7: ссылки сотрудников на сервис чаевых.
@@ -795,6 +796,8 @@ var CONFIG = {
     ALCO_LICENSES: ['license_id','organization_id','location_id','номер','вид','выдана','действует_до','орган','статус','создано','user_id'],
     ALCO_MARKS: ['mark_id','organization_id','location_id','product_id','марка','ключ','система','batch_id','объём_л','статус','принята','принял_id','вскрыта','вскрыл_id','ттн'],
     ALCO_OUTBOX: ['doc_id','organization_id','location_id','тип','система','mark_id','product_id','алкокод','объём_л','дата','срок_отправки','статус','отправлено','номер_квитанции','user_id','создано'],
+    // ИИ-агент (AiAgent.gs): журнал вопросов — кто, что, какие инструменты, время, итог; он же лимит запросов в час.
+    AI_AGENT_LOG: ['log_id','organization_id','location_id','user_id','вопрос','инструменты','предложений','токенов','мс','статус','created_at'],
     // Гости (персональные данные, 152-ФЗ): создаются только с согласием (дата в согласие_пд).
     // телефон — +7XXXXXXXXXX, уникален в организации. бонусы — кэш баланса, источник правды — BONUS_TXNS.
     GUESTS: ['guest_id','organization_id','телефон','имя','день_рождения','согласие_пд','бонусы','всего_оплачено','визитов',
@@ -811,7 +814,7 @@ var CONFIG = {
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
-    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP', PREP_PARS: 'PPAR', PREP_LISTS: 'PREP', TTK_ACKS: 'TACK', TRAINING_QUESTIONS: 'TRQ', TRAINING_ATTEMPTS: 'TRA', FOODCOST_ALERTS: 'FCA', ALCO_PRODUCTS: 'ALCP', ALCO_LICENSES: 'ALCL', ALCO_MARKS: 'ALCM', ALCO_OUTBOX: 'ALCO',
+    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP', PREP_PARS: 'PPAR', PREP_LISTS: 'PREP', TTK_ACKS: 'TACK', TRAINING_QUESTIONS: 'TRQ', TRAINING_ATTEMPTS: 'TRA', FOODCOST_ALERTS: 'FCA', ALCO_PRODUCTS: 'ALCP', ALCO_LICENSES: 'ALCL', ALCO_MARKS: 'ALCM', ALCO_OUTBOX: 'ALCO', AI_AGENT_LOG: 'AIL',
     GUESTS: 'GST', BONUS_TXNS: 'BTX', POS_TIP_LINKS: 'PTIP', PUBLIC_MENU: 'PMENU',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
@@ -1123,6 +1126,7 @@ var CONFIG = {
     // кто уже мог получать AI-рекомендации, теперь может и спросить чат тем же правом,
     // расширять список ролей сверх уже имеющих 'ai' в этом раунде не запрошено Денисом.
     AI_CHAT: 'ai',
+    AI_AGENT_STATUS: 'ai',
     AI_COPILOT: 'ai',
 
     // Раунд 8 — ТЗ «Справочник продуктов + Декларации соответствия». Модуль 'products'

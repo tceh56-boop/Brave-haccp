@@ -660,7 +660,8 @@ var ACTION_HANDLERS = {
   // уже существующих действий (см. AiOrchestrator.gs — принцип "AI действует правами
   // спросившего" и стейтлес-подтверждение критических операций, без реального LLM).
   AI_COPILOT: function (data, session) { return getOperationsCopilot_(data || {}, session); },
-  AI_CHAT: function (data, session) { return processAiChatMessage_(data.message, data.confirm, session); },
+  AI_AGENT_STATUS: function () { return aiAgentStatus_(); },
+  AI_CHAT: function (data, session) { return processAiChatMessage_(data.message, data.confirm, session, data.history); },
 
   // Раунд 8 — ТЗ «Справочник продуктов + Декларации соответствия + Документы продукта».
   // Product Master (глобальный + организационный).

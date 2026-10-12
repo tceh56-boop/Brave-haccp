@@ -697,7 +697,7 @@
   <section id="view-ai" class="hidden">
     <div class="card">
       <h2>AI-Директор</h2>
-      <div class="muted" style="margin-bottom:10px;">Мок без реального ИИ — распознаётся ограниченный набор фраз. Нажмите на пример ниже или напишите своё сообщение.</div>
+      <div class="muted" style="margin-bottom:10px;" id="aiChatIntro">Нажмите на пример ниже или напишите своё сообщение.</div>
       <div class="chatChips" id="aiChatChips"></div>
       <div id="aiChatLog"></div>
       <div class="row-between">
@@ -3109,6 +3109,45 @@
   ];
   var aiChatLogArr = [];
   var aiChatPending = null; // { text } — если следующее сообщение совпадёт с этим текстом, шлём confirm:true
+  var aiChatHist = [];       // история для ИИ-агента (AiAgent.gs): [{role, text}]
+  var aiAgentProps = [];     // предложения агента — выполняет человек кнопкой
+  var AI_FIELD_LABELS = { description: 'описание', responsibleRole: 'кому', priority: 'приоритет', productId: 'продукт', qty: 'количество', date: 'дата', dishId: 'блюдо', reason: 'причина' };
+  var AI_TOOL_LABELS = { dashboard: 'сводка', food_cost: 'фуд-кост', use_today: 'сроки годности', prep_list: 'заготовки', stop_list: 'стоп-лист', stock: 'остатки',
+    tasks: 'задачи', haccp_deviations: 'отклонения HACCP', writeoffs: 'списания', pnl: 'P&L', alcohol: 'алкоголь', training: 'обучение', recommendations: 'рекомендации', propose_action: 'предложение' };
+  /** Карточки предложений и строка «откуда данные» под ответом ИИ-агента. */
+  function aiAgentExtras(r) {
+    var h = '';
+    (r.proposals || []).forEach(function (p) {
+      var i = aiAgentProps.push(p) - 1;
+      var params = Object.keys(p.data || {}).filter(function (k) { return p.data[k] !== '' && k !== 'type' && k !== 'title'; }).map(function (k) { return aiChatEscape(AI_FIELD_LABELS[k] || k) + ': ' + aiChatEscape(String(p.data[k])); }).join(' · ');
+      if (p.data && p.data.title) params = '«' + aiChatEscape(p.data.title) + '»' + (params ? ' · ' + params : '');
+      h += '<div class="card" style="margin:8px 0 0;padding:10px;"><b>' + aiChatEscape(p.title) + '</b><div>' + aiChatEscape(p.summary) + '</div>' +
+        (params ? '<div class="pos-mods">' + params + '</div>' : '') +
+        '<div style="margin-top:6px;"><button class="btn small" id="aiProp' + i + '" onclick="aiAgentRun(' + i + ')">Выполнить</button> <span class="pos-mods" id="aiPropRes' + i + '"></span></div></div>';
+    });
+    var used = (r.tools || []).map(function (t) { var n = String(t).split(' ')[0]; return (AI_TOOL_LABELS[n] || n) + (/ошибка/.test(t) ? ' (нет доступа)' : ''); })
+      .filter(function (x, i, a) { return a.indexOf(x) === i && x !== 'предложение'; });
+    if (used.length) h += '<div class="pos-mods" style="margin-top:6px;">Данные: ' + aiChatEscape(used.join(', ')) + '</div>';
+    return h;
+  }
+  /** Выполнение предложения — обычным вызовом с правами пользователя (как кнопка в интерфейсе). */
+  function aiAgentRun(i) {
+    var p = aiAgentProps[i], btn = document.getElementById('aiProp' + i), out = document.getElementById('aiPropRes' + i);
+    if (!p || !btn || btn.disabled) return;
+    btn.disabled = true; out.textContent = 'Выполняю…'; p.busy = true;
+    call(p.action, p.data, function () { p.busy = false; p.done = true; p.note = 'Готово.'; aiAgentRestore(); },
+      function (e) { p.busy = false; p.note = 'Не выполнено: ' + e; aiAgentRestore(); });
+  }
+  /** Чат перерисовывается целиком — возвращаем кнопкам предложений их состояние (выполненное не выполнить повторно). */
+  function aiAgentRestore() {
+    aiAgentProps.forEach(function (p, i) {
+      var btn = document.getElementById('aiProp' + i), out = document.getElementById('aiPropRes' + i);
+      if (!btn) return;
+      btn.disabled = !!(p.done || p.busy);
+      if (p.done) btn.textContent = 'Выполнено';
+      if (out) out.textContent = p.busy ? 'Выполняю…' : (p.note || '');
+    });
+  }
   var aiChatStarted = false;
 
   function initAiChatView() {
@@ -3118,6 +3157,11 @@
       return '<span class="chip" onclick="aiChatQuick(' + JSON.stringify(ex).replace(/"/g, '&quot;') + ')">' + aiChatEscape(ex) + '</span>';
     }).join('');
     aiChatPush('ai', 'Здравствуйте! Спросите про нарушения, просроченные задачи, рекомендации, остатки — или попросите создать задачу/заявку на закупку.');
+    call('AI_AGENT_STATUS', {}, function (st) {
+      document.getElementById('aiChatIntro').textContent = st.llm
+        ? 'Работает на Yandex AI Studio (' + st.model + '). Видит только то, что доступно вашей роли; сам ничего не меняет — действия предлагает, выполняете вы кнопкой.'
+        : 'Модель не подключена — упрощённый режим: распознаётся ограниченный набор фраз. Нажмите на пример ниже или напишите своё сообщение.';
+    }, function () {});
   }
   function aiChatEscape(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -3132,6 +3176,7 @@
       return '<div class="chatBubble ' + (m.who === 'me' ? 'me' : 'ai') + '">' + aiChatEscape(m.text) + (m.extraHtml || '') + '</div>';
     }).join('');
     el.scrollTop = el.scrollHeight;
+    if (typeof aiAgentRestore === 'function') aiAgentRestore();
   }
   function aiChatQuick(text) {
     document.getElementById('aiChatInput').value = text;
@@ -3144,7 +3189,15 @@
     input.value = '';
     var confirmNow = !!(aiChatPending && aiChatPending.text === text);
     aiChatPush('me', text);
-    call('AI_CHAT', { message: text, confirm: confirmNow }, function (result) {
+    var history = aiChatHist.slice(-10);
+    aiChatHist.push({ role: 'user', text: text });
+    call('AI_CHAT', { message: text, confirm: confirmNow, history: history }, function (result) {
+      if (result.intent === 'LLM') {
+        aiChatPending = null;
+        aiChatHist.push({ role: 'assistant', text: result.reply });
+        aiChatPush('ai', result.reply, aiAgentExtras(result));
+        return;
+      }
       if (result.needsConfirmation) {
         aiChatPending = { text: text };
         var btnHtml = '<div style="margin-top:8px;"><button class="btn small" onclick="aiChatConfirmSame(' + JSON.stringify(text).replace(/"/g, '&quot;') + ')">Подтвердить</button></div>';
