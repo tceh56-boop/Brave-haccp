@@ -1,7 +1,7 @@
 // Этап M5: возвраты, итоги смены в «Экономику», отчёт по сотрудникам, миграция колонок.
 // Запуск: node replica/tests/pos_refund_report_test.js
 const assert = require('assert');
-const { ctx: G, sheets } = require('./harness.js');
+const H = require('./harness.js'), { ctx: G, sheets } = H;
 let failures = 0;
 function step(name, fn) {
   try { const r = fn(); console.log('OK   ', name); return r; }
@@ -117,11 +117,16 @@ step('смена, где только возврат, уходит в «Экон
   assert.equal(out.length, 1); assert.equal(out[0].amount, 350); assert.equal(out[0].category, 'Возвраты кассы');
 });
 step('migratePosSchema_ дописывает колонки старого листа в конец', () => {
-  const sh = sheets.POS_PAYMENTS;
-  sh.data[0] = sh.data[0].slice(0, 10); // как будто лист создан на этапе M1, без «тип» и «причина»
+  // Как будто лист создан на этапе M1, без «тип» и «причина». Стенд: правим массив; PostgreSQL: строку заголовка.
+  // Реальный старый лист узкий целиком — обрезаем и заголовок, и строки до 10 колонок.
+  const header = () => sheets.POS_PAYMENTS.getDataRange().getValues()[0];
+  if (H.runtime) H.runtime.db.query(`UPDATE tsekh_rows SET vals = (SELECT jsonb_agg(e ORDER BY i) FROM jsonb_array_elements(vals) WITH ORDINALITY t(e, i) WHERE i <= 10) WHERE sheet = 'POS_PAYMENTS'`);
+  else sheets.POS_PAYMENTS.data.forEach((r, i) => { sheets.POS_PAYMENTS.data[i] = r.slice(0, 10); });
+  G.invalidateCache_ && G.invalidateCache_('POS_PAYMENTS');
+  assert.equal(header().length, 10);
   const added = G.migratePosSchema_().POS_PAYMENTS;
   assert.deepEqual(added, ['тип', 'причина']);
-  assert.deepEqual(sh.data[0].slice(10), ['тип', 'причина']);
+  assert.deepEqual(header().slice(10), ['тип', 'причина']);
 });
 step('runPosTests_ — все проверки OK (включая сверку колонок)', () => {
   const bad = G.runPosTests_().filter(t => t.status !== 'OK'); assert.equal(bad.length, 0, JSON.stringify(bad));

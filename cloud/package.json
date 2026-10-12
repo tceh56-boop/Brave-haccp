@@ -1,0 +1,17 @@
+{
+  "name": "tsekh-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ЦЕХ в Yandex Cloud: код gas/*.gs без изменений, данные в PostgreSQL. Собственность Слепцова Дениса Владимировича.",
+  "license": "UNLICENSED",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node src/migrate.js",
+    "test": "node test/run-all.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}

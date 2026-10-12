@@ -1,5 +1,14 @@
 // Локальный стенд: все gas/*.gs в одном контексте Node с имитацией сервисов Apps Script.
 const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto');
+
+// TSEKH_BACKEND=pg — те же тесты на облачной версии: PostgreSQL вместо имитации таблиц (cloud/src/runtime.js).
+if (process.env.TSEKH_BACKEND === 'pg') {
+  const rt = require('../../cloud/src/runtime.js').createRuntime({ logger: () => {} });
+  rt.store.wipeAll();
+  const sheets = new Proxy({}, { get: (_, n) => typeof n === 'string' ? (rt.store.spreadsheet.getSheetByName(n) || undefined) : undefined });
+  module.exports = { ctx: rt.ctx, sheets, runtime: rt };
+  return;
+}
 const GAS = process.argv[2] || require('path').join(__dirname, '../../gas');
 
 function makeSheet(name) {

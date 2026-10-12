@@ -1,0 +1,8 @@
+**/node_modules
+.git
+.claude
+replica
+qrmenu
+install
+*.md
+!cloud/README.md

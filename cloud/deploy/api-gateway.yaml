@@ -1,0 +1,26 @@
+# API Gateway Yandex Cloud: наружу — только интерфейс и /api. /cron НЕ публикуется:
+# его вызывают таймеры напрямую (контейнер закрыт для публичного доступа).
+# Подставьте <container-id> и <service-account-id> (роль serverless.containers.invoker).
+openapi: 3.0.0
+info:
+  title: tsekh
+  version: 1.0.0
+paths:
+  /:
+    get:
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: <container-id>
+        service_account_id: <service-account-id>
+  /api:
+    post:
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: <container-id>
+        service_account_id: <service-account-id>
+  /health:
+    get:
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: <container-id>
+        service_account_id: <service-account-id>

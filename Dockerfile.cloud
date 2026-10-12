@@ -1,0 +1,15 @@
+# Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович.
+# ЦЕХ в Yandex Cloud: образ для Serverless Containers / Compute. Сборка из корня репозитория:
+#   docker build -f Dockerfile.cloud -t cr.yandex/<registry-id>/tsekh:<версия> .
+FROM node:22-slim
+ENV NODE_ENV=production PORT=8080 TSEKH_TZ=Europe/Moscow TSEKH_GAS_DIR=/app/gas
+WORKDIR /app
+# Корневой сертификат Yandex Cloud для SSL-подключения к Managed PostgreSQL (sslmode=verify-full).
+ADD --chmod=644 https://storage.yandexcloud.net/cloud-certs/CA.pem /app/yandex-ca.pem
+COPY cloud/package.json cloud/package-lock.json /app/cloud/
+RUN cd /app/cloud && npm ci --omit=dev --no-audit --no-fund
+COPY gas/ /app/gas/
+COPY cloud/src/ /app/cloud/src/
+USER node
+EXPOSE 8080
+CMD ["node", "/app/cloud/src/server.js"]
