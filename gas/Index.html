@@ -2158,6 +2158,11 @@
     });
   }
 
+  /** Ссылка на загруженный файл: Google Диск в Apps Script, «files/<id>» в облачной версии (TSEKH_CLOUD задаёт сервер). */
+  function tsekhFileHref(fileId) {
+    return window.TSEKH_CLOUD ? 'files/' + encodeURIComponent(fileId) : 'https://drive.google.com/file/d/' + encodeURIComponent(fileId) + '/view';
+  }
+
   function call(action, data, onSuccess, onError) {
     google.script.run
       .withSuccessHandler(function (res) {
@@ -3443,7 +3448,7 @@
     var supplierId = document.getElementById('sdSupplier').value;
     call('GET_SUPPLIER_DOCUMENTS', { supplierId: supplierId || null }, function (docs) {
       document.getElementById('sdList').innerHTML = docs.length ? docs.map(function (d) {
-        return '<div style="margin-bottom:4px;">' + compEsc(d.doc_type) + ' — <a href="https://drive.google.com/file/d/' + encodeURIComponent(d.file_id) + '/view" target="_blank" rel="noopener">' + compEsc(d.file_name) + '</a> <span class="muted">' + compEsc((d.uploaded_at || '').slice(0, 10)) + '</span></div>';
+        return '<div style="margin-bottom:4px;">' + compEsc(d.doc_type) + ' — <a href="' + tsekhFileHref(d.file_id) + '" target="_blank" rel="noopener">' + compEsc(d.file_name) + '</a> <span class="muted">' + compEsc((d.uploaded_at || '').slice(0, 10)) + '</span></div>';
       }).join('') : 'Документов пока нет.';
     });
   }

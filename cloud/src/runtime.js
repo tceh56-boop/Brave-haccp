@@ -8,6 +8,8 @@
 const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto');
 const { createSyncPg } = require('./syncpg');
 const { createStore } = require('./store');
+const { createFiles } = require('./files');
+const { flushMail, MAIL_SQL } = require('./mail');
 
 const TZ = process.env.TSEKH_TZ || 'Europe/Moscow';
 
@@ -40,7 +42,15 @@ function createRuntime(options) {
   const gasDir = opts.gasDir || path.join(__dirname, '../../gas');
   const db = createSyncPg(opts.connectionString || process.env.DATABASE_URL);
   const store = createStore(db);
-  if (opts.migrate !== false) store.migrate();
+  let currentOrg = null; // организация сотрудника текущего запроса — для привязки загруженных файлов
+  const files = createFiles(db, makeBlob, () => currentOrg, opts.env || process.env);
+  if (opts.migrate !== false) { store.migrate(); files.migrate(); db.batch(MAIL_SQL.map(sql => ({ sql }))); }
+  const baseWipe = store.wipeAll;
+  store.wipeAll = function () {
+    baseWipe();
+    db.batch([{ sql: 'TRUNCATE tsekh_files, tsekh_folders' }, { sql: "INSERT INTO tsekh_folders (id, parent_id, name) VALUES ('root', NULL, '')" }]);
+    store.properties.setProperty('SPREADSHEET_ID', 'pg');
+  };
   const log = opts.logger || ((...a) => console.log('[ЦЕХ]', ...a));
 
   const ctx = {
@@ -83,12 +93,12 @@ function createRuntime(options) {
     HtmlService: { createHtmlOutputFromFile: () => { const o = { setTitle: () => o, addMetaTag: () => o, setXFrameOptionsMode: () => o }; return o; }, XFrameOptionsMode: { DEFAULT: 'DEFAULT', ALLOWALL: 'ALLOWALL' } },
     ContentService: { createTextOutput: x => { const o = { x, setMimeType: () => o, getContent: () => x }; return o; }, MimeType: { JSON: 'json', TEXT: 'text' } },
     MimeType: { PDF: 'application/pdf', CSV: 'text/csv', PLAIN_TEXT: 'text/plain', HTML: 'text/html', JSON: 'application/json' },
-    DriveApp: new Proxy({}, { get: () => () => { throw new Error('Хранение файлов (Google Диск) в облачной версии подключается следующим этапом — Yandex Object Storage.'); } })
+    DriveApp: files.driveApp
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
-  const files = fs.readdirSync(gasDir).filter(f => f.endsWith('.gs')).sort();
-  const src = files.map(f => '// ==== ' + f + '\n' + fs.readFileSync(path.join(gasDir, f), 'utf8')).join('\n;\n');
+  const gasFiles = fs.readdirSync(gasDir).filter(f => f.endsWith('.gs')).sort();
+  const src = gasFiles.map(f => '// ==== ' + f + '\n' + fs.readFileSync(path.join(gasDir, f), 'utf8')).join('\n;\n');
   vm.runInContext(src, ctx, { filename: 'gas-bundle.js' });
 
   // Резервные копии в облаке делает Managed PostgreSQL (автоматические бэкапы и восстановление
@@ -99,19 +109,31 @@ function createRuntime(options) {
   if (!store.properties.getProperty('SPREADSHEET_ID')) store.properties.setProperty('SPREADSHEET_ID', 'pg');
 
   return {
-    ctx, store, db, files,
+    ctx, store, db, files, gasFiles,
     /** Одна операция из интерфейса или API — с чистым кэшем запроса и снятой блокировкой в конце. */
     runOperation(action, data, token) {
       store.resetRequestState();
+      currentOrg = null;
+      if (token) { try { const s = ctx.resolveSession_(token); currentOrg = s ? s.organization_id : null; } catch (e) { currentOrg = null; } }
       try { return ctx.processOperation(action, data, token); }
-      finally { store.resetRequestState(); }
+      finally { store.resetRequestState(); currentOrg = null; }
+    },
+    /** Сессия по токену (для скачивания файлов): null, если токен недействителен. */
+    sessionFor(token) {
+      store.resetRequestState();
+      try { return token ? ctx.resolveSession_(String(token)) || null : null; } catch (e) { return null; } finally { store.resetRequestState(); }
     },
     /** Фоновые задачи по расписанию (аналог триггеров Apps Script). */
     runTick(name) {
       const allowed = Object.keys(ctx.TRIGGER_SCHEDULE_ || {});
       if (allowed.indexOf(name) === -1 && name !== 'tickHourly_') throw new Error('Неизвестная фоновая задача: ' + name);
       store.resetRequestState();
-      try { ctx[name](); return { ok: true, tick: name }; }
+      try {
+        ctx[name]();
+        const out = { ok: true, tick: name };
+        if (name === 'tick15m_') out.почта = flushMail(db, opts.env || process.env); // очередь писем — каждые 15 минут
+        return out;
+      }
       finally { store.resetRequestState(); }
     },
     close() { db.close(); }

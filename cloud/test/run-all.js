@@ -4,7 +4,7 @@ const { spawnSync } = require('child_process'), fs = require('fs'), path = requi
 if (!process.env.DATABASE_URL) { console.error('Задайте DATABASE_URL (отдельная тестовая база — она очищается!).'); process.exit(1); }
 const root = path.join(__dirname, '../..'), tests = path.join(root, 'replica/tests');
 const runs = fs.readdirSync(tests).filter(f => f.endsWith('_test.js')).sort().map(f => path.join(tests, f))
-  .concat([path.join(__dirname, 'cloud_test.js')]);
+  .concat([path.join(__dirname, 'cloud_test.js'), path.join(__dirname, 'files_mail_test.js')]);
 if (!process.argv.includes('--no-browser')) runs.push(path.join(__dirname, 'e2e_browser.js'));
 let bad = 0;
 for (const file of runs) {

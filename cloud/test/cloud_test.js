@@ -118,7 +118,8 @@ function request(port, method, p, body, headers) {
   await step('/cron: без секрета — 403; с секретом — задача выполнена; формат таймера Yandex Cloud', async () => {
     assert.equal((await request(port, 'POST', '/cron', { tick: 'tick15m_' })).status, 403);
     const ok = await request(port, 'POST', '/cron', { tick: 'tick15m_' }, { 'X-Tsekh-Cron': 'cron-secret-42' });
-    assert.equal(ok.status, 200, ok.text); assert.deepEqual(ok.json, { ok: true, tick: 'tick15m_' });
+    assert.equal(ok.status, 200, ok.text); assert.equal(ok.json.ok, true); assert.equal(ok.json.tick, 'tick15m_');
+    assert(ok.json.почта, 'tick15m_ заодно обрабатывает очередь писем');
     const bad = await request(port, 'POST', '/cron', { tick: 'eval' }, { 'X-Tsekh-Cron': 'cron-secret-42' });
     assert.equal(bad.status, 500, 'неизвестная задача не запускается');
     assert.equal(tickFromBody(JSON.stringify({ messages: [{ details: { payload: 'tickHourly_' } }] })), 'tickHourly_');

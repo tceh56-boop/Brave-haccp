@@ -33,8 +33,20 @@ const CLIENT_SHIM = `<script>
     };
     return c;
   }
+  window.TSEKH_CLOUD = true;
   window.google = { script: {} };
   Object.defineProperty(window.google.script, 'run', { get: chain });
+  // Ссылки на файлы «files/<id>»: скачиваем с токеном сессии в заголовке (не в адресе) и открываем.
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest && ev.target.closest('a[href^="files/"]');
+    if (!a) return;
+    ev.preventDefault();
+    var w = window.open('', '_blank');
+    fetch(a.getAttribute('href'), { headers: { 'X-Tsekh-Token': localStorage.getItem('tsekh_token') || '' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status === 404 ? 'Файл не найден.' : 'Нет доступа к файлу — войдите заново.'); return r.blob(); })
+      .then(function (b) { var u = URL.createObjectURL(b); if (w) w.location = u; else location.href = u; },
+            function (e) { if (w) w.close(); alert(e.message); });
+  }, true);
 })();
 </script>`;
 
@@ -96,6 +108,17 @@ function createServer(runtime, options) {
         try { body = JSON.parse(await readBody(req) || '{}'); } catch (e) { return send(res, e.status || 400, { ok: false, error: e.status ? e.message : 'Неверный формат запроса.' }); }
         if (!body.action || typeof body.action !== 'string') return send(res, 400, { ok: false, error: 'Не указано действие.' });
         return send(res, 200, runtime.runOperation(body.action, body.data || {}, body.token || null));
+      }
+      const fm = /^\/files\/([0-9a-f-]{36})$/.exec(p);
+      if (req.method === 'GET' && fm) {
+        const session = runtime.sessionFor(req.headers['x-tsekh-token']);
+        if (!session) return send(res, 401, { ok: false, error: 'Войдите в систему, чтобы открыть файл.' });
+        const f = runtime.files.readForDownload(fm[1]);
+        // Файл чужой организации — «не найден», чтобы не подтверждать его существование.
+        if (!f || (f.organization_id && f.organization_id !== session.organization_id)) return send(res, 404, { ok: false, error: 'Файл не найден.' });
+        res.writeHead(200, { 'Content-Type': f.mime, 'Content-Length': f.bytes.length, 'Content-Disposition': "inline; filename*=UTF-8''" + encodeURIComponent(f.name),
+          'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': 'sandbox', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'private, no-store' });
+        return res.end(f.bytes);
       }
       if (req.method === 'POST' && p === '/cron') {
         // Доступ: заголовок X-Tsekh-Cron = CRON_SECRET, либо вызов таймера Yandex Cloud при TSEKH_CRON_FROM_TRIGGER=1

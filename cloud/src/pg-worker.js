@@ -30,7 +30,8 @@ async function handle(op) {
   if (op.type === 'fetch') {
     const o = op.options;
     const res = await fetch(op.url, { method: (o.method || 'get').toUpperCase(), headers: o.headers || {},
-      body: o.payload === undefined ? undefined : (typeof o.payload === 'string' ? o.payload : JSON.stringify(o.payload)) });
+      body: o.payloadBase64 !== undefined ? Buffer.from(o.payloadBase64, 'base64')
+        : o.payload === undefined ? undefined : (typeof o.payload === 'string' ? o.payload : JSON.stringify(o.payload)) });
     const buf = Buffer.from(await res.arrayBuffer());
     const headers = {};
     res.headers.forEach((v, k) => { headers[k] = v; });

@@ -24,3 +24,15 @@ paths:
         type: serverless_containers
         container_id: <container-id>
         service_account_id: <service-account-id>
+  /files/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: <container-id>
+        service_account_id: <service-account-id>

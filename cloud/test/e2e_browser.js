@@ -37,6 +37,18 @@ const { createServer } = require('../src/server');
   const fc = await page.textContent('#fcTarget');
   await page.evaluate(() => navTo('pos')); await page.waitForTimeout(900);
   await page.screenshot({ path: OUT + '/CLOUD-pos-390.png', fullPage: false });
+  // Документ поставщика: загрузка через /api, ссылка tsekhFileHref → новая вкладка с файлом (токен — в заголовке).
+  const fileInfo = await page.evaluate(async () => {
+    const r = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'UPLOAD_SUPPLIER_DOCUMENT',
+      data: { docType: 'CERTIFICATE', base64Data: btoa('%PDF-1.4 test'), fileName: 'cert.pdf', mimeType: 'application/pdf' }, token: localStorage.getItem('tsekh_token') }) }).then(x => x.json());
+    if (!r.ok) return { error: r.error };
+    const a = document.createElement('a'); a.href = tsekhFileHref(r.data.file_id); a.textContent = 'cert'; a.id = 'testFileLink'; document.body.appendChild(a);
+    return { href: a.getAttribute('href') };
+  });
+  const dialogs = []; page.on('dialog', d => { dialogs.push(d.message()); d.dismiss(); });
+  const [popup] = await Promise.all([page.waitForEvent('popup', { timeout: 5000 }).catch(() => null), page.click('#testFileLink')]);
+  if (popup) await popup.waitForTimeout(500);
+  const popupUrl = popup ? popup.url() : '';
   // Перезагрузка: сессия из localStorage проверяется сервером (GET_SESSION) — снова в приложении.
   await page.reload(); await page.waitForTimeout(1200);
   const stillIn = await page.isVisible('#app');
@@ -51,8 +63,9 @@ const { createServer } = require('../src/server');
     'после перезагрузки сессия сохранилась': stillIn,
     'все ответы /api — 200': failed.length === 0,
     'запросы шли через /api': ['GET_USERS_FOR_LOGIN', 'LOGIN', 'ALCO_GET_OVERVIEW', 'FC_GET_OVERVIEW', 'GET_SESSION'].every(a => apiCalls.includes(a)),
+    'ссылка на документ — files/<id>, открылась файлом без ошибок': /^files\/[0-9a-f-]{36}$/.test(fileInfo.href || '') && /^blob:/.test(popupUrl) && dialogs.length === 0,
     'ошибок в браузере нет': errors.length === 0
   };
-  console.log(res, errors);
+  console.log(res, errors, fileInfo.error || '');
   process.exit(Object.values(res).every(Boolean) ? 0 : 1);
 })();
