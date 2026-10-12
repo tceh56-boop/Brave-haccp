@@ -233,6 +233,13 @@ var CONFIG = {
     ALCO_MARKS: 'ALCO_MARKS',
     ALCO_OUTBOX: 'ALCO_OUTBOX',
     AI_AGENT_LOG: 'AI_AGENT_LOG',
+    // B6: листы этапов 71–90 были описаны в SCHEMA, но не зарегистрированы — фоновые задачи падали «Неизвестный лист».
+    PLANNING_RUNS: 'PLANNING_RUNS',
+    PLANNING_PROPOSALS: 'PLANNING_PROPOSALS',
+    APPROVAL_GATES: 'APPROVAL_GATES',
+    EXECUTION_OUTCOMES: 'EXECUTION_OUTCOMES',
+    ALCO_BRIDGES: 'ALCO_BRIDGES',
+    ALCO_INBOX: 'ALCO_INBOX',
     // Этап M6: гости и бонусы.
     GUESTS: 'GUESTS', BONUS_TXNS: 'BONUS_TXNS',
     // Этап M7: ссылки сотрудников на сервис чаевых.
@@ -795,7 +802,10 @@ var CONFIG = {
     ALCO_PRODUCTS: ['alco_id','organization_id','product_id','алкокод','код_вида','категория','объём_тары_л','крепость','производитель','маркировка','статус','обновлено'],
     ALCO_LICENSES: ['license_id','organization_id','location_id','номер','вид','выдана','действует_до','орган','статус','создано','user_id'],
     ALCO_MARKS: ['mark_id','organization_id','location_id','product_id','марка','ключ','система','batch_id','объём_л','статус','принята','принял_id','вскрыта','вскрыл_id','ттн'],
-    ALCO_OUTBOX: ['doc_id','organization_id','location_id','тип','система','mark_id','product_id','алкокод','объём_л','дата','срок_отправки','статус','отправлено','номер_квитанции','user_id','создано'],
+    ALCO_OUTBOX: ['doc_id','organization_id','location_id','тип','система','mark_id','product_id','алкокод','объём_л','дата','срок_отправки','статус','отправлено','номер_квитанции','user_id','создано','utm_reply_id','ошибка_текст'],
+    // Мост к УТМ ЕГАИС: ключи мостов точек (хранится только хэш) и входящие документы из ЕГАИС.
+    ALCO_BRIDGES: ['bridge_id','organization_id','location_id','название','key_hash','key_salt','создан','создал_id','последний_контакт','статус'],
+    ALCO_INBOX: ['inbox_id','organization_id','location_id','utm_id','тип','номер','дата','поставщик','позиций','позиции_json','получено','статус'],
     // ИИ-агент (AiAgent.gs): журнал вопросов — кто, что, какие инструменты, время, итог; он же лимит запросов в час.
     AI_AGENT_LOG: ['log_id','organization_id','location_id','user_id','вопрос','инструменты','предложений','токенов','мс','статус','created_at'],
     // Гости (персональные данные, 152-ФЗ): создаются только с согласием (дата в согласие_пд).
@@ -814,7 +824,7 @@ var CONFIG = {
   // Префиксы ID (ТЗ §28 — никогда не использовать название объекта как ключ)
   ID_PREFIXES: {
     POS_SHIFTS: 'PSH', POS_ORDERS: 'PORD', POS_ORDER_LINES: 'POL', POS_PAYMENTS: 'PPAY', POS_HALLS: 'PHALL', POS_TABLES: 'PTBL',
-    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP', PREP_PARS: 'PPAR', PREP_LISTS: 'PREP', TTK_ACKS: 'TACK', TRAINING_QUESTIONS: 'TRQ', TRAINING_ATTEMPTS: 'TRA', FOODCOST_ALERTS: 'FCA', ALCO_PRODUCTS: 'ALCP', ALCO_LICENSES: 'ALCL', ALCO_MARKS: 'ALCM', ALCO_OUTBOX: 'ALCO', AI_AGENT_LOG: 'AIL',
+    MODIFIER_GROUPS: 'MODG', MODIFIERS: 'MOD', DISH_MODIFIER_LINKS: 'DML', POS_MODIFIER_USAGE: 'PMU', STOP_LIST: 'STOP', PREP_PARS: 'PPAR', PREP_LISTS: 'PREP', TTK_ACKS: 'TACK', TRAINING_QUESTIONS: 'TRQ', TRAINING_ATTEMPTS: 'TRA', FOODCOST_ALERTS: 'FCA', ALCO_PRODUCTS: 'ALCP', ALCO_LICENSES: 'ALCL', ALCO_MARKS: 'ALCM', ALCO_OUTBOX: 'ALCO', AI_AGENT_LOG: 'AIL', DATA_QUALITY_ISSUES: 'DQI', JOURNAL_TRIGGERS: 'JTRG', ALCO_BRIDGES: 'ALCB', ALCO_INBOX: 'ALCI',
     GUESTS: 'GST', BONUS_TXNS: 'BTX', POS_TIP_LINKS: 'PTIP', PUBLIC_MENU: 'PMENU',
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
@@ -964,6 +974,7 @@ var CONFIG = {
     // Этап M3: модификаторы.
     POS_GET_MODIFIERS: 'pos_admin', POS_SAVE_MODIFIER_GROUP: 'pos_admin', POS_SAVE_MODIFIER: 'pos_admin', POS_LINK_DISH_MODIFIERS: 'pos_admin',
     // Этап M4: стоп-лист — ведут кухня и менеджмент (pos_stop); кассир видит стопы в меню кассы.
+    ALCO_BRIDGE: 'alco', ALCO_BRIDGE_CREATE: 'alco', ALCO_GET_INBOX: 'alco', ALCO_RETRY: 'alco',
     ALCO_GET_OVERVIEW: 'alco_open', ALCO_OPEN: 'alco_open', ALCO_GET_MARKS: 'alco_open',
     ALCO_SAVE_LICENSE: 'alco', ALCO_SAVE_PRODUCT: 'alco', ALCO_GET_PRODUCTS: 'alco', ALCO_GET_BATCHES: 'alco', ALCO_RECEIVE_MARKS: 'alco', ALCO_GET_OUTBOX: 'alco', ALCO_MARK_SENT: 'alco', ALCO_GET_JOURNAL: 'alco',
     FC_GET_OVERVIEW: 'recipes', FC_CHECK_ALERTS: 'recipes', FC_GET_SETTINGS: 'recipes', FC_SAVE_SETTINGS: 'economics', FC_USE_TODAY: 'production',
@@ -1373,8 +1384,10 @@ var CONFIG = {
   ROLE_ACTION_DENY: {
     // Официант собирает заказ и отправляет на кухню, но деньги принимает кассир.
     'ОФИЦИАНТ': ['POS_PAY', 'POS_OPEN_SHIFT', 'POS_CLOSE_SHIFT'],
+    // Ключ моста ЕГАИС выдают директор и менеджер.
+    'БУХГАЛТЕР': ['ALCO_BRIDGE_CREATE'],
     'ПОВАР': ['FC_GET_OVERVIEW','FC_CHECK_ALERTS','FC_GET_SETTINGS','PREP_SAVE_PAR','TRAINING_GET_MATRIX','TRAINING_GET_QUESTIONS','TRAINING_SAVE_QUESTION','RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP'],
-    'КЛАДОВЩИК': ['FC_GET_OVERVIEW','FC_CHECK_ALERTS','FC_GET_SETTINGS','RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE'],
+    'КЛАДОВЩИК': ['ALCO_BRIDGE_CREATE','FC_GET_OVERVIEW','FC_CHECK_ALERTS','FC_GET_SETTINGS','RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE'],
     // КАЛЬКУЛЯТОР меняет калькуляцию/рецептуру, но не утверждает технологию или HACCP/ППК.
     'КАЛЬКУЛЯТОР': ['APPROVE_TTK_VERSION','SUBMIT_TTK_FOR_APPROVAL','APPROVE_BREAKDOWN_PLAN','APPROVE_PRODUCTION_PLAN','CREATE_TTK_HACCP_LINK','CREATE_TTK_SANPIN_LINK','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION'],
     // ПОВАР работает с утверждёнными технологическими данными и своим производством.
@@ -1382,7 +1395,7 @@ var CONFIG = {
     // Технолог/HACCP управляет ТТК + ППК/HACCP, но не финансами и не пользователями.
     'ТЕХНОЛОГ_HACCP': ['FC_GET_OVERVIEW','FC_CHECK_ALERTS','FC_GET_SETTINGS','UPDATE_PRODUCT_PRICE','CREATE_GLOBAL_PRODUCT','UPDATE_GLOBAL_PRODUCT','CREATE_EXPENSE','GET_ECONOMICS','GET_PNL','GET_ABC_ANALYSIS','CREATE_USER','UPDATE_EMPLOYEE_PROFILE','DEACTIVATE_USER','ACTIVATE_USER','APPROVE_PRODUCTION_PLAN','CREATE_PRODUCTION_PLAN'],
     // Кладовщик не меняет цену номенклатуры: закупочная цена формируется приходом/калькуляцией.
-    'КЛАДОВЩИК': ['FC_GET_OVERVIEW','FC_CHECK_ALERTS','FC_GET_SETTINGS','UPDATE_PRODUCT_PRICE','CREATE_PRODUCT','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE']
+    'КЛАДОВЩИК': ['ALCO_BRIDGE_CREATE','FC_GET_OVERVIEW','FC_CHECK_ALERTS','FC_GET_SETTINGS','UPDATE_PRODUCT_PRICE','CREATE_PRODUCT','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE']
   },
 
   // ТЗ §9 — типы цехов (преднастройка, список расширяем при необходимости)

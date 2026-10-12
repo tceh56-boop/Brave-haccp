@@ -288,6 +288,10 @@ var ACTION_HANDLERS = {
   // Волна 3, M9 — заготовочный лист (KitchenPrep.gs)
   // M12 — алкоголь (Alco.gs)
   ALCO_GET_OVERVIEW: function (data, session) { return alcoGetOverview_(session); },
+  ALCO_BRIDGE: function (data, session) { return alcoBridge_(data || {}, session); },
+  ALCO_BRIDGE_CREATE: function (data, session) { return alcoBridgeCreate_(data || {}, session); },
+  ALCO_GET_INBOX: function (data, session) { return alcoGetInbox_(session); },
+  ALCO_RETRY: function (data, session) { return alcoRetry_(data || {}, session); },
   ALCO_OPEN: function (data, session) { return alcoOpen_(data || {}, session); },
   ALCO_GET_MARKS: function (data, session) { return alcoGetMarks_(data || {}, session); },
   ALCO_SAVE_LICENSE: function (data, session) { return alcoSaveLicense_(data || {}, session); },
@@ -835,7 +839,12 @@ function _isMutatingAction_(action) {
 
 function processOperation(action, data, token) {
   var session = null;
-  if (action !== 'LOGIN' && action !== 'GET_USERS_FOR_LOGIN') {
+  if (action === 'ALCO_BRIDGE') {
+    // Мост к УТМ ЕГАИС входит не PIN-кодом, а ключом точки (Alco.gs::alcoBridgeSession_): узкая сессия
+    // только этой точки, а обработчик выполняет лишь операции моста (pull/report/ticket/inbox).
+    session = typeof alcoBridgeSession_ === 'function' ? alcoBridgeSession_(data) : null;
+    if (!session) return userError_('Ключ моста ЕГАИС недействителен или отозван.', CONFIG.ERROR_CODES.UNAUTHORIZED);
+  } else if (action !== 'LOGIN' && action !== 'GET_USERS_FOR_LOGIN') {
     session = resolveSession_(token);
     if (!session) {
       return userError_('Сессия истекла или недействительна. Войдите заново.', CONFIG.ERROR_CODES.UNAUTHORIZED);

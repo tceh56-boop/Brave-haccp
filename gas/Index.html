@@ -1871,6 +1871,7 @@
       <button data-alco-tab="open" onclick="alcoTab('open')">Вскрытие тары</button>
       <button data-alco-tab="receive" data-module-gate="alco" onclick="alcoTab('receive')">Приём марок</button>
       <button data-alco-tab="outbox" data-module-gate="alco" onclick="alcoTab('outbox')">К отправке</button>
+      <button data-alco-tab="inbox" data-module-gate="alco" onclick="alcoTab('inbox')">Входящие ТТН</button>
       <button data-alco-tab="journal" data-module-gate="alco" onclick="alcoTab('journal')">Журнал продаж</button>
       <button data-alco-tab="setup" data-module-gate="alco" onclick="alcoTab('setup')">Лицензия и карточки</button>
     </div>
@@ -1891,7 +1892,7 @@
       <div id="alcoReceiveResult" aria-live="polite"></div>
     </div>
     <div class="card alco-panel hidden" data-alco-panel="outbox">
-      <p class="muted" style="margin-top:0;">Вскрытие тары передаётся в ЕГАИС, подключение кеги — в «Честный знак» в день вскрытия. Пока моста к УТМ нет: отправьте документы и отметьте их здесь с номером квитанции.</p>
+      <p class="muted" style="margin-top:0;">Вскрытие тары передаётся в ЕГАИС, подключение кеги — в «Честный знак» в день вскрытия. Если мост к УТМ подключён, вскрытия уходят в ЕГАИС сами, а квитанции возвращаются сюда; кеги и документы без моста отметьте вручную с номером квитанции.</p>
       <div id="alcoOutbox">Загрузка…</div>
       <div class="prep-head" style="margin-top:8px;">
         <label for="alcoReceipt" class="sr-only">Номер квитанции</label>
@@ -1899,6 +1900,10 @@
         <button class="btn small" onclick="alcoMarkSent()">Отметить отправленными</button>
         <button class="btn small secondary" onclick="alcoOutboxCsv()">Скачать CSV</button>
       </div>
+    </div>
+    <div class="card alco-panel hidden" data-alco-panel="inbox">
+      <p class="muted" style="margin-top:0;">Накладные, которые мост получил из ЕГАИС через УТМ. Сверьте с поставкой и оформите приход.</p>
+      <div id="alcoInbox">Загрузка…</div>
     </div>
     <div class="card alco-panel hidden" data-alco-panel="journal">
       <div class="prep-head">
@@ -1922,6 +1927,14 @@
         </div>
         <label for="alcoLicOrg">Кем выдана</label><input id="alcoLicOrg" maxlength="200">
         <button class="btn small" onclick="alcoSaveLicense()">Сохранить лицензию</button>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;">Мост к УТМ ЕГАИС</h3>
+        <p class="muted">Программа на компьютере с УТМ сама отправляет вскрытия в ЕГАИС и приносит квитанции и входящие накладные. Ей нужен ключ точки — он показывается один раз; новый ключ отключает прежний.</p>
+        <div id="alcoBridge" class="muted"></div>
+        <label for="alcoBridgeName">Где стоит мост</label><input id="alcoBridgeName" maxlength="100" placeholder="Например: компьютер администратора">
+        <button class="btn small" onclick="alcoBridgeCreate()">Выдать ключ моста</button>
+        <div id="alcoBridgeKey" aria-live="polite"></div>
       </div>
       <div class="card">
         <h3 style="margin-top:0;">Карточки алкоголя</h3>
@@ -6046,6 +6059,7 @@ function alcoTab(tab) {
   if (tab === 'receive') alcoLoadBatches();
   if (tab === 'outbox') alcoLoadOutbox();
   if (tab === 'journal') alcoJournal();
+  if (tab === 'inbox') alcoLoadInbox();
   if (tab === 'setup') alcoLoadSetup();
 }
 function alcoBanner() {
@@ -6055,6 +6069,9 @@ function alcoBanner() {
     else h.push('<span class="badge ' + (o.лицензия.осталось_дней <= 30 ? 'pos-st pos-st-kitchen' : 'pos-badge-paid') + '">Лицензия № ' + posEsc(o.лицензия.номер) + ' до ' + posEsc(o.лицензия.действует_до) + '</span>' + (o.лицензия.осталось_дней <= 30 ? ' Осталось ' + o.лицензия.осталось_дней + ' дн. — продлите.' : ''));
     h.push('<span class="pos-mods">Бутылок на складе с марками: ' + o.на_складе + ' · вскрыто сегодня: ' + o.вскрыто_сегодня + '</span>');
     if (o.к_отправке) h.push('<span class="badge ' + (o.просрочено ? 'pos-badge-cancel' : 'b-info') + '">К отправке: ' + o.к_отправке + (o.просрочено ? ', просрочено: ' + o.просрочено : '') + '</span>');
+    if (o.в_утм) h.push('<span class="badge b-info">В УТМ, ждут квитанцию: ' + o.в_утм + '</span>');
+    if (o.ошибок) h.push('<span class="badge pos-badge-cancel">Ошибки ЕГАИС: ' + o.ошибок + '</span>');
+    if (o.мост) h.push('<span class="pos-mods">' + alcoBridgeState(o.мост) + '</span>');
     document.getElementById('alcoBanner').innerHTML = h.join(' ');
   }, alcoErr);
 }
@@ -6096,9 +6113,12 @@ function alcoLoadOutbox() {
   call('ALCO_GET_OUTBOX', {}, function (rows) {
     ALCO.outbox = rows;
     document.getElementById('alcoOutbox').innerHTML = rows.length ? rows.map(function (d) {
-      return '<label class="ut-row" style="display:flex;gap:10px;align-items:flex-start;font-weight:400;cursor:pointer;"><input type="checkbox" class="alco-doc" value="' + posEsc(d.doc_id) + '" checked style="width:auto;margin-top:4px;">' +
-        '<span><b>' + (d.тип === 'подключение_кеги' ? 'Подключение кеги' : 'Вскрытие тары') + ': ' + posEsc(d.название) + '</b> ' + (d.просрочено ? '<span class="badge pos-badge-cancel">просрочено</span>' : '') +
-        '<div class="pos-mods">' + posEsc(d.система) + ' · ' + posEsc(d.дата) + ' · ' + alcoL(d.объём_л) + (d.алкокод ? ' · алкокод ' + posEsc(d.алкокод) : '') + '</div></span></label>';
+      var st = d.статус === 'в_утм' ? '<span class="badge b-info">в УТМ, ждёт квитанцию</span>' : d.статус === 'ошибка' ? '<span class="badge pos-badge-cancel">ошибка</span>' : '';
+      var box = d.статус === 'в_утм' ? '<span style="width:18px;"></span>' : '<input type="checkbox" class="alco-doc" value="' + posEsc(d.doc_id) + '"' + (d.статус === 'к_отправке' ? ' checked' : '') + ' style="width:auto;margin-top:4px;">';
+      return '<label class="ut-row" style="display:flex;gap:10px;align-items:flex-start;font-weight:400;cursor:pointer;">' + box +
+        '<span><b>' + (d.тип === 'подключение_кеги' ? 'Подключение кеги' : 'Вскрытие тары') + ': ' + posEsc(d.название) + '</b> ' + st + (d.просрочено ? ' <span class="badge pos-badge-cancel">просрочено</span>' : '') +
+        '<div class="pos-mods">' + posEsc(d.система) + ' · ' + posEsc(d.дата) + ' · ' + alcoL(d.объём_л) + (d.алкокод ? ' · алкокод ' + posEsc(d.алкокод) : '') + '</div>' +
+        (d.ошибка ? '<div class="err" style="margin:4px 0 0;">' + posEsc(d.ошибка) + ' <button class="btn small secondary" onclick="event.preventDefault();alcoRetry(\'' + posEsc(d.doc_id) + '\')">Повторить</button></div>' : '') + '</span></label>';
     }).join('') : '<span class="badge pos-badge-paid">Всё отправлено</span>';
   }, alcoErr);
 }
@@ -6137,6 +6157,7 @@ function alcoJournalCsv() {
 }
 function alcoLoadSetup() {
   call('ALCO_GET_OVERVIEW', {}, function (o) {
+    document.getElementById('alcoBridge').innerHTML = o.мост ? 'Ключ выдан: ' + posEsc(o.мост.название) + ' (' + posEsc(String(o.мост.создан).slice(0, 10)) + '). ' + alcoBridgeState(o.мост) : 'Мост не подключён.';
     document.getElementById('alcoLicense').innerHTML = o.лицензия ? 'Действует № <b>' + posEsc(o.лицензия.номер) + '</b> до ' + posEsc(o.лицензия.действует_до) + '. Новая запись заменит её.' : 'Действующей лицензии нет.';
   }, alcoErr);
   call('ALCO_GET_PRODUCTS', {}, function (rows) {
@@ -6171,6 +6192,36 @@ function alcoSaveLicense() {
   alcoErr('');
   call('ALCO_SAVE_LICENSE', { номер: document.getElementById('alcoLicNo').value, выдана: document.getElementById('alcoLicFrom').value, действует_до: document.getElementById('alcoLicTo').value, орган: document.getElementById('alcoLicOrg').value },
     function () { alcoLoadSetup(); alcoBanner(); }, alcoErr);
+}
+
+function alcoBridgeState(b) {
+  if (!b.последний_контакт) return 'Мост к УТМ: ключ выдан, на связь ещё не выходил.';
+  var min = Math.round((Date.now() - new Date(b.последний_контакт).getTime()) / 60000);
+  return min <= 10 ? 'Мост к УТМ на связи (' + (min < 1 ? 'только что' : min + ' мин назад') + ').' : '<span class="err" style="display:inline;">Мост к УТМ молчит ' + (min < 120 ? min + ' мин' : Math.round(min / 60) + ' ч') + ' — проверьте компьютер с УТМ.</span>';
+}
+function alcoRetry(id) {
+  alcoErr('');
+  call('ALCO_RETRY', { docId: id }, function () { alcoLoadOutbox(); alcoBanner(); }, alcoErr);
+}
+function alcoBridgeCreate() {
+  if (!confirm('Выдать новый ключ? Прежний ключ моста перестанет работать.')) return;
+  alcoErr('');
+  call('ALCO_BRIDGE_CREATE', { название: document.getElementById('alcoBridgeName').value }, function (r) {
+    document.getElementById('alcoBridgeKey').innerHTML = '<div class="alco-ok" style="margin-top:8px;"><b>Ключ моста</b> — скопируйте сейчас, второй раз он не покажется:' +
+      '<div style="font-family:monospace;word-break:break-all;margin:6px 0;" id="alcoKeyText">' + posEsc(r.key) + '</div>' +
+      '<button class="btn small secondary" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById(\'alcoKeyText\').textContent)">Скопировать</button></div>';
+    alcoLoadSetup(); alcoBanner();
+  }, alcoErr);
+}
+function alcoLoadInbox() {
+  call('ALCO_GET_INBOX', {}, function (rows) {
+    document.getElementById('alcoInbox').innerHTML = rows.length ? rows.map(function (x) {
+      return '<details class="ut-row"><summary style="cursor:pointer;"><b>' + posEsc(x.тип) + ' № ' + posEsc(x.номер) + '</b> от ' + posEsc(x.дата) + ' · ' + posEsc(x.поставщик) + ' · позиций: ' + x.позиций + '</summary>' +
+        '<table class="report-table"><thead><tr><th>Наименование</th><th>Алкокод</th><th>Кол-во</th><th>Цена</th></tr></thead><tbody>' + x.позиции.map(function (p) {
+          return '<tr><td>' + posEsc(p.название) + '</td><td>' + posEsc(p.алкокод) + '</td><td>' + p.количество + '</td><td>' + posMoney(p.цена) + '</td></tr>';
+        }).join('') + '</tbody></table></details>';
+    }).join('') : '<p class="muted">Входящих накладных нет. Они появятся, когда мост к УТМ получит их из ЕГАИС.</p>';
+  }, alcoErr);
 }
 
 // ---------- Фуд-кост и «Используй сегодня» (волна 3, M11) ----------

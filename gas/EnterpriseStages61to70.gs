@@ -8,7 +8,8 @@ function _ciScope_(r,s){return String(r.organization_id||'')===String(s.organiza
 function _ciLoc_(d,s){return String((d&&d.locationId)||s.location_id||'');}
 function _ciNum_(v){var n=Number(v);return isFinite(n)?n:0;}
 function _ciDate_(v){return String(v||new Date().toISOString().slice(0,10)).slice(0,10);}
-function _ciId_(p){return generateId_(p);}
+// B6: сюда приходят готовые префиксы (DSEN, MRP), а generateId_ ждёт имя листа — принимаем и то и другое.
+function _ciId_(p){return (CONFIG.ID_PREFIXES[p]?generateId_(p):String(p)+'-'+Utilities.getUuid().replace(/-/g,'').substring(0,8).toUpperCase());}
 function _ciDaysBack_(date,n){var d=new Date((date||new Date().toISOString().slice(0,10))+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-n);return d.toISOString().slice(0,10);}
 function _ciChannel_(r){var x=String(r.канал||r.channel||r.source||r.источник||'DIRECT').toUpperCase();if(x.indexOf('IIKO')>=0)return 'DELIVERY/POS';if(x.indexOf('DELIVERY')>=0)return 'DELIVERY';if(x.indexOf('POS')>=0)return 'POS';return x||'DIRECT';}
 

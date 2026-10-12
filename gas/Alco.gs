@@ -216,13 +216,18 @@ function alcoGetMarks_(data, session) {
 // ---------- Очередь отправки ----------
 
 function alcoGetOutbox_(data, session) {
-  var st = (data && data.статус) || 'к_отправке', today = todayDateStr_();
-  return findRows_('ALCO_OUTBOX', function (d) { return d.organization_id === session.organization_id && d.location_id === session.location_id && (st === 'все' || d.статус === st); })
+  var st = (data && data.статус) || 'активные', today = todayDateStr_();
+  var active = ['к_отправке', 'в_утм', 'ошибка'];
+  return findRows_('ALCO_OUTBOX', function (d) {
+    return d.organization_id === session.organization_id && d.location_id === session.location_id &&
+      (st === 'все' || (st === 'активные' ? active.indexOf(d.статус) !== -1 : d.статус === st));
+  })
     .map(function (d) {
       var p = getProductById_(d.product_id), m = findOne_('ALCO_MARKS', 'mark_id', d.mark_id);
       return { doc_id: d.doc_id, тип: d.тип, система: d.система, название: p ? p.название : d.product_id, алкокод: d.алкокод, объём_л: _alcoNum_(d.объём_л),
         марка: m ? m.марка : '', дата: String(d.дата).slice(0, 10), срок_отправки: String(d.срок_отправки).slice(0, 10), статус: d.статус,
-        просрочено: d.статус === 'к_отправке' && String(d.срок_отправки).slice(0, 10) < today, номер_квитанции: d.номер_квитанции, отправлено: d.отправлено };
+        просрочено: d.статус !== 'отправлено' && String(d.срок_отправки).slice(0, 10) < today, номер_квитанции: d.номер_квитанции, отправлено: d.отправлено,
+        ошибка: d.ошибка_текст || '', utm_reply_id: d.utm_reply_id || '' };
     }).sort(function (a, b) { return a.дата.localeCompare(b.дата); });
 }
 
@@ -312,12 +317,14 @@ function alcoGetOverview_(session) {
   var today = todayDateStr_();
   var lic = _alcoLicense_(session, today);
   var marks = findRows_('ALCO_MARKS', function (m) { return m.organization_id === session.organization_id && m.location_id === session.location_id; });
-  var outbox = alcoGetOutbox_({ статус: 'к_отправке' }, session);
+  var outbox = alcoGetOutbox_({ статус: 'активные' }, session); // к отправке, в УТМ, с ошибкой
   return {
     лицензия: lic ? { номер: lic.номер, действует_до: String(lic.действует_до).slice(0, 10), осталось_дней: _alcoDays_(today, String(lic.действует_до).slice(0, 10)) } : null,
     на_складе: marks.filter(function (m) { return m.статус === 'на_складе'; }).length,
     вскрыто_сегодня: marks.filter(function (m) { return _alcoLocalDay_(m.вскрыта) === today; }).length,
-    к_отправке: outbox.length, просрочено: outbox.filter(function (d) { return d.просрочено; }).length,
+    к_отправке: outbox.filter(function (d) { return d.статус === 'к_отправке'; }).length, в_утм: outbox.filter(function (d) { return d.статус === 'в_утм'; }).length,
+    просрочено: outbox.filter(function (d) { return d.просрочено; }).length,
+    ошибок: outbox.filter(function (d) { return d.статус === 'ошибка'; }).length, мост: _alcoBridgeInfo_(session),
     карточек: Object.keys(_alcoCards_(session.organization_id)).length
   };
 }
@@ -349,7 +356,7 @@ function alcoDailyTrigger_() {
     if (_alcoNotifyOnce_(l.organization_id, l.location_id, msg, 'alco_license|' + l.license_id + '|' + (left < 0 ? 'expired' : step))) out.лицензии++;
   });
   var late = {};
-  findRows_('ALCO_OUTBOX', function (d) { return d.статус === 'к_отправке' && String(d.срок_отправки).slice(0, 10) < today; }).forEach(function (d) {
+  findRows_('ALCO_OUTBOX', function (d) { return ['к_отправке', 'в_утм', 'ошибка'].indexOf(d.статус) !== -1 && String(d.срок_отправки).slice(0, 10) < today; }).forEach(function (d) {
     var k = d.organization_id + '|' + d.location_id; late[k] = (late[k] || 0) + 1;
   });
   Object.keys(late).forEach(function (k) {
@@ -372,4 +379,152 @@ function alcoGetBatches_(session) {
     return { batch_id: b.batch_id, название: p ? p.название : b.product_id, дата_прихода: String(b.дата_прихода || '').slice(0, 10), литров: _alcoNum_(b.количество),
       бутылок: cap, принято_марок: counts[b.batch_id] || 0, маркировка: c.маркировка };
   }).filter(function (x) { return x.принято_марок < x.бутылок; }).sort(function (a, b) { return String(b.дата_прихода).localeCompare(String(a.дата_прихода)); });
+}
+
+// ---------- Мост к УТМ ЕГАИС (bridge/utm-bridge.js на компьютере с УТМ) ----------
+// Мост входит не PIN-кодом, а ключом точки: «tsb.<bridge_id>.<секрет>». В базе — только соль и хэш секрета.
+// processOperation (API.gs) для ALCO_BRIDGE строит узкую сессию моста через alcoBridgeSession_.
+
+function _alcoBridgeHash_(secret, salt) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + ':' + secret).map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+
+function _alcoBridgeInfo_(session) {
+  var b;
+  try { b = findRows_('ALCO_BRIDGES', function (r) { return r.organization_id === session.organization_id && r.location_id === session.location_id && r.статус === 'активен'; })[0]; }
+  catch (e) { return null; }
+  return b ? { bridge_id: b.bridge_id, название: b.название, создан: b.создан, последний_контакт: b.последний_контакт || '' } : null;
+}
+
+/** Новый ключ моста для точки (прежний отзывается). Ключ показывается один раз. */
+function alcoBridgeCreate_(data, session) {
+  return withLock_(function () {
+    if (!session.location_id) throw new Error('Выберите точку: мост работает с УТМ конкретной точки.');
+    findRows_('ALCO_BRIDGES', function (r) { return r.organization_id === session.organization_id && r.location_id === session.location_id && r.статус === 'активен'; })
+      .forEach(function (r) { updateRow_('ALCO_BRIDGES', r, { статус: 'отозван' }); });
+    var id = generateId_('ALCO_BRIDGES'), secret = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''), salt = Utilities.getUuid();
+    insertRow_('ALCO_BRIDGES', { bridge_id: id, organization_id: session.organization_id, location_id: session.location_id,
+      название: String(data.название || 'Компьютер с УТМ').slice(0, 100), key_hash: _alcoBridgeHash_(secret, salt), key_salt: salt,
+      создан: nowIso_(), создал_id: session.user_id, последний_контакт: '', статус: 'активен' });
+    auditLog_(session.user_id, 'Выдан ключ моста ЕГАИС', 'ALCO_BRIDGES:' + id, null, 'активен', 'success', session.cascade_id || '');
+    return { bridge_id: id, key: 'tsb.' + id + '.' + secret, предупреждение: 'Ключ показывается один раз. Впишите его в настройки моста на компьютере с УТМ.' };
+  });
+}
+
+/** Сессия моста по ключу (API.gs) или null. Ключ сверяется по хэшу за постоянное время. */
+function alcoBridgeSession_(data) {
+  var m = /^tsb\.([A-Z]+-[0-9A-F]+)\.([0-9a-f]{64})$/.exec(String(data && data.bridgeKey || ''));
+  if (!m) return null;
+  var b;
+  try { b = findOne_('ALCO_BRIDGES', 'bridge_id', m[1]); } catch (e) { return null; }
+  if (!b || b.статус !== 'активен') return null;
+  var h = _alcoBridgeHash_(m[2], b.key_salt), diff = h.length ^ String(b.key_hash).length;
+  for (var i = 0; i < h.length; i++) diff |= h.charCodeAt(i) ^ String(b.key_hash).charCodeAt(i);
+  if (diff !== 0) return null;
+  return { user_id: 'BRIDGE:' + b.bridge_id, organization_id: b.organization_id, location_id: b.location_id, role: 'BRIDGE', роль: 'BRIDGE',
+    allowed_locations: [b.location_id], bridge_id: b.bridge_id, cascade_id: '', operation_id: '', token: '' };
+}
+
+/** Единая точка входа моста: op = pull | report | ticket | inbox. */
+function alcoBridge_(data, session) {
+  if (!session || session.role !== 'BRIDGE') throw new Error('Только для моста ЕГАИС.');
+  var b = findOne_('ALCO_BRIDGES', 'bridge_id', session.bridge_id);
+  if (b) updateRow_('ALCO_BRIDGES', b, { последний_контакт: nowIso_() });
+  var op = String(data.op || '');
+  if (op === 'pull') return _alcoBridgePull_(data, session);
+  if (op === 'report') return withLock_(function () { return _alcoBridgeReport_(data, session); });
+  if (op === 'ticket') return withLock_(function () { return _alcoBridgeTicket_(data, session); });
+  if (op === 'inbox') return withLock_(function () { return _alcoBridgeInbox_(data, session); });
+  throw new Error('Неизвестная операция моста: ' + op);
+}
+
+function _alcoBridgePull_(data, session) {
+  var cards = _alcoCards_(session.organization_id);
+  var limit = Math.max(1, Math.min(50, Number(data.limit) || 20));
+  return { docs: findRows_('ALCO_OUTBOX', function (d) {
+    return d.organization_id === session.organization_id && d.location_id === session.location_id && d.система === 'ЕГАИС' && d.статус === 'к_отправке';
+  }).slice(0, limit).map(function (d) {
+    var p = getProductById_(d.product_id) || {}, m = findOne_('ALCO_MARKS', 'mark_id', d.mark_id) || {}, c = cards[d.product_id] || {};
+    return { doc_id: d.doc_id, тип: d.тип, дата: String(d.дата).slice(0, 10), название: p.название || '', алкокод: c.алкокод || d.алкокод || '',
+      код_вида: c.код_вида || '', ёмкость_л: _alcoNum_(c.объём_тары_л), крепость: _alcoNum_(c.крепость), марка: m.марка || '' };
+  }) };
+}
+
+function _alcoBridgeDoc_(session, docId) {
+  var d = findOne_('ALCO_OUTBOX', 'doc_id', docId);
+  return d && d.organization_id === session.organization_id && d.location_id === session.location_id ? d : null;
+}
+
+/** Результат отправки в УТМ: ok → «в_утм» (ждём квитанцию ЕГАИС), иначе «ошибка» с текстом. */
+function _alcoBridgeReport_(data, session) {
+  var n = 0;
+  (data.results || []).slice(0, 50).forEach(function (r) {
+    var d = _alcoBridgeDoc_(session, r.docId);
+    if (!d || d.статус !== 'к_отправке') return;
+    if (r.ok && r.replyId) updateRow_('ALCO_OUTBOX', d, { статус: 'в_утм', utm_reply_id: String(r.replyId).slice(0, 80), ошибка_текст: '' });
+    else updateRow_('ALCO_OUTBOX', d, { статус: 'ошибка', ошибка_текст: ('УТМ: ' + String(r.error || 'не принял документ')).slice(0, 300) });
+    n++;
+  });
+  return { обновлено: n };
+}
+
+/** Квитанции ЕГАИС: принято → «отправлено» с номером; отклонено → «ошибка» с причиной и уведомлением. */
+function _alcoBridgeTicket_(data, session) {
+  var n = 0, rejected = 0;
+  (data.tickets || []).slice(0, 100).forEach(function (t) {
+    var d = findRows_('ALCO_OUTBOX', function (x) {
+      return x.organization_id === session.organization_id && x.location_id === session.location_id && x.utm_reply_id && x.utm_reply_id === String(t.replyId || '') && x.статус === 'в_утм';
+    })[0];
+    if (!d) return;
+    if (t.accepted) {
+      updateRow_('ALCO_OUTBOX', d, { статус: 'отправлено', отправлено: nowIso_(), номер_квитанции: String(t.regId || t.replyId).slice(0, 80), ошибка_текст: '' });
+    } else {
+      rejected++;
+      updateRow_('ALCO_OUTBOX', d, { статус: 'ошибка', ошибка_текст: ('ЕГАИС отклонила: ' + String(t.comment || 'без пояснения')).slice(0, 300) });
+    }
+    n++;
+  });
+  if (rejected) notify_(session.organization_id, session.location_id, CONFIG.NOTIFICATION_TYPES.ALCO, 'ЕГАИС отклонила документов: ' + rejected + '. Причины — в разделе «Алкоголь» → «К отправке».', '', '');
+  return { обработано: n, отклонено: rejected };
+}
+
+/** Входящие ТТН из УТМ (мост разбирает XML и присылает сводку). Повтор по utm_id не дублирует. */
+function _alcoBridgeInbox_(data, session) {
+  var added = 0;
+  (data.docs || []).slice(0, 50).forEach(function (x) {
+    var utmId = String(x.utm_id || '').slice(0, 120);
+    if (!utmId) return;
+    if (findRows_('ALCO_INBOX', function (r) { return r.organization_id === session.organization_id && r.utm_id === utmId; }).length) return;
+    var pos = JSON.stringify((x.позиции || []).slice(0, 300).map(function (p) {
+      return { название: String(p.название || '').slice(0, 200), алкокод: String(p.алкокод || '').slice(0, 19), количество: _alcoNum_(p.количество), цена: _alcoNum_(p.цена) };
+    }));
+    if (pos.length > 45000) pos = pos.slice(0, 45000);
+    insertRow_('ALCO_INBOX', { inbox_id: generateId_('ALCO_INBOX'), organization_id: session.organization_id, location_id: session.location_id, utm_id: utmId,
+      тип: String(x.тип || 'ТТН').slice(0, 40), номер: String(x.номер || '').slice(0, 60), дата: String(x.дата || '').slice(0, 10),
+      поставщик: String(x.поставщик || '').slice(0, 200), позиций: (x.позиции || []).length, позиции_json: pos, получено: nowIso_(), статус: 'новая' });
+    added++;
+  });
+  if (added) notify_(session.organization_id, session.location_id, CONFIG.NOTIFICATION_TYPES.ALCO, 'Из ЕГАИС пришли новые накладные: ' + added + '. Проверьте и примите товар.', '', '');
+  return { добавлено: added };
+}
+
+function alcoGetInbox_(session) {
+  return findRows_('ALCO_INBOX', function (r) { return r.organization_id === session.organization_id && r.location_id === session.location_id; })
+    .map(function (r) {
+      var pos = []; try { pos = JSON.parse(r.позиции_json || '[]'); } catch (e) { pos = []; }
+      return { inbox_id: r.inbox_id, тип: r.тип, номер: r.номер, дата: r.дата, поставщик: r.поставщик, позиций: Number(r.позиций) || 0, позиции: pos, получено: r.получено, статус: r.статус };
+    }).sort(function (a, b) { return String(b.получено).localeCompare(String(a.получено)); });
+}
+
+/** Документ с ошибкой — снова в очередь (после исправления карточки или марки). */
+function alcoRetry_(data, session) {
+  return withLock_(function () {
+    var d = findOne_('ALCO_OUTBOX', 'doc_id', data.docId);
+    assertOwnedByOrg_(session, d, 'ALCO_OUTBOX:' + data.docId);
+    if (d.location_id !== session.location_id) throw new Error('Документ другой точки.');
+    if (d.статус !== 'ошибка') throw new Error('Повторить можно только документ с ошибкой.');
+    updateRow_('ALCO_OUTBOX', d, { статус: 'к_отправке', ошибка_текст: '', utm_reply_id: '' });
+    auditLog_(session.user_id, 'Алкоголь: повторная отправка', 'ALCO_OUTBOX:' + d.doc_id, 'ошибка', 'к_отправке', 'success', session.cascade_id || '');
+    return { doc_id: d.doc_id, статус: 'к_отправке' };
+  });
 }

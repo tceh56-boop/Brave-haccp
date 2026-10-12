@@ -141,6 +141,15 @@ function updateRow_(sheetKey, rowObj, patch) {
  * него просто выполняются без повторного захвата и без преждевременного releaseLock().
  */
 var _lockDepth_ = 0;
+/**
+ * B6: этапы 51–70 (EnterpriseStages51to60/61to70) читают листы через getSheetData_, которой не было —
+ * фоновые задачи этих этапов падали при каждом запуске. Строки листа по ключу; незарегистрированный лист — пустой список.
+ */
+function getSheetData_(sheetKey) {
+  if (!CONFIG.SHEETS[sheetKey]) return [];
+  return getAllRows_(sheetKey);
+}
+
 function withLock_(fn) {
   if (_lockDepth_ > 0) {
     _lockDepth_++;

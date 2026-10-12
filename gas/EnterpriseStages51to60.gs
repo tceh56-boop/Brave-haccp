@@ -12,7 +12,8 @@ function _dfScope_(r,s){ return String(r.organization_id||'')===String(s.organiz
 function _dfLoc_(d,s){ return String((d&&d.locationId)||s.location_id||''); }
 function _dfNum_(v){ var n=Number(v); return isFinite(n)?n:0; }
 function _dfDate_(d){ return String(d||new Date().toISOString().slice(0,10)).slice(0,10); }
-function _dfId_(prefix){ return generateId_(prefix); }
+// B6: сюда приходят готовые префиксы (PCAL, SHA…), а generateId_ ждёт имя листа — принимаем и то и другое.
+function _dfId_(prefix){ return (CONFIG.ID_PREFIXES[prefix]?generateId_(prefix):String(prefix)+'-'+Utilities.getUuid().replace(/-/g,'').substring(0,8).toUpperCase()); }
 
 // 51 — Shift Dispatcher
 function createShiftPlan51_(d,s){ d=d||{}; var loc=_dfLoc_(d,s), date=_dfDate_(d.date), r={shift_plan_id:_dfId_('SHP'),organization_id:s.organization_id,location_id:loc,date:date,shift_code:String(d.shiftCode||'DAY'),workshop_id:String(d.workshopId||''),planned_hours:_dfNum_(d.plannedHours),status:'DRAFT',owner_id:String(d.ownerId||''),created_by:s.user_id,created_at:nowIso_()}; if(r.planned_hours<0) throw new Error('plannedHours не может быть отрицательным.'); insertRow_('SHIFT_PLANS',r); return r; }

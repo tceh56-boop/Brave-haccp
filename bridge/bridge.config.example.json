@@ -1,0 +1,8 @@
+{
+  "tsekhUrl": "https://<адрес шлюза Yandex Cloud>/api",
+  "bridgeKey": "tsb.ALCB-XXXXXXXX.<ключ из ЦЕХ — показывается один раз>",
+  "utmUrl": "http://localhost:8080",
+  "fsrarId": "<ФСРАР ИД точки — на главной странице УТМ>",
+  "intervalSec": 60,
+  "deleteAfterRead": true
+}
