@@ -28,10 +28,12 @@ function installMonChef() {
   var folder = DriveApp.getFolderById(MC_INSTALL_FOLDER_ID_);
   var zip = mcFindZip_(folder);
   var entries = mcUnzip_(zip);
-  ['Code.gs', 'App.html', 'appsscript.json'].forEach(function (n) {
-    if (!entries[n]) throw new Error('В архиве ' + zip.getName() + ' нет файла ' + n + '.');
+  // С этапа «единое окно» прежнего интерфейса (App.html) в сборке нет: главное окно — Console.html.
+  ['Code.gs', 'Console.html', 'appsscript.json'].forEach(function (n) {
+    if (!entries[n]) throw new Error('В архиве ' + zip.getName() + ' нет файла ' + n + '. Загрузите в папку сам архив сборки ' +
+      '(MonChef_Integrated_Application_1_0_TTK.zip), не распаковывая его, — не архив-комплект с инструкцией.');
   });
-  var patchLog = mcApplyPatches_(folder, entries);
+  var patchLog = mcApplyPatches_(folder, entries, zip.getName());
   var projectFiles = mcProjectFiles_(entries);
   var props = PropertiesService.getScriptProperties();
   var code = entries['Code.gs'].getDataAsString('UTF-8');
@@ -97,14 +99,15 @@ function installMonChef() {
   Logger.log([
     'MonChef установлен (версия ' + versionNumber + ', файлов в проекте: ' + projectFiles.length + ').',
     'Пропущены как дубли: ' + (mcSkipped_(entries).join(', ') || 'нет') + '.',
-    'Исправления: применено ' + patchLog.applied + ', уже были ' + patchLog.already + ', не подошли ' + patchLog.failed.length +
-      (patchLog.failed.length ? ' (' + patchLog.failed.join('; ') + ')' : '') + '.',
+    patchLog.skipped || ('Исправления: применено ' + patchLog.applied + ', уже были ' + patchLog.already + ', не подошли ' + patchLog.failed.length +
+      (patchLog.failed.length ? ' (' + patchLog.failed.join('; ') + ')' : '') + '.'),
     fixedZip ? 'Исправленный архив: ' + fixedZip.getUrl() : 'Исправленный архив не создавался.',
     'Проект:            https://script.google.com/d/' + scriptId + '/edit',
     'Веб-приложение:    ' + webAppUrl,
     'Таблица' + (MC_USE_SHEET_COPY_ ? ' (копия для пилота): ' : ' (рабочая): ') + 'https://docs.google.com/spreadsheets/d/' + sheetId + '/edit',
-    'Дальше: в проекте MonChef выполните setupProductionReleaseStack и разрешите доступ, затем v61RunStructuralTests',
-    'и installAllTriggers (ставит все автозапуски двумя триггерами). Вход в систему с полным доступом — ПИН создателя.'
+    'Дальше: откройте проект MonChef, выполните installAllTriggers и разрешите доступ (Google спросит и новые права:',
+    'адрес почты и отправка писем). Затем в веб-приложении — код технического доступа → «Настройки»:',
+    '«Миграция данных», «Перенос ролей (этап 10.7)», «🔒 Защита журналов». Подробно — «Инструкция по установке».'
   ].join('\n'));
   return { scriptId: scriptId, versionNumber: versionNumber, webAppUrl: webAppUrl, sheetId: sheetId };
 }
@@ -114,14 +117,22 @@ function installMonChef() {
 var MC_SKIP_ = [/^Code_V\d+\.gs$/, /^MonChef_V55_63_PRODUCTION_RELEASE\.gs$/, /^mon_cher_demo\.html$/];
 
 // Исправления к пакету: файл MonChefPatches.json в папке установки.
-// { "replace": [{ "file", "find", "replace" }], "replaceAll": [{ "file", "find", "replace" }],
-//   "add": [{ "file", "content" }] }
+// { "forArchive": "MonChef_FINAL_PROJECT_ROOT", "replace": [{ "file", "find", "replace" }],
+//   "replaceAll": [{ "file", "find", "replace" }], "add": [{ "file", "content" }] }
 // Правка, которая уже внесена (найден только новый текст), пропускается.
-function mcApplyPatches_(folder, entries) {
-  var log = { applied: 0, already: 0, failed: [] };
+// Файл применяется только к архиву, имя которого начинается с forArchive: старые исправления
+// («add» заменяет файл целиком) не должны затирать новую сборку.
+function mcApplyPatches_(folder, entries, zipName) {
+  var log = { applied: 0, already: 0, failed: [], skipped: '' };
   var it = folder.getFilesByName('MonChefPatches.json');
   if (!it.hasNext()) return log;
   var spec = JSON.parse(it.next().getBlob().getDataAsString('UTF-8'));
+  var targets = [].concat(spec.forArchive || []).map(String);
+  if (!targets.some(function (t) { return t && String(zipName).indexOf(t) === 0; })) {
+    log.skipped = 'MonChefPatches.json не применён: он ' + (targets.length ? 'для архива «' + targets.join('», «') + '»' : 'без поля forArchive (старый)') +
+      ', а установлен «' + zipName + '». Уберите его из папки установки.';
+    return log;
+  }
   var text = {};
   function src(n) { if (!(n in text)) text[n] = entries[n] ? entries[n].getDataAsString('UTF-8') : null; return text[n]; }
   (spec.replace || []).forEach(function (p) {
@@ -168,11 +179,12 @@ function mcSkipped_(entries) {
   return Object.keys(entries).filter(function (n) { return MC_SKIP_.some(function (re) { return re.test(n); }); });
 }
 
+// Самый свежий архив сборки MonChef*.zip в папке установки (архив-комплект с инструкцией сюда не кладётся).
 function mcFindZip_(folder) {
   var it = folder.getFiles(), best = null;
   while (it.hasNext()) {
     var f = it.next();
-    if (!/\.zip$/i.test(f.getName())) continue;
+    if (!/^MonChef.*\.zip$/i.test(f.getName())) continue;
     if (!best || f.getLastUpdated() > best.getLastUpdated()) best = f;
   }
   if (!best) throw new Error('В папке «' + folder.getName() + '» нет .zip-архива MonChef. Загрузите его и запустите снова.');
