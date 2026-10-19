@@ -180,6 +180,7 @@ function _tsAggregate_(parentType, parentId, scale, depth, visited, acc) {
 /** Тепловая обработка: явный параметр > этапы ТТК с температурой ≥ 60 °C > по умолчанию без потерь. */
 function _tsProcessing_(opts, steps) {
   if (opts.processing === 'raw' || opts.processing === 'thermal') return opts.processing;
+  if ((steps || []).some(function (s) { return typeof techStepType_ === 'function' && techStepType_(s) === 'THERMAL'; })) return 'thermal';
   var hot = (steps || []).some(function (s) {
     var m = String(s && s.temperature || '').match(/\d+(?:[.,]\d+)?/g) || [];
     return m.some(function (x) { return Number(x.replace(',', '.')) >= 60; });
@@ -256,6 +257,17 @@ function calcTechSpec_(parentType, parentId, session, opts) {
   else if (parentType === 'PF') { storage.conditions = entity.условия_хранения || ''; storage.shelf_life = entity.срок_хранения_часов ? entity.срок_хранения_часов + ' ч' : ''; storage.source = 'карточка ПФ'; }
   else if (ttk) { storage.conditions = ttk.условия_хранения || ''; storage.shelf_life = ttk.срок_реализации || ''; storage.source = 'утверждённая ТТК'; }
   var pfShelf = acc.lines.filter(function (l) { return l.type === 'ПФ'; }).map(function (l) { return l.name; });
+  // Срок годности по нормам (TechNormsCore.gs): самое строгое ограничение из норм групп и сроков ПФ.
+  var shelf = typeof calcShelfLife_ === 'function' ? calcShelfLife_(parentType, parentId, session, steps || []) : null;
+  if (shelf) {
+    shelf.warnings.forEach(function (w) { acc.warnings.push(w); });
+    if (!storage.shelf_life && shelf.hours !== null) { storage.shelf_life = shelf.text; storage.conditions = storage.conditions || shelf.conditions; storage.source = shelf.status === 'ПО_ПРОВЕРЕННЫМ_НОРМАМ' ? 'расчёт по проверенным нормам' : 'расчёт по нормам (предварительно)'; }
+    else if (storage.shelf_life && shelf.hours !== null) {
+      var m = String(storage.shelf_life).toLowerCase().match(/(\d+(?:[.,]\d+)?)\s*(ч|час|сут|дн|день|дня)/);
+      var declared = m ? Number(m[1].replace(',', '.')) * (/^(сут|дн|день|дня)/.test(m[2]) ? 24 : 1) : null;
+      if (declared !== null && declared > shelf.hours) acc.warnings.push('Срок в ТТК (' + storage.shelf_life + ') больше нормы (' + shelf.hours + ' ч) — нужен протокол испытаний по МУК 4.2.1847-04.');
+    }
+  }
   if (!storage.shelf_life) acc.warnings.push('Срок годности не задан — установите по СанПиН 2.3/2.4.3590-20; срок сверх установленного требует обоснования по МУК 4.2.1847-04.');
 
   var microNorms = opts.microNorms || {};
@@ -265,7 +277,8 @@ function calcTechSpec_(parentType, parentId, session, opts) {
   var nutritionText = _tsNutritionText_(per100) + (perPortion ? '; на порцию ' + portionG + ' г: Б ' + perPortion.protein + ', Ж ' + perPortion.fat + ', У ' + perPortion.carbohydrate + ' г, ' + perPortion.energy_kcal + ' ккал' : '') + ' (расчётно, ТР ТС 022/2011)';
   var allergenText = allergens.length ? 'Содержит: ' + allergens.map(function (a) { return a.allergen + (a.verified ? '' : ' (не подтверждено)'); }).join(', ') : 'Аллергены по справочнику сырья не выявлены (проверьте заполнение PRODUCT_ALLERGENS)';
 
-  var status = (coverage === 100 && verifiedPct === 100 && storage.shelf_life && micro.some(function (m) { return m.norm; })) ? 'ГОТОВ_К_ИСПЫТАНИЯМ' : 'ПРОЕКТ';
+  var shelfOk = !shelf || storage.source === 'ТТК' || storage.source === 'утверждённая ТТК' || storage.source === 'карточка ПФ' || shelf.status === 'ПО_ПРОВЕРЕННЫМ_НОРМАМ';
+  var status = (coverage === 100 && verifiedPct === 100 && storage.shelf_life && shelfOk && micro.some(function (m) { return m.norm; })) ? 'ГОТОВ_К_ИСПЫТАНИЯМ' : 'ПРОЕКТ';
   return {
     object: { type: parentType, id: parentId, name: entity.название || parentId, yield_g: _tsRound_(yieldG), portion_g: portionG, input_mass_g: _tsRound_(acc.input_mass), production_loss_pct: lossPct },
     processing: processing, losses: loss,
@@ -273,7 +286,7 @@ function calcTechSpec_(parentType, parentId, session, opts) {
     physico_chemical: physico, tolerance: tol,
     recipe: recipe100kg, ingredients: acc.lines,
     allergens: allergens,
-    storage: storage, pf_components: pfShelf,
+    storage: storage, pf_components: pfShelf, shelf_life: shelf,
     microbiology: { group: opts.microGroup || (parentType === 'PF' ? 'Полуфабрикаты кулинарные' : 'Кулинарная продукция'), indicators: micro, reference: 'ТР ТС 021/2011, приложения 1–2' },
     normative_base: TECH_SPEC_NORMATIVE_BASE,
     text: { пищевая_ценность: nutritionText, аллергенная_информация: allergenText },
@@ -356,12 +369,16 @@ function renderTechSpecHtml_(spec, org, opts) {
     '<h2>5 Транспортирование и хранение</h2><p>Условия хранения: ' + e(spec.storage.conditions || '— указать') + '. Срок годности: ' + e(spec.storage.shelf_life || '— указать') + (spec.storage.source ? ' (источник: ' + e(spec.storage.source) + ')' : '') + '. Транспортирование — специализированным транспортом с соблюдением температурного режима по СанПиН 2.3/2.4.3590-20. Срок годности сверх установленного санитарными правилами обосновывается по МУК 4.2.1847-04.</p>' +
     warn +
     '<h2>Приложение А (справочное). Перечень нормативных документов</h2><table>' + tr(['Обозначение', 'Наименование'], true) + norms + '</table>' +
+    (opts.ccp && opts.ccp.length ? '<h2>Приложение Б (рекомендуемое). Контрольные точки ХАССП</h2><table>' + tr(['Этап', 'Опасность', 'Тип', 'Параметр', 'Предел', 'Мониторинг', 'Корректирующее действие', 'Норма'], true) + opts.ccp.map(function (c) { var has = function (v) { return v !== '' && v !== null && v !== undefined; }; var lim = has(c.min_value) || has(c.max_value) ? ((has(c.min_value) ? 'не менее ' + c.min_value + ' ' : '') + (has(c.max_value) ? 'не более ' + c.max_value + ' ' : '') + (c.unit || '')).trim() : (c.point_type === 'PRP' ? '—' : '— внести'); return tr([c.step, c.hazard, c.point_type, c.parameter, lim, c.monitoring_method + ', ' + c.frequency, c.corrective_action, c.source_document + ' (' + c.clause + '); ' + (c.norm_status === 'ПРОВЕРЕНО' ? 'проверено' : 'НЕ ПРОВЕРЕНО')]); }).join('') + '</table><p class="small">Предложение системы по этапам ТТК. Вступает в силу только после проверки технологом и включения в утверждённую программу производственного контроля.</p>' : '') +
     '<div class="small">Сформировано автоматически системой «ЦЕХ» по рецептуре и справочнику сырья · ' + e(spec.generated_at) + '. Расчётные показатели подлежат подтверждению протоколом испытаний аккредитованной лаборатории до утверждения ТУ.</div></body></html>';
 }
 
 function getTechSpecDocument_(data, session) {
   var spec = getTechSpec_(data, session);
   var org = findOne_('ORGANIZATIONS', 'organization_id', session.organization_id);
+  if (spec.object.type === 'DISH' && typeof proposeTtkCcp_ === 'function' && !data.ccp) {
+    try { data.ccp = proposeTtkCcp_(spec.object.id, session, data.ttkSteps || []); } catch (e) { data.ccp = null; }
+  }
   var html = renderTechSpecHtml_(spec, org, data);
   var out = { document_type: 'TECH_SPEC_TU', designation: _tsDesignation_(org, data), status: spec.status, warnings: spec.warnings, html: html, generated_at: spec.generated_at };
   try {

@@ -161,7 +161,9 @@ function getTtkEditorContext_(dishId, session, ttkVersionId) {
   var stagesJson=selected&&selected.технологические_этапы_json?selected.технологические_этапы_json:'[]';
   var steps=[]; try{steps=JSON.parse(stagesJson||'[]');if(!Array.isArray(steps))steps=[];}catch(e){steps=[];}
   var techSpec=typeof calcTechSpecSafe_==='function'?calcTechSpecSafe_('DISH',dishId,session,{ttkSteps:steps,storage:selected?selected.условия_хранения:'',shelfLife:selected?selected.срок_реализации:''}):null;
-  return {dish:dish,versions:versions,selected_ttk:selected,tech_spec:techSpec,recipes:getRecipeLines_('DISH',dishId,session),haccp_links:haccp,sanpin_links:sanpin,ppk:ppk,ppk_controls:controls,ppk_limits:limits,ppk_stages:stages,technology_steps:steps,food_cost:{себестоимость:Number(dish.себестоимость)||0,food_cost:Number(dish.food_cost)||0,маржа:Number(dish.маржа)||0}};
+  var norms=null;
+  if(typeof calcShelfLife_==='function'){try{norms={step_types:TECH_STEP_TYPES,shelf_life:calcShelfLife_('DISH',dishId,session,steps),ccp:proposeTtkCcp_(dishId,session,steps),proposals:selectedId?_ttkRows_('TTK_CCP_PROPOSALS',function(r){return r.ttk_version_id===selectedId&&r.status!=='ЗАМЕНЕНО';}):[]};}catch(e){norms={error:String(e.message||e)};}}
+  return {dish:dish,versions:versions,selected_ttk:selected,tech_spec:techSpec,norms:norms,recipes:getRecipeLines_('DISH',dishId,session),haccp_links:haccp,sanpin_links:sanpin,ppk:ppk,ppk_controls:controls,ppk_limits:limits,ppk_stages:stages,technology_steps:steps,food_cost:{себестоимость:Number(dish.себестоимость)||0,food_cost:Number(dish.food_cost)||0,маржа:Number(dish.маржа)||0}};
 }
 
 function createTtkHaccpLink_(data, session) {

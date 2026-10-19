@@ -235,6 +235,14 @@ var ACTION_HANDLERS = {
   // ТУ: расчёт КБЖУ/физ-хим/аллергенов по рецептуре и документ ТУ (TechSpecCore.gs).
   GET_TECH_SPEC: function (data, session) { return getTechSpec_(data || {}, session); },
   GET_TECH_SPEC_DOCUMENT: function (data, session) { return getTechSpecDocument_(data || {}, session); },
+  // Нормативный контур ТТК: этапы, срок годности, предложения ККТ (TechNormsCore.gs).
+  GET_TTK_NORMS_CONTEXT: function (data, session) { return getTtkNormsContext_(data || {}, session); },
+  GET_TECH_NORMS: function (data, session) { return getTechNorms_(session); },
+  VERIFY_TECH_NORM: function (data, session) { return verifyTechNorm_(data || {}, session); },
+  GENERATE_TTK_CCP_PROPOSALS: function (data, session) { return generateTtkCcpProposals_(data || {}, session); },
+  GET_TTK_CCP_PROPOSALS: function (data, session) { return getTtkCcpProposals_(data || {}, session); },
+  DECIDE_TTK_CCP_PROPOSAL: function (data, session) { return decideTtkCcpProposal_(data || {}, session); },
+  TRANSFER_TTK_CCP_TO_PPK: function (data, session) { return transferTtkCcpToPpk_(data || {}, session); },
   GENERATE_PPK_INSPECTION_A4_PDF: function (data, session) { return generatePpkInspectionA4Pdf_(session, data || {}); },
   ENQUEUE_OFFLINE_OPERATION: function (data, session) { return enqueueOfflineOperationHardened_(data || {}, session); },
   SYNC_OFFLINE_QUEUE: function (data, session) { return syncOfflineQueueHardened_(data || {}, session); },
