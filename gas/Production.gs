@@ -173,11 +173,11 @@ function _completeProduction_(task, userId, session) {
   if (task.parent_type === 'PF') {
     shelfLife = _resolveShelfLife_(parentObj);
   } else {
-    var ttk = typeof getCurrentTtk_ === 'function' ? getCurrentTtk_(task.parent_id, session) : null;
-    ttkVersionId = ttk ? ttk.ttk_version_id : '';
-    if (ttk) {
-      storage = ttk.условия_хранения || '';
-      var parsed = _parseShelfLifeTextHours_(ttk.срок_реализации);
+    var currentTtk = typeof getCurrentTtk_ === 'function' ? getCurrentTtk_(task.parent_id, session) : null;
+    ttkVersionId = currentTtk ? currentTtk.ttk_version_id : '';
+    if (currentTtk) {
+      storage = currentTtk.условия_хранения || '';
+      var parsed = _parseShelfLifeTextHours_(currentTtk.срок_реализации);
       if (parsed) {
         shelfLife = { срок_годности: new Date(Date.now() + parsed * 3600000).toISOString(), требует_подтверждения: false, сообщение: '' };
       } else {
