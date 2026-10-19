@@ -232,6 +232,9 @@ var ACTION_HANDLERS = {
   GET_HACCP_DECISIONS: function (data, session) { return findRows_('HACCP_DECISIONS', function(r){return r.organization_id===session.organization_id && (!data.batchId || r.batch_id===data.batchId);}); },
   GET_EMERGENCY_CENTER: function (data, session) { return getEmergencyCenter_(session); },
   GENERATE_TTK_A4_PDF: function (data, session) { return generateTtkA4Pdf_(session, data || {}); },
+  // ТУ: расчёт КБЖУ/физ-хим/аллергенов по рецептуре и документ ТУ (TechSpecCore.gs).
+  GET_TECH_SPEC: function (data, session) { return getTechSpec_(data || {}, session); },
+  GET_TECH_SPEC_DOCUMENT: function (data, session) { return getTechSpecDocument_(data || {}, session); },
   GENERATE_PPK_INSPECTION_A4_PDF: function (data, session) { return generatePpkInspectionA4Pdf_(session, data || {}); },
   ENQUEUE_OFFLINE_OPERATION: function (data, session) { return enqueueOfflineOperationHardened_(data || {}, session); },
   SYNC_OFFLINE_QUEUE: function (data, session) { return syncOfflineQueueHardened_(data || {}, session); },

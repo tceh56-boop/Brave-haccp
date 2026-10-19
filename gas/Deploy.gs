@@ -37,6 +37,7 @@ function runAllMigrations() {
   report.p22 = migrateP22Schema_();
   report.p22_3 = migrateP22_3EmployeeSafetySchema_();
   report.batchProductionDate = migrateBatchProductionDateSchema_();
+  report.techSpec = migrateTechSpecSchema_();
   Logger.log('runAllMigrations: готово. Запустите deployPreflight() для проверки.');
   return report;
 }

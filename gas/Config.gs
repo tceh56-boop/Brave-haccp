@@ -255,7 +255,7 @@ var CONFIG = {
 
     RECIPES: ['recipe_id', 'parent_type', 'parent_id', 'product_id', 'брутто', 'нетто', 'единица', 'потери_процент'],
     TECH_CARDS: ['ttk_id', 'dish_id', 'технология', 'фото_url', 'version', 'created_at', 'created_by', 'status'],
-    TTK_VERSIONS: ['ttk_version_id','dish_id','organization_id','version','status','источник','область_применения','технология','условия_хранения','срок_реализации','показатели_качества','пищевая_ценность','аллергенная_информация','технологические_этапы_json','ppk_id','recipe_snapshot_json','cost_snapshot','food_cost_snapshot','created_at','created_by','submitted_at','submitted_by','approved_at','approved_by','archived_at','archived_by'],
+    TTK_VERSIONS: ['ttk_version_id','dish_id','organization_id','version','status','источник','область_применения','технология','условия_хранения','срок_реализации','показатели_качества','пищевая_ценность','аллергенная_информация','технологические_этапы_json','ppk_id','recipe_snapshot_json','cost_snapshot','food_cost_snapshot','created_at','created_by','submitted_at','submitted_by','approved_at','approved_by','archived_at','archived_by','tech_spec_snapshot_json'],
     TTK_HACCP_LINKS: ['link_id','organization_id','ttk_version_id','ppk_id','hazard_id','control_id','stage_id','control_type','critical_limit_id','status','created_at','created_by'],
     BREAKDOWN_PLANS: ['plan_id','organization_id','название','input_product_id','input_unit','input_basis_qty','thaw_loss_pct','trim_loss_pct','status','version','workshop_id','created_at','created_by','approved_at','approved_by'],
     BREAKDOWN_PLAN_OUTPUTS: ['output_id','plan_id','organization_id','step_no','output_type','output_id_ref','название','planned_qty','единица','доля_распределения','приоритет','task_title','status','created_at'],
@@ -1048,7 +1048,7 @@ var CONFIG = {
     GET_P21_JOURNAL_MAP: 'recovery', GET_P21_AUTOMATION_CONTRACT: 'recovery', GET_P21_COVERAGE: 'recovery', GET_P21_FINAL_GATE: 'recovery',
     SCAN_AND_RECEIVE_INVOICE: 'warehouse_receive', SCAN_INVOICE_PREVIEW:'warehouse_receive', GET_INVOICE_INTAKE_DRAFT:'warehouse_view', CONFIRM_INVOICE_RECEIPT:'warehouse_receive', RESOLVE_INVOICE_INTAKE_LINE:'warehouse_receive', APPEND_INVOICE_INTAKE_PAGE:'warehouse_receive', GET_DOCUMENT_INTEGRITY_DASHBOARD:'warehouse_view',
     CHECK_DOCUMENT_INTEGRITY:'warehouse_receive', RUN_HACCP_DECISION_ENGINE:'ppk', GET_HACCP_DECISIONS:'ppk',
-    GET_EMERGENCY_CENTER:'dashboard', GENERATE_TTK_A4_PDF:'recipes', GENERATE_PPK_INSPECTION_A4_PDF:'ppk',
+    GET_EMERGENCY_CENTER:'dashboard', GENERATE_TTK_A4_PDF:'recipes', GET_TECH_SPEC:'recipes', GET_TECH_SPEC_DOCUMENT:'recipes', GENERATE_PPK_INSPECTION_A4_PDF:'ppk',
     ENQUEUE_OFFLINE_OPERATION:'offline', SYNC_OFFLINE_QUEUE:'offline', GET_RECURSIVE_BATCH_COST_TRACE:'warehouse_view',
     RELEASE_SEMI_FINISHED_QUALITY:'production', GET_DEPLOYMENT_READINESS:'dashboard', GET_OPERATIONAL_READINESS_STAGE12:'dashboard', GET_OPERATIONAL_READINESS_STAGE13:'dashboard', RUN_ENTERPRISE_E2E_TEST: 'recovery', GET_HACCP_DASHBOARD: 'ppk', GET_PPK_FINAL_GATE: 'ppk',
 

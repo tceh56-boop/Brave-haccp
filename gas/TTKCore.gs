@@ -52,14 +52,20 @@ function createTtkVersion_(data, session) {
     var versions = _ttkRows_('TTK_VERSIONS', function(r){ return r.dish_id === dish.dish_id; });
     var next = versions.reduce(function(m,r){ return Math.max(m, Number(r.version)||0); },0)+1;
     var ppk = typeof getCurrentPpk_ === 'function' ? getCurrentPpk_(session.organization_id) : null;
+    var steps = Array.isArray(data.технологическиеЭтапы) ? data.технологическиеЭтапы : [];
+    // КБЖУ/аллергены/показатели ТУ считаются по рецептуре автоматически (TechSpecCore.gs);
+    // ручной ввод технолога имеет приоритет над расчётом.
+    var spec = typeof calcTechSpecSafe_ === 'function' ? calcTechSpecSafe_('DISH', dish.dish_id, session, { ttkSteps: steps, storage: data.условия_хранения, shelfLife: data.срок_реализации, processing: data.обработка }) : null;
+    var autoText = spec && spec.text ? spec.text : {};
     var row = {
       ttk_version_id: generateId_('TTK_VERSIONS'), dish_id:dish.dish_id, organization_id:session.organization_id,
       version:next, status:'черновик', источник:data.источник||'Собственная разработка', область_применения:data.область_применения||dish.название,
       технология:String(data.технология), условия_хранения:String(data.условия_хранения), срок_реализации:String(data.срок_реализации),
-      показатели_качества:data.показатели_качества||'', пищевая_ценность:data.пишевая_ценность||data.пищевая_ценность||'', аллергенная_информация:data.аллергенная_информация||'',
-      технологические_этапы_json:JSON.stringify(Array.isArray(data.технологическиеЭтапы)?data.технологическиеЭтапы:[]),
+      показатели_качества:data.показатели_качества||'', пищевая_ценность:data.пишевая_ценность||data.пищевая_ценность||autoText.пищевая_ценность||'', аллергенная_информация:data.аллергенная_информация||autoText.аллергенная_информация||'',
+      технологические_этапы_json:JSON.stringify(steps),
       ppk_id:ppk ? ppk.ppk_id : '', created_at:nowIso_(), created_by:session.user_id, approved_at:'', approved_by:'', archived_at:'',
-      recipe_snapshot_json:JSON.stringify(recipe), cost_snapshot:Number(dish.себестоимость)||0, food_cost_snapshot:Number(dish.food_cost)||0
+      recipe_snapshot_json:JSON.stringify(recipe), cost_snapshot:Number(dish.себестоимость)||0, food_cost_snapshot:Number(dish.food_cost)||0,
+      tech_spec_snapshot_json:typeof techSpecSnapshotJson_==='function'?techSpecSnapshotJson_(spec):''
     };
     insertRow_('TTK_VERSIONS', row);
     if (typeof detectAndRequestPpkReview_ === 'function') detectAndRequestPpkReview_(session.organization_id,session.location_id,'RECIPE_CHANGED','TTK_VERSIONS',row.ttk_version_id,session.user_id,session,'Создана новая версия ТТК; требуется проверка влияния на ППК/HACCP.');
@@ -79,6 +85,15 @@ function updateTtkDraft_(ttkId, data, session) {
     ['источник','область_применения','технология','условия_хранения','срок_реализации','показатели_качества','пищевая_ценность','аллергенная_информация'].forEach(function(k){if(data[k]!==undefined)patch[k]=String(data[k]||'');});
     if(data.технологическиеЭтапы!==undefined) patch.технологические_этапы_json=JSON.stringify(Array.isArray(data.технологическиеЭтапы)?data.технологическиеЭтапы:[]);
     patch.recipe_snapshot_json=JSON.stringify(recipe);
+    if(typeof calcTechSpecSafe_==='function'){
+      var steps=data.технологическиеЭтапы!==undefined?(Array.isArray(data.технологическиеЭтапы)?data.технологическиеЭтапы:[]):JSON.parse(row.технологические_этапы_json||'[]');
+      var spec=calcTechSpecSafe_('DISH',dish.dish_id,session,{ttkSteps:steps,storage:data.условия_хранения,shelfLife:data.срок_реализации,processing:data.обработка});
+      if(spec.text){
+        if(!patch.пищевая_ценность&&!row.пищевая_ценность) patch.пищевая_ценность=spec.text.пищевая_ценность;
+        if(!patch.аллергенная_информация&&!row.аллергенная_информация) patch.аллергенная_информация=spec.text.аллергенная_информация;
+      }
+      patch.tech_spec_snapshot_json=techSpecSnapshotJson_(spec);
+    }
     patch.cost_snapshot=Number(dish.себестоимость)||0;
     patch.food_cost_snapshot=Number(dish.food_cost)||0;
     updateRow_('TTK_VERSIONS',row,patch);
@@ -105,7 +120,10 @@ function approveTtkVersion_(ttkId, session) {
     if (JSON.stringify(recipe)!==String(row.recipe_snapshot_json||'')) throw new Error('Рецептура изменилась после создания версии ТТК. Создайте новую версию.');
     var current=_ttkCurrent_(dish.dish_id);
     if (current && current.ttk_version_id!==row.ttk_version_id) updateRow_('TTK_VERSIONS',current,{status:'архив',archived_at:nowIso_(),archived_by:session.user_id});
-    updateRow_('TTK_VERSIONS',row,{status:'утверждена',approved_at:nowIso_(),approved_by:session.user_id});
+    var approvePatch={status:'утверждена',approved_at:nowIso_(),approved_by:session.user_id};
+    // Снимок расчётных показателей фиксируется на момент утверждения: дальнейшие правки справочника сырья не меняют утверждённую ТТК.
+    if(typeof calcTechSpecSafe_==='function'){var steps=[];try{steps=JSON.parse(row.технологические_этапы_json||'[]');}catch(e){steps=[];}approvePatch.tech_spec_snapshot_json=techSpecSnapshotJson_(calcTechSpecSafe_('DISH',dish.dish_id,session,{ttkSteps:steps,storage:row.условия_хранения,shelfLife:row.срок_реализации}));}
+    updateRow_('TTK_VERSIONS',row,approvePatch);
     auditLog_(session.user_id,'Утверждена ТТК','TTK_VERSIONS:'+ttkId,'на_согласовании','утверждена','success',session.cascade_id||'');
     return findOne_('TTK_VERSIONS','ttk_version_id',ttkId);
   });
@@ -142,7 +160,8 @@ function getTtkEditorContext_(dishId, session, ttkVersionId) {
   } catch(e) {}
   var stagesJson=selected&&selected.технологические_этапы_json?selected.технологические_этапы_json:'[]';
   var steps=[]; try{steps=JSON.parse(stagesJson||'[]');if(!Array.isArray(steps))steps=[];}catch(e){steps=[];}
-  return {dish:dish,versions:versions,selected_ttk:selected,recipes:getRecipeLines_('DISH',dishId,session),haccp_links:haccp,sanpin_links:sanpin,ppk:ppk,ppk_controls:controls,ppk_limits:limits,ppk_stages:stages,technology_steps:steps,food_cost:{себестоимость:Number(dish.себестоимость)||0,food_cost:Number(dish.food_cost)||0,маржа:Number(dish.маржа)||0}};
+  var techSpec=typeof calcTechSpecSafe_==='function'?calcTechSpecSafe_('DISH',dishId,session,{ttkSteps:steps,storage:selected?selected.условия_хранения:'',shelfLife:selected?selected.срок_реализации:''}):null;
+  return {dish:dish,versions:versions,selected_ttk:selected,tech_spec:techSpec,recipes:getRecipeLines_('DISH',dishId,session),haccp_links:haccp,sanpin_links:sanpin,ppk:ppk,ppk_controls:controls,ppk_limits:limits,ppk_stages:stages,technology_steps:steps,food_cost:{себестоимость:Number(dish.себестоимость)||0,food_cost:Number(dish.food_cost)||0,маржа:Number(dish.маржа)||0}};
 }
 
 function createTtkHaccpLink_(data, session) {
