@@ -1,7 +1,7 @@
 {
-  "built_at": "2026-10-19T15:23:25.341763+00:00",
-  "stage": 114,
-  "name": "Банкетный бланк → План-меню",
+  "built_at": "2026-10-19T19:41:54.219351+00:00",
+  "stage": 115,
+  "name": "Мастер ППК: цифровое предприятие",
   "files": [
     {
       "name": "INSTALL.md",
@@ -52,6 +52,11 @@
       "name": "STAGE113_MERCURY_QR_CORRECTIONS.md",
       "bytes": 14066,
       "sha256": "f19ebc3a586c53dd69c93ada14acedb3d5abea4d1d530b910df81a1f989edc8d"
+    },
+    {
+      "name": "STAGE114_BANQUET_BLANK.md",
+      "bytes": 9210,
+      "sha256": "e6b1830d697cabfe0fd4d30bbb5e5795515d596efd21ce62d4fa5d40a7b1cfe7"
     },
     {
       "name": "STAGE25_AUTOMATION_DECISION_ENGINE.md",
@@ -169,14 +174,39 @@
       "sha256": "dd9c644c509c0a90b9d8f87479da6047bd336de08263756094241a727a5eabc4"
     },
     {
+      "name": "docs/ppk_walkthrough/README.md",
+      "bytes": 6933,
+      "sha256": "ea61ca6bf17bcb82d6487ecb14087ef52349c68235c5bdf1b5f8412d5460613f"
+    },
+    {
+      "name": "docs/ppk_walkthrough/s1.png",
+      "bytes": 63923,
+      "sha256": "30d1e9de999224f4f30ec54c1825ef93b8ceda3e5f215e4efeb1ad11507e6b18"
+    },
+    {
+      "name": "docs/ppk_walkthrough/s10.png",
+      "bytes": 193708,
+      "sha256": "5867f506703d7fbbd200f53e2c0f560af301c597b7b8ec1bb19fcc33d8f0c896"
+    },
+    {
+      "name": "docs/ppk_walkthrough/s3.png",
+      "bytes": 116134,
+      "sha256": "7c9ed16ffe8f9c9a1ab94a3db012976726b9241138c0489081f283dbcea909d3"
+    },
+    {
+      "name": "docs/ppk_walkthrough/s8.png",
+      "bytes": 192029,
+      "sha256": "00a9f54756bd2961dfcc53f283abbbacdef3daee6d09e11820a93cc8988f8c7b"
+    },
+    {
       "name": "gas/AI.gs",
       "bytes": 4581,
       "sha256": "d4623f50729218e120e9bb4137d7dc612c785deb106e578527cf038f4bc77045"
     },
     {
       "name": "gas/API.gs",
-      "bytes": 115865,
-      "sha256": "b8b92a6913e3235747dd9d428684f987ed2c1ff9f160e7ba833df376d43dfdf3"
+      "bytes": 118145,
+      "sha256": "97ead0d698a57ead80cd343f9f47c3b430de0c91fce381f711bc49da50115926"
     },
     {
       "name": "gas/AiCopilotStage24.gs",
@@ -249,6 +279,11 @@
       "sha256": "493b42a98a93d44d97375ed58294e3c4e9977dfa3932224a592e945483709472"
     },
     {
+      "name": "gas/BanquetOcrCore.gs",
+      "bytes": 105815,
+      "sha256": "68f2147612200911f98c9fe9f87c1b2ad446d3c98146c7f4ae885c622a981104"
+    },
+    {
       "name": "gas/BatchProductionDateMigration.gs",
       "bytes": 398,
       "sha256": "221e643dd545a1d8663a26d3f971eeffe1fac295aec3788c92d348d718610376"
@@ -310,8 +345,8 @@
     },
     {
       "name": "gas/Config.gs",
-      "bytes": 163710,
-      "sha256": "912da7a4b4a9213790048a6fef59b9b1dd9145e72cfb39c13fb668d52fd5ba72"
+      "bytes": 166335,
+      "sha256": "545c347beb82eaa3a4ac5d6616432dc94cfbaa0ad80caf1bb2bd04dfaa6a1158"
     },
     {
       "name": "gas/ConfigurationCenterStage28.gs",
@@ -375,8 +410,8 @@
     },
     {
       "name": "gas/Deploy.gs",
-      "bytes": 18225,
-      "sha256": "280e23aba471ddc82ee82c015de71f878a54167c6e10ff81f1b4f3a0a42d1d27"
+      "bytes": 18273,
+      "sha256": "5702f46edd427bc0279819cf916de7db5702c46431e4cf32e628f08c19855fdc"
     },
     {
       "name": "gas/Economics.gs",
@@ -470,8 +505,8 @@
     },
     {
       "name": "gas/Index.html",
-      "bytes": 458941,
-      "sha256": "369ac9c11dc5baf39ef702a75ef4c689fcb3948f11a60019ed18f24613267b5b"
+      "bytes": 504032,
+      "sha256": "a943b50cf903e5f4756aaca83bad6a3e0b8c56655b0485fa93c7a0a16c24cf3a"
     },
     {
       "name": "gas/Integrations.gs",
@@ -640,13 +675,13 @@
     },
     {
       "name": "gas/PpkDocuments.gs",
-      "bytes": 373,
-      "sha256": "a7e2e462d02cd06ae8f6c672b53b80366aebe81d4c37b3fd11d5666475f5d298"
+      "bytes": 570,
+      "sha256": "2ace207e40e19c4e18f413ff40629011ea206a93978b9e92c24eff0880973994"
     },
     {
       "name": "gas/PpkGenerator.gs",
-      "bytes": 36705,
-      "sha256": "c0e7d44f418cf23c1bd7adfeb324d9ac8beb06f673ac234f152a70e29efe1149"
+      "bytes": 37641,
+      "sha256": "10b00aa43541ccd9b2e4fa517778d283900439e685a1149278f4c632dc297be0"
     },
     {
       "name": "gas/PpkReview.gs",
@@ -884,7 +919,7 @@
       "sha256": "93e824c657f4045a8ed16edff8793a32210f45a4a2f6ebd9492f367358416a7e"
     }
   ],
-  "file_count": 176,
-  "aggregate_sha256": "f01bc4cdc7a1b11c708e83a503cd7c1288518627380b56bc2b8fdff005930d4f",
+  "file_count": 183,
+  "aggregate_sha256": "91c7433bb0424cf295b56a95abba0a1e38c6ff402966324eeca83718a52ae605",
   "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
 }

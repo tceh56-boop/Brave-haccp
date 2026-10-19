@@ -48,6 +48,7 @@ function runAllMigrations() {
   report.fiscalQr = migrateFiscalQrSchema_();
   report.receiptCorrections = migrateReceiptCorrectionSchema_();
   report.banquetOcr = migrateBanquetOcrSchema_();
+  report.ppkWizard = migratePpkWizardSchema_();
   Logger.log('runAllMigrations: готово. Запустите deployPreflight() для проверки.');
   return report;
 }

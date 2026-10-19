@@ -120,6 +120,18 @@
   .ttk-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
   .ttk-readonly{background:#faf8f5;border:1px dashed #d7cec4;border-radius:10px;padding:10px}
   .ttk-a4-preview{background:#fff;border:1px solid #ddd;padding:20px;max-height:560px;overflow:auto}
+  .wz-steps{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .wz-step{border:1px solid #ddd;background:#fff;border-radius:18px;padding:5px 10px;font-size:12px;cursor:pointer}
+  .wz-step.on{border-color:#211812;font-weight:700}
+  .wz-step .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#bbb}
+  .wz-step.DONE .dot{background:#16A344}.wz-step.WARN .dot{background:#F0A93A}.wz-step.TODO .dot{background:#EF4444}
+  .wz-warn{background:#fff7e6;border-left:3px solid #F0A93A;padding:6px 8px;margin:6px 0;font-size:12px}
+  .wz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+  .wz-grid label{font-size:12px;color:#555;display:block}
+  .wz-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+  .wz-cat{margin-top:10px;font-weight:700;font-size:12px;color:#555;text-transform:uppercase}
+  .wz-doc h3{font-size:14px;margin:14px 0 4px}.wz-doc p{margin:4px 0}.wz-empty{color:#a33;font-style:italic;font-size:12px}
+  .ttk-table input,.ttk-table select{font-size:12px;padding:3px;min-width:0}
   .ttk-table{width:100%;border-collapse:collapse}
   .ttk-table th,.ttk-table td{border:1px solid #ddd;padding:6px;font-size:11px;vertical-align:top}
   .ttk-table th{background:#f7f3ee}
@@ -481,18 +493,23 @@
       <button class="btn" onclick="generatePpkModel()">Собрать / обновить модель ППК</button>
       <div class="muted">Генератор использует реальные организации, точки, цеха, оборудование, номенклатуру, рецептуры, поставщиков, лабораторию и нормативы. Нормативные значения не придумываются.</div>
     </div>
-    <div class="card">
-      <h2>Мастер ППК</h2>
-      <div id="ppkWizardState" class="muted">Шаги: предприятие → объекты → оборудование → номенклатура → рецептуры → поставщики → потоки → HACCP → контроль → журналы → верификация → документ.</div>
-      <button class="btn secondary small" onclick="loadPpkGeneratorContext()">Проверить исходные данные</button>
+    <div class="card" id="wzCard">
+      <div class="row-between"><h2>Мастер ППК — цифровое предприятие</h2><button class="btn secondary small" style="width:auto" onclick="loadPpkWizard()">Обновить</button></div>
+      <div class="muted">Система предлагает типовой состав, вы отмечаете то, что есть на самом деле. Предложение само ничего не создаёт.</div>
+      <div id="wzSteps" class="wz-steps"></div>
+      <div id="wzBody" class="muted">Загрузка…</div>
+    </div>
+    <details class="card"><summary><b>Технические данные (JSON)</b></summary>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn secondary small" onclick="loadPpkGeneratorContext()">Исходные данные</button>
       <button class="btn secondary small" onclick="loadPpkFlow()">Карта потоков</button>
-      <button class="btn secondary small" onclick="loadPpkHazards()">Анализ опасностей</button>
+      <button class="btn secondary small" onclick="loadPpkHazards()">Опасности</button>
       <button class="btn secondary small" onclick="loadPpkControls()">Контрольные точки</button>
       <button class="btn secondary small" onclick="loadPpkReviews()">Пересмотр</button>
-      <button class="btn secondary small" onclick="loadPpkDocument()">Документ ППК</button>
+      <button class="btn secondary small" onclick="loadPpkDocument()">Документ (модель)</button></div>
       <div class="card" style="margin-top:10px"><div class="row-between"><b>Ядро P22</b><span id="p22GateBadge" class="badge b-info">—</span></div><div class="muted">Контроль Event → Cascade → расчёты → P21 coverage. Только чтение.</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn secondary small" onclick="loadP22Gate()">P22 Final Gate</button><button class="btn secondary small" onclick="loadP21Coverage()">P21 Coverage</button><button class="btn secondary small" onclick="loadP22Recovery()">Recovery</button></div></div>
-    </div>
-    <div class="card"><h2>Результат</h2><pre id="ppkModelOutput" style="white-space:pre-wrap;font-size:12px;max-height:480px;overflow:auto;">—</pre></div>
+      <pre id="ppkModelOutput" style="white-space:pre-wrap;font-size:12px;max-height:480px;overflow:auto;">—</pre>
+    </details>
     <div class="card">
       <h2>Версии ППК</h2>
       <div id="ppkVersionsList" class="muted">Загрузка…</div>
@@ -2382,6 +2399,7 @@
   /* ---------- ППК / HACCP Generator ---------- */
   function ppkOut(x){document.getElementById('ppkModelOutput').textContent=JSON.stringify(x,null,2);}
   function loadPpk(){
+    loadPpkWizard();
     call('GET_PPK_COMPLIANCE',{},function(c){
       document.getElementById('ppkStatusBadge').textContent=c.status||'—';
       var n=c.counts||{};
@@ -2399,6 +2417,191 @@
     call('GET_PPK_VERSIONS',{},function(rows){var el=document.getElementById('ppkVersionsList');if(!rows.length){el.textContent='Версий ещё нет.';return;}el.innerHTML=rows.slice().sort(function(a,b){return Number(b.version)-Number(a.version);}).map(function(v){var bc=v.status==='APPROVED'?'b-ok':(v.status==='REVIEW'?'b-warn':'b-info');var a='';if(v.status==='DRAFT')a='<button class="btn secondary small" onclick="ppkSubmitForReview('+jsArg(v.ppk_id)+')">На согласование</button>';if(v.status==='REVIEW')a='<button class="btn small" onclick="ppkApprove('+jsArg(v.ppk_id)+')">Утвердить</button>';return '<div class="taskrow"><div class="row-between"><b>v'+v.version+'</b><span class="badge '+bc+'">'+compEsc(v.status)+'</span></div><div class="muted">'+compEsc(v.effective_from||'без даты вступления')+'</div>'+a+'</div>';}).join('');});
   }
   function generatePpkModel(){call('GENERATE_PPK',{},function(r){ppkOut(r);loadPpk();},function(e){alert(e);});}
+  /* ---------- Мастер ППК: цифровое предприятие ---------- */
+  var wz={state:null,catalog:null,step:'enterprise',premise:'',proposal:null};
+  var WZ_ZONES=['грязная','чистая','нейтральная'];
+  var WZ_RESP_ROLES=['Ответственный за производственный контроль','Руководитель рабочей группы ХАССП','Член рабочей группы ХАССП','Ответственный за приёмку сырья','Ответственный за ведение журналов','Ответственный за дезинфекцию и уборку','Ответственный за медицинские книжки'];
+  var WZ_BLOCKERS={NO_PPK:'модель ППК не собрана',UNCONFIRMED_HAZARD:'есть неподтверждённые опасности',UNCONFIRMED_CONTROL:'есть неподтверждённые контроли',CCP_NOT_HUMAN_CONFIRMED:'ККТ не подтверждены человеком',LIMIT_NOT_CONFIRMED:'есть неподтверждённые критические пределы'};
+  function wzE(s){return compEsc(s==null?'':s);}
+  function wzV(id){var el=document.getElementById(id);return el?el.value:'';}
+  function wzNum(v){return v===null||v===undefined||v===''?'':v;}
+  function wzErr(e){alert(e);}
+  function loadPpkWizard(step){
+    if(step)wz.step=step;
+    call('GET_PPK_WIZARD',{withCatalog:!wz.catalog},function(st){
+      wz.state=st;if(st.catalog)wz.catalog=st.catalog;
+      if(!wz.premise||!st.premises.some(function(p){return p.premise_id===wz.premise;}))wz.premise=st.premises[0]?st.premises[0].premise_id:'';
+      wzRenderSteps();wzRender();
+    },function(e){document.getElementById('wzBody').textContent=e;});
+  }
+  function wzGo(step){wz.step=step;wz.proposal=null;wzRenderSteps();wzRender();}
+  function wzRenderSteps(){
+    document.getElementById('wzSteps').innerHTML=wz.state.steps.map(function(s,i){return '<span class="wz-step '+s.status+(s.code===wz.step?' on':'')+'" onclick="wzGo('+jsArg(s.code)+')"><span class="dot"></span>'+(i+1)+'. '+wzE(s.title)+'</span>';}).join('');
+  }
+  function wzStep(){var c=wz.step;return wz.state.steps.filter(function(s){return s.code===c;})[0];}
+  function wzHead(){var s=wzStep();return '<div class="row-between"><b>'+wzE(s.title)+'</b><span class="muted">'+wzE(s.summary)+'</span></div>'+(s.warnings||[]).map(function(w){return '<div class="wz-warn">'+wzE(w)+'</div>';}).join('');}
+  function wzRender(){
+    var b=document.getElementById('wzBody'),f={enterprise:wzEnterprise,premises:wzPremises,equipment:wzEquipment,inventory:wzInventory,disinfection:wzDisinfection,nomenclature:wzNomenclature,processes:wzProcesses,hazards:wzHazards,controls:wzControls,journals:wzJournals,document:wzDocument}[wz.step];
+    b.className='';b.innerHTML=wzHead()+'<div id="wzStepBody" style="margin-top:8px"></div>';f(document.getElementById('wzStepBody'));
+  }
+  function wzPremiseTabs(onclick){
+    var st=wz.state;if(!st.premises.length)return '<div class="wz-warn">Сначала заведите помещения (шаг 2).</div>';
+    return '<div class="wz-tabs">'+st.premises.map(function(p){var n=onclick==='eq'?st.equipment.filter(function(e){return e.premise_id===p.premise_id;}).length:st.inventory.filter(function(i){return i.premise_id===p.premise_id;}).length;return '<button class="btn small '+(p.premise_id===wz.premise?'':'secondary')+'" style="width:auto" onclick="wz.premise='+jsArg(p.premise_id)+';wz.proposal=null;wzRender()">'+wzE(p.name)+' ('+n+')</button>';}).join('')+'</div>';
+  }
+  function wzPrem(){var id=wz.premise;return wz.state.premises.filter(function(p){return p.premise_id===id;})[0];}
+
+  // 1. Предприятие
+  function wzEnterprise(el){
+    var e=wz.state.enterprise||{},T=wz.catalog.templates;
+    var fld=function(k,label,type){return '<div><label>'+label+'</label><input id="wzE_'+k+'" type="'+(type||'text')+'" value="'+compAttr(e[k]||'')+'"></div>';};
+    var resp=(e.responsible||[]).slice();if(!resp.length)resp.push({role:WZ_RESP_ROLES[0],name:'',position:'',order:''});
+    wz.resp=resp;
+    el.innerHTML='<div class="wz-grid"><div><label>Тип предприятия</label><select id="wzE_template_code"><option value="">— выберите —</option>'+Object.keys(T).map(function(k){return '<option value="'+k+'"'+(e.template_code===k?' selected':'')+'>'+wzE(T[k].name)+'</option>';}).join('')+'</select></div>'+
+      fld('format','Формат (меню, кухня)')+fld('service_type','Обслуживание (зал, доставка, банкеты)')+fld('seats','Посадочных мест','number')+fld('meals_per_day','Блюд (порций) в сутки','number')+fld('shifts','Смен','number')+fld('work_hours','Режим работы')+fld('staff_count','Персонал, чел.','number')+fld('area_m2','Общая площадь, м²','number')+
+      fld('water_source','Водоснабжение')+fld('sewage','Водоотведение')+fld('ventilation','Вентиляция')+fld('waste_contractor','Вывоз отходов (подрядчик, договор)')+fld('pest_contractor','Дезинсекция/дератизация (подрядчик)')+fld('lab_contractor','Лаборатория (аккредитованная)')+fld('laundry','Стирка санодежды')+fld('medical_org','Медосмотры (организация)')+'</div>'+
+      '<div style="margin-top:10px"><b>Ответственные лица</b></div><div id="wzResp"></div><button class="btn secondary small" style="width:auto" onclick="wzRespAdd()">+ ответственный</button> '+
+      '<button class="btn" style="margin-top:10px" onclick="wzSaveEnterprise()">Сохранить и перейти к помещениям</button>';
+    wzRespRender();
+  }
+  function wzRespRender(){document.getElementById('wzResp').innerHTML='<table class="ttk-table"><tr><th>Обязанность</th><th>ФИО</th><th>Должность</th><th>Приказ</th><th></th></tr>'+wz.resp.map(function(r,i){return '<tr><td><select id="wzR_role_'+i+'">'+WZ_RESP_ROLES.concat(WZ_RESP_ROLES.indexOf(r.role)<0&&r.role?[r.role]:[]).map(function(x){return '<option'+(x===r.role?' selected':'')+'>'+wzE(x)+'</option>';}).join('')+'</select></td><td><input id="wzR_name_'+i+'" value="'+compAttr(r.name)+'"></td><td><input id="wzR_position_'+i+'" value="'+compAttr(r.position)+'"></td><td><input id="wzR_order_'+i+'" value="'+compAttr(r.order)+'"></td><td><button class="btn secondary small" onclick="wzRespCollect();wz.resp.splice('+i+',1);wzRespRender()">✕</button></td></tr>';}).join('')+'</table>';}
+  function wzRespCollect(){wz.resp=wz.resp.map(function(r,i){return {role:wzV('wzR_role_'+i),name:wzV('wzR_name_'+i),position:wzV('wzR_position_'+i),order:wzV('wzR_order_'+i)};});}
+  function wzRespAdd(){wzRespCollect();wz.resp.push({role:WZ_RESP_ROLES[0],name:'',position:'',order:''});wzRespRender();}
+  function wzSaveEnterprise(){
+    wzRespCollect();var d={responsible:wz.resp};['template_code','format','service_type','seats','meals_per_day','shifts','work_hours','staff_count','area_m2','water_source','sewage','ventilation','waste_contractor','pest_contractor','lab_contractor','laundry','medical_org'].forEach(function(k){d[k]=wzV('wzE_'+k);});
+    if(!d.template_code){alert('Выберите тип предприятия — от него зависит предложение помещений.');return;}
+    call('SAVE_PPK_ENTERPRISE',d,function(){loadPpkWizard('premises');},wzErr);
+  }
+
+  // 2. Помещения и зоны
+  function wzPremises(el){
+    var st=wz.state,C=wz.catalog.premises;
+    var rows=st.premises.map(function(p){var i=p.premise_id;return '<tr><td><input id="wzP_name_'+i+'" value="'+compAttr(p.name)+'"></td><td><select id="wzP_zone_'+i+'">'+WZ_ZONES.map(function(z){return '<option'+(z===p.zone?' selected':'')+'>'+z+'</option>';}).join('')+'</select></td><td><input id="wzP_area_'+i+'" type="number" step="0.1" style="width:70px" value="'+wzNum(p.area_m2)+'"></td><td><input id="wzP_walls_'+i+'" type="number" step="0.1" style="width:70px" value="'+wzNum(p.walls_m2)+'"></td><td>'+(p.workshop_id?'цех':'')+'</td><td style="white-space:nowrap"><button class="btn secondary small" onclick="wzPremiseSave('+jsArg(i)+')">Сохранить</button> <button class="btn secondary small" onclick="wzPremiseArchive('+jsArg(i)+')">✕</button></td></tr>';}).join('');
+    var h=st.premises.length?'<div style="overflow:auto"><table class="ttk-table"><tr><th>Помещение</th><th>Зона</th><th>Пол, м²</th><th>Стены, м²</th><th></th><th></th></tr>'+rows+'</table></div><div class="muted">Площадь пола нужна для расчёта дезсредств. Площадь стен — для генеральной уборки.</div>':'<div class="muted">Помещений пока нет.</div>';
+    h+='<div style="margin-top:10px"><button class="btn secondary small" style="width:auto" onclick="wzProposePremises()">Предложить помещения по типу предприятия</button></div><div id="wzPropPrem"></div>';
+    h+='<div style="margin-top:10px"><b>Своё помещение</b><div class="wz-grid"><div><label>Вид</label><select id="wzNP_code">'+Object.keys(C).map(function(k){return '<option value="'+k+'">'+wzE(C[k].name)+'</option>';}).join('')+'</select></div><div><label>Название</label><input id="wzNP_name" placeholder="например, Цех упаковки №2"></div><div><label>Площадь пола, м²</label><input id="wzNP_area" type="number" step="0.1"></div><div><label>Площадь стен, м²</label><input id="wzNP_walls" type="number" step="0.1"></div></div><button class="btn secondary small" style="width:auto;margin-top:6px" onclick="wzAddOwnPremise()">Добавить помещение</button></div>';
+    el.innerHTML=h;
+  }
+  function wzProposePremises(){call('PROPOSE_PPK_PREMISES',{},function(list){wz.proposal=list;document.getElementById('wzPropPrem').innerHTML='<div style="overflow:auto;margin-top:6px"><table class="ttk-table"><tr><th></th><th>Помещение</th><th>Зона</th><th>Пол, м²</th><th>Стены, м²</th><th>Типовой состав</th></tr>'+list.map(function(p,i){return '<tr><td><input type="checkbox" id="wzPP_on_'+i+'"'+(p.existing?' disabled':'')+'></td><td><input id="wzPP_name_'+i+'" style="min-width:170px" value="'+compAttr(p.name)+'"></td><td>'+wzE(p.zone)+'</td><td><input id="wzPP_area_'+i+'" type="number" step="0.1" style="width:70px"></td><td><input id="wzPP_walls_'+i+'" type="number" step="0.1" style="width:70px"></td><td class="muted">'+(p.existing?'уже заведено':p.equipment+' видов оборудования, '+p.inventory+' инвентаря')+'</td></tr>';}).join('')+'</table></div><button class="btn secondary small" style="width:auto" onclick="wz.proposal.forEach(function(p,i){var c=document.getElementById(\'wzPP_on_\'+i);if(!c.disabled)c.checked=true;})">Отметить все</button> <button class="btn small" style="width:auto" onclick="wzSaveProposedPremises()">Завести отмеченные</button>';},wzErr);}
+  function wzSaveProposedPremises(){var list=[];wz.proposal.forEach(function(p,i){if(document.getElementById('wzPP_on_'+i).checked)list.push({code:p.code,name:wzV('wzPP_name_'+i),area_m2:wzV('wzPP_area_'+i),walls_m2:wzV('wzPP_walls_'+i)});});if(!list.length){alert('Отметьте помещения, которые есть на предприятии.');return;}call('SAVE_PPK_PREMISES',{premises:list},function(){wz.proposal=null;loadPpkWizard();},wzErr);}
+  function wzAddOwnPremise(){var n=wzV('wzNP_name');if(!n){alert('Введите название помещения.');return;}call('SAVE_PPK_PREMISES',{premises:[{code:wzV('wzNP_code'),name:n,area_m2:wzV('wzNP_area'),walls_m2:wzV('wzNP_walls')}]},function(){loadPpkWizard();},wzErr);}
+  function wzPremiseSave(id){call('UPDATE_PPK_PREMISE',{premiseId:id,patch:{name:wzV('wzP_name_'+id),zone_class:wzV('wzP_zone_'+id),area_m2:wzV('wzP_area_'+id),walls_m2:wzV('wzP_walls_'+id)}},function(){loadPpkWizard();},wzErr);}
+  function wzPremiseArchive(id){if(!confirm('Убрать помещение в архив?'))return;call('ARCHIVE_PPK_PREMISE',{premiseId:id},function(){loadPpkWizard();},wzErr);}
+
+  // 3. Оборудование
+  function wzEquipment(el){
+    var st=wz.state,K=wz.catalog.equipment,p=wzPrem(),h=wzPremiseTabs('eq');if(!p){el.innerHTML=h;return;}
+    var mine=st.equipment.filter(function(e){return e.premise_id===p.premise_id;});
+    h+='<div class="muted">«'+wzE(p.name)+'»: '+wzE(p.zone)+' зона'+(p.area_m2?', '+p.area_m2+' м²':', площадь не указана')+'.</div>';
+    wz.catalog.categories.forEach(function(cat){var l=mine.filter(function(e){return e.category===cat;});if(!l.length)return;h+='<div class="wz-cat">'+wzE(cat)+'</div><div style="overflow:auto"><table class="ttk-table"><tr><th>Оборудование</th><th>№</th><th>t мин</th><th>t макс</th><th>Поверхность, м²</th><th>След. поверка</th><th></th></tr>'+l.map(function(e){var i=e.equipment_id;var cold=e.journal_kind==='FRIDGE_TEMP';return '<tr><td><input id="wzQ_name_'+i+'" style="min-width:170px" value="'+compAttr(e.name)+'"></td><td><input id="wzQ_num_'+i+'" style="width:60px" value="'+compAttr(e.number)+'"></td><td>'+(cold||e.tmin!==null?'<input id="wzQ_tmin_'+i+'" type="number" style="width:55px" value="'+wzNum(e.tmin)+'">':'')+'</td><td>'+(cold||e.tmax!==null?'<input id="wzQ_tmax_'+i+'" type="number" style="width:55px" value="'+wzNum(e.tmax)+'">':'')+'</td><td><input id="wzQ_surf_'+i+'" type="number" step="0.1" style="width:60px" value="'+wzNum(e.surface_m2)+'"></td><td>'+(e.verify?'<input id="wzQ_next_'+i+'" type="date" value="'+compAttr(String(e.next_check).slice(0,10))+'">':'')+'</td><td style="white-space:nowrap"><button class="btn secondary small" onclick="wzEqSave('+jsArg(i)+')">Сохранить</button> <button class="btn secondary small" onclick="wzEqArchive('+jsArg(i)+')">✕</button></td></tr>';}).join('')+'</table></div>';});
+    if(!mine.length)h+='<div class="muted">Оборудования в помещении пока нет.</div>';
+    h+='<div style="margin-top:10px"><button class="btn secondary small" style="width:auto" onclick="wzProposeEq()">Предложить типовое оснащение помещения</button></div><div id="wzPropEq"></div>';
+    h+='<div style="margin-top:10px"><b>Добавить из каталога</b><div class="wz-grid"><div><label>Категория</label><select id="wzNE_cat" onchange="wzKindOptions()">'+wz.catalog.categories.map(function(c){return '<option>'+wzE(c)+'</option>';}).join('')+'</select></div><div><label>Вид</label><select id="wzNE_kind"></select></div><div><label>Название (если своё)</label><input id="wzNE_name"></div><div><label>Количество</label><input id="wzNE_qty" type="number" value="1" min="1"></div><div><label>Поверхность для обработки, м²</label><input id="wzNE_surf" type="number" step="0.1"></div></div><button class="btn secondary small" style="width:auto;margin-top:6px" onclick="wzAddEq()">Добавить</button></div>';
+    var unbound=st.equipment.filter(function(e){return !e.premise_id;});
+    if(unbound.length)h+='<div style="margin-top:12px"><b>Заведено раньше без помещения</b>'+unbound.map(function(e){var i=e.equipment_id;return '<div class="row-between" style="padding:4px 0"><span>'+wzE(e.name)+'</span><span><select id="wzB_kind_'+i+'">'+Object.keys(K).map(function(k){return '<option value="'+k+'">'+wzE(K[k].cat.toLowerCase()+': '+K[k].name)+'</option>';}).join('')+'</select> <button class="btn secondary small" style="width:auto" onclick="wzBindEq('+jsArg(i)+')">В «'+wzE(p.name)+'»</button></span></div>';}).join('')+'</div>';
+    el.innerHTML=h;wzKindOptions();
+  }
+  function wzKindOptions(){var K=wz.catalog.equipment,c=wzV('wzNE_cat'),s=document.getElementById('wzNE_kind');if(!s)return;s.innerHTML=Object.keys(K).filter(function(k){return K[k].cat===c;}).map(function(k){return '<option value="'+k+'">'+wzE(K[k].name)+'</option>';}).join('')+'<option value="">— другое —</option>';}
+  function wzProposeEq(){call('PROPOSE_PPK_EQUIPMENT',{premiseId:wz.premise},function(list){wz.proposal=list;document.getElementById('wzPropEq').innerHTML='<div style="overflow:auto;margin-top:6px"><table class="ttk-table"><tr><th></th><th>Категория</th><th>Оборудование</th><th>Кол-во</th><th>t мин</th><th>t макс</th><th>Журнал / поверка</th></tr>'+list.map(function(x,i){return '<tr><td><input type="checkbox" id="wzPE_on_'+i+'"></td><td>'+wzE(x.category)+'</td><td>'+wzE(x.name)+(x.existing?' <span class="muted">(уже '+x.existing+')</span>':'')+'</td><td><input id="wzPE_qty_'+i+'" type="number" min="1" style="width:50px" value="'+(x.existing?1:x.suggested)+'"></td><td>'+(x.tmin!==''||x.tmax!==''?'<input id="wzPE_tmin_'+i+'" type="number" style="width:55px" value="'+x.tmin+'">':'')+'</td><td>'+(x.tmin!==''||x.tmax!==''?'<input id="wzPE_tmax_'+i+'" type="number" style="width:55px" value="'+x.tmax+'">':'')+'</td><td class="muted">'+wzE(x.journal||(x.verify?'поверка':''))+'</td></tr>';}).join('')+'</table></div><div class="muted">Температуры — типовые, сверьте с условиями хранения изготовителя продукции.</div><button class="btn small" style="width:auto" onclick="wzSaveProposedEq()">Добавить отмеченное</button>';},wzErr);}
+  function wzSaveProposedEq(){var items=[];wz.proposal.forEach(function(x,i){if(!document.getElementById('wzPE_on_'+i).checked)return;var it={kind_code:x.kind_code,qty:wzV('wzPE_qty_'+i)};if(document.getElementById('wzPE_tmin_'+i)){it.tmin=wzV('wzPE_tmin_'+i);it.tmax=wzV('wzPE_tmax_'+i);}items.push(it);});if(!items.length){alert('Отметьте оборудование, которое есть в помещении.');return;}call('ADD_PPK_EQUIPMENT',{premiseId:wz.premise,items:items},function(){wz.proposal=null;loadPpkWizard();},wzErr);}
+  function wzAddEq(){var k=wzV('wzNE_kind'),it={kind_code:k,category:wzV('wzNE_cat'),qty:wzV('wzNE_qty'),surface_m2:wzV('wzNE_surf')};if(wzV('wzNE_name'))it.name=wzV('wzNE_name');if(!k&&!it.name){alert('Введите название оборудования.');return;}call('ADD_PPK_EQUIPMENT',{premiseId:wz.premise,items:[it]},function(){loadPpkWizard();},wzErr);}
+  function wzEqSave(i){var patch={название:wzV('wzQ_name_'+i),номер:wzV('wzQ_num_'+i),surface_m2:wzV('wzQ_surf_'+i)};if(document.getElementById('wzQ_tmin_'+i)){patch.мин_температура=wzV('wzQ_tmin_'+i);patch.макс_температура=wzV('wzQ_tmax_'+i);}if(document.getElementById('wzQ_next_'+i))patch.следующая_проверка=wzV('wzQ_next_'+i);call('UPDATE_PPK_EQUIPMENT',{equipmentId:i,patch:patch},function(){loadPpkWizard();},wzErr);}
+  function wzEqArchive(i){if(!confirm('Вывести оборудование из эксплуатации?'))return;call('ARCHIVE_PPK_EQUIPMENT',{equipmentId:i},function(){loadPpkWizard();},wzErr);}
+  function wzBindEq(i){call('BIND_PPK_EQUIPMENT',{equipmentId:i,premiseId:wz.premise,kind_code:wzV('wzB_kind_'+i)},function(){loadPpkWizard();},wzErr);}
+
+  // 4. Инвентарь и маркировка
+  function wzInventory(el){
+    var st=wz.state,p=wzPrem(),h=wzPremiseTabs('inv');if(!p){el.innerHTML=h;return;}
+    var mine=st.inventory.filter(function(x){return x.premise_id===p.premise_id;});
+    h+=mine.length?'<div style="overflow:auto"><table class="ttk-table"><tr><th>Группа</th><th>Инвентарь</th><th>Маркировка</th><th>Цвет</th><th>Кол-во</th><th></th></tr>'+mine.map(function(x){var i=x.item_id;return '<tr><td>'+wzE(x.category)+'</td><td>'+wzE(x.name)+'</td><td><input id="wzI_mark_'+i+'" style="width:80px" value="'+compAttr(x.marking)+'"></td><td><input id="wzI_color_'+i+'" style="width:80px" value="'+compAttr(x.color)+'"></td><td><input id="wzI_qty_'+i+'" type="number" style="width:55px" value="'+wzNum(x.quantity)+'"></td><td style="white-space:nowrap"><button class="btn secondary small" onclick="wzInvSave('+jsArg(i)+')">Сохранить</button> <button class="btn secondary small" onclick="wzInvRemove('+jsArg(i)+')">✕</button></td></tr>';}).join('')+'</table></div>':'<div class="muted">Инвентарь в помещении не заведён.</div>';
+    h+='<div style="margin-top:10px"><button class="btn secondary small" style="width:auto" onclick="wzProposeInv()">Предложить инвентарь с маркировкой</button></div><div id="wzPropInv"></div>';
+    h+='<div style="margin-top:10px"><b>Свой инвентарь</b><div class="wz-grid"><div><label>Название</label><input id="wzNI_name"></div><div><label>Маркировка</label><input id="wzNI_mark"></div><div><label>Цвет</label><input id="wzNI_color"></div><div><label>Кол-во</label><input id="wzNI_qty" type="number"></div></div><button class="btn secondary small" style="width:auto;margin-top:6px" onclick="wzAddInv()">Добавить</button></div>';
+    el.innerHTML=h;
+  }
+  function wzProposeInv(){call('PROPOSE_PPK_INVENTORY',{premiseId:wz.premise},function(list){wz.proposal=list;document.getElementById('wzPropInv').innerHTML='<div style="overflow:auto;margin-top:6px"><table class="ttk-table"><tr><th></th><th>Группа</th><th>Инвентарь</th><th>Маркировка</th><th>Для чего</th><th>Цвет</th><th>Кол-во</th></tr>'+list.map(function(x,i){return '<tr><td><input type="checkbox" id="wzPI_on_'+i+'"'+(x.existing?' disabled':'')+'></td><td>'+wzE(x.category)+'</td><td>'+wzE(x.name)+(x.existing?' <span class="muted">(есть)</span>':'')+'</td><td><b>'+wzE(x.marking)+'</b></td><td>'+wzE(x.meaning)+'</td><td><input id="wzPI_color_'+i+'" style="width:80px" value="'+compAttr(x.color)+'"></td><td><input id="wzPI_qty_'+i+'" type="number" style="width:50px" value="1"></td></tr>';}).join('')+'</table></div><div class="muted">Цвет — по системе цветовой маркировки вашего предприятия, буквенная маркировка обязательна.</div><button class="btn small" style="width:auto" onclick="wzSaveProposedInv()">Добавить отмеченное</button>';},wzErr);}
+  function wzSaveProposedInv(){var items=[];wz.proposal.forEach(function(x,i){var c=document.getElementById('wzPI_on_'+i);if(c&&c.checked)items.push({code:x.code,color:wzV('wzPI_color_'+i),qty:wzV('wzPI_qty_'+i)});});if(!items.length){alert('Отметьте инвентарь, который есть в помещении.');return;}call('ADD_PPK_INVENTORY',{premiseId:wz.premise,items:items},function(){wz.proposal=null;loadPpkWizard();},wzErr);}
+  function wzAddInv(){if(!wzV('wzNI_name')){alert('Введите название.');return;}call('ADD_PPK_INVENTORY',{premiseId:wz.premise,items:[{name:wzV('wzNI_name'),marking:wzV('wzNI_mark'),color:wzV('wzNI_color'),qty:wzV('wzNI_qty')}]},function(){loadPpkWizard();},wzErr);}
+  function wzInvSave(i){call('UPDATE_PPK_INVENTORY',{itemId:i,patch:{marking:wzV('wzI_mark_'+i),color:wzV('wzI_color_'+i),quantity:wzV('wzI_qty_'+i)}},function(){loadPpkWizard();},wzErr);}
+  function wzInvRemove(i){call('REMOVE_PPK_INVENTORY',{itemId:i},function(){loadPpkWizard();},wzErr);}
+
+  // 5. Дезинфекция
+  function wzCalcText(k){if(!k)return '';if(k.ok===false)return '<span class="wz-empty">'+wzE(k.error)+'</span>';var pm=k.per_month||{},m=pm.tablets!==undefined?pm.tablets+' табл.':pm.concentrate_g!==undefined?pm.concentrate_g+' г':pm.concentrate_ml!==undefined?pm.concentrate_ml+' мл':'';return wzE(k.text)+(m&&k.times_per_month?' <b>В месяц: '+wzE(m)+(/\.$/.test(m)?'':'.')+'</b>':'')+(k.warnings||[]).map(function(w){return '<div class="wz-warn">'+wzE(w)+'</div>';}).join('');}
+  function wzDisinfection(el){
+    var st=wz.state,F=wz.catalog.disinfectant_forms,R=wz.catalog.regimens;
+    var h='<b>Средства</b><div class="muted">Внесите средства, которыми вы реально пользуетесь. Концентрацию и норму расхода берите из инструкции по применению — система их не подставляет.</div>';
+    h+=st.disinfectants.length?'<div style="overflow:auto"><table class="ttk-table"><tr><th>Средство</th><th>Форма</th><th>Раствор, %</th><th>Расход, мл/м²</th><th>Экспозиция</th><th>Инструкция</th><th></th></tr>'+st.disinfectants.map(function(d){return '<tr><td>'+wzE(d.name)+(d.active_substance?'<br><small>'+wzE(d.active_substance)+'</small>':'')+'</td><td>'+wzE(d.form_ru)+(d.form==='TABLETS'?'<br><small>1 табл. на '+wzE(d.tablet_liters)+' л</small>':'')+'</td><td>'+wzE(d.concentration_pct)+'</td><td>'+wzE(d.rate_ml_m2)+'</td><td>'+(d.exposure_min?wzE(d.exposure_min)+' мин':'—')+'</td><td>'+wzE(d.instruction_ref)+'</td><td><button class="btn secondary small" onclick="wzDisArchive('+jsArg(d.disinfectant_id)+')">✕</button></td></tr>';}).join('')+'</table></div>':'';
+    h+='<div class="wz-grid" style="margin-top:6px"><div><label>Название средства</label><input id="wzD_name" placeholder="как на этикетке"></div><div><label>Форма</label><select id="wzD_form">'+Object.keys(F).map(function(k){return '<option value="'+k+'">'+wzE(F[k])+'</option>';}).join('')+'</select></div><div><label>Действующее вещество</label><input id="wzD_as"></div><div><label>Назначение</label><input id="wzD_purpose" placeholder="поверхности, посуда, инвентарь"></div><div><label>Концентрация рабочего раствора, %</label><input id="wzD_conc" type="number" step="0.001"></div><div><label>Норма расхода, мл/м²</label><input id="wzD_rate" type="number" step="1"></div><div><label>Экспозиция, мин</label><input id="wzD_expo" type="number"></div><div><label>Таблеток: 1 табл. на … л воды</label><input id="wzD_tl" type="number" step="0.1"></div><div><label>Инструкция по применению (№, дата)</label><input id="wzD_instr"></div><div><label>Свидетельство о госрегистрации</label><input id="wzD_reg"></div></div><button class="btn secondary small" style="width:auto;margin-top:6px" onclick="wzDisSave()">Добавить средство</button>';
+    h+='<div style="margin-top:14px"><b>Режимы по помещениям</b></div>';
+    st.premises.forEach(function(p){var pl=st.plans.filter(function(x){return x.premise_id===p.premise_id;});h+='<div class="taskrow"><div class="row-between"><b>'+wzE(p.name)+'</b><span class="muted">'+(p.area_m2?'пол '+p.area_m2+' м²':'площадь не указана')+(p.walls_m2?', стены '+p.walls_m2+' м²':'')+'</span></div>'+pl.map(function(x){return '<div style="margin:4px 0"><b>'+wzE(x.regimen_ru)+'</b> — «'+wzE(x.disinfectant)+'», '+wzE(x.times_per_month)+' раз/мес. <button class="btn secondary small" style="width:auto" onclick="wzPlanRemove('+jsArg(x.plan_id)+')">✕</button><div>'+wzCalcText(x.calc)+'</div></div>';}).join('')+'</div>';});
+    if(st.premises.length&&st.disinfectants.length)h+='<div class="wz-grid" style="margin-top:6px"><div><label>Помещение</label><select id="wzDP_prem">'+st.premises.map(function(p){return '<option value="'+compAttr(p.premise_id)+'">'+wzE(p.name)+'</option>';}).join('')+'</select></div><div><label>Обработка</label><select id="wzDP_reg">'+Object.keys(R).map(function(k){return '<option value="'+k+'">'+wzE(R[k])+'</option>';}).join('')+'</select></div><div><label>Средство</label><select id="wzDP_dis">'+st.disinfectants.map(function(d){return '<option value="'+compAttr(d.disinfectant_id)+'">'+wzE(d.name)+' '+wzE(d.concentration_pct)+' %</option>';}).join('')+'</select></div><div><label>Раз в месяц</label><input id="wzDP_times" type="number" value="30"></div><div><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="wzDP_walls" style="width:auto"> со стенами</label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="wzDP_eq" style="width:auto"> с поверхностями оборудования</label></div></div><button class="btn small" style="width:auto;margin-top:6px" onclick="wzPlanSave()">Рассчитать и сохранить</button>';
+    else h+='<div class="muted">Для расчёта нужны помещения с площадью и хотя бы одно средство.</div>';
+    el.innerHTML=h;
+  }
+  function wzDisSave(){call('SAVE_PPK_DISINFECTANT',{name:wzV('wzD_name'),form:wzV('wzD_form'),active_substance:wzV('wzD_as'),purpose:wzV('wzD_purpose'),concentration_pct:wzV('wzD_conc'),rate_ml_m2:wzV('wzD_rate'),exposure_min:wzV('wzD_expo'),tablet_liters:wzV('wzD_tl'),instruction_ref:wzV('wzD_instr'),registration:wzV('wzD_reg')},function(){loadPpkWizard();},wzErr);}
+  function wzDisArchive(id){call('ARCHIVE_PPK_DISINFECTANT',{disinfectantId:id},function(){loadPpkWizard();},wzErr);}
+  function wzPlanSave(){call('SAVE_PPK_DISINFECTION_PLAN',{premiseId:wzV('wzDP_prem'),regimen:wzV('wzDP_reg'),disinfectantId:wzV('wzDP_dis'),times_per_month:wzV('wzDP_times'),include_walls:document.getElementById('wzDP_walls').checked,include_equipment:document.getElementById('wzDP_eq').checked},function(){loadPpkWizard();},wzErr);}
+  function wzPlanRemove(id){call('REMOVE_PPK_DISINFECTION_PLAN',{planId:id},function(){loadPpkWizard();},wzErr);}
+
+  // 6. Номенклатура
+  function wzNomenclature(el){el.innerHTML='<div class="muted">Номенклатура, блюда и ТТК ведутся в своих разделах. Для ППК нужны утверждённые ТТК: из них берутся этапы, ККТ и пределы.</div><button class="btn secondary small" style="width:auto" onclick="navTo(\'ttk\')">Открыть ТТК</button> <button class="btn secondary small" style="width:auto" onclick="navTo(\'recipes\')">Рецептуры</button>';}
+
+  // 7. Процессы и потоки
+  function wzProcesses(el){
+    el.innerHTML='<button class="btn" onclick="wzGenerate()">Собрать / обновить модель ППК</button><div class="muted">Этапы процесса привязываются к вашим помещениям и оборудованию.</div><div id="wzStages" class="muted">Загрузка…</div>';
+    if(!wz.state.ppk){document.getElementById('wzStages').textContent='Модель ещё не собрана.';return;}
+    call('GET_PPK_MODEL',{},function(m){var order=m.processes.map(function(p){return p.process_code;});var st=m.stages.slice().sort(function(a,b){return order.indexOf(a.stage_code)-order.indexOf(b.stage_code);});document.getElementById('wzStages').innerHTML='<div style="overflow:auto"><table class="ttk-table"><tr><th>Этап</th><th>Помещения</th><th>Оборудование</th></tr>'+st.map(function(s){var p={};try{p=JSON.parse(s.parameters_json||'{}');}catch(e){}return '<tr><td>'+wzE(s.name)+'</td><td>'+wzE((p.premises||[]).map(function(x){return x.name;}).join(', ')||'—')+'</td><td>'+wzE((p.equipment||[]).map(function(x){return x.name;}).join(', ')||'—')+'</td></tr>';}).join('')+'</table></div>';},function(e){document.getElementById('wzStages').textContent=e;});
+  }
+  function wzGenerate(){call('GENERATE_PPK',{},function(){loadPpk();loadPpkWizard('processes');},wzErr);}
+
+  // 8. Опасности
+  var WZ_HZ={BIO:'биологическая',CHEM:'химическая',PHYSICAL:'физическая',ALLERGEN:'аллергенная'};
+  function wzHazards(el){
+    if(!wz.state.ppk){el.innerHTML='<div class="muted">Сначала соберите модель ППК (шаг «Процессы и потоки»).</div>';return;}
+    call('GET_PPK_MODEL',{},function(m){wz.model=m;var pn={};m.processes.forEach(function(p){pn[p.process_id]=p.name;});var draft=m.ppk.status==='DRAFT';
+      el.innerHTML='<div class="muted">Для каждой опасности решите: вероятность и тяжесть (1–3), мера управления и тип точки. Подтверждает человек.</div><div style="overflow:auto"><table class="ttk-table"><tr><th>Этап</th><th>Вид</th><th>Опасность</th><th>В</th><th>Т</th><th>Мера управления</th><th>Тип</th><th></th></tr>'+m.hazards.map(function(h){var i=h.hazard_id,ok=h.status==='CONFIRMED';return '<tr><td>'+wzE(pn[h.process_id]||'')+'</td><td>'+wzE(WZ_HZ[h.hazard_type]||h.hazard_type)+'</td><td>'+wzE(h.hazard_description)+'</td><td><input id="wzH_l_'+i+'" type="number" min="1" max="3" style="width:40px" value="'+compAttr(h.likelihood||'')+'"></td><td><input id="wzH_s_'+i+'" type="number" min="1" max="3" style="width:40px" value="'+compAttr(h.severity||'')+'"></td><td><input id="wzH_m_'+i+'" value="'+compAttr(h.control_measure||'')+'"></td><td><select id="wzH_c_'+i+'">'+['PRP','ППОПМ','КТ','ККТ'].map(function(t){return '<option'+(t===(h.classification||'PRP')?' selected':'')+'>'+t+'</option>';}).join('')+'</select></td><td>'+(ok?'<span class="badge b-ok">подтверждено</span>':'')+(draft?' <button class="btn secondary small" onclick="wzHzConfirm('+jsArg(i)+')">'+(ok?'Изменить':'Подтвердить')+'</button>':'')+'</td></tr>';}).join('')+'</table></div>';
+    },function(e){el.textContent=e;});
+  }
+  function wzHzConfirm(i){var l=Number(wzV('wzH_l_'+i)),s=Number(wzV('wzH_s_'+i)),m=wzV('wzH_m_'+i);if(!l||!s||!m){alert('Укажите вероятность, тяжесть и меру управления.');return;}call('CONFIRM_PPK_HAZARD',{hazardId:i,patch:{likelihood:l,severity:s,risk_score:l*s,control_measure:m,classification:wzV('wzH_c_'+i)}},function(){loadPpkWizard('hazards');},wzErr);}
+
+  // 9. Контроль и пределы
+  function wzControls(el){
+    if(!wz.state.ppk){el.innerHTML='<div class="muted">Сначала соберите модель ППК.</div>';return;}
+    call('GET_PPK_MODEL',{},function(m){var draft=m.ppk.status==='DRAFT';
+      var h=draft?'<button class="btn secondary small" style="width:auto" onclick="wzGenControls()">Сформировать контроли из подтверждённых опасностей</button>':'';
+      h+='<div style="overflow:auto"><table class="ttk-table"><tr><th>Тип</th><th>Контроль</th><th>Параметр</th><th>Метод</th><th>Частота</th><th>Ответственный</th><th>Корр. действие</th><th></th></tr>'+m.controls.map(function(x){var i=x.control_id,ok=x.status==='CONFIRMED';var inp=function(k,w){return '<input id="wzC_'+k+'_'+i+'" style="width:'+(w||100)+'px" value="'+compAttr(x[k]||'')+'">';};return '<tr><td>'+wzE(x.point_type)+'</td><td>'+wzE(x.control_name)+'</td><td>'+inp('monitoring_parameter',90)+'</td><td>'+inp('monitoring_method',90)+'</td><td>'+inp('frequency',70)+'</td><td>'+inp('responsible_role',80)+'</td><td>'+inp('corrective_action',120)+'</td><td>'+(ok?'<span class="badge b-ok">подтв.</span>':'')+(draft?' <button class="btn secondary small" onclick="wzCtlConfirm('+jsArg(i)+')">'+(ok?'Изменить':'Подтвердить')+'</button>':'')+'</td></tr>';}).join('')+'</table></div>';
+      h+='<div style="margin-top:10px"><b>Критические пределы</b></div>'+(m.limits.length?'<table class="ttk-table"><tr><th>Параметр</th><th>Мин</th><th>Макс</th><th>Ед.</th><th>Источник</th><th></th></tr>'+m.limits.map(function(l){return '<tr><td>'+wzE(l.parameter)+'</td><td>'+wzE(l.min_value)+'</td><td>'+wzE(l.max_value)+'</td><td>'+wzE(l.unit)+'</td><td>'+wzE(l.source_document)+'</td><td>'+(l.status==='CONFIRMED'?'<span class="badge b-ok">подтв.</span>':(draft?'<button class="btn secondary small" onclick="wzLimitApprove('+jsArg(l.limit_id)+')">Подтвердить</button>':''))+'</td></tr>';}).join('')+'</table>':'<div class="muted">Пределов нет.</div>');
+      var ccp=m.controls.filter(function(x){return x.point_type==='ККТ'||x.point_type==='ППОПМ';});
+      if(draft&&ccp.length)h+='<div class="wz-grid" style="margin-top:6px"><div><label>Контроль</label><select id="wzL_ctl">'+ccp.map(function(x){return '<option value="'+compAttr(x.control_id)+'">'+wzE(x.point_type+': '+x.control_name)+'</option>';}).join('')+'</select></div><div><label>Параметр</label><input id="wzL_par" placeholder="t в толще, °C"></div><div><label>Мин</label><input id="wzL_min" type="number"></div><div><label>Макс</label><input id="wzL_max" type="number"></div><div><label>Ед.</label><input id="wzL_unit" value="°C"></div><div><label>Источник (документ, пункт)</label><input id="wzL_src" placeholder="ТТК №…, СанПиН п.…"></div></div><button class="btn secondary small" style="width:auto;margin-top:6px" onclick="wzLimitAdd()">Добавить предел</button>';
+      el.innerHTML=h;
+    },function(e){el.textContent=e;});
+  }
+  function wzGenControls(){call('GENERATE_PPK_CONTROLS',{ppkId:wz.state.ppk.ppk_id},function(){loadPpkWizard('controls');},wzErr);}
+  function wzCtlConfirm(i){var p={};['monitoring_parameter','monitoring_method','frequency','responsible_role','corrective_action'].forEach(function(k){p[k]=wzV('wzC_'+k+'_'+i);});if(!p.monitoring_parameter||!p.frequency||!p.responsible_role){alert('Укажите параметр, частоту и ответственного.');return;}call('CONFIRM_PPK_CONTROL',{controlId:i,patch:p},function(){loadPpkWizard('controls');},wzErr);}
+  function wzLimitAdd(){if(!wzV('wzL_par')||!wzV('wzL_src')){alert('Параметр и источник обязательны.');return;}call('CREATE_PPK_CRITICAL_LIMIT',{ppkId:wz.state.ppk.ppk_id,controlId:wzV('wzL_ctl'),parameter:wzV('wzL_par'),minValue:wzV('wzL_min'),maxValue:wzV('wzL_max'),unit:wzV('wzL_unit'),sourceDocument:wzV('wzL_src')},function(){loadPpkWizard('controls');},wzErr);}
+  function wzLimitApprove(id){call('APPROVE_PPK_CRITICAL_LIMIT',{limitId:id},function(){loadPpkWizard('controls');},wzErr);}
+
+  // 10. Журналы
+  function wzJournals(el){
+    var st=wz.state,eqn={};st.equipment.forEach(function(e){eqn[e.equipment_id]=e.name;});
+    el.innerHTML='<button class="btn secondary small" style="width:auto" onclick="wzEqJournals()">Создать журналы по оборудованию</button> '+(st.ppk?'<button class="btn secondary small" style="width:auto" onclick="wzCtlJournals()">Журналы по подтверждённым контролям</button>':'')+'<div class="muted">Холодильное оборудование — журнал температуры, фритюрница — журнал фритюрных жиров, бактерицидная установка — журнал её работы, склад — температура и влажность. Журналы ККТ из ТТК создаются при утверждении ППК.</div><div id="wzJOut"></div>'+
+      (st.journals.length?'<div style="overflow:auto"><table class="ttk-table"><tr><th>Журнал</th><th>Оборудование</th><th>Периодичность</th><th>Ответственный</th><th>Норма</th></tr>'+st.journals.map(function(j){return '<tr><td>'+wzE(j.name)+'</td><td>'+wzE(eqn[j.equipment_id]||'')+'</td><td>'+wzE(String(j.period||'').replace(/_/g,' '))+'</td><td>'+wzE(j.role)+'</td><td>'+(j.min!==''||j.max!==''?wzE(j.min)+'…'+wzE(j.max)+' '+wzE(j.unit):'')+'</td></tr>';}).join('')+'</table></div>':'<div class="muted">Журналов пока нет.</div>');
+  }
+  function wzEqJournals(){call('CREATE_PPK_EQUIPMENT_JOURNALS',{},function(r){loadPpkWizard('journals');setTimeout(function(){var o=document.getElementById('wzJOut');if(o)o.innerHTML='<div class="muted">Создано: '+r.created.length+'.</div>'+r.skipped.map(function(s){return '<div class="wz-warn">'+wzE(s)+'</div>';}).join('');},400);},wzErr);}
+  function wzCtlJournals(){call('GENERATE_PPK_JOURNALS',{ppkId:wz.state.ppk.ppk_id},function(r){alert('Создано журналов: '+r.journals_created+'.');loadPpkWizard('journals');},wzErr);}
+
+  // 11. Документ
+  function wzDocument(el){
+    if(!wz.state.ppk){el.innerHTML='<div class="muted">Сначала соберите модель ППК.</div>';return;}
+    el.innerHTML='Загрузка…';
+    call('GET_PPK_DOCUMENT_VIEW',{},function(v){var p=wz.state.ppk,g=wz.state.gate;
+      var acts='<button class="btn secondary small" style="width:auto" onclick="wzPrint()">Печать</button> <button class="btn secondary small" style="width:auto" onclick="wzPdf()">PDF</button> ';
+      if(p.status==='DRAFT')acts+='<button class="btn secondary small" style="width:auto" onclick="ppkSubmitForReview('+jsArg(p.ppk_id)+')">На согласование</button>';
+      if(p.status==='REVIEW')acts+='<button class="btn small" style="width:auto" onclick="ppkApprove('+jsArg(p.ppk_id)+')">Утвердить</button>';
+      var gate=g.status==='READY'?'<div class="muted">Готово к утверждению.</div>':'<div class="wz-warn">Утвердить нельзя: '+wzE((g.blockers||[]).map(function(b){return WZ_BLOCKERS[b]||b;}).join('; '))+'.</div>';
+      el.innerHTML='<div class="row-between"><span>Версия '+wzE(v.version)+' · '+wzE(v.status)+' · заполнено разделов '+v.filled+' из '+v.sections.length+'</span><span>'+acts+'</span></div>'+gate+'<div class="wz-doc">'+v.sections.map(function(s){return '<h3>'+s.number+'. '+wzE(s.title)+'</h3>'+(s.text||[]).map(function(t){return '<p>'+wzE(t)+'</p>';}).join('')+(s.tables||[]).map(function(t){return '<div style="overflow:auto"><table class="ttk-table"><tr>'+t.columns.map(function(c){return '<th>'+wzE(c)+'</th>';}).join('')+'</tr>'+t.rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+wzE(c)+'</td>';}).join('')+'</tr>';}).join('')+'</table></div>';}).join('')+(s.empty?'<div class="wz-empty">Раздел не заполнен. '+wzE(s.hint)+'</div>':'');}).join('')+'</div>';
+    },function(e){el.textContent=e;});
+  }
+  function wzPrint(){call('PRINT_PPK_DOCUMENT',{},function(res){var w=window.open('','_blank');if(!w){alert('Разрешите всплывающие окна для печати.');return;}w.document.open();w.document.write(res.html);w.document.close();setTimeout(function(){w.focus();w.print();},250);},wzErr);}
+  function wzPdf(){call('PRINT_PPK_DOCUMENT',{},function(res){if(!res.base64){alert('PDF не сформирован: '+(res.pdf_error||'неизвестная ошибка'));return;}var bin=atob(res.base64),bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);var url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),a=document.createElement('a');a.href=url;a.download=res.fileName||'PPK.pdf';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);},wzErr);}
   function loadPpkGeneratorContext(){call('GET_PPK_GENERATOR_CONTEXT',{},ppkOut,function(e){alert(e);});}
   function loadPpkFlow(){call('GET_PPK_FLOW',{},ppkOut,function(e){alert(e);});}
   function loadPpkHazards(){call('GET_PPK_HAZARDS',{},ppkOut,function(e){alert(e);});}
