@@ -157,7 +157,7 @@ function _tsAggregate_(parentType, parentId, scale, depth, visited, acc) {
       acc.protein += mass * row.protein / 100;
       acc.fat += mass * row.fat / 100;
       acc.carbohydrate += mass * row.carbohydrate / 100;
-      acc.covered_mass += mass;
+      acc.covered_mass += mass; acc.data_mass += mass;
       if (row.verified) acc.verified_mass += mass;
       else if (acc.unverified.indexOf(name) === -1) acc.unverified.push(name);
     } else if (_tsIsSalt_(name) || /(^|[^а-яё])вода([^а-яё]|$)/i.test(name)) {
@@ -208,7 +208,7 @@ function calcTechSpec_(parentType, parentId, session, opts) {
   var steps = opts.ttkSteps;
   if (!steps && ttk) { try { steps = JSON.parse(ttk.технологические_этапы_json || '[]'); } catch (e) { steps = []; } }
 
-  var acc = { lines: [], input_mass: 0, raw_mass: 0, covered_mass: 0, verified_mass: 0, salt_g: 0, protein: 0, fat: 0, carbohydrate: 0, allergens: {}, missing: [], unverified: [], excluded_mass_lines: 0, warnings: [] };
+  var acc = { lines: [], input_mass: 0, raw_mass: 0, covered_mass: 0, data_mass: 0, verified_mass: 0, salt_g: 0, protein: 0, fat: 0, carbohydrate: 0, allergens: {}, missing: [], unverified: [], excluded_mass_lines: 0, warnings: [] };
   var visited = {}; if (parentType === 'PF') visited[parentId] = true;
   _tsAggregate_(parentType, parentId, 1, 0, visited, acc);
   if (!acc.lines.length) acc.warnings.push('Рецептура пуста — расчёт невозможен.');
@@ -253,12 +253,14 @@ function calcTechSpec_(parentType, parentId, session, opts) {
 
   var allergens = Object.keys(acc.allergens).map(function (k2) { return acc.allergens[k2]; });
   var storage = { conditions: '', shelf_life: '', source: '' };
+  // Заглушка импорта («ТРЕБУЕТ ЗАПОЛНЕНИЯ») — не значение: считаем, что срок не задан.
+  ['storage', 'shelfLife'].forEach(function (k) { if (String(opts[k] || '').indexOf('ТРЕБУЕТ ЗАПОЛНЕНИЯ') !== -1) opts[k] = ''; });
   if (opts.storage || opts.shelfLife) { storage.conditions = opts.storage || ''; storage.shelf_life = opts.shelfLife || ''; storage.source = 'ТТК'; }
   else if (parentType === 'PF') { storage.conditions = entity.условия_хранения || ''; storage.shelf_life = entity.срок_хранения_часов ? entity.срок_хранения_часов + ' ч' : ''; storage.source = 'карточка ПФ'; }
   else if (ttk) { storage.conditions = ttk.условия_хранения || ''; storage.shelf_life = ttk.срок_реализации || ''; storage.source = 'утверждённая ТТК'; }
   var pfShelf = acc.lines.filter(function (l) { return l.type === 'ПФ'; }).map(function (l) { return l.name; });
   // Срок годности по нормам (TechNormsCore.gs): самое строгое ограничение из норм групп и сроков ПФ.
-  var shelf = typeof calcShelfLife_ === 'function' ? calcShelfLife_(parentType, parentId, session, steps || []) : null;
+  var shelf = typeof calcShelfLife_ === 'function' ? calcShelfLife_(parentType, parentId, session, steps || [], opts.servingMode || (ttk ? ttk.режим_подачи : '')) : null;
   if (shelf) {
     shelf.warnings.forEach(function (w) { acc.warnings.push(w); });
     if (!storage.shelf_life && shelf.hours !== null) { storage.shelf_life = shelf.text; storage.conditions = storage.conditions || shelf.conditions; storage.source = shelf.status === 'ПО_ПРОВЕРЕННЫМ_НОРМАМ' ? 'расчёт по проверенным нормам' : 'расчёт по нормам (предварительно)'; }
@@ -274,7 +276,9 @@ function calcTechSpec_(parentType, parentId, session, opts) {
   var micro = TECH_SPEC_MICRO_INDICATORS.map(function (m) { return { code: m.code, indicator: m.name, norm: microNorms[m.code] || '', method: m.method }; });
   if (!micro.some(function (m) { return m.norm; })) acc.warnings.push('Микробиологические нормативы не заполнены — внесите значения для группы продукции из ТР ТС 021/2011.');
 
-  var nutritionText = _tsNutritionText_(per100) + (perPortion ? '; на порцию ' + portionG + ' г: Б ' + perPortion.protein + ', Ж ' + perPortion.fat + ', У ' + perPortion.carbohydrate + ' г, ' + perPortion.energy_kcal + ' ккал' : '') + ' (расчётно, ТР ТС 022/2011)';
+  // Без данных КБЖУ текст не формируется: «белки 0 г» в ТТК выглядел бы как результат расчёта.
+  var nutritionText = acc.data_mass === 0 ? '' : _tsNutritionText_(per100) + (perPortion ? '; на порцию ' + portionG + ' г: Б ' + perPortion.protein + ', Ж ' + perPortion.fat + ', У ' + perPortion.carbohydrate + ' г, ' + perPortion.energy_kcal + ' ккал' : '') + ' (расчётно, ТР ТС 022/2011' + (coverage < 100 ? '; неполный расчёт — данные КБЖУ есть для ' + coverage + ' % массы сырья' : '') + ')';
+  if (acc.data_mass === 0) nutritionText = '';
   var allergenText = allergens.length ? 'Содержит: ' + allergens.map(function (a) { return a.allergen + (a.verified ? '' : ' (не подтверждено)'); }).join(', ') : 'Аллергены по справочнику сырья не выявлены (проверьте заполнение PRODUCT_ALLERGENS)';
 
   var shelfOk = !shelf || storage.source === 'ТТК' || storage.source === 'утверждённая ТТК' || storage.source === 'карточка ПФ' || shelf.status === 'ПО_ПРОВЕРЕННЫМ_НОРМАМ';
@@ -377,7 +381,7 @@ function getTechSpecDocument_(data, session) {
   var spec = getTechSpec_(data, session);
   var org = findOne_('ORGANIZATIONS', 'organization_id', session.organization_id);
   if (spec.object.type === 'DISH' && typeof proposeTtkCcp_ === 'function' && !data.ccp) {
-    try { data.ccp = proposeTtkCcp_(spec.object.id, session, data.ttkSteps || []); } catch (e) { data.ccp = null; }
+    try { data.ccp = proposeTtkCcp_(spec.object.id, session, data.ttkSteps || [], data.servingMode); } catch (e) { data.ccp = null; }
   }
   var html = renderTechSpecHtml_(spec, org, data);
   var out = { document_type: 'TECH_SPEC_TU', designation: _tsDesignation_(org, data), status: spec.status, warnings: spec.warnings, html: html, generated_at: spec.generated_at };

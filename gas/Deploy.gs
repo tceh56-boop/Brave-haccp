@@ -39,6 +39,7 @@ function runAllMigrations() {
   report.batchProductionDate = migrateBatchProductionDateSchema_();
   report.techSpec = migrateTechSpecSchema_();
   report.techNorms = migrateTechNormsSchema_();
+  report.ttkImport = migrateTtkImportSchema_();
   Logger.log('runAllMigrations: готово. Запустите deployPreflight() для проверки.');
   return report;
 }

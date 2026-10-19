@@ -24,9 +24,9 @@ var TECH_STEP_TYPES = {
 var TECH_STEP_KEYWORDS = [
   ['DEFROST', ['разморо', 'дефрост']],
   ['COOLING', ['охлад', 'остуд', 'шоков']],
-  ['THERMAL', ['жар', 'запек', 'запеч', 'вар', 'отвар', 'тушит', 'тушен', 'пассер', 'пасер', 'бланш', 'припуск', 'гриль', 'фритюр', 'прогре', 'уварить', 'обжар', 'тепловая', 'конфи', 'су-вид', 'сувид', 'кипят']],
-  ['STORAGE', ['хранить', 'хранение']],
-  ['SERVING', ['подава', 'подать', 'украс', 'оформ', 'сервир', 'выложить', 'отпуск']],
+  ['THERMAL', ['жар', 'запек', 'запеч', 'выпек', 'испеч', 'вар', 'отвар', 'тушит', 'тушен', 'томит', 'потомит', 'пассер', 'пасер', 'бланш', 'припуск', 'гриль', 'фритюр', 'прогре', 'разогре', 'подогре', 'уварить', 'обжар', 'тепловая', 'конфи', 'су-вид', 'сувид', 'кипят', 'кипен', 'копт', 'пароконв', 'духовк', 'карамелиз', 'фламбир']],
+  ['STORAGE', ['хранить', 'хранение', 'в холодильник', 'в холодильнике']],
+  ['SERVING', ['подава', 'подать', 'при подаче', 'украс', 'оформ', 'сервир', 'выложить', 'отпуск', 'декор', 'на тарелк', 'на блюдо']],
   ['COLD_PREP', ['нарез', 'поруб', 'измельч', 'смеш', 'вмеш', 'формов', 'панир', 'закат', 'очист', 'промы', 'заправ', 'натереть', 'собрать', 'сделать']]
 ];
 
@@ -171,11 +171,11 @@ function resetTechNorm_(data, session) {
 
 /** Свободный текст технологии → черновик структурных этапов (тип, t°, время). Технолог правит результат. */
 function parseTechnologySteps_(text) {
-  var parts = String(text || '').replace(/\s+/g, ' ').split(/[.;!]\s+|\n+/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 2; });
+  var parts = String(text || '').replace(/\s+/g, ' ').split(/[.;!]\s+(?=[А-ЯЁA-Z0-9«"(])|[;!]\s+|\n+/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 2; });
   return parts.map(function (s) {
     var low = s.toLowerCase(), type = 'COLD_PREP';
     for (var i = 0; i < TECH_STEP_KEYWORDS.length; i++) { if (_tnHasAny_(low, TECH_STEP_KEYWORDS[i][1])) { type = TECH_STEP_KEYWORDS[i][0]; break; } }
-    var t = low.match(/(\d+(?:[.,]\d+)?)\s*(?:°|градус|º)\s*[cс]?/);
+    var t = low.match(/(\d+(?:[.,]\d+)?)\s*(?:°|градус|º|\*\s*[cс])/) || low.match(/(?:^|[^а-яёa-z])[тt]\s*[-=:]?\s*(\d{2,3})(?!\d)/);
     var tm = low.match(/(\d+(?:[.,]\d+)?)\s*(мин|минут|ч|час)/);
     return { stage: TECH_STEP_TYPES[type], step_type: type, description: s, temperature: t ? t[1].replace(',', '.') : '', time: tm ? tm[1].replace(',', '.') + (/^ч/.test(tm[2]) ? ' ч' : ' мин') : '', core_temperature: '', parsed: true };
   });
@@ -188,6 +188,28 @@ function techStepType_(step) {
   low = low.toLowerCase();
   for (var i = 0; i < TECH_STEP_KEYWORDS.length; i++) if (_tnHasAny_(low, TECH_STEP_KEYWORDS[i][1])) return TECH_STEP_KEYWORDS[i][0];
   return 'COLD_PREP';
+}
+
+/**
+ * Режим подачи: явный выбор технолога (HOT/COLD) важнее догадки. Догадка — по категории
+ * (холодные закуски/салаты → COLD; горячие, гарниры, супы → HOT), иначе по этапам:
+ * последняя тепловая обработка после последнего охлаждения и после неё нет холодной сборки.
+ * Пример ошибки без явного режима: «отварить, нарезать, заправить» — это салат, а не горячее.
+ */
+function guessServingMode_(explicitMode, categoryText, steps) {
+  if (explicitMode === 'HOT' || explicitMode === 'COLD') return explicitMode;
+  var cat = String(categoryText || '').toLowerCase();
+  if (/холодн|салат|десерт/.test(cat)) return 'COLD';
+  if (/горяч|гарнир|суп|многопорц/.test(cat)) return 'HOT';
+  var types = (steps || []).map(techStepType_);
+  var lt = types.lastIndexOf('THERMAL');
+  if (lt === -1 || types.lastIndexOf('COOLING') > lt) return 'COLD';
+  return types.slice(lt + 1).some(function (t) { return t === 'COLD_PREP'; }) && !types.slice(lt + 1).some(function (t) { return t === 'SERVING'; }) ? 'COLD' : 'HOT';
+}
+
+function _tnEntityCategory_(parentType, parentId) {
+  var e = parentType === 'PF' ? getSemiFinishedById_(parentId) : findOne_('DISHES', 'dish_id', parentId);
+  return e ? (e.категория_id || '') : '';
 }
 
 /** Группы риска состава (включая вложенные ПФ). */
@@ -227,13 +249,13 @@ function _tnHours_(norm) {
  * Срок годности блюда/ПФ: самое строгое ограничение из (а) норм групп продукции,
  * определённых по составу и этапам, (б) сроков хранения вложенных ПФ.
  */
-function calcShelfLife_(parentType, parentId, session, steps) {
+function calcShelfLife_(parentType, parentId, session, steps, servingMode) {
   var org = session && session.organization_id;
   var profile = _tnRiskProfile_(parentType, parentId, 0);
   var types = (steps || []).map(techStepType_);
   var thermalIdx = types.lastIndexOf('THERMAL'), coolingIdx = types.lastIndexOf('COOLING');
   var hasThermal = thermalIdx !== -1;
-  var servedHot = hasThermal && coolingIdx < thermalIdx;
+  var servedHot = parentType === 'DISH' ? guessServingMode_(servingMode, _tnEntityCategory_(parentType, parentId), steps) === 'HOT' : hasThermal && coolingIdx < thermalIdx;
   var codes = [];
   if (parentType === 'DISH') codes.push(servedHot ? 'SL_HOT_SERVE' : 'SL_COLD_SERVE');
   if (!servedHot || parentType === 'PF') {
@@ -292,12 +314,12 @@ function _tnCcpRules_(type, profile, isHotDish, laterThermal) {
  * Предложения ККТ для блюда: по этапам ТТК + обязательные этапы (приёмка скоропорта,
  * хранение ПФ, аллергены). Ничего не записывает — только расчёт.
  */
-function proposeTtkCcp_(dishId, session, steps) {
+function proposeTtkCcp_(dishId, session, steps, servingMode) {
   var org = session && session.organization_id;
   var profile = _tnRiskProfile_('DISH', dishId, 0);
   var types = (steps || []).map(techStepType_);
   var lastThermal = types.lastIndexOf('THERMAL'), lastCooling = types.lastIndexOf('COOLING');
-  var isHot = lastThermal !== -1 && lastCooling < lastThermal;
+  var isHot = guessServingMode_(servingMode, _tnEntityCategory_('DISH', dishId), steps) === 'HOT';
   var raw = [];
   var highRisk = Object.keys(profile.groups).filter(function (k) { return profile.groups[k]; });
   if (highRisk.length) raw.push({ step_no: 0, step_type: 'RECEIVING', step: 'Приёмка сырья', r: { hazard_type: 'BIO', hazard: 'Поступление скоропортящегося сырья с нарушением температуры/сроков (' + highRisk.map(function (k) { return profile.groups[k].join(', '); }).join('; ') + ')', point_type: 'КТ', norm: 'CCP_RECEIVING_CHILLED', method: 'Термометр, проверка документов и маркировки', frequency: 'каждая поставка', corrective: 'Отказ в приёмке/возврат поставщику' } });
@@ -340,7 +362,7 @@ function generateTtkCcpProposals_(data, session) {
     var existing = findRows_('TTK_CCP_PROPOSALS', function (r) { return r.ttk_version_id === ttk.ttk_version_id; });
     var decided = {};
     existing.forEach(function (r) { if (r.status === 'ПРЕДЛОЖЕНО') updateRow_('TTK_CCP_PROPOSALS', r, { status: 'ЗАМЕНЕНО' }); else decided[r.step_type + ':' + r.norm_code] = true; });
-    var rows = proposeTtkCcp_(ttk.dish_id, session, steps).filter(function (p) { return !decided[p.step_type + ':' + p.norm_code]; }).map(function (p) {
+    var rows = proposeTtkCcp_(ttk.dish_id, session, steps, ttk.режим_подачи).filter(function (p) { return !decided[p.step_type + ':' + p.norm_code]; }).map(function (p) {
       var row = { proposal_id: generateId_('TTK_CCP_PROPOSALS'), organization_id: session.organization_id, dish_id: ttk.dish_id, ttk_version_id: ttk.ttk_version_id, status: 'ПРЕДЛОЖЕНО', decided_by: '', decided_at: '', ppk_id: '', ppk_control_id: '', ppk_limit_id: '', created_at: nowIso_() };
       ['step_no', 'step_type', 'step', 'hazard_type', 'hazard', 'point_type', 'control_name', 'parameter', 'min_value', 'max_value', 'unit', 'norm_code', 'norm_status', 'source_document', 'clause', 'monitoring_method', 'frequency', 'corrective_action'].forEach(function (k) { row[k] = p[k] === undefined || p[k] === null ? '' : p[k]; });
       insertRow_('TTK_CCP_PROPOSALS', row);
@@ -427,7 +449,7 @@ function getTtkNormsContext_(data, session) {
   getRecipeLines_('DISH', dishId, session);
   var steps = Array.isArray(data.ttkSteps) ? data.ttkSteps : [];
   if (!steps.length && data.technology) steps = parseTechnologySteps_(data.technology);
-  return { steps: steps.map(function (s) { var t = techStepType_(s); var o = {}; Object.keys(s).forEach(function (k) { o[k] = s[k]; }); o.step_type = t; return o; }), step_types: TECH_STEP_TYPES, shelf_life: calcShelfLife_('DISH', dishId, session, steps), ccp: proposeTtkCcp_(dishId, session, steps) };
+  return { steps: steps.map(function (s) { var t = techStepType_(s); var o = {}; Object.keys(s).forEach(function (k) { o[k] = s[k]; }); o.step_type = t; return o; }), step_types: TECH_STEP_TYPES, shelf_life: calcShelfLife_('DISH', dishId, session, steps, data.servingMode), ccp: proposeTtkCcp_(dishId, session, steps, data.servingMode), serving_mode: guessServingMode_(data.servingMode, _tnEntityCategory_('DISH', dishId), steps) };
 }
 
 function migrateTechNormsSchema_() {
