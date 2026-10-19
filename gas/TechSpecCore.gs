@@ -139,6 +139,7 @@ function _tsAggregate_(parentType, parentId, scale, depth, visited, acc) {
       var pfInput = getRecipeLines_('PF', id).reduce(function (s, l) { var m = _tsLineNettoG_(l, null, ''); return s + (m || 0); }, 0);
       var pfYield = _tsMassG_(_tsNum_(ing.выход), ing.единица || 'кг', null, '') || pfInput;
       if (!(pfYield > 0)) { acc.warnings.push('ПФ «' + name + '» без рецептуры/выхода — исключён из расчёта.'); return; }
+      if (pfInput > 0 && pfYield > pfInput * 1.02) acc.warnings.push('ПФ «' + name + '»: выход (' + _tsRound_(pfYield, 0) + ' г) больше закладки нетто (' + _tsRound_(pfInput, 0) + ' г) — в рецептуре не хватает компонента (вода, бульон) или ошибка единиц.');
       visited[id] = true;
       _tsAggregate_('PF', id, mass / pfYield, depth + 1, visited, acc);
       delete visited[id];
@@ -158,10 +159,10 @@ function _tsAggregate_(parentType, parentId, scale, depth, visited, acc) {
       acc.carbohydrate += mass * row.carbohydrate / 100;
       acc.covered_mass += mass;
       if (row.verified) acc.verified_mass += mass;
-      else acc.unverified.push(name);
+      else if (acc.unverified.indexOf(name) === -1) acc.unverified.push(name);
     } else if (_tsIsSalt_(name) || /(^|[^а-яё])вода([^а-яё]|$)/i.test(name)) {
       acc.covered_mass += mass; acc.verified_mass += mass; // соль и вода не содержат Б/Ж/У
-    } else {
+    } else if (acc.missing.indexOf(name) === -1) {
       acc.missing.push(name);
     }
     if (global) {
