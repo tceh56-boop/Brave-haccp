@@ -48,6 +48,8 @@ function confirmInvoiceReceiptHardening_(data,session){
     if(d.status==='POSTED') return getInvoiceIntakeDraft_(session,{draftId:d.draft_id});
     if(data.confirmed!==true) throw new Error('Требуется явное подтверждение приёмки.');
     if(['READY','PARTIAL'].indexOf(d.status)===-1) throw new Error('Документ нельзя провести: статус '+d.status+'.');
+    // Частичная приёмка (часть строк не принимается) — только с явным согласием.
+    if(d.status==='PARTIAL'&&data.allowPartial!==true) throw new Error('В документе есть строки, которые не будут приняты. Исправьте их или подтвердите частичную приёмку.');
 
     var pre=preflightInvoiceReceipt_(d,session,data.allowPartial===true);
     if(pre.errors.length && data.allowPartial!==true) {
@@ -67,6 +69,8 @@ function confirmInvoiceReceiptHardening_(data,session){
     }
 
     var price=recalcInvoicePriceCascade_(lines,session);
+    // Проводка — подтверждение человеком: строки, сопоставленные нечётко, запоминаются как алиасы.
+    if(typeof rememberInvoiceAlias_==='function') lines.forEach(function(l){var src=l.match&&l.match.source;if(src==='FUZZY'||src==='CANDIDATES')rememberInvoiceAlias_(session,l.raw_name||l.name,l.match.product_id,doc.supplier||'');});
     var docs=findRows_('INVOICE_DOCUMENTS',function(r){return r.draft_id===d.draft_id;});
     var postedResults=posted.результаты||[];
     docs.forEach(function(r){updateRow_('INVOICE_DOCUMENTS',r,{status:'POSTED',posted_at:_ocNow_(),posted_by:session.user_id});});
@@ -162,18 +166,9 @@ function getRecursiveBatchCostTraceHardened_(session,data){
   var tree=calc(root,0,Number(root.количество)||0); return {root_batch_id:root.batch_id,total_cost:tree.cost,unit_cost:tree.unit_cost,tree:tree,generated_at:_ocNow_()};
 }
 
+// Проверка количества/цены теперь построчная в buildInvoiceDraftState_ (строку можно исправить
+// в черновике), поэтому отдельная проверка всего документа здесь не нужна.
 function createInvoiceIntakeDraftHardened_(data,session){
-  var r=createInvoiceIntakeDraft_(data,session);
-  var lines=r.lines||[], validation=[];
-  lines.forEach(function(l){
-    var q=Number(l.qty), p=Number(l.price);
-    if(!isFinite(q)||q<=0) validation.push('Строка '+(l.line_no||'?')+': количество должно быть больше нуля.');
-    if(!isFinite(p)||p<0) validation.push('Строка '+(l.line_no||'?')+': цена должна быть числом >= 0.');
-  });
-  if(validation.length){
-    var d=findOne_('INVOICE_INTAKE_DRAFTS','draft_id',r.draft_id);
-    if(d) updateRow_('INVOICE_INTAKE_DRAFTS',d,{status:'BLOCKED',errors_json:JSON.stringify((r.errors||[]).concat(validation))});
-    r.status='BLOCKED'; r.errors=(r.errors||[]).concat(validation);
-  }
-  return r;
+  return createInvoiceIntakeDraft_(data,session);
 }
+

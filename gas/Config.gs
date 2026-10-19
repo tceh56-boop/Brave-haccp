@@ -46,6 +46,7 @@ var CONFIG = {
     TTK_CCP_PROPOSALS: 'TTK_CCP_PROPOSALS',
     TTK_IMPORT_BATCHES: 'TTK_IMPORT_BATCHES',
     PF_TECH_CARDS: 'PF_TECH_CARDS',
+    OCR_ALIASES: 'OCR_ALIASES',
     TTK_IMPORT_ROWS: 'TTK_IMPORT_ROWS',
     BREAKDOWN_PLANS: 'BREAKDOWN_PLANS',
     BREAKDOWN_PLAN_OUTPUTS: 'BREAKDOWN_PLAN_OUTPUTS',
@@ -278,6 +279,8 @@ var CONFIG = {
     TTK_IMPORT_ROWS: ['row_id','import_id','organization_id','source_path','category','name','norm_name','fingerprint','kind','yield_g','yield_source','basis','serving_mode','card_json','steps_json','mapping_json','warnings_json','status','duplicate_of','link_existing','entity_id','ttk_version_id','result_json','decided_by','decided_at','created_at'],
     TTK_CCP_PROPOSALS: ['proposal_id','organization_id','dish_id','ttk_version_id','step_no','step_type','step','hazard_type','hazard','point_type','control_name','parameter','min_value','max_value','unit','norm_code','norm_status','source_document','clause','monitoring_method','frequency','corrective_action','status','decided_by','decided_at','ppk_id','ppk_control_id','ppk_limit_id','created_at','parent_type','pf_tech_id'],
     // Техкарта полуфабриката (PfTechCore.gs): технология, типизированные этапы, хранение; версии как у ТТК.
+    // Подтверждённые человеком соответствия «строка документа поставщика → продукт» (InvoiceRecognitionCore.gs).
+    OCR_ALIASES: ['alias_id','organization_id','raw_norm','raw_text','product_id','supplier_key','hits','created_by','created_at','last_used_at','active'],
     PF_TECH_CARDS: ['pf_tech_id','pf_id','organization_id','version','status','источник','технология','технологические_этапы_json','условия_хранения','срок_хранения_часов','created_at','created_by','approved_at','approved_by','archived_at'],
 
     // P0.3 (ТЗ §8) — добавлено api_operation_id: id КОНКРЕТНОГО вызова processOperation()
@@ -736,7 +739,7 @@ var CONFIG = {
   ID_PREFIXES: {
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
-    RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL', TECH_NORMS: 'TNORM', TTK_CCP_PROPOSALS: 'TCCP', TTK_IMPORT_BATCHES: 'TIMP', TTK_IMPORT_ROWS: 'TIMR', PF_TECH_CARDS: 'PFTC',
+    RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL', TECH_NORMS: 'TNORM', TTK_CCP_PROPOSALS: 'TCCP', TTK_IMPORT_BATCHES: 'TIMP', TTK_IMPORT_ROWS: 'TIMR', PF_TECH_CARDS: 'PFTC', OCR_ALIASES: 'OCRA',
     WAREHOUSE_OPS: 'WOP', BATCHES: 'BATCH', MARKINGS: 'MRK', MARKING_JOURNAL: 'MRKJ', LABEL_PRINT_JOBS: 'LPJ', LABEL_PRINT_ITEMS: 'LPI',
     PRODUCTION: 'PRD', PRODUCTION_INGREDIENT_USAGE: 'PIU', SALE_INGREDIENT_USAGE: 'SIU', WASTE_RECORDS: 'WST', DEFECTS: 'DEF',
     WRITE_OFFS: 'WR', PURCHASE_REQUESTS: 'REQ', BUDGET_PLANS: 'BUD', CASH_TRANSACTIONS: 'CASH', AUTOMATION_DECISIONS: 'AUTO', AUTOMATION_RULES: 'ARULE', AUTOMATION_EVENT_DISPATCH: 'AED', AUTOMATION_WORKFLOWS: 'AWF', AUTOMATION_WORKFLOW_STEPS: 'AWFS', CONFIGURATION_VERSIONS: 'CFG', CONFIGURATION_VALUES: 'CFGV', MASTER_DATA_REGISTRY: 'MD', MASTER_DATA_ALIASES: 'MDA', DATA_RECONCILIATIONS: 'DQR', TRACEABILITY_RUNS: 'TRUN', TRACEABILITY_FINDINGS: 'TFND', PERIOD_CLOSURES: 'PCLOSE', PERIOD_CLOSURE_FINDINGS: 'PCF', PERIOD_REOPEN_REQUESTS: 'PRR', AUDIT_EVIDENCE_VAULT: 'AEV', AUDIT_EVIDENCE_CHECKPOINTS: 'AEC', COMPLIANCE_EVIDENCE_PACKS: 'EPK', COMPLIANCE_EVIDENCE_ITEMS: 'EPI', CAPA_CASES: 'CAPA', CAPA_ACTIONS: 'CAPAA', CAPA_VERIFICATIONS: 'CAPAV', BOARD_PACKS: 'BPK', KPI_TARGETS: 'KPI', KPI_VARIANCES: 'KPIV', KPI_ACTIONS: 'KPIA', COMPLIANCE_CONTROLS: 'CTRL', COMPLIANCE_CONTROL_LINKS: 'CLNK', MANAGEMENT_ACTION_BACKLOG: 'MAB', WORKFORCE_PLANS: 'WFP', SUPPLIER_SCORECARDS: 'SSC', PROCUREMENT_ACTIONS: 'PRA', INVENTORY_POLICIES: 'INVP', CAPACITY_PLANS: 'CAPP', SCENARIOS: 'SCN', EXECUTION_PLANS: 'EXPL', EXECUTION_ITEMS: 'EXI', SHIFT_PLANS: 'SHP', SHIFT_ASSIGNMENTS: 'SHA', PRODUCTION_CALENDARS: 'PCAL', PRODUCTION_CALENDAR_ITEMS: 'PCALI', DEMAND_SENSING_PLANS: 'DSEN', MRP_RUNS: 'MRP', CUSTOMER_CHANNEL_ANALYTICS: 'CCA', CHANNEL_MARGIN_SNAPSHOTS: 'CMS', LABOR_FORECASTS: 'LFR', DIGITAL_TWIN_V2_SNAPSHOTS: 'DTV2', PLANNING_RUNS: 'PLANRUN', PLANNING_PROPOSALS: 'PLANPROP', APPROVAL_GATES: 'APG', EXECUTION_OUTCOMES: 'EXOUT', EXECUTION_REQUESTS: 'EXREQ',
@@ -1061,7 +1064,7 @@ var CONFIG = {
     GET_CASCADE: 'recovery', GET_RECOVERY_CASCADES: 'recovery',
     GET_P22_COVERAGE: 'recovery', GET_P22_FINAL_GATE: 'recovery', GET_P22_RECOVERY: 'recovery', RETRY_P22_RECOVERY: 'recovery', GET_PRODUCTION_READINESS: 'recovery',
     GET_P21_JOURNAL_MAP: 'recovery', GET_P21_AUTOMATION_CONTRACT: 'recovery', GET_P21_COVERAGE: 'recovery', GET_P21_FINAL_GATE: 'recovery',
-    SCAN_AND_RECEIVE_INVOICE: 'warehouse_receive', SCAN_INVOICE_PREVIEW:'warehouse_receive', GET_INVOICE_INTAKE_DRAFT:'warehouse_view', CONFIRM_INVOICE_RECEIPT:'warehouse_receive', RESOLVE_INVOICE_INTAKE_LINE:'warehouse_receive', APPEND_INVOICE_INTAKE_PAGE:'warehouse_receive', GET_DOCUMENT_INTEGRITY_DASHBOARD:'warehouse_view',
+    SCAN_AND_RECEIVE_INVOICE: 'warehouse_receive', SCAN_INVOICE_PREVIEW:'warehouse_receive', UPDATE_INVOICE_DRAFT:'warehouse_receive', SCAN_INVOICE_LINE_LABEL:'warehouse_receive', GET_INVOICE_DRAFTS:'warehouse_view', GET_INVOICE_INTAKE_DRAFT:'warehouse_view', CONFIRM_INVOICE_RECEIPT:'warehouse_receive', RESOLVE_INVOICE_INTAKE_LINE:'warehouse_receive', APPEND_INVOICE_INTAKE_PAGE:'warehouse_receive', GET_DOCUMENT_INTEGRITY_DASHBOARD:'warehouse_view',
     CHECK_DOCUMENT_INTEGRITY:'warehouse_receive', RUN_HACCP_DECISION_ENGINE:'ppk', GET_HACCP_DECISIONS:'ppk',
     GET_EMERGENCY_CENTER:'dashboard', GENERATE_TTK_A4_PDF:'recipes', GET_TECH_SPEC:'recipes', GET_TECH_SPEC_DOCUMENT:'recipes',
     GET_TTK_NORMS_CONTEXT:'recipes', GET_TECH_NORMS:'recipes', GET_TTK_CCP_PROPOSALS:'recipes', VERIFY_TECH_NORM:'ppk', RESET_TECH_NORM:'ppk', GENERATE_TTK_CCP_PROPOSALS:'ppk', DECIDE_TTK_CCP_PROPOSAL:'ppk', TRANSFER_TTK_CCP_TO_PPK:'ppk',

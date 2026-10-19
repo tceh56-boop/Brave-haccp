@@ -50,30 +50,51 @@ function _documentIntegrityCheck_(doc, lines, session, draftId){
   return result;
 }
 
-function createInvoiceIntakeDraft_(data, session){
-  data=data||{};
-  var invoice=data.mockInvoice || runSupplierInvoiceOcr_(data.base64Image,data.mimeType||'image/jpeg',session);
-  var doc=invoice.document||{}, lines=invoice.lines||[];
-  if(!lines.length) throw new Error('В документе не найдены товарные строки.');
-  var integrity=_documentIntegrityCheck_(doc,lines,session,'');
+/**
+ * Состояние черновика приёмки по документу и строкам: сопоставление, количество/цена,
+ * подсказка срока, ХАССП, целостность документа, статус. Общая точка для создания черновика
+ * и для правки (updateInvoiceDraft_). Строки с skip:true в приёмку не входят.
+ */
+function _invUnit_(u){var x=String(u||'').toLowerCase().replace(/[.\s]/g,'');return {'килограмм':'кг','kg':'кг','литр':'л','l':'л','штука':'шт','штук':'шт','pcs':'шт','упак':'уп','упаковка':'уп','грамм':'г','g':'г'}[x]||x;}
+
+function buildInvoiceDraftState_(doc, lines, session, draftId){
+  var active=lines.filter(function(l){return !l.skip;});
+  var integrity=_documentIntegrityCheck_(doc,active,session,draftId||'');
   var mapped=[], errors=[], warnings=[];
   lines.forEach(function(line,i){
     line.line_no=line.line_no||i+1;
-    var m=matchInvoiceLineToProduct_(line,session); line.match=m;
-    if(!m.product_id){errors.push({line:line.line_no,error:'Товар не найден однозначно',candidates:m.candidates||[]});return;}
+    if(line.skip) return;
+    var m=matchInvoiceLineToProduct_(line,session,doc.supplier||''); line.match={product_id:m.product_id,source:m.source,score:m.score,candidates:(m.candidates||[]).map(function(c){return {product_id:c.product_id,название:c.название,score:c.score,source:c.source};}),auto:m.auto};
+    if(!m.product_id){errors.push({line:line.line_no,error:(m.candidates&&m.candidates.length)?'Выберите продукт из похожих':'Товар не найден в номенклатуре',candidates:m.candidates||[]});return;}
+    var q=Number(line.qty), p=Number(line.price);
+    if(!(q>0)){errors.push({line:line.line_no,error:'Количество должно быть больше нуля.'});return;}
+    if(line.price===null||line.price===''||!isFinite(p)||p<0){errors.push({line:line.line_no,error:'Цена должна быть числом не меньше нуля.'});return;}
+    var pu=_invUnit_(m.product&&m.product.единица), lu=_invUnit_(line.unit);
+    if(pu&&lu&&pu!==lu) warnings.push({line:line.line_no,warning:'Единица в документе «'+line.unit+'», у продукта «'+m.product.единица+'» — проверьте, что количество указано в единицах продукта.'});
+    line.expiry_suggestion=(!line.expiryDate&&typeof suggestReceiptExpiry_==='function')?suggestReceiptExpiry_(m.product_id,doc.invoice_date||''):null;
     var h=runHaccpDecisionEngine_({eventType:'RECEIPT',productId:m.product_id,line:line},session);
     line.haccp=h;
     if(h.decision===HACCP_DECISION.BLOCK) errors.push({line:line.line_no,error:'HACCP/ППК блокировка',reasons:h.reasons});
     else {mapped.push(line);(h.warnings||[]).forEach(function(w){warnings.push({line:line.line_no,warning:w});});}
   });
-  var status=(integrity.status===DOCUMENT_INTEGRITY_STATUS.CONFLICT||integrity.status===DOCUMENT_INTEGRITY_STATUS.DUPLICATE||integrity.status===DOCUMENT_INTEGRITY_STATUS.REVIEW||errors.length&&!mapped.length)?'BLOCKED':(errors.length?'PARTIAL':'READY');
+  var status=(integrity.status===DOCUMENT_INTEGRITY_STATUS.CONFLICT||integrity.status===DOCUMENT_INTEGRITY_STATUS.DUPLICATE||integrity.status===DOCUMENT_INTEGRITY_STATUS.REVIEW||errors.length&&!mapped.length||!mapped.length)?'BLOCKED':(errors.length?'PARTIAL':'READY');
+  return {integrity:integrity,mapped:mapped,errors:errors,warnings:warnings,status:status};
+}
+
+function createInvoiceIntakeDraft_(data, session){
+  data=data||{};
+  var invoice=data.mockInvoice || runSupplierInvoiceOcr_(data.base64Image,data.mimeType||'image/jpeg',session);
+  var doc=invoice.document||{}, lines=invoice.lines||[];
+  if(!lines.length) throw new Error('В документе не найдены товарные строки.');
+  var st=buildInvoiceDraftState_(doc,lines,session,'');
+  var integrity=st.integrity, mapped=st.mapped, errors=st.errors, warnings=st.warnings, status=st.status;
   var draft={draft_id:generateId_('INVOICE_INTAKE_DRAFTS'),organization_id:session.organization_id,location_id:session.location_id,status:status,document_json:JSON.stringify(doc),lines_json:JSON.stringify(lines),matched_lines_json:JSON.stringify(mapped),integrity_json:JSON.stringify(integrity),haccp_json:JSON.stringify(mapped.map(function(x){return x.haccp;})),warnings_json:JSON.stringify(warnings),errors_json:JSON.stringify(errors),operation_id:data.operationId||'',created_at:_ocNow_(),created_by:session.user_id,confirmed_at:'',confirmed_by:'',receipt_json:'',cascade_id:session.cascade_id||''};
   insertRow_('INVOICE_INTAKE_DRAFTS',draft);
   insertRow_('INVOICE_DOCUMENTS',{document_id:generateId_('INVOICE_DOCUMENTS'),organization_id:session.organization_id,location_id:session.location_id,draft_id:draft.draft_id,status:'DRAFT',document_number:String(doc.invoice_number||doc.number||''),document_date:String(doc.invoice_date||doc.date||''),supplier_id:String(doc.supplier_id||''),document_fingerprint:integrity.document_fingerprint,lines_fingerprint:integrity.lines_fingerprint,created_at:_ocNow_(),created_by:session.user_id,posted_at:'',posted_by:''});
   return {draft_id:draft.draft_id,status:status,document:doc,lines:lines,matched_lines:mapped,integrity:integrity,warnings:warnings,errors:errors,preview:buildInvoicePostingPreview_(mapped,session)};
 }
 
-function getInvoiceIntakeDraft_(session,data){var d=findOne_('INVOICE_INTAKE_DRAFTS','draft_id',data.draftId);_ocOwned_(session,d,'INVOICE_INTAKE_DRAFTS:'+data.draftId);return {draft:d,document:JSON.parse(d.document_json||'{}'),lines:JSON.parse(d.lines_json||'[]'),matched_lines:JSON.parse(d.matched_lines_json||'[]'),integrity:JSON.parse(d.integrity_json||'{}'),haccp:JSON.parse(d.haccp_json||'[]'),warnings:JSON.parse(d.warnings_json||'[]'),errors:JSON.parse(d.errors_json||'[]'),receipt:d.receipt_json?JSON.parse(d.receipt_json):null};}
+function getInvoiceIntakeDraft_(session,data){var d=findOne_('INVOICE_INTAKE_DRAFTS','draft_id',data.draftId);_ocOwned_(session,d,'INVOICE_INTAKE_DRAFTS:'+data.draftId);return {draft_id:d.draft_id,status:d.status,draft:{draft_id:d.draft_id,status:d.status,created_at:String(d.created_at||''),created_by:d.created_by||''},document:JSON.parse(d.document_json||'{}'),lines:JSON.parse(d.lines_json||'[]'),matched_lines:JSON.parse(d.matched_lines_json||'[]'),integrity:JSON.parse(d.integrity_json||'{}'),haccp:JSON.parse(d.haccp_json||'[]'),warnings:JSON.parse(d.warnings_json||'[]'),errors:JSON.parse(d.errors_json||'[]'),receipt:d.receipt_json?JSON.parse(d.receipt_json):null};}
 
 function confirmInvoiceReceipt_(data,session){
   return withLock_(function(){

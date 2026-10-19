@@ -223,6 +223,10 @@ var ACTION_HANDLERS = {
   SCAN_AND_RECEIVE_INVOICE: function (data, session) { return scanAndReceiveInvoice_(data || {}, session); },
   SCAN_INVOICE_PREVIEW: function (data, session) { return createInvoiceIntakeDraftHardened_(data || {}, session); },
   GET_INVOICE_INTAKE_DRAFT: function (data, session) { return getInvoiceIntakeDraft_(session, data || {}); },
+  // Правка черновика приёмки, скан этикетки строки, список черновиков (InvoiceRecognitionCore.gs).
+  UPDATE_INVOICE_DRAFT: function (data, session) { return updateInvoiceDraft_(data || {}, session); },
+  SCAN_INVOICE_LINE_LABEL: function (data, session) { return scanInvoiceDraftLineLabel_(data || {}, session); },
+  GET_INVOICE_DRAFTS: function (data, session) { return getInvoiceDrafts_(session, data || {}); },
   CONFIRM_INVOICE_RECEIPT: function (data, session) { return confirmInvoiceReceiptHardening_(data || {}, session); },
   RESOLVE_INVOICE_INTAKE_LINE: function (data, session) { return resolveInvoiceIntakeLine_(data || {}, session); },
   APPEND_INVOICE_INTAKE_PAGE: function (data, session) { return appendInvoiceIntakePage_(data || {}, session); },

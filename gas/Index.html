@@ -282,6 +282,20 @@
   <section id="view-warehouse" class="hidden">
     <!-- Раунд 9 — до этого раунда раздел был только просмотром остатков; приёма товара
          не было нигде в интерфейсе вообще (найдено при аудите перед этим раундом). -->
+    <div class="card" id="whInvoiceBlock" data-module-gate="warehouse_receive">
+      <h2>Приход по накладной</h2>
+      <div class="muted" style="margin-bottom:8px;">Фото или PDF накладной, УПД, счёта или чека. Система распознаёт документ и сопоставляет строки с номенклатурой. Проверьте каждую строку, затем проведите приход.</div>
+      <input type="file" id="invFile" accept="image/*,application/pdf" capture="environment">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn small" type="button" onclick="invScan()">Распознать</button>
+        <button class="btn secondary small" type="button" onclick="invLoadDrafts()">Незавершённые приходы</button>
+      </div>
+      <div class="err" id="invErr"></div>
+      <div id="invDrafts"></div>
+      <div id="invEditor"></div>
+      <input type="file" id="invLabelFile" accept="image/*" capture="environment" class="hidden" onchange="invLabelFile(this)">
+    </div>
+
     <div class="card" id="whReceiveBlock" data-module-gate="warehouse_receive">
       <h2>Приём товара</h2>
       <button class="btn" type="button" id="scanLabelBtn" onclick="openProductLabelScanner()">📷 Сканировать этикетку</button>
@@ -3663,6 +3677,138 @@
     if(decision==='ОТКЛОНЕНО'){var r=prompt('Причина отклонения:');if(!r)return;d.reason=r;}
     else{var patch={};if(c.point_type!=='PRP'){var mn=prompt('Минимум ('+(c.unit||'')+'), пусто — нет:',c.min_value===''?'':c.min_value);if(mn===null)return;var mx=prompt('Максимум ('+(c.unit||'')+'), пусто — нет:',c.max_value===''?'':c.max_value);if(mx===null)return;patch.min_value=mn.trim();patch.max_value=mx.trim();}var cl=prompt('Пункт нормативного документа ('+c.source_document+'), сверенный с текстом:',c.norm_status==='ПРОВЕРЕНО'?c.clause:'');if(!cl)return;patch.clause=cl;d.patch=patch;}
     call('DECIDE_TTK_CCP_PROPOSAL',d,function(){pftOpen(pft.ctx.pf.pf_id,pft.cardId);},function(e){alert(e);});}
+  // ---- Приход по накладной: распознавание → черновик → правка → проводка ----
+  var inv = { draft: null, products: null, suppliers: null, labelLine: null };
+  var INV_STATUS = { READY: 'готов к проводке', PARTIAL: 'есть строки с ошибками', BLOCKED: 'заблокирован', POSTED: 'проведён', POSTING: 'проводится', RECOVERY_REQUIRED: 'требует восстановления' };
+  var INV_SOURCE = { BARCODE: 'штрихкод', ARTICLE: 'артикул', ALIAS: 'запомненное соответствие', EXACT: 'точное название', FUZZY: 'похожее название', CANDIDATES: 'выберите из похожих', NONE: 'не найден', MANUAL: 'выбран вручную' };
+  var INV_DOCTYPE = { UPD: 'УПД', INVOICE: 'счёт-фактура', WAYBILL: 'товарная накладная', PAYMENT_ORDER: 'платёжное поручение', RETAIL_RECEIPT: 'кассовый чек', PRODUCT_RECEIPT: 'товарный чек' };
+  function invErr(t) { document.getElementById('invErr').textContent = t || ''; }
+  function invRefs(done) {
+    if (inv.products && inv.suppliers) { done(); return; }
+    call('GET_PRODUCTS', {}, function (p) { inv.products = p; call('GET_SUPPLIERS', {}, function (s) { inv.suppliers = s; done(); }, function (e) { inv.suppliers = []; done(); }); }, function (e) { invErr(e); });
+  }
+  function invReadFile(f, cb) { var r = new FileReader(); r.onload = function () { cb(String(r.result).split(',')[1]); }; r.readAsDataURL(f); }
+  function invScan() {
+    var f = document.getElementById('invFile').files[0];
+    if (!f) { invErr('Выберите фото или PDF документа.'); return; }
+    if (f.size > 15 * 1024 * 1024) { invErr('Файл больше 15 МБ — сфотографируйте страницы отдельно.'); return; }
+    invErr(''); document.getElementById('invEditor').innerHTML = '<div class="muted">Распознавание… для PDF это может занять до минуты.</div>';
+    invReadFile(f, function (b64) {
+      call('SCAN_INVOICE_PREVIEW', { base64Image: b64, mimeType: f.type || 'image/jpeg' }, function (x) { invOpen(x.draft_id); }, function (e) { document.getElementById('invEditor').innerHTML = ''; invErr(e); });
+    });
+  }
+  function invLoadDrafts() {
+    call('GET_INVOICE_DRAFTS', {}, function (rows) {
+      var el = document.getElementById('invDrafts');
+      if (!rows.length) { el.innerHTML = '<div class="muted">Черновиков нет.</div>'; return; }
+      el.innerHTML = '<table style="width:100%;font-size:13px;margin:6px 0;"><tr><th>Документ</th><th>Поставщик</th><th>Статус</th><th></th></tr>' + rows.map(function (r) {
+        return '<tr><td>№' + compEsc(r.invoice_number || '—') + ' от ' + compEsc(r.invoice_date || '—') + '</td><td>' + compEsc(r.supplier || '—') + '</td><td>' + compEsc(INV_STATUS[r.status] || r.status) + '</td><td><button class="btn secondary small" type="button" onclick="invOpen(\'' + compAttr(r.draft_id) + '\')">Открыть</button></td></tr>';
+      }).join('') + '</table>';
+    }, function (e) { invErr(e); });
+  }
+  function invOpen(id) {
+    invErr('');
+    invRefs(function () { call('GET_INVOICE_INTAKE_DRAFT', { draftId: id }, function (x) { invRender(x); }, function (e) { invErr(e); }); });
+  }
+  function invProductOptions(l) {
+    var m = l.match || {}, cur = m.product_id || '', cands = m.candidates || [], seen = {};
+    var h = '<option value="">— выберите продукт —</option>';
+    if (cands.length) h += '<optgroup label="Похожие">' + cands.map(function (c) { seen[c.product_id] = 1; return '<option value="' + compAttr(c.product_id) + '"' + (c.product_id === cur ? ' selected' : '') + '>' + compEsc(c.название) + ' (' + Math.round(c.score * 100) + '%)</option>'; }).join('') + '</optgroup>';
+    h += '<optgroup label="Вся номенклатура">' + (inv.products || []).filter(function (p) { return !seen[p.product_id]; }).map(function (p) { return '<option value="' + compAttr(p.product_id) + '"' + (p.product_id === cur ? ' selected' : '') + '>' + compEsc(p.название) + '</option>'; }).join('') + '</optgroup>';
+    return h;
+  }
+  function invRender(x) {
+    inv.draft = x;
+    var d = x.document || {}, st = x.draft.status, locked = ['POSTED', 'POSTING', 'RECOVERY_REQUIRED'].indexOf(st) !== -1;
+    var errs = {}; (x.errors || []).forEach(function (e) { (errs[e.line] = errs[e.line] || []).push(e.error + (e.reasons && e.reasons.length ? ': ' + e.reasons.join('; ') : '')); });
+    var warns = {}; (x.warnings || []).forEach(function (w) { if (w && w.line) (warns[w.line] = warns[w.line] || []).push(w.warning); });
+    var dis = locked ? ' disabled' : '';
+    var h = '<div style="margin-top:10px;padding:10px;border:1px solid #ddd;border-radius:10px;">';
+    h += '<div><b>' + compEsc(INV_STATUS[st] || st) + '</b> · ' + compEsc(INV_DOCTYPE[d.document_type] || d.document_type || 'документ') + (d.recognition_confidence !== undefined && d.recognition_confidence !== '' ? ' · уверенность ' + Math.round(Number(d.recognition_confidence) * 100) + '%' : '') + (d.pages > 1 ? ' · страниц ' + d.pages : '') + '</div>';
+    var integ = x.integrity || {};
+    if (integ.status && integ.status !== 'OK') h += '<div class="err">Проверка документа: ' + compEsc(integ.status) + (integ.reasons && integ.reasons.length ? ' — ' + compEsc(integ.reasons.join('; ')) : '') + '</div>';
+    (d.warnings || []).forEach(function (w) { h += '<div class="muted">⚠ ' + compEsc(w) + '</div>'; });
+    h += '<div class="grid2" style="margin-top:8px;"><input id="invNum" placeholder="Номер документа" value="' + compAttr(d.invoice_number || '') + '"' + dis + '><input type="date" id="invDate" value="' + compAttr(d.invoice_date || '') + '"' + dis + '></div>';
+    h += '<select id="invSupplier"' + dis + '><option value="">— поставщик не выбран' + (d.supplier ? ' (в документе: ' + compEsc(d.supplier) + (d.supplier_inn ? ', ИНН ' + compEsc(d.supplier_inn) : '') + ')' : '') + ' —</option>' + (inv.suppliers || []).map(function (s) { return '<option value="' + compAttr(s.supplier_id) + '"' + (s.supplier_id === d.supplier_id ? ' selected' : '') + '>' + compEsc(s.название) + '</option>'; }).join('') + '</select>';
+    var total = 0;
+    (x.lines || []).forEach(function (l) {
+      var n = l.line_no, m = l.match || {}, skip = !!l.skip;
+      if (!skip && Number(l.qty) > 0 && isFinite(Number(l.price))) total += Number(l.qty) * Number(l.price);
+      h += '<div class="inv-line" data-line="' + n + '" style="margin-top:10px;padding:8px;border-radius:8px;background:' + (skip ? '#eee' : (errs[n] ? '#fdecec' : '#f7f7f2')) + ';">';
+      h += '<div><b>' + n + '.</b> ' + compEsc(l.raw_name || l.name || '') + (l.unit ? ' <span class="muted">(' + compEsc(l.unit) + ')</span>' : '') + ' <label style="float:right;font-size:13px;"><input type="checkbox" class="inv-skip" style="width:auto;margin:0 4px 0 0;"' + (skip ? ' checked' : '') + dis + '>не принимать</label></div>';
+      if (!skip) {
+        h += '<select class="inv-prod" data-orig="' + compAttr(m.product_id || '') + '"' + dis + '>' + invProductOptions(l) + '</select>';
+        h += '<div class="muted" style="margin:-4px 0 6px;">' + compEsc(INV_SOURCE[m.source] || m.source || '') + (m.score && m.source !== 'MANUAL' && m.source !== 'EXACT' ? ' · ' + Math.round(m.score * 100) + '%' : '') + '</div>';
+        h += '<div class="grid2"><input type="number" step="any" class="inv-qty" placeholder="Количество" value="' + compAttr(l.qty === null || l.qty === undefined ? '' : l.qty) + '"' + dis + '><input type="number" step="any" class="inv-price" placeholder="Цена за ед." value="' + compAttr(l.price === null || l.price === undefined ? '' : l.price) + '"' + dis + '></div>';
+        h += '<div class="grid2"><div><input type="date" class="inv-prodd" value="' + compAttr(l.productionDate || '') + '"' + dis + '><div class="muted" style="margin:-4px 0 6px;">Дата производства</div></div><div><input type="date" class="inv-exp" value="' + compAttr(l.expiryDate || '') + '"' + dis + '><div class="muted" style="margin:-4px 0 6px;">Годен до</div></div></div>';
+        if (!locked && l.expiry_suggestion && !l.expiryDate) h += '<button class="btn secondary small" type="button" onclick="invUseExpiry(' + n + ',\'' + compAttr(l.expiry_suggestion.date) + '\')">Срок по справочнику: ' + compEsc(l.expiry_suggestion.date) + '</button><span class="muted">' + compEsc(l.expiry_suggestion.source) + (l.expiry_suggestion.verified ? '' : ' · не проверено технологом') + '</span><br>';
+        if (!locked) h += '<button class="btn secondary small" type="button" onclick="invScanLabel(' + n + ')">📷 Этикетка</button>';
+        if (l.calculation_mismatch) h += '<div class="muted">⚠ количество × цена не сходится с суммой в документе (' + compEsc(l.sum) + ')</div>';
+        (l.line_warnings || []).forEach(function (w) { h += '<div class="muted">⚠ ' + compEsc(w) + '</div>'; });
+        (warns[n] || []).forEach(function (w) { h += '<div class="muted">⚠ ' + compEsc(w) + '</div>'; });
+        (errs[n] || []).forEach(function (e) { h += '<div class="err">' + compEsc(e) + '</div>'; });
+      }
+      h += '</div>';
+    });
+    h += '<div style="margin-top:10px;"><b>Сумма принимаемых строк: ' + (Math.round(total * 100) / 100) + ' ₽</b>' + (d.total ? ' <span class="muted">· итог документа ' + compEsc(d.total) + ' ₽</span>' : '') + '</div>';
+    if (!locked) h += '<div style="margin-top:8px;"><button class="btn secondary small" type="button" onclick="invSave()">Сохранить и проверить</button><button class="btn small" type="button" onclick="invPost()">Провести приход</button></div>';
+    if (x.receipt) h += '<div class="muted" style="margin-top:6px;">Принято строк: ' + ((x.receipt.результаты || []).length) + (x.receipt.ошибок ? ', с ошибкой: ' + x.receipt.ошибок : '') + '</div>';
+    h += '<div id="invMsg" class="muted" style="margin-top:6px;"></div></div>';
+    document.getElementById('invEditor').innerHTML = h;
+  }
+  function invCollect() {
+    var lines = [];
+    document.querySelectorAll('#invEditor .inv-line').forEach(function (el) {
+      var p = { line_no: Number(el.getAttribute('data-line')), skip: el.querySelector('.inv-skip').checked };
+      var prod = el.querySelector('.inv-prod');
+      if (prod) {
+        if (prod.value !== prod.getAttribute('data-orig')) p.product_id = prod.value;
+        p.qty = el.querySelector('.inv-qty').value; p.price = el.querySelector('.inv-price').value;
+        p.productionDate = el.querySelector('.inv-prodd').value; p.expiryDate = el.querySelector('.inv-exp').value;
+      }
+      lines.push(p);
+    });
+    return { draftId: inv.draft.draft_id, document: { invoice_number: document.getElementById('invNum').value, invoice_date: document.getElementById('invDate').value, supplier_id: document.getElementById('invSupplier').value }, lines: lines };
+  }
+  function invSave(after) {
+    invErr('');
+    call('UPDATE_INVOICE_DRAFT', invCollect(), function (x) {
+      invRender(x);
+      if (x.learned_aliases && x.learned_aliases.length) document.getElementById('invMsg').textContent = 'Запомнено соответствие для строк ' + x.learned_aliases.join(', ') + ' — в следующий раз они сопоставятся сами.';
+      if (after) after(x);
+    }, function (e) { invErr(e); });
+  }
+  function invUseExpiry(n, date) { var el = document.querySelector('#invEditor .inv-line[data-line="' + n + '"] .inv-exp'); if (el) el.value = date; }
+  function invScanLabel(n) { inv.labelLine = n; var f = document.getElementById('invLabelFile'); f.value = ''; f.click(); }
+  function invLabelFile(input) {
+    var f = input.files[0]; if (!f || !inv.draft) return;
+    var n = inv.labelLine;
+    invSave(function () {
+      document.getElementById('invMsg').textContent = 'Распознаю этикетку для строки ' + n + '…';
+      invReadFile(f, function (b64) {
+        call('SCAN_INVOICE_LINE_LABEL', { draftId: inv.draft.draft_id, lineNo: n, base64Image: b64, mimeType: f.type || 'image/jpeg' }, function (x) {
+          invRender(x);
+          var lb = x.label || {};
+          document.getElementById('invMsg').textContent = 'Этикетка, строка ' + n + ': ' + [lb.manufactured_date ? 'произведено ' + lb.manufactured_date : '', lb.expiration_date ? 'годен до ' + lb.expiration_date : '', lb.barcode ? 'штрихкод ' + lb.barcode : ''].filter(Boolean).join(', ') + ((x.label_notes || []).length ? '. ⚠ ' + x.label_notes.join('; ') : '');
+        }, function (e) { invErr(e); });
+      });
+    });
+  }
+  function invPost() {
+    invSave(function (x) {
+      var st = x.draft.status;
+      if (st === 'BLOCKED') { invErr('Документ заблокирован — исправьте ошибки выше.'); return; }
+      var allowPartial = false;
+      if (st === 'PARTIAL') { if (!confirm('Часть строк с ошибками не будет принята. Провести только корректные строки?')) return; allowPartial = true; }
+      else if (!confirm('Провести приход по документу №' + ((x.document || {}).invoice_number || '—') + '?')) return;
+      call('CONFIRM_INVOICE_RECEIPT', { draftId: x.draft.draft_id, confirmed: true, allowPartial: allowPartial }, function (r) {
+        invOpen(r.draft_id || x.draft.draft_id);
+        setTimeout(function () { var m = document.getElementById('invMsg'); if (m) m.textContent = r.status === 'RECOVERY_REQUIRED' ? 'Товар оприходован, но записи ХАССП не сохранены: ' + (r.evidence_errors || []).join('; ') : 'Приход проведён.'; }, 600);
+        if (typeof loadWarehouse === 'function') loadWarehouse();
+      }, function (e) { invErr(e); });
+    });
+  }
+
   function ttkPdfA4(){if(!ttkEditor.ctx||!ttkEditor.ctx.selected_ttk||ttkEditor.ctx.selected_ttk.status!=='утверждена'){alert('Нет утверждённой версии для PDF.');return;}call('GENERATE_TTK_A4_PDF',{dishId:ttkEditor.dishId},function(res){if(!res.base64){alert('PDF не сформирован: '+(res.pdf_error||'неизвестная ошибка'));return;}var bin=atob(res.base64),bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);var blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=res.fileName||'TTK.pdf';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);},function(e){alert(e);});}
 
   /* ---------- Производство ---------- */
@@ -4671,12 +4817,6 @@
 </script>
 
 
-<div id="enterprise-intake" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
-  <h3 style="margin-top:0">📷 Приёмка по накладной — СКАН → ПРОВЕРКА → ПОДТВЕРЖДЕНИЕ</h3>
-  <input id="invoice-file" type="file" accept="image/*,application/pdf" capture="environment">
-  <button onclick="scanAndReceiveInvoiceUI()">Сканировать и проверить</button>
-  <pre id="invoice-result" style="white-space:pre-wrap"></pre>
-</div>
 <div id="stage11-center" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
   <h3 style="margin-top:0">🚨 Аварийный центр</h3>
   <button onclick="loadEmergencyCenterUI()">Обновить</button>
@@ -4684,9 +4824,6 @@
   <div id="stage11-emergency" style="margin-top:10px"></div>
 </div>
 <script>
-var LAST_INVOICE_DRAFT_ID='';
-function scanAndReceiveInvoiceUI(){var f=document.getElementById('invoice-file').files[0];if(!f){alert('Выберите фото/скан.');return;}var out=document.getElementById('invoice-result');out.textContent='Распознавание и контроль…';var r=new FileReader();r.onload=function(){call('SCAN_INVOICE_PREVIEW',{base64Image:String(r.result).split(',')[1],mimeType:f.type},function(x){LAST_INVOICE_DRAFT_ID=x.draft_id||'';var blocked=x.status==='BLOCKED'||(x.integrity&&['CONFLICT','DUPLICATE','REVIEW'].indexOf(x.integrity.status)!==-1);var h='<b>Статус:</b> '+compEsc(x.status)+'<br><b>Документ:</b> '+compEsc((x.document||{}).invoice_number||'—')+' от '+compEsc((x.document||{}).invoice_date||'—')+'<br><b>Целостность:</b> '+compEsc((x.integrity||{}).status||'—');if((x.integrity||{}).reasons&&x.integrity.reasons.length)h+='<div style="color:#b00">'+compEsc(x.integrity.reasons.join('; '))+'</div>';if((x.errors||[]).length)h+='<pre>'+compEsc(JSON.stringify(x.errors,null,2))+'</pre>';if(!blocked&&LAST_INVOICE_DRAFT_ID)h+='<button onclick="confirmInvoiceReceiptUI()">✅ Подтвердить приёмку</button>';out.innerHTML=h;},function(e){out.textContent=String(e);});};r.readAsDataURL(f);}
-function confirmInvoiceReceiptUI(){var out=document.getElementById('invoice-result');out.textContent='Повторная проверка и проведение…';call('CONFIRM_INVOICE_RECEIPT',{draftId:LAST_INVOICE_DRAFT_ID,confirmed:true},function(x){out.innerHTML='<b>✅ Проведено</b><pre>'+compEsc(JSON.stringify(x,null,2))+'</pre>';},function(e){out.innerHTML='<b style="color:#b00">⛔ '+compEsc(String(e))+'</b>';});}
 function loadEmergencyCenterUI(){call('GET_EMERGENCY_CENTER',{},function(x){document.getElementById('stage11-emergency').innerHTML='<pre>'+compEsc(JSON.stringify(x,null,2))+'</pre>';},function(e){document.getElementById('stage11-emergency').textContent=String(e);});}
 function queueOfflineUI(action,payload){var q=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QUEUE')||'[]');q.push({operationId:'OFF-'+Date.now(),action:action,payload:payload,createdAt:new Date().toISOString()});localStorage.setItem('TSEKH_OFFLINE_QUEUE',JSON.stringify(q));}
 function syncOfflineUI(){var q=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QUEUE')||'[]');if(!q.length){alert('Offline-очередь пуста.');return;}var token=localStorage.getItem('tsekh_token')||'';call('SYNC_OFFLINE_QUEUE',{queueIds:[],token:token},function(x){localStorage.removeItem('TSEKH_OFFLINE_QUEUE');alert('Синхронизация: '+JSON.stringify(x));},function(e){alert(String(e));});}

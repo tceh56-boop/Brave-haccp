@@ -42,6 +42,7 @@ function runAllMigrations() {
   report.ttkImport = migrateTtkImportSchema_();
   report.pfTech = migratePfTechSchema_();
   report.ccpJournals = migrateCcpJournalsSchema_();
+  report.invoiceRecognition = migrateInvoiceRecognitionSchema_();
   Logger.log('runAllMigrations: готово. Запустите deployPreflight() для проверки.');
   return report;
 }

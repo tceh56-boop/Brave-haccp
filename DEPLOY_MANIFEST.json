@@ -1,7 +1,7 @@
 {
-  "built_at": "2026-10-19T11:31:04.974219+00:00",
-  "stage": 110,
-  "name": "ТТК: ТУ, нормативы, импорт архива, техкарты ПФ, журналы ККТ (106–110)",
+  "built_at": "2026-10-19T14:21:20.835071+00:00",
+  "stage": 111,
+  "name": "Приёмка сырья по документу: распознавание из МонШеф",
   "files": [
     {
       "name": "INSTALL.md",
@@ -160,8 +160,8 @@
     },
     {
       "name": "gas/API.gs",
-      "bytes": 112606,
-      "sha256": "9ec6d19b9c4df6513b8d1fbee97e31b09006fc2cb4c6ce47827e2cfcda214603"
+      "bytes": 113077,
+      "sha256": "cced9de278c0aa8e8fb040e501a90c85988042a60a1751451c121c1cc6a0b62f"
     },
     {
       "name": "gas/AiCopilotStage24.gs",
@@ -295,8 +295,8 @@
     },
     {
       "name": "gas/Config.gs",
-      "bytes": 159136,
-      "sha256": "1e90fd21ff0432bd6cf5a0aa3c272c960abdb10d8d5e8a6c9cf1b18fc4dc7dd3"
+      "bytes": 159654,
+      "sha256": "8fb0fc73d9f9def66a7c2e97b8696f6daa120dcc2e2d852df2314e65678ff3a1"
     },
     {
       "name": "gas/ConfigurationCenterStage28.gs",
@@ -360,8 +360,8 @@
     },
     {
       "name": "gas/Deploy.gs",
-      "bytes": 17854,
-      "sha256": "2e6c569067c4035327eb89f3a6ae9178f7e79c484287f802736290bc5722a208"
+      "bytes": 17920,
+      "sha256": "8a7eab6b0a155b5de76f784ddb22d130f51e9cae37337c06aef5f60770423c75"
     },
     {
       "name": "gas/Economics.gs",
@@ -380,8 +380,8 @@
     },
     {
       "name": "gas/EnterpriseIntake.gs",
-      "bytes": 7453,
-      "sha256": "f69a4b1af66fbe1619f81967c2301f98c822d4b25cd8be01062f793546845f6d"
+      "bytes": 7376,
+      "sha256": "769e2738492eb001f88805afc8dec7b1a926e04447ecc296c60ae38244fa08ba"
     },
     {
       "name": "gas/EnterpriseStages42to50.gs",
@@ -450,8 +450,8 @@
     },
     {
       "name": "gas/Index.html",
-      "bytes": 401167,
-      "sha256": "d1b735c01fabe6e931b4f8fc23af126b7a9b2422cf941cf0da8eae0de54e3d4e"
+      "bytes": 414450,
+      "sha256": "86cef1775bfe8a21d089e7ec3652bf8aff94df57ffb05f15745d13ecbdc05bd2"
     },
     {
       "name": "gas/Integrations.gs",
@@ -465,8 +465,8 @@
     },
     {
       "name": "gas/InvoiceOcr.gs",
-      "bytes": 2887,
-      "sha256": "c25e8c6244226e525c6e874a11800292f6c86d3c2beb79476926e9c8dee330f4"
+      "bytes": 756,
+      "sha256": "e68c726832d663beeb4be57644d8783de13816be8224233af3e258d719a0352f"
     },
     {
       "name": "gas/JournalOrchestrationP21.gs",
@@ -525,13 +525,13 @@
     },
     {
       "name": "gas/OperationalClosureStage11.gs",
-      "bytes": 28190,
-      "sha256": "4c189d6c57dd0ce830656c6d853b965f812f1fa8b414a29a28d803b5a4b78e0e"
+      "bytes": 30697,
+      "sha256": "225a63f8f4a94b160761edf389c15df0c9554fbbc6be52c3751f3eabe52a152f"
     },
     {
       "name": "gas/OperationalHardeningStage12.gs",
-      "bytes": 14145,
-      "sha256": "521aedb2772c2e5bc85b48d2041320ce8602de8b44fee1545936d05478daa202"
+      "bytes": 14549,
+      "sha256": "5535669ff122410e6caf7cebe72bac25272d2ad383d6b472c2cd073c3dcf8c73"
     },
     {
       "name": "gas/OperationalUatStage13.gs",
@@ -830,6 +830,6 @@
     }
   ],
   "file_count": 165,
-  "aggregate_sha256": "4307a4eae62075ba0c9822672f1add5443e5028fdcd4dcd5859920e0767ae173",
+  "aggregate_sha256": "4476f91f1d847ac0dc047d5672f92a5be3c7e47146ae7db83e8600b9415a2413",
   "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
 }

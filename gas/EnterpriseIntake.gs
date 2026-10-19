@@ -64,20 +64,17 @@ function scanAndReceiveInvoice_(data, session) {
   return result;
 }
 
-function matchInvoiceLineToProduct_(line, session) {
-  var product = null, candidates = [];
-  if (line.barcode) product = findProductByBarcode_(session.organization_id, String(line.barcode));
-  if (!product && line.article) {
-    var article = String(line.article).toLowerCase();
-    candidates = getProducts_(session.organization_id).filter(function(p){ return String(p.штрихкод || '').toLowerCase() === article || String(p.артикул || '').toLowerCase() === article; });
-    if (candidates.length === 1) product = candidates[0];
+/**
+ * Строка документа → продукт. Порядок и правила — irMatchProduct_ (InvoiceRecognitionCore.gs):
+ * штрихкод, артикул, подтверждённый алиас, точное название, нечёткий поиск с отрывом.
+ * Если строку уже сопоставил человек (match.source === 'MANUAL'), выбор не пересматривается.
+ */
+function matchInvoiceLineToProduct_(line, session, supplierText) {
+  if (line.match && line.match.source === 'MANUAL' && line.match.product_id) {
+    var mp = getProductById_(line.match.product_id);
+    if (mp && mp.organization_id === session.organization_id) return { product_id: mp.product_id, product: mp, source: 'MANUAL', score: 1, candidates: [], auto: true };
   }
-  if (!product && line.name) {
-    var n = normalizeProductName_(line.name);
-    candidates = candidates.concat(getProducts_(session.organization_id).filter(function(p){ return normalizeProductName_(p.название) === n; }));
-    if (candidates.length === 1) product = candidates[0];
-  }
-  return {product_id:product ? product.product_id : '', product:product || null, candidates:candidates.slice(0,10)};
+  return irMatchProduct_(line, session, supplierText || '');
 }
 
 function evaluateHaccpReceiptGate_(productId, locationId, line, session) {
