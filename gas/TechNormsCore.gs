@@ -314,12 +314,22 @@ function _tnCcpRules_(type, profile, isHotDish, laterThermal) {
  * Предложения ККТ для блюда: по этапам ТТК + обязательные этапы (приёмка скоропорта,
  * хранение ПФ, аллергены). Ничего не записывает — только расчёт.
  */
-function proposeTtkCcp_(dishId, session, steps, servingMode) {
+function proposeTtkCcp_(dishId, session, steps, servingMode) { return proposeCcp_('DISH', dishId, session, steps, servingMode); }
+
+/**
+ * Предложения ККТ для блюда (DISH) или полуфабриката (PF).
+ * Для ПФ: нет раздачи, всегда есть хранение самого ПФ; если после тепловой обработки
+ * нет охлаждения — предлагается ККТ охлаждения (рост спорообразующих при медленном
+ * остывании — типичная опасность варёных ПФ: рис, крупы, соусы, бульоны).
+ */
+function proposeCcp_(parentType, parentId, session, steps, servingMode) {
   var org = session && session.organization_id;
-  var profile = _tnRiskProfile_('DISH', dishId, 0);
+  var isPf = parentType === 'PF';
+  var entity = isPf ? getSemiFinishedById_(parentId) : findOne_('DISHES', 'dish_id', parentId);
+  var profile = _tnRiskProfile_(parentType, parentId, 0);
   var types = (steps || []).map(techStepType_);
   var lastThermal = types.lastIndexOf('THERMAL'), lastCooling = types.lastIndexOf('COOLING');
-  var isHot = guessServingMode_(servingMode, _tnEntityCategory_('DISH', dishId), steps) === 'HOT';
+  var isHot = !isPf && guessServingMode_(servingMode, _tnEntityCategory_('DISH', parentId), steps) === 'HOT';
   var raw = [];
   var highRisk = Object.keys(profile.groups).filter(function (k) { return profile.groups[k]; });
   if (highRisk.length) raw.push({ step_no: 0, step_type: 'RECEIVING', step: 'Приёмка сырья', r: { hazard_type: 'BIO', hazard: 'Поступление скоропортящегося сырья с нарушением температуры/сроков (' + highRisk.map(function (k) { return profile.groups[k].join(', '); }).join('; ') + ')', point_type: 'КТ', norm: 'CCP_RECEIVING_CHILLED', method: 'Термометр, проверка документов и маркировки', frequency: 'каждая поставка', corrective: 'Отказ в приёмке/возврат поставщику' } });
@@ -328,14 +338,23 @@ function proposeTtkCcp_(dishId, session, steps, servingMode) {
   (steps || []).forEach(function (s, i) {
     var t = types[i];
     if (t === 'THERMAL' && i !== lastThermal) return; // ККТ — на завершающем этапе нагрева, который устраняет опасность
-    _tnCcpRules_(t, profile, isHot, types.indexOf('THERMAL', i + 1) !== -1).forEach(function (r) {
+    var laterThermal = types.indexOf('THERMAL', i + 1) !== -1;
+    _tnCcpRules_(t, profile, isHot, laterThermal).forEach(function (r) {
+      // Приготовленный ПФ, который дальше хранится: охлаждение — ККТ независимо от группы сырья
+      // (споры B. cereus/C. perfringens переживают варку и растут при медленном остывании).
+      if (isPf && t === 'COOLING' && !laterThermal && lastThermal !== -1 && lastThermal < i) r = { hazard_type: 'BIO', hazard: 'Рост спорообразующих микроорганизмов (B. cereus, C. perfringens) при медленном охлаждении приготовленного ПФ перед хранением', point_type: 'ККТ', norm: r.norm, method: r.method, frequency: r.frequency, corrective: r.corrective };
       var key = t + ':' + r.norm; if (seen[key]) return; seen[key] = true; // одна точка на тип этапа: несколько «жарить/запекать» подряд — один контроль
       raw.push({ step_no: i + 1, step_type: t, step: s.stage || TECH_STEP_TYPES[t], step_text: s.description || '', temperature: s.temperature || '', r: r });
     });
   });
   if (isHot && !seen['SERVING:CCP_HOT_SERVE']) raw.push({ step_no: (steps || []).length + 1, step_type: 'SERVING', step: 'Раздача (не описана в ТТК)', r: _tnCcpRules_('SERVING', profile, true)[0] });
+  if (isPf) {
+    if (lastThermal !== -1 && lastCooling < lastThermal) raw.push({ step_no: lastThermal + 1.5, step_type: 'COOLING', step: 'Охлаждение после тепловой обработки (не описано в карте ПФ)', r: { hazard_type: 'BIO', hazard: 'Рост спорообразующих микроорганизмов (B. cereus, C. perfringens) при медленном охлаждении приготовленного ПФ перед хранением', point_type: 'ККТ', norm: 'CCP_COOLING', method: 'Термощуп + время от окончания нагрева', frequency: 'каждая партия', corrective: 'Ускорить охлаждение (шоковое охлаждение, мелкая тара); при превышении времени — утилизация' } });
+    var storeRule = _tnCcpRules_('STORAGE', profile, false)[0];
+    raw.push({ step_no: (steps || []).length + 1, step_type: 'STORAGE', step: 'Хранение ПФ «' + (entity ? entity.название : parentId) + '»' + (entity && entity.срок_хранения_часов ? ', не более ' + entity.срок_хранения_часов + ' ч' : ''), r: { hazard_type: storeRule.hazard_type, hazard: storeRule.hazard, point_type: 'КТ', norm: 'CCP_STORAGE_CHILLED', method: 'Журнал температуры холодильника, маркировка ПФ датой и временем изготовления', frequency: storeRule.frequency, corrective: 'Перенести в исправное оборудование; ПФ с истёкшим сроком или без маркировки — утилизировать' } });
+  }
   var allergens = [];
-  try { var spec = calcTechSpecSafe_('DISH', dishId, session, { ttkSteps: steps }); allergens = (spec.allergens || []).map(function (a) { return a.allergen; }); } catch (e) {}
+  try { var spec = calcTechSpecSafe_(parentType, parentId, session, { ttkSteps: steps }); allergens = (spec.allergens || []).map(function (a) { return a.allergen; }); } catch (e) {}
   if (allergens.length) raw.push({ step_no: 0, step_type: 'STORAGE', step: 'Аллергены: ' + allergens.join(', '), r: { hazard_type: 'ALLERGEN', hazard: 'Перекрёстный контакт и неинформирование потребителя об аллергенах', point_type: 'PRP', norm: 'CCP_ALLERGEN', method: 'Раздельное хранение, маркировка, информирование гостя', frequency: 'постоянно', corrective: 'Изолировать продукт, проинформировать, переоформить маркировку' } });
   return raw.map(function (x) {
     var n = getTechNorm_(x.r.norm, org);
@@ -353,23 +372,31 @@ function proposeTtkCcp_(dishId, session, steps, servingMode) {
   });
 }
 
-/** Сохранить предложения для версии ТТК (заменяет нерешённые, решённые не трогает). */
+/**
+ * Сохранить предложения для карты (ТТК блюда: field ttk_version_id; техкарта ПФ: pf_tech_id).
+ * Нерешённые заменяются, принятые/отклонённые не трогаются и не предлагаются повторно.
+ */
+function _tnSaveProposals_(field, cardId, parentType, parentId, list, session) {
+  var existing = findRows_('TTK_CCP_PROPOSALS', function (r) { return r[field] === cardId; });
+  var decided = {};
+  existing.forEach(function (r) { if (r.status === 'ПРЕДЛОЖЕНО') updateRow_('TTK_CCP_PROPOSALS', r, { status: 'ЗАМЕНЕНО' }); else decided[r.step_type + ':' + r.norm_code] = true; });
+  var rows = list.filter(function (p) { return !decided[p.step_type + ':' + p.norm_code]; }).map(function (p) {
+    var row = { proposal_id: generateId_('TTK_CCP_PROPOSALS'), organization_id: session.organization_id, dish_id: parentId, ttk_version_id: field === 'ttk_version_id' ? cardId : '', pf_tech_id: field === 'pf_tech_id' ? cardId : '', parent_type: parentType, status: 'ПРЕДЛОЖЕНО', decided_by: '', decided_at: '', ppk_id: '', ppk_control_id: '', ppk_limit_id: '', created_at: nowIso_() };
+    ['step_no', 'step_type', 'step', 'hazard_type', 'hazard', 'point_type', 'control_name', 'parameter', 'min_value', 'max_value', 'unit', 'norm_code', 'norm_status', 'source_document', 'clause', 'monitoring_method', 'frequency', 'corrective_action'].forEach(function (k) { row[k] = p[k] === undefined || p[k] === null ? '' : p[k]; });
+    insertRow_('TTK_CCP_PROPOSALS', row);
+    return row;
+  });
+  auditLog_(session.user_id, 'Сформированы предложения ККТ', parentType + ':' + parentId + ' ' + field + ':' + cardId, '', String(rows.length), 'success', session.cascade_id || '');
+  return { created: rows, proposals: findRows_('TTK_CCP_PROPOSALS', function (r) { return r[field] === cardId && r.status !== 'ЗАМЕНЕНО'; }) };
+}
+
+/** Сохранить предложения для версии ТТК блюда. */
 function generateTtkCcpProposals_(data, session) {
   return withLock_(function () {
     var ttk = findOne_('TTK_VERSIONS', 'ttk_version_id', data.ttkVersionId); assertOwnedByOrg_(session, ttk, 'TTK_VERSIONS:' + data.ttkVersionId);
     var steps = []; try { steps = JSON.parse(ttk.технологические_этапы_json || '[]'); } catch (e) { steps = []; }
     if (!steps.length && ttk.технология) steps = parseTechnologySteps_(ttk.технология);
-    var existing = findRows_('TTK_CCP_PROPOSALS', function (r) { return r.ttk_version_id === ttk.ttk_version_id; });
-    var decided = {};
-    existing.forEach(function (r) { if (r.status === 'ПРЕДЛОЖЕНО') updateRow_('TTK_CCP_PROPOSALS', r, { status: 'ЗАМЕНЕНО' }); else decided[r.step_type + ':' + r.norm_code] = true; });
-    var rows = proposeTtkCcp_(ttk.dish_id, session, steps, ttk.режим_подачи).filter(function (p) { return !decided[p.step_type + ':' + p.norm_code]; }).map(function (p) {
-      var row = { proposal_id: generateId_('TTK_CCP_PROPOSALS'), organization_id: session.organization_id, dish_id: ttk.dish_id, ttk_version_id: ttk.ttk_version_id, status: 'ПРЕДЛОЖЕНО', decided_by: '', decided_at: '', ppk_id: '', ppk_control_id: '', ppk_limit_id: '', created_at: nowIso_() };
-      ['step_no', 'step_type', 'step', 'hazard_type', 'hazard', 'point_type', 'control_name', 'parameter', 'min_value', 'max_value', 'unit', 'norm_code', 'norm_status', 'source_document', 'clause', 'monitoring_method', 'frequency', 'corrective_action'].forEach(function (k) { row[k] = p[k] === undefined || p[k] === null ? '' : p[k]; });
-      insertRow_('TTK_CCP_PROPOSALS', row);
-      return row;
-    });
-    auditLog_(session.user_id, 'Сформированы предложения ККТ', 'TTK_VERSIONS:' + ttk.ttk_version_id, '', String(rows.length), 'success', session.cascade_id || '');
-    return { created: rows, proposals: findRows_('TTK_CCP_PROPOSALS', function (r) { return r.ttk_version_id === ttk.ttk_version_id && r.status !== 'ЗАМЕНЕНО'; }) };
+    return _tnSaveProposals_('ttk_version_id', ttk.ttk_version_id, 'DISH', ttk.dish_id, proposeCcp_('DISH', ttk.dish_id, session, steps, ttk.режим_подачи), session);
   });
 }
 
@@ -396,6 +423,13 @@ function decideTtkCcpProposal_(data, session) {
     var patch = data.patch || {}, upd = {};
     ['point_type', 'parameter', 'min_value', 'max_value', 'unit', 'source_document', 'clause', 'monitoring_method', 'frequency', 'corrective_action'].forEach(function (k) { if (patch[k] !== undefined) upd[k] = patch[k]; });
     var merged = {}; Object.keys(p).forEach(function (k) { merged[k] = p[k]; }); Object.keys(upd).forEach(function (k) { merged[k] = upd[k]; });
+    ['min_value', 'max_value'].forEach(function (k) {
+      if (merged[k] === '' || merged[k] === null || merged[k] === undefined) { merged[k] = ''; if (upd[k] !== undefined) upd[k] = ''; return; }
+      var n = Number(String(merged[k]).replace(',', '.'));
+      if (isNaN(n)) throw new Error((k === 'min_value' ? 'Минимум' : 'Максимум') + ': нужно число, получено «' + merged[k] + '».');
+      merged[k] = n; if (upd[k] !== undefined) upd[k] = n;
+    });
+    if (merged.min_value !== '' && merged.max_value !== '' && merged.min_value > merged.max_value) throw new Error('Минимум больше максимума.');
     if (PPK_POINT_TYPES.indexOf(merged.point_type) === -1) throw new Error('Недопустимый тип контрольной точки.');
     if (merged.point_type !== 'PRP' && _tnNum_(merged.min_value) === null && _tnNum_(merged.max_value) === null) throw new Error('Нельзя принять ' + merged.point_type + ' без числового предела: внесите значение из нормативного документа.');
     if (!merged.source_document || !merged.clause) throw new Error('Укажите нормативный документ и пункт.');
@@ -416,7 +450,7 @@ function decideTtkCcpProposal_(data, session) {
 /** Принятая точка → контроль (+ предел) в черновике ППК. В действующую ППК не пишет. */
 function _tnMaterializeCcp_(p, merged, draft, session, role) {
   var c = _ppkCtx_(session, session.location_id);
-  var control = { control_id: _ppkId_('PPK_CONTROLS'), ppk_id: draft.ppk_id, organization_id: session.organization_id, location_id: c.locationId, process_id: '', stage_id: '', product_id: '', hazard_id: '', point_type: merged.point_type, control_name: merged.control_name, purpose: 'Из ТТК ' + p.dish_id + ', этап ' + merged.step, risk_description: merged.hazard, critical_limit_ref: '', monitoring_parameter: merged.parameter, monitoring_method: merged.monitoring_method, frequency: merged.frequency, responsible_role: role || 'ШЕФ-ПОВАР', journal_definition_id: '', corrective_action: merged.corrective_action, verification_method: 'Проверка записей журнала технологом', status: 'DRAFT', human_confirmed: false, confirmed_by: '', confirmed_at: '', source: 'TTK_PROPOSAL:' + p.proposal_id, created_at: nowIso_() };
+  var control = { control_id: _ppkId_('PPK_CONTROLS'), ppk_id: draft.ppk_id, organization_id: session.organization_id, location_id: c.locationId, process_id: '', stage_id: '', product_id: '', hazard_id: '', point_type: merged.point_type, control_name: merged.control_name, purpose: (p.parent_type === 'PF' ? 'Из техкарты ПФ ' : 'Из ТТК ') + p.dish_id + ', этап ' + merged.step, risk_description: merged.hazard, critical_limit_ref: '', monitoring_parameter: merged.parameter, monitoring_method: merged.monitoring_method, frequency: merged.frequency, responsible_role: role || 'ШЕФ-ПОВАР', journal_definition_id: '', corrective_action: merged.corrective_action, verification_method: 'Проверка записей журнала технологом', status: 'DRAFT', human_confirmed: false, confirmed_by: '', confirmed_at: '', source: 'TTK_PROPOSAL:' + p.proposal_id, created_at: nowIso_() };
   insertRow_('PPK_CONTROLS', control);
   var limitId = '';
   if (merged.point_type !== 'PRP') {

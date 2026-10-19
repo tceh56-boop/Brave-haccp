@@ -207,6 +207,7 @@ function calcTechSpec_(parentType, parentId, session, opts) {
   var ttk = parentType === 'DISH' && typeof _ttkCurrent_ === 'function' ? _ttkCurrent_(parentId) : null;
   var steps = opts.ttkSteps;
   if (!steps && ttk) { try { steps = JSON.parse(ttk.технологические_этапы_json || '[]'); } catch (e) { steps = []; } }
+  if (!steps && parentType === 'PF' && typeof getPfTechSteps_ === 'function') steps = getPfTechSteps_(parentId);
 
   var acc = { lines: [], input_mass: 0, raw_mass: 0, covered_mass: 0, data_mass: 0, verified_mass: 0, salt_g: 0, protein: 0, fat: 0, carbohydrate: 0, allergens: {}, missing: [], unverified: [], excluded_mass_lines: 0, warnings: [] };
   var visited = {}; if (parentType === 'PF') visited[parentId] = true;

@@ -252,6 +252,12 @@ var ACTION_HANDLERS = {
   UPDATE_TTK_IMPORT_ROW: function (data, session) { return updateTtkImportRow_(data || {}, session); },
   SKIP_TTK_IMPORT_ROW: function (data, session) { return skipTtkImportRow_(data || {}, session); },
   CONFIRM_TTK_IMPORT_ROWS: function (data, session) { return confirmTtkImportRows_(data || {}, session); },
+  // Техкарта полуфабриката (PfTechCore.gs).
+  GET_PF_TECH_CONTEXT: function (data, session) { return getPfTechContext_(data || {}, session); },
+  GET_PF_TECH_LIST: function (data, session) { return getPfTechList_(session); },
+  SAVE_PF_TECH_DRAFT: function (data, session) { return savePfTechDraft_(data || {}, session); },
+  APPROVE_PF_TECH: function (data, session) { return approvePfTech_(data || {}, session); },
+  GENERATE_PF_CCP_PROPOSALS: function (data, session) { return generatePfCcpProposals_(data || {}, session); },
   GENERATE_PPK_INSPECTION_A4_PDF: function (data, session) { return generatePpkInspectionA4Pdf_(session, data || {}); },
   ENQUEUE_OFFLINE_OPERATION: function (data, session) { return enqueueOfflineOperationHardened_(data || {}, session); },
   SYNC_OFFLINE_QUEUE: function (data, session) { return syncOfflineQueueHardened_(data || {}, session); },

@@ -277,6 +277,10 @@ function _tiConfirmOne_(r, by, session, cache) {
       result.recipe_lines++;
     });
   }
+  if (r.kind === 'PF' && typeof createPfTechFromImport_ === 'function') {
+    if (String(card.technology || '').trim().length >= 10 || steps.length) result.pf_tech = createPfTechFromImport_(entityId, card.technology || '', steps, r.source_path || r.name, session).pf_tech_id;
+    else result.pf_tech_skipped = 'Нет текста технологии — техкарта ПФ не создана.';
+  }
   if (r.kind === 'DISH') {
     if (String(card.technology || '').trim().length >= 10) {
       var shelf = typeof calcShelfLife_ === 'function' ? calcShelfLife_('DISH', entityId, session, steps, r.serving_mode) : null;
