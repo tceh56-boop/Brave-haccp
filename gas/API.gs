@@ -239,6 +239,7 @@ var ACTION_HANDLERS = {
   GET_TTK_NORMS_CONTEXT: function (data, session) { return getTtkNormsContext_(data || {}, session); },
   GET_TECH_NORMS: function (data, session) { return getTechNorms_(session); },
   VERIFY_TECH_NORM: function (data, session) { return verifyTechNorm_(data || {}, session); },
+  RESET_TECH_NORM: function (data, session) { return resetTechNorm_(data || {}, session); },
   GENERATE_TTK_CCP_PROPOSALS: function (data, session) { return generateTtkCcpProposals_(data || {}, session); },
   GET_TTK_CCP_PROPOSALS: function (data, session) { return getTtkCcpProposals_(data || {}, session); },
   DECIDE_TTK_CCP_PROPOSAL: function (data, session) { return decideTtkCcpProposal_(data || {}, session); },

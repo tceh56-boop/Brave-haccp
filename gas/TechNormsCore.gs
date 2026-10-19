@@ -88,11 +88,37 @@ function getTechNorm_(code, organizationId) {
   return rows[0] || null;
 }
 
+/** Справочник для экрана технолога: действующая запись, базовая для сравнения, где используется. */
 function getTechNorms_(session) {
   var codes = {}, out = [];
   findRows_('TECH_NORMS', function (r) { return r.status !== 'АРХИВ' && (!r.organization_id || r.organization_id === session.organization_id); }).forEach(function (r) { codes[r.code] = true; });
-  Object.keys(codes).forEach(function (c) { out.push(getTechNorm_(c, session.organization_id)); });
+  var usage = {};
+  findRows_('TTK_CCP_PROPOSALS', function (r) { return r.organization_id === session.organization_id && r.status !== 'ЗАМЕНЕНО'; }).forEach(function (r) { usage[r.norm_code] = (usage[r.norm_code] || 0) + 1; });
+  Object.keys(codes).sort().forEach(function (c) {
+    var n = getTechNorm_(c, session.organization_id), o = {};
+    Object.keys(n).forEach(function (k) { if (k !== '__row') o[k] = n[k]; });
+    var base = findRows_('TECH_NORMS', function (r) { return r.code === c && !r.organization_id && r.status !== 'АРХИВ'; })[0];
+    o.is_org_override = !!n.organization_id;
+    o.base = base ? { min_value: base.min_value, max_value: base.max_value, duration: base.duration, storage_temp_min: base.storage_temp_min, storage_temp_max: base.storage_temp_max, clause: base.clause } : null;
+    o.usage_count = usage[c] || 0;
+    o.missing_value = n.kind === 'CCP_LIMIT' ? (c !== 'CCP_ALLERGEN' && _tnNum_(n.min_value) === null && _tnNum_(n.max_value) === null) : _tnNum_(n.duration) === null;
+    out.push(o);
+  });
   return out;
+}
+
+/** Проверка значений нормы до записи: числа, порядок min/max, срок для групп сроков годности. */
+function _tnValidateNorm_(kind, code, v) {
+  ['min_value', 'max_value', 'duration', 'storage_temp_min', 'storage_temp_max'].forEach(function (k) {
+    if (v[k] !== '' && v[k] !== null && v[k] !== undefined && isNaN(Number(String(v[k]).replace(',', '.')))) throw new Error('Поле ' + k + ': нужно число, получено «' + v[k] + '».');
+    if (v[k] !== '' && v[k] !== null && v[k] !== undefined) v[k] = Number(String(v[k]).replace(',', '.'));
+  });
+  if (_tnNum_(v.min_value) !== null && _tnNum_(v.max_value) !== null && v.min_value > v.max_value) throw new Error('Минимум больше максимума.');
+  if (_tnNum_(v.storage_temp_min) !== null && _tnNum_(v.storage_temp_max) !== null && v.storage_temp_min > v.storage_temp_max) throw new Error('Температура хранения: от больше до.');
+  if (kind === 'CCP_LIMIT' && code !== 'CCP_ALLERGEN' && _tnNum_(v.min_value) === null && _tnNum_(v.max_value) === null) throw new Error('Для критического предела укажите минимальное и/или максимальное значение.');
+  if (kind === 'SHELF_LIFE' && !(_tnNum_(v.duration) > 0)) throw new Error('Для группы сроков годности укажите срок (положительное число).');
+  if (kind === 'SHELF_LIFE' && ['h', 'd'].indexOf(v.duration_unit) === -1) throw new Error('Единица срока: h (часы) или d (сутки).');
+  if (!v.source_document || !String(v.source_document).trim()) throw new Error('Укажите нормативный документ.');
 }
 
 /**
@@ -108,7 +134,8 @@ function verifyTechNorm_(data, session) {
     var fields = ['parameter', 'min_value', 'max_value', 'unit', 'duration', 'duration_unit', 'storage_temp_min', 'storage_temp_max', 'source_document', 'clause', 'note'];
     var patch = {};
     fields.forEach(function (k) { patch[k] = data[k] !== undefined ? data[k] : base[k]; });
-    if (base.kind === 'CCP_LIMIT' && _tnNum_(patch.min_value) === null && _tnNum_(patch.max_value) === null && base.code !== 'CCP_ALLERGEN') throw new Error('Для критического предела укажите минимальное и/или максимальное значение.');
+    if (!patch.duration_unit) patch.duration_unit = 'h';
+    _tnValidateNorm_(base.kind, base.code, patch);
     patch.status = 'ПРОВЕРЕНО'; patch.verified_by = session.user_id; patch.verified_at = nowIso_();
     var row;
     if (base.organization_id === session.organization_id) { updateRow_('TECH_NORMS', base, patch); row = findOne_('TECH_NORMS', 'norm_id', base.norm_id); }
@@ -117,8 +144,28 @@ function verifyTechNorm_(data, session) {
       Object.keys(patch).forEach(function (k) { row[k] = patch[k]; });
       insertRow_('TECH_NORMS', row);
     }
+    // Нерешённые предложения ККТ с этой нормой получают проверенные значения сразу, без пересоздания.
+    if (base.kind === 'CCP_LIMIT') findRows_('TTK_CCP_PROPOSALS', function (r) { return r.organization_id === session.organization_id && r.norm_code === base.code && r.status === 'ПРЕДЛОЖЕНО'; }).forEach(function (r) {
+      updateRow_('TTK_CCP_PROPOSALS', r, { parameter: patch.parameter, min_value: patch.min_value, max_value: patch.max_value, unit: patch.unit, source_document: patch.source_document, clause: patch.clause, norm_status: 'ПРОВЕРЕНО' });
+    });
     auditLog_(session.user_id, 'Норматив проверен технологом', 'TECH_NORMS:' + data.code, base.status, JSON.stringify(patch), 'success', session.cascade_id || '');
     return row;
+  });
+}
+
+/** Отменить проверку организации: запись архивируется, действует базовая (НЕ_ПРОВЕРЕНО). */
+function resetTechNorm_(data, session) {
+  return withLock_(function () {
+    if (!data.reason) throw new Error('Укажите причину возврата к базовой норме.');
+    var row = findRows_('TECH_NORMS', function (r) { return r.code === data.code && r.organization_id === session.organization_id && r.status !== 'АРХИВ'; })[0];
+    if (!row) throw new Error('У организации нет своей записи для ' + data.code + '.');
+    updateRow_('TECH_NORMS', row, { status: 'АРХИВ', note: String(row.note || '') + ' | возврат к базовой: ' + data.reason });
+    var base = getTechNorm_(data.code, session.organization_id);
+    findRows_('TTK_CCP_PROPOSALS', function (r) { return r.organization_id === session.organization_id && r.norm_code === data.code && r.status === 'ПРЕДЛОЖЕНО'; }).forEach(function (r) {
+      updateRow_('TTK_CCP_PROPOSALS', r, base ? { parameter: base.parameter, min_value: base.min_value, max_value: base.max_value, unit: base.unit, source_document: base.source_document, clause: base.clause, norm_status: base.status } : { norm_status: 'НЕ_ПРОВЕРЕНО' });
+    });
+    auditLog_(session.user_id, 'Норматив возвращён к базовому', 'TECH_NORMS:' + data.code, 'ПРОВЕРЕНО', data.reason, 'success', session.cascade_id || '');
+    return getTechNorm_(data.code, session.organization_id);
   });
 }
 

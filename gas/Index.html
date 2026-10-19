@@ -781,7 +781,33 @@
     <div class="card">
       <div class="row-between" style="gap:8px;flex-wrap:wrap;">
         <div><h2 style="margin:0;">Технологические карты (ТТК)</h2><div class="muted">Версионное создание → состав → полуфабрикаты → технология → HACCP → утверждение → А4</div></div>
-        <button class="btn secondary" style="width:auto;" onclick="ttkStartNewDish()">+ Новая ТТК</button>
+        <span><button class="btn secondary" style="width:auto;" onclick="openTechNorms()">Справочник нормативов</button> <button class="btn secondary" style="width:auto;" onclick="ttkStartNewDish()">+ Новая ТТК</button></span>
+      </div>
+    </div>
+
+    <div class="card hidden" id="techNormsCard">
+      <div class="row-between" style="gap:8px;flex-wrap:wrap;">
+        <div><h2 style="margin:0;">Справочник нормативов</h2><div class="muted">Сроки годности по группам продукции и критические пределы ККТ. Система предлагает, технолог сверяет с текстом документа.</div></div>
+        <button class="btn secondary small" style="width:auto;" onclick="closeTechNorms()">Закрыть</button>
+      </div>
+      <div id="techNormsSummary" class="ttk-mini" style="margin:8px 0;"></div>
+      <div class="grid2">
+        <select id="techNormsKind" onchange="renderTechNorms()"><option value="">Все виды</option><option value="SHELF_LIFE">Сроки годности</option><option value="CCP_LIMIT">Критические пределы</option></select>
+        <select id="techNormsStatus" onchange="renderTechNorms()"><option value="">Все статусы</option><option value="НЕ_ПРОВЕРЕНО">Не проверено</option><option value="ПРОВЕРЕНО">Проверено</option><option value="missing">Нет значения</option></select>
+      </div>
+      <div style="overflow:auto;margin-top:8px;"><table class="ttk-table"><thead><tr><th>Норма</th><th>Значение</th><th>Документ, пункт</th><th>Статус</th><th></th></tr></thead><tbody id="techNormsBody"></tbody></table></div>
+      <div id="techNormEdit" class="hidden" style="margin-top:12px;border-top:1px solid #ddd;padding-top:10px;">
+        <h3 style="margin:0 0 6px;" id="techNormEditTitle"></h3>
+        <div class="ttk-mini" id="techNormEditHint"></div>
+        <div class="grid2"><label class="ttk-mini">Параметр<input id="tnParameter"></label><label class="ttk-mini">Единица<input id="tnUnit" placeholder="°C"></label></div>
+        <div class="grid2"><label class="ttk-mini">Предел: минимум<input id="tnMin" placeholder="пусто — нет"></label><label class="ttk-mini">Предел: максимум<input id="tnMax" placeholder="пусто — нет"></label></div>
+        <div class="grid2"><label class="ttk-mini">Срок годности<input id="tnDuration"></label><label class="ttk-mini">Единица срока<select id="tnDurationUnit"><option value="h">часы</option><option value="d">сутки</option></select></label></div>
+        <div class="grid2"><label class="ttk-mini">Хранение: t от, °C<input id="tnStMin"></label><label class="ttk-mini">Хранение: t до, °C<input id="tnStMax"></label></div>
+        <label class="ttk-mini">Нормативный документ<input id="tnDoc"></label>
+        <label class="ttk-mini">Пункт / приложение, сверенный с текстом (обязательно)<input id="tnClause"></label>
+        <label class="ttk-mini">Примечание<textarea id="tnNote" rows="2"></textarea></label>
+        <div class="err" id="techNormErr"></div>
+        <div class="ttk-actions"><button class="btn" onclick="saveTechNorm()">Сверено с документом — сохранить</button><button class="btn secondary" onclick="document.getElementById('techNormEdit').classList.add('hidden')">Отмена</button></div>
       </div>
     </div>
 
@@ -3397,7 +3423,7 @@
   }
   function openTtkEditor(dishId, versionId, mode){
     ttkEditor={dishId:dishId,ttkVersionId:versionId||null,mode:mode||'view',tab:1,ctx:null,steps:[]};
-    document.getElementById('ttkEditorCard').classList.remove('hidden'); document.getElementById('ttkCatalogCard').classList.add('hidden');
+    document.getElementById('ttkEditorCard').classList.remove('hidden'); document.getElementById('ttkCatalogCard').classList.add('hidden'); document.getElementById('techNormsCard').classList.add('hidden');
     loadTtkEditorContext(); document.getElementById('ttkEditorCard').scrollIntoView({behavior:'smooth',block:'start'});
   }
   function closeTtkEditor(){ttkEditor={dishId:null,ttkVersionId:null,mode:'new',tab:1,ctx:null,steps:[]};document.getElementById('ttkEditorCard').classList.add('hidden');document.getElementById('ttkCatalogCard').classList.remove('hidden');renderTtkCatalog();}
@@ -3494,6 +3520,30 @@
     else{var patch={};if(c.point_type!=='PRP'){var mn=prompt('Минимум ('+(c.unit||'')+'), пусто — нет:',c.min_value===''?'':c.min_value);if(mn===null)return;var mx=prompt('Максимум ('+(c.unit||'')+'), пусто — нет:',c.max_value===''?'':c.max_value);if(mx===null)return;patch.min_value=mn.trim();patch.max_value=mx.trim();}
       var cl=prompt('Пункт нормативного документа ('+c.source_document+'), сверенный с текстом:',c.norm_status==='ПРОВЕРЕНО'?c.clause:'');if(!cl)return;patch.clause=cl;d.patch=patch;}
     call('DECIDE_TTK_CCP_PROPOSAL',d,function(res){if(res.status==='ПРИНЯТО'&&!res.ppk_control_id)alert('Принято. Черновика ППК нет — создан запрос на пересмотр ППК; точка будет перенесена в новый черновик.');loadTtkEditorContext();},function(e){alert(e);});}
+  // Справочник нормативов (TechNormsCore.gs): просмотр — роли ТТК, сверка — роли с модулем ППК.
+  var TECH_NORM_EDIT_ROLES=['ADMIN','ДИРЕКТОР','ТЕХНОЛОГ_HACCP'];
+  var techNorms={rows:[],code:null};
+  function techNormCanEdit(){return TECH_NORM_EDIT_ROLES.indexOf(SESSION.роль)!==-1;}
+  function openTechNorms(){['ttkCatalogCard','ttkEditorCard'].forEach(function(id){document.getElementById(id).classList.add('hidden');});document.getElementById('techNormsCard').classList.remove('hidden');loadTechNorms();}
+  function closeTechNorms(){document.getElementById('techNormsCard').classList.add('hidden');document.getElementById('ttkCatalogCard').classList.remove('hidden');}
+  function loadTechNorms(){document.getElementById('techNormsBody').innerHTML='<tr><td colspan="5" class="muted">Загрузка…</td></tr>';call('GET_TECH_NORMS',{},function(rows){techNorms.rows=rows||[];renderTechNorms();},function(e){document.getElementById('techNormsBody').innerHTML='<tr><td colspan="5" class="err">'+compEsc(e)+'</td></tr>';});}
+  function techNormValue(n){var a=[],has=function(v){return v!==''&&v!==null&&v!==undefined;};if(has(n.min_value))a.push('не менее '+n.min_value);if(has(n.max_value))a.push('не более '+n.max_value);var v=a.length?a.join(', ')+' '+(n.unit||''):'';if(has(n.duration))v+=(v?'; ':'')+'срок '+n.duration+' '+(n.duration_unit==='d'?'сут':'ч');if(has(n.storage_temp_min)||has(n.storage_temp_max))v+=(v?'; ':'')+'хранение '+(has(n.storage_temp_min)?'от +'+n.storage_temp_min+' ':'')+(has(n.storage_temp_max)?'до +'+n.storage_temp_max+' ':'')+'°C';return v||(n.kind==='CCP_LIMIT'&&!n.missing_value?'<span class="muted">без числового предела (PRP)</span>':'<span class="err">нет значения</span>');}
+  function renderTechNorms(){var kind=document.getElementById('techNormsKind').value,st=document.getElementById('techNormsStatus').value,all=techNorms.rows;
+    var ver=all.filter(function(n){return n.status==='ПРОВЕРЕНО';}).length,miss=all.filter(function(n){return n.missing_value;}).length;
+    document.getElementById('techNormsSummary').innerHTML='Проверено <b>'+ver+'</b> из '+all.length+' · без значения: <b>'+miss+'</b>'+(miss?' — система не подставит предел/срок, пока значение не внесено.':'');
+    var rows=all.filter(function(n){return (!kind||n.kind===kind)&&(!st||(st==='missing'?n.missing_value:n.status===st));});
+    document.getElementById('techNormsBody').innerHTML=rows.map(function(n){var badge=n.status==='ПРОВЕРЕНО'?'b-ok':'b-warn';var acts=techNormCanEdit()?'<button class="btn secondary small" style="width:auto;" onclick="editTechNorm(\''+compAttr(n.code)+'\')">Сверить</button>'+(n.is_org_override?' <button class="btn secondary small" style="width:auto;" onclick="resetTechNorm(\''+compAttr(n.code)+'\')">К базовой</button>':''):'';
+      return '<tr><td><b>'+compEsc(n.group_name)+'</b><div class="ttk-mini">'+compEsc(n.code)+(n.parameter?' · '+compEsc(n.parameter):'')+(n.usage_count?' · в ККТ: '+n.usage_count:'')+'</div></td><td>'+techNormValue(n)+'</td><td>'+compEsc(n.source_document)+'<div class="ttk-mini">'+compEsc(n.clause)+'</div></td><td><span class="badge '+badge+'">'+compEsc(n.status==='ПРОВЕРЕНО'?'проверено':'не проверено')+'</span>'+(n.verified_at?'<div class="ttk-mini">'+compEsc(String(n.verified_at).slice(0,10))+'</div>':'')+'</td><td>'+acts+'</td></tr>';}).join('')||'<tr><td colspan="5" class="muted">Нет норм по фильтру. Если справочник пуст — администратор должен запустить runAllMigrations().</td></tr>';}
+  function editTechNorm(code){var n=techNorms.rows.find(function(x){return x.code===code;});if(!n)return;techNorms.code=code;
+    document.getElementById('techNormEditTitle').textContent=n.group_name;
+    document.getElementById('techNormEditHint').textContent=(n.kind==='CCP_LIMIT'?'Критический предел: нужен минимум и/или максимум.':'Группа сроков годности: нужен срок.')+' Значения из базовой записи — ориентир, а не норматив: сверьте каждое число и пункт с официальным текстом.'+(n.note?' '+n.note:'');
+    var set=function(id,v){document.getElementById(id).value=(v===null||v===undefined)?'':v;};
+    set('tnParameter',n.parameter);set('tnUnit',n.unit);set('tnMin',n.min_value);set('tnMax',n.max_value);set('tnDuration',n.duration);document.getElementById('tnDurationUnit').value=n.duration_unit==='d'?'d':'h';set('tnStMin',n.storage_temp_min);set('tnStMax',n.storage_temp_max);set('tnDoc',n.source_document);set('tnClause',n.status==='ПРОВЕРЕНО'?n.clause:'');set('tnNote',n.note);
+    document.getElementById('techNormErr').textContent='';document.getElementById('techNormEdit').classList.remove('hidden');document.getElementById('techNormEdit').scrollIntoView({behavior:'smooth',block:'start'});}
+  function saveTechNorm(){var g=function(id){return document.getElementById(id).value.trim();};var d={code:techNorms.code,parameter:g('tnParameter'),unit:g('tnUnit'),min_value:g('tnMin'),max_value:g('tnMax'),duration:g('tnDuration'),duration_unit:document.getElementById('tnDurationUnit').value,storage_temp_min:g('tnStMin'),storage_temp_max:g('tnStMax'),source_document:g('tnDoc'),clause:g('tnClause'),note:g('tnNote')};
+    if(!d.clause){document.getElementById('techNormErr').textContent='Укажите пункт документа, с которым сверено значение.';return;}
+    call('VERIFY_TECH_NORM',d,function(){document.getElementById('techNormEdit').classList.add('hidden');loadTechNorms();},function(e){document.getElementById('techNormErr').textContent=e;});}
+  function resetTechNorm(code){var r=prompt('Причина возврата к базовой (непроверенной) норме:');if(!r)return;call('RESET_TECH_NORM',{code:code,reason:r},function(){loadTechNorms();},function(e){alert(e);});}
   function ttkPdfA4(){if(!ttkEditor.ctx||!ttkEditor.ctx.selected_ttk||ttkEditor.ctx.selected_ttk.status!=='утверждена'){alert('Нет утверждённой версии для PDF.');return;}call('GENERATE_TTK_A4_PDF',{dishId:ttkEditor.dishId},function(res){if(!res.base64){alert('PDF не сформирован: '+(res.pdf_error||'неизвестная ошибка'));return;}var bin=atob(res.base64),bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);var blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=res.fileName||'TTK.pdf';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);},function(e){alert(e);});}
 
   /* ---------- Производство ---------- */
