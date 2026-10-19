@@ -813,11 +813,17 @@
         <div><h2 style="margin:0;">Импорт архива ТТК</h2><div class="muted">JSON из tools/ttk_archive/extract_ttk_archive.py → предпросмотр → проверка технологом → подтверждение. До подтверждения в системе ничего не создаётся.</div></div>
         <button class="btn secondary small" style="width:auto;" onclick="closeTtkImport()">Закрыть</button>
       </div>
+      <div id="tdBlock" style="margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:10px;">
+        <div class="row-between"><b>Папка ТТК на Google Диске</b><span class="ttk-mini" id="tdState"></span></div>
+        <div class="ttk-mini">Карты из папки и подпапок (Excel, Google Таблицы, Word, PDF) проверяются при каждой синхронизации и раз в сутки. Новые и изменённые карты попадают в импорт на проверку — сами в систему не вносятся.</div>
+        <div class="grid2 td-write"><input id="tdFolder" placeholder="Ссылка на папку Google Диска"><span><button class="btn secondary small" style="width:auto;" onclick="tdSaveFolder()">Сохранить папку</button><button class="btn small" style="width:auto;" onclick="tdSync()">Синхронизировать</button></span></div>
+        <div id="tdResult" class="ttk-mini"></div>
+      </div>
       <div class="grid2" style="margin-top:8px;"><select id="tiBatch" onchange="loadTtkImport(this.value)"><option value="">Загрузок нет</option></select><span><input type="file" id="tiFile" accept=".json,application/json"> <button class="btn secondary small" style="width:auto;" onclick="tiUpload()">Загрузить</button></span></div>
       <div id="tiProgress" class="ttk-mini"></div>
       <div id="tiStats" class="ttk-mini" style="margin:6px 0;"></div>
       <div class="grid2">
-        <select id="tiFilter" onchange="tiState.page=0;renderTiList()"><option value="">Все</option><option value="ready">Готовы к подтверждению</option><option value="waiting_pf">Ждут подтверждения ПФ</option><option value="blocked">Требуют правки</option><option value="CONFIRMED">Подтверждены</option><option value="DUPLICATE">Дубликаты</option><option value="SKIPPED">Пропущены</option></select>
+        <select id="tiFilter" onchange="tiState.page=0;renderTiList()"><option value="">Все</option><option value="changed">Изменены в файле</option><option value="ready">Готовы к подтверждению</option><option value="waiting_pf">Ждут подтверждения ПФ</option><option value="blocked">Требуют правки</option><option value="CONFIRMED">Подтверждены</option><option value="DUPLICATE">Дубликаты</option><option value="SKIPPED">Пропущены</option></select>
         <span><select id="tiKind" onchange="tiState.page=0;renderTiList()"><option value="">Блюда и ПФ</option><option value="PF">Только ПФ</option><option value="DISH">Только блюда</option></select> <input type="search" id="tiSearch" placeholder="Поиск" oninput="tiState.page=0;renderTiList()"></span>
       </div>
       <div class="ttk-actions"><button class="btn secondary small" style="width:auto;" onclick="tiSelectReady()">Выбрать готовые (ПФ первыми, до 10)</button><button class="btn small" style="width:auto;" onclick="tiConfirmSelected()">Подтвердить выбранные</button></div>
@@ -855,10 +861,29 @@
 
     <div class="card" id="ttkCatalogCard">
       <div class="grid2">
-        <input type="search" id="ttkSearch" placeholder="Поиск по названию / № ТТК" oninput="renderTtkCatalog()">
-        <select id="ttkStatusFilter" onchange="renderTtkCatalog()"><option value="">Все статусы</option><option value="утверждена">Утверждена</option><option value="черновик">Черновик</option><option value="на_согласовании">На согласовании</option><option value="архив">Архив</option></select>
+        <input type="search" id="ttkSearch" placeholder="Поиск: название, состав, папка, технология" oninput="renderTtkCatalog()">
+        <input type="search" id="ttkIngredient" placeholder="Содержит ингредиент…" oninput="renderTtkCatalog()">
       </div>
+      <div class="grid2">
+        <select id="ttkKindFilter" onchange="renderTtkCatalog()"><option value="">Блюда и полуфабрикаты</option><option value="DISH">Только блюда</option><option value="PF">Только полуфабрикаты</option></select>
+        <select id="ttkStatusFilter" onchange="renderTtkCatalog()"><option value="">Все статусы</option><option value="утверждена">Есть утверждённая</option><option value="черновик">Черновик</option><option value="на_согласовании">На согласовании</option><option value="нет">Нет ТТК</option></select>
+      </div>
+      <div class="grid2">
+        <select id="ttkSourceFilter" onchange="renderTtkCatalog()"><option value="">Любой источник</option><option value="DRIVE">Google Диск</option><option value="FILE">Архив (файл)</option><option value="MANUAL">Созданы в системе</option></select>
+        <select id="ttkProblemFilter" onchange="renderTtkCatalog()"><option value="">Все карты</option><option value="changed">Изменены в файле — ждут проверки</option><option value="placeholder">Не заполнены хранение/срок</option><option value="no_ttk">Нет ТТК</option><option value="removed">Файл удалён с Диска</option></select>
+      </div>
+      <select id="ttkCategoryFilter" onchange="renderTtkCatalog()"><option value="">Все папки</option></select>
+      <div id="ttkCatalogStat" class="ttk-mini"></div>
       <div id="ttkCatalog" class="muted">Загрузка…</div>
+      <div id="ttkCatalogMore"></div>
+    </div>
+
+    <div class="card hidden" id="ttkHistoryCard">
+      <div class="row-between" style="gap:8px;flex-wrap:wrap;">
+        <div><h2 style="margin:0;" id="thTitle">История карты</h2><div class="muted">Версии, сравнение, возврат к прежней версии (создаётся новая версия-черновик) и изменения из файлов.</div></div>
+        <button class="btn secondary small" style="width:auto;" onclick="closeTtkHistory()">Закрыть</button>
+      </div>
+      <div id="thBody" style="margin-top:8px;"></div>
     </div>
 
     <div class="card hidden" id="ttkEditorCard">
@@ -3434,27 +3459,55 @@
     var el=document.getElementById('ttkDishSelect'); if(!el)return;
     el.innerHTML=(lastDishes||[]).map(function(d){return '<option value="'+d.dish_id+'" '+(d.dish_id===selected?'selected':'')+'>'+compEsc(d.название)+'</option>';}).join('') || '<option value="">Нет блюд</option>';
   }
-  function renderTtkCatalog(){
-    var q=(document.getElementById('ttkSearch').value||'').toLowerCase(); var st=document.getElementById('ttkStatusFilter').value;
-    var rows=[];
-    (lastDishes||[]).forEach(function(d){
-      call('GET_TTK_VERSIONS',{dishId:d.dish_id},function(vs){
-        rows.push({d:d,vs:vs||[]}); if(rows.length===(lastDishes||[]).length)finish();
-      },function(){rows.push({d:d,vs:[]});if(rows.length===(lastDishes||[]).length)finish();});
-    });
-    if(!(lastDishes||[]).length){document.getElementById('ttkCatalog').textContent='Блюд пока нет.';return;}
-    function finish(){
-      rows.sort(function(a,b){return String(a.d.название).localeCompare(String(b.d.название),'ru');});
-      var out=[];
-      rows.forEach(function(x){var vs=x.vs;var current=vs[0]; if(st&&(!vs.some(function(v){return v.status===st;})))return; if(q&&String(x.d.название).toLowerCase().indexOf(q)===-1&&String((current||{}).version||'').indexOf(q)===-1)return;
-        out.push('<div class="ttk-version-row"><div class="row-between"><div><b>'+compEsc(x.d.название)+'</b><div class="ttk-mini">Выход: '+compEsc(x.d.выход)+' · '+(current?'v'+current.version:'ТТК ещё не создана')+'</div></div>'+(current?'<span class="badge '+(TTK_STATUS_BADGE[current.status]||'b-info')+'">'+(TTK_STATUS_LABELS[current.status]||current.status)+'</span>':'<span class="badge b-warn">Нет ТТК</span>')+'</div><div class="ttk-actions">'+
-          (current?'<button class="btn secondary small" style="width:auto;" onclick="openTtkEditor(\''+x.d.dish_id+'\',\''+current.ttk_version_id+'\',\'view\')">Открыть</button>':'')+
-          (ttkCanWrite()?'<button class="btn secondary small" style="width:auto;" onclick="openTtkEditor(\''+x.d.dish_id+'\',\''+(current?current.ttk_version_id:'')+'\',\'new\')">'+(current?'Новая версия':'Создать ТТК')+'</button>':'')+
-          '</div></div>');
-      });
-      document.getElementById('ttkCatalog').innerHTML=out.join('')||'По заданному фильтру ТТК не найдены.';
-    }
+  // Каталог ТТК: один запрос поиска на сервер (SEARCH_TTK) — название с опечатками, состав, папка, технология.
+  var ttkCat={timer:null,items:[],total:0,seq:0};
+  var TTK_SRC_LABEL={DRIVE:'Google Диск',FILE:'архив',MANUAL:'создана в системе'};
+  function renderTtkCatalog(more){clearTimeout(ttkCat.timer);ttkCat.timer=setTimeout(function(){ttkCatalogSearch(more===true);},more===true?0:250);}
+  function ttkCatalogSearch(more){
+    var v=function(id){var el=document.getElementById(id);return el?el.value:'';};
+    var q={q:v('ttkSearch').trim(),ingredient:v('ttkIngredient').trim(),kind:v('ttkKindFilter'),status:v('ttkStatusFilter'),source:v('ttkSourceFilter'),problem:v('ttkProblemFilter'),category:v('ttkCategoryFilter'),offset:more?ttkCat.items.length:0};
+    var seq=++ttkCat.seq;
+    if(!more)document.getElementById('ttkCatalogStat').textContent='Поиск…';
+    call('SEARCH_TTK',q,function(res){if(seq!==ttkCat.seq)return;res=res||{};ttkCat.items=more?ttkCat.items.concat(res.items||[]):(res.items||[]);ttkCat.total=res.total||0;if(!more&&!q.category)ttkCatFacets(res.facets||{});ttkCatRender();},function(e){document.getElementById('ttkCatalog').textContent=e;document.getElementById('ttkCatalogStat').textContent='';});
   }
+  function ttkCatFacets(f){var el=document.getElementById('ttkCategoryFilter'),cur=el.value;var cats=Object.keys(f.category||{}).sort(function(a,b){return a.localeCompare(b,'ru',{numeric:true});});
+    el.innerHTML='<option value="">Все папки</option>'+cats.map(function(c){return '<option value="'+compAttr(c)+'"'+(c===cur?' selected':'')+'>'+compEsc(c)+' ('+f.category[c]+')</option>';}).join('');}
+  function ttkCatRender(){
+    var st=ttkCat.items.length+' из '+ttkCat.total;document.getElementById('ttkCatalogStat').textContent=ttkCat.total?'Найдено: '+ttkCat.total+(ttkCat.total>ttkCat.items.length?' (показано '+st+')':''):'';
+    document.getElementById('ttkCatalog').innerHTML=ttkCat.items.map(function(x){
+      var isPf=x.type==='PF',stLabel=x.status==='нет'?(isPf?'Нет техкарты':'Нет ТТК'):(TTK_STATUS_LABELS[x.status]||x.status);
+      var badge='<span class="badge '+(x.status==='нет'?'b-warn':(TTK_STATUS_BADGE[x.status]||'b-info'))+'">'+compEsc(stLabel)+'</span>';
+      var meta=[isPf?'полуфабрикат':'блюдо',x.category,x.yield?'выход '+x.yield:'',x.version?'v'+x.version+(x.approved_version&&x.approved_version!==x.version?' (утв. v'+x.approved_version+')':''):'',TTK_SRC_LABEL[x.source]||''].filter(Boolean).map(compEsc).join(' · ');
+      var b=[];
+      if(isPf)b.push('<button class="btn secondary small" style="width:auto;" onclick="openPfTech(\''+compAttr(x.id)+'\')">Техкарта ПФ</button>');
+      else{if(x.version_id)b.push('<button class="btn secondary small" style="width:auto;" onclick="openTtkEditor(\''+compAttr(x.id)+'\',\''+compAttr(x.version_id)+'\',\'view\')">Открыть</button>');
+        if(ttkCanWrite())b.push('<button class="btn secondary small" style="width:auto;" onclick="openTtkEditor(\''+compAttr(x.id)+'\',\''+compAttr(x.version_id||'')+'\',\'new\')">'+(x.version_id?'Новая версия':'Создать ТТК')+'</button>');}
+      if(x.version_id||x.source!=='MANUAL')b.push('<button class="btn secondary small" style="width:auto;" onclick="openTtkHistory(\''+x.type+'\',\''+compAttr(x.id)+'\')">История</button>');
+      if(x.pending_change)b.push('<button class="btn small" style="width:auto;" onclick="ttkOpenImportRow(\''+compAttr(x.pending_change.import_id)+'\',\''+compAttr(x.pending_change.row_id)+'\')">Проверить изменение</button>');
+      return '<div class="ttk-version-row"><div class="row-between"><div><b>'+compEsc(x.name)+'</b><div class="ttk-mini">'+meta+'</div>'+(x.matched.length&&(document.getElementById('ttkSearch').value.trim()||document.getElementById('ttkIngredient').value.trim())?'<div class="ttk-mini">найдено: '+compEsc(x.matched.join('; '))+'</div>':'')+(x.problems.length?'<div class="ttk-mini" style="color:#a15c00;">⚠ '+compEsc(x.problems.join('; '))+'</div>':'')+'</div>'+badge+'</div><div class="ttk-actions">'+b.join('')+'</div></div>';
+    }).join('')||'По заданному фильтру ничего не найдено.';
+    document.getElementById('ttkCatalogMore').innerHTML=ttkCat.total>ttkCat.items.length?'<button class="btn secondary small" style="width:auto;" onclick="renderTtkCatalog(true)">Показать ещё</button>':'';
+  }
+  function ttkOpenImportRow(importId,rowId){openTtkImport();setTimeout(function(){loadTtkImports(importId);tiOpenRow(rowId);},300);}
+  // История карты (TtkHistoryCore.gs).
+  var th={type:'',id:'',data:null};
+  function openTtkHistory(type,id){['ttkCatalogCard','ttkEditorCard','techNormsCard','ttkImportCard','pfTechCard'].forEach(function(k){document.getElementById(k).classList.add('hidden');});document.getElementById('ttkHistoryCard').classList.remove('hidden');th={type:type,id:id,data:null};document.getElementById('thBody').textContent='Загрузка…';
+    call('GET_TTK_HISTORY',{type:type,id:id},function(h){th.data=h;renderTtkHistory();},function(e){document.getElementById('thBody').innerHTML='<span class="err">'+compEsc(e)+'</span>';});}
+  function closeTtkHistory(){document.getElementById('ttkHistoryCard').classList.add('hidden');document.getElementById('ttkCatalogCard').classList.remove('hidden');renderTtkCatalog();}
+  function thDiffTable(d){return d&&d.length?'<div style="overflow:auto;"><table class="ttk-table"><thead><tr><th>Что</th><th>Было</th><th>Стало</th></tr></thead><tbody>'+d.map(function(c){return '<tr><td>'+compEsc(c.label)+'</td><td>'+compEsc(c.before)+'</td><td>'+compEsc(c.after)+'</td></tr>';}).join('')+'</tbody></table></div>':'<div class="ttk-mini">Различий нет.</div>';}
+  function renderTtkHistory(){var h=th.data,isPf=h.type==='PF';document.getElementById('thTitle').textContent='История: '+h.name;
+    var busy=h.versions.some(function(v){return v.status==='черновик'||v.status==='на_согласовании';});
+    var rows=h.versions.map(function(v,i){return '<tr><td><input type="radio" name="thA" value="'+compAttr(v.id)+'" style="width:auto;"'+(i===1?' checked':'')+'> <input type="radio" name="thB" value="'+compAttr(v.id)+'" style="width:auto;"'+(i===0?' checked':'')+'></td><td>v'+compEsc(v.version)+'</td><td>'+compEsc(TTK_STATUS_LABELS[v.status]||v.status)+'</td><td class="ttk-mini">'+compEsc(v.источник)+'</td><td class="ttk-mini">'+compEsc(String(v.created_at).slice(0,16).replace('T',' '))+(v.approved_at?'<br>утв. '+compEsc(String(v.approved_at).slice(0,10)):'')+'</td><td>'+(ttkCanWrite()&&!busy&&v.status!=='черновик'&&i>0?'<button class="btn secondary small" style="width:auto;" onclick="thRestore(\''+compAttr(v.id)+'\','+v.version+')">Вернуть</button>':'')+'</td></tr>';}).join('');
+    var html='<h3 style="margin:6px 0;">Версии</h3>'+(h.versions.length?'<div class="ttk-mini">Отметьте «было» (левая колонка) и «стало» (правая) и нажмите «Сравнить».'+(busy?' Возврат недоступен, пока есть черновик или версия на согласовании.':'')+'</div><div style="overflow:auto;"><table class="ttk-table"><thead><tr><th>было / стало</th><th>Версия</th><th>Статус</th><th>Источник</th><th>Создана</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div><button class="btn secondary small" style="width:auto;" onclick="thCompare()">Сравнить</button><div id="thCompare"></div>':'<div class="muted">Версий нет.</div>');
+    if(h.pending_changes.length)html+='<h3 style="margin:10px 0 4px;">Ждут проверки: изменения в файле</h3>'+h.pending_changes.map(function(p){return '<div class="ttk-mini">'+compEsc(p.source_path)+'</div>'+thDiffTable(p.diff)+'<button class="btn small" style="width:auto;" onclick="ttkOpenImportRow(\''+compAttr(p.import_id)+'\',\''+compAttr(p.row_id)+'\')">Открыть в импорте</button>';}).join('');
+    if(h.file_changes.length)html+='<h3 style="margin:10px 0 4px;">Принятые изменения из файлов</h3>'+h.file_changes.slice().reverse().map(function(f){return '<details><summary class="ttk-mini">'+compEsc(String(f.decided_at).slice(0,16).replace('T',' '))+' · '+(f.change_kind==='CHANGED'?'изменение':'первичный импорт')+' · '+compEsc(f.source_path)+'</summary>'+(f.change_kind==='CHANGED'?thDiffTable(f.diff):'')+'</details>';}).join('');
+    if(h.drive_files.length)html+='<h3 style="margin:10px 0 4px;">Файл на Google Диске</h3>'+h.drive_files.map(function(f){return '<div class="ttk-mini">'+compEsc(f.path)+' · '+compEsc(TD_STATE[f.sync_state]||f.sync_state)+(f.removed_at?' '+compEsc(f.removed_at.slice(0,10)):'')+'</div>';}).join('');
+    document.getElementById('thBody').innerHTML=html;}
+  function thCompare(){var a=document.querySelector('input[name="thA"]:checked'),b=document.querySelector('input[name="thB"]:checked');if(!a||!b||a.value===b.value){alert('Выберите две разные версии.');return;}
+    call('COMPARE_TTK_VERSIONS',{type:th.type,fromId:a.value,toId:b.value},function(r){document.getElementById('thCompare').innerHTML='<div class="ttk-mini" style="margin-top:6px;">v'+compEsc(r.from.version)+' → v'+compEsc(r.to.version)+(th.type==='DISH'?' (состав — по снимку рецептуры версии)':'')+'</div>'+thDiffTable(r.changes);},function(e){alert(e);});}
+  function thRestore(id,ver){if(!confirm('Создать новую версию-черновик — копию версии '+ver+'? Текущая утверждённая версия действует, пока новую не утвердят.'))return;
+    var applyRecipe=th.type==='DISH'&&confirm('Вернуть и рецептуру к составу версии '+ver+'? «Отмена» — вернуть только технологию, хранение и срок; рецептура останется текущей.');
+    call('RESTORE_TTK_VERSION',{type:th.type,id:id,applyRecipe:applyRecipe},function(r){alert('Создана версия '+r.version+' (черновик) из версии '+r.from+(r.recipe?'. Рецептура: изменено '+r.recipe.updated+', добавлено '+r.recipe.added+', снято '+r.recipe.removed:'')+'.');openTtkHistory(th.type,th.id);},function(e){alert(e);});}
   function ttkStartNewDish(){
     if(!ttkCanWrite()){alert('У вашей роли нет права создавать ТТК.');return;}
     var name=prompt('Название нового блюда:'); if(!name)return;
@@ -3465,7 +3518,7 @@
   }
   function openTtkEditor(dishId, versionId, mode){
     ttkEditor={dishId:dishId,ttkVersionId:versionId||null,mode:mode||'view',tab:1,ctx:null,steps:[]};
-    document.getElementById('ttkEditorCard').classList.remove('hidden'); document.getElementById('ttkCatalogCard').classList.add('hidden'); document.getElementById('techNormsCard').classList.add('hidden'); document.getElementById('ttkImportCard').classList.add('hidden'); document.getElementById('pfTechCard').classList.add('hidden');
+    document.getElementById('ttkHistoryCard').classList.add('hidden'); document.getElementById('ttkEditorCard').classList.remove('hidden'); document.getElementById('ttkCatalogCard').classList.add('hidden'); document.getElementById('techNormsCard').classList.add('hidden'); document.getElementById('ttkImportCard').classList.add('hidden'); document.getElementById('pfTechCard').classList.add('hidden');
     loadTtkEditorContext(); document.getElementById('ttkEditorCard').scrollIntoView({behavior:'smooth',block:'start'});
   }
   function closeTtkEditor(){ttkEditor={dishId:null,ttkVersionId:null,mode:'new',tab:1,ctx:null,steps:[]};document.getElementById('ttkEditorCard').classList.add('hidden');document.getElementById('ttkCatalogCard').classList.remove('hidden');renderTtkCatalog();}
@@ -3570,7 +3623,7 @@
   var TECH_NORM_EDIT_ROLES=['ADMIN','ДИРЕКТОР','ТЕХНОЛОГ_HACCP'];
   var techNorms={rows:[],code:null};
   function techNormCanEdit(){return TECH_NORM_EDIT_ROLES.indexOf(SESSION.роль)!==-1;}
-  function openTechNorms(){['ttkCatalogCard','ttkEditorCard','ttkImportCard','pfTechCard'].forEach(function(id){document.getElementById(id).classList.add('hidden');});document.getElementById('techNormsCard').classList.remove('hidden');loadTechNorms();}
+  function openTechNorms(){['ttkHistoryCard','ttkCatalogCard','ttkEditorCard','ttkImportCard','pfTechCard'].forEach(function(id){document.getElementById(id).classList.add('hidden');});document.getElementById('techNormsCard').classList.remove('hidden');loadTechNorms();}
   function closeTechNorms(){document.getElementById('techNormsCard').classList.add('hidden');document.getElementById('ttkCatalogCard').classList.remove('hidden');}
   function loadTechNorms(){document.getElementById('techNormsBody').innerHTML='<tr><td colspan="5" class="muted">Загрузка…</td></tr>';call('GET_TECH_NORMS',{},function(rows){techNorms.rows=rows||[];renderTechNorms();},function(e){document.getElementById('techNormsBody').innerHTML='<tr><td colspan="5" class="err">'+compEsc(e)+'</td></tr>';});}
   function techNormValue(n){var a=[],has=function(v){return v!==''&&v!==null&&v!==undefined;};if(has(n.min_value))a.push('не менее '+n.min_value);if(has(n.max_value))a.push('не более '+n.max_value);var v=a.length?a.join(', ')+' '+(n.unit||''):'';if(has(n.duration))v+=(v?'; ':'')+'срок '+n.duration+' '+(n.duration_unit==='d'?'сут':'ч');if(has(n.storage_temp_min)||has(n.storage_temp_max))v+=(v?'; ':'')+'хранение '+(has(n.storage_temp_min)?'от +'+n.storage_temp_min+' ':'')+(has(n.storage_temp_max)?'до +'+n.storage_temp_max+' ':'')+'°C';return v||(n.kind==='CCP_LIMIT'&&!n.missing_value?'<span class="muted">без числового предела (PRP)</span>':'<span class="err">нет значения</span>');}
@@ -3594,8 +3647,25 @@
   var tiState={importId:'',rows:[],stats:{},page:0,selected:{},row:null};
   var TI_STATUS={PREVIEW:'предпросмотр',CONFIRMED:'подтверждена',SKIPPED:'пропущена',DUPLICATE:'дубликат',ERROR:'ошибка'};
   var TI_MAP={PRODUCT:'продукт',PF:'ПФ',ARCHIVE:'карта архива',NEW_PRODUCT:'создать продукт',SKIP:'не включать',UNRESOLVED:'не сопоставлено'};
-  function openTtkImport(){['ttkCatalogCard','ttkEditorCard','techNormsCard','pfTechCard'].forEach(function(id){document.getElementById(id).classList.add('hidden');});document.getElementById('ttkImportCard').classList.remove('hidden');
-    if(!lastProductsForRecipes.length)call('GET_PRODUCTS',{},function(p){lastProductsForRecipes=p||[];},function(){});call('GET_SEMI_FINISHED',{},function(p){lastPfList=p||[];},function(){});loadTtkImports();}
+  function openTtkImport(){['ttkHistoryCard','ttkCatalogCard','ttkEditorCard','techNormsCard','pfTechCard'].forEach(function(id){document.getElementById(id).classList.add('hidden');});document.getElementById('ttkImportCard').classList.remove('hidden');
+    if(!lastProductsForRecipes.length)call('GET_PRODUCTS',{},function(p){lastProductsForRecipes=p||[];},function(){});call('GET_SEMI_FINISHED',{},function(p){lastPfList=p||[];},function(){});loadTtkImports();tdLoad();}
+  // Google Диск (TtkDriveCore.gs).
+  var TD_STATE={NEW:'новая — ждёт проверки',CHANGED:'изменена — ждёт проверки',SYNCED:'в системе',SKIPPED:'пропущена технологом',REMOVED:'файл удалён'};
+  function tdLoad(){document.querySelectorAll('#tdBlock .td-write').forEach(function(el){el.classList.toggle('hidden',!ttkCanWrite());});
+    call('GET_TTK_DRIVE_STATUS',{},function(x){var el=document.getElementById('tdState'),res=document.getElementById('tdResult');
+      if(!x.source){el.textContent='папка не указана';res.innerHTML='';return;}
+      el.textContent='«'+x.source.folder_name+'»'+(x.source.last_sync_at?' · синхронизация '+String(x.source.last_sync_at).slice(0,16).replace('T',' '):' · ещё не синхронизирована');
+      var f=x.files,h='Файлов: '+f.total+' · разобрано '+f.ok+(f.error?' · <span class="err">ошибок '+f.error+'</span>':'')+(f.deferred?' · отложено '+f.deferred:'')+(f.removed?' · удалено из папки '+f.removed:'');
+      var lr=x.source.last_result||{};if(lr.guard)h+='<div class="err">'+compEsc(lr.guard)+'</div>';
+      if(x.problems.length)h+='<details><summary>Файлы с замечаниями ('+x.problems.length+')</summary>'+x.problems.map(function(p){return '<div>'+(p.state==='ERROR'?'✗ ':'— ')+compEsc(p.path)+': '+compEsc(p.note||'')+'</div>';}).join('')+'</details>';
+      res.innerHTML=h;},function(e){document.getElementById('tdResult').innerHTML='<span class="err">'+compEsc(e)+'</span>';});}
+  function tdSaveFolder(){var v=document.getElementById('tdFolder').value.trim();if(!v){alert('Вставьте ссылку на папку.');return;}
+    call('SET_TTK_DRIVE_SOURCE',{folder:v},function(){document.getElementById('tdFolder').value='';tdLoad();},function(e){document.getElementById('tdResult').innerHTML='<span class="err">'+compEsc(e)+'</span>';});}
+  function tdSync(){var res=document.getElementById('tdResult');res.textContent='Синхронизация… для большой папки — до 5 минут.';
+    call('SYNC_TTK_DRIVE',{},function(r){var msg='Новых карт: '+r.new+' · изменённых: '+r.changed+' · без изменений: '+r.unchanged+(r.linked?' · связано с импортом архива: '+r.linked:'')+(r.errors?' · не разобрано: '+r.errors:'')+(r.removed?' · удалено из папки: '+r.removed:'')+(r.deferred?' · отложено: '+r.deferred:'')+'.';
+      if(!r.complete)msg+=' Синхронизация не закончена (лимит времени) — нажмите «Синхронизировать» ещё раз.';
+      tdLoad();setTimeout(function(){document.getElementById('tdResult').insertAdjacentHTML('afterbegin','<div><b>'+compEsc(msg)+'</b></div>');},400);
+      if(r.import_id)loadTtkImports(r.import_id);},function(e){res.innerHTML='<span class="err">'+compEsc(e)+'</span>';});}
   function closeTtkImport(){document.getElementById('ttkImportCard').classList.add('hidden');document.getElementById('ttkCatalogCard').classList.remove('hidden');renderTtkCatalog();}
   function loadTtkImports(selectId){call('GET_TTK_IMPORTS',{},function(list){var sel=document.getElementById('tiBatch');sel.innerHTML=(list||[]).map(function(b){return '<option value="'+compAttr(b.import_id)+'">'+compEsc(b.source_name)+' · '+compEsc(String(b.created_at).slice(0,10))+' · '+b.total+' карт</option>';}).join('')||'<option value="">Загрузок нет</option>';var id=selectId||(list&&list[0]&&list[0].import_id)||'';if(id){sel.value=id;loadTtkImport(id);}},function(e){document.getElementById('tiStats').innerHTML='<span class="err">'+compEsc(e)+'</span>';});}
   function tiUpload(){var f=document.getElementById('tiFile').files[0];if(!f){alert('Выберите JSON архива.');return;}var rd=new FileReader();rd.onload=function(){var d;try{d=JSON.parse(rd.result);}catch(e){alert('Это не JSON: '+e.message);return;}var cards=d.cards||[];if(!cards.length){alert('В файле нет карт (ожидается {cards:[...]}).');return;}
@@ -3607,10 +3677,10 @@
   function tiRowState(r){if(r.status!=='PREVIEW')return r.status;if(!r.blockers.length)return 'ready';return r.blockers.every(function(b){return b.indexOf('Сначала подтвердите ПФ')===0;})?'waiting_pf':'blocked';}
   function renderTiList(){var st=tiState.stats;document.getElementById('tiStats').innerHTML='Всего <b>'+(st.total||0)+'</b> · готовы <b>'+(st.ready||0)+'</b> · ждут ПФ '+(st.waiting_pf||0)+' · требуют правки <b>'+(st.blocked||0)+'</b> · подтверждены '+(st.confirmed||0)+' · дубликаты '+(st.duplicate||0)+' · пропущены '+(st.skipped||0);
     var f=document.getElementById('tiFilter').value,k=document.getElementById('tiKind').value,q=document.getElementById('tiSearch').value.trim().toLowerCase();
-    var rows=tiState.rows.filter(function(r){var s=tiRowState(r);return (!f||s===f)&&(!k||r.kind===k)&&(!q||(r.name+' '+r.category).toLowerCase().indexOf(q)!==-1);});
+    var rows=tiState.rows.filter(function(r){var s=tiRowState(r);return (!f||s===f||(f==='changed'&&r.change_kind==='CHANGED'&&r.status==='PREVIEW'))&&(!k||r.kind===k)&&(!q||(r.name+' '+r.category).toLowerCase().indexOf(q)!==-1);});
     var per=50,pages=Math.max(1,Math.ceil(rows.length/per));if(tiState.page>=pages)tiState.page=pages-1;var view=rows.slice(tiState.page*per,(tiState.page+1)*per);
     document.getElementById('tiBody').innerHTML=view.map(function(r){var s=tiRowState(r),can=s==='ready';var info=r.status!=='PREVIEW'?'<span class="badge '+(r.status==='CONFIRMED'?'b-ok':'b-info')+'">'+compEsc(TI_STATUS[r.status]||r.status)+'</span>':(r.blockers.length?'<span class="'+(s==='blocked'?'err':'muted')+'">'+compEsc(r.blockers[0])+(r.blockers.length>1?' (+'+(r.blockers.length-1)+')':'')+'</span>':'<span class="badge b-ok">готова</span>');if(r.warnings.length&&r.status==='PREVIEW')info+='<div class="ttk-mini">замечаний: '+r.warnings.length+'</div>';
-      return '<tr><td>'+(can?'<input type="checkbox" '+(tiState.selected[r.row_id]?'checked':'')+' onchange="tiToggle(\''+compAttr(r.row_id)+'\',this.checked)">':'')+'</td><td><b>'+compEsc(r.name)+'</b><div class="ttk-mini">'+compEsc(r.category)+'</div></td><td>'+(r.kind==='PF'?'ПФ':'блюдо')+(r.serving_mode?'<div class="ttk-mini">'+(r.serving_mode==='HOT'?'горячее':'холодное')+'</div>':'')+'</td><td>'+(r.yield_g?compEsc(r.yield_g)+' г':'—')+(r.yield_source&&r.yield_source!=='карта'?'<div class="ttk-mini">'+compEsc(r.yield_source)+'</div>':'')+'</td><td>'+r.steps_count+(r.has_thermal?' · нагрев':'')+'</td><td>'+info+'</td><td><button class="btn secondary small" style="width:auto;" onclick="tiOpenRow(\''+compAttr(r.row_id)+'\')">Открыть</button></td></tr>';}).join('')||'<tr><td colspan="7" class="muted">Нет карт по фильтру.</td></tr>';
+      return '<tr><td>'+(can?'<input type="checkbox" '+(tiState.selected[r.row_id]?'checked':'')+' onchange="tiToggle(\''+compAttr(r.row_id)+'\',this.checked)">':'')+'</td><td><b>'+compEsc(r.name)+'</b>'+(r.change_kind==='CHANGED'?' <span class="badge b-warn">изменена в файле</span>':'')+'<div class="ttk-mini">'+compEsc(r.category)+'</div></td><td>'+(r.kind==='PF'?'ПФ':'блюдо')+(r.serving_mode?'<div class="ttk-mini">'+(r.serving_mode==='HOT'?'горячее':'холодное')+'</div>':'')+'</td><td>'+(r.yield_g?compEsc(r.yield_g)+' г':'—')+(r.yield_source&&r.yield_source!=='карта'?'<div class="ttk-mini">'+compEsc(r.yield_source)+'</div>':'')+'</td><td>'+r.steps_count+(r.has_thermal?' · нагрев':'')+'</td><td>'+info+'</td><td><button class="btn secondary small" style="width:auto;" onclick="tiOpenRow(\''+compAttr(r.row_id)+'\')">Открыть</button></td></tr>';}).join('')||'<tr><td colspan="7" class="muted">Нет карт по фильтру.</td></tr>';
     document.getElementById('tiPager').innerHTML=pages>1?'<button class="btn secondary small" style="width:auto;" '+(tiState.page?'':'disabled')+' onclick="tiState.page--;renderTiList()">←</button> <span class="ttk-mini">стр. '+(tiState.page+1)+' из '+pages+' · найдено '+rows.length+'</span> <button class="btn secondary small" style="width:auto;" '+(tiState.page<pages-1?'':'disabled')+' onclick="tiState.page++;renderTiList()">→</button>':'<span class="ttk-mini">найдено '+rows.length+'</span>';}
   function tiToggle(id,on){if(on)tiState.selected[id]=1;else delete tiState.selected[id];}
   function tiSelectReady(){tiState.selected={};var ready=tiState.rows.filter(function(r){return tiRowState(r)==='ready';});ready.sort(function(a,b){return (a.kind==='PF'?0:1)-(b.kind==='PF'?0:1);});ready.slice(0,10).forEach(function(r){tiState.selected[r.row_id]=1;});renderTiList();}
@@ -3625,7 +3695,7 @@
     var lines=(r.card.lines||[]).map(function(l,i){var m=r.mapping[i]||{type:'NEW_PRODUCT'};return '<tr><td>'+compEsc(l.name)+(m.note?'<div class="ttk-mini">'+compEsc(m.note)+'</div>':'')+'</td><td>'+compEsc(l.unit)+'</td><td>'+compEsc(l.brutto==null?'':l.brutto)+'</td><td>'+compEsc(l.netto==null?'':l.netto)+'</td><td><select '+(ed?'':'disabled')+' id="tiMap'+i+'">'+tiMapOptions(m,l)+'</select></td></tr>';}).join('');
     var steps=(r.steps||[]).map(function(x,i){return '<div class="ttk-stage-row"><div class="ttk-mini" style="padding-top:10px;">'+(i+1)+'</div><select '+(ed?'':'disabled')+' onchange="tiState.row.steps['+i+'].step_type=this.value">'+Object.keys(stTypes).map(function(k){return '<option value="'+k+'"'+(x.step_type===k?' selected':'')+'>'+compEsc(stTypes[k])+'</option>';}).join('')+'</select><input '+(ed?'':'disabled')+' value="'+compAttr(x.stage||'')+'" oninput="tiState.row.steps['+i+'].stage=this.value"><textarea '+(ed?'':'disabled')+' rows="2" oninput="tiState.row.steps['+i+'].description=this.value">'+compEsc(x.description||'')+'</textarea><input '+(ed?'':'disabled')+' value="'+compAttr(x.temperature||'')+'" placeholder="°C" oninput="tiState.row.steps['+i+'].temperature=this.value"><input '+(ed?'':'disabled')+' value="'+compAttr(x.time||'')+'" placeholder="время" oninput="tiState.row.steps['+i+'].time=this.value"><span></span></div>';}).join('');
     var list=function(a,cls){return a.length?'<ul class="'+cls+'">'+a.map(function(x){return '<li>'+compEsc(x)+'</li>';}).join('')+'</ul>':'';};
-    box.innerHTML='<div class="row-between"><h3 style="margin:0;">'+compEsc(r.name)+'</h3><span class="ttk-mini">'+compEsc(r.source_path||'')+' · '+compEsc(TI_STATUS[r.status]||r.status)+'</span></div>'+list(r.blockers,'err')+list(r.warnings,'muted')+(r.result?'<div class="ttk-mini">Результат: '+compEsc(JSON.stringify(r.result))+'</div>':'')+
+    box.innerHTML='<div class="row-between"><h3 style="margin:0;">'+compEsc(r.name)+'</h3><span class="ttk-mini">'+compEsc(r.source_path||'')+' · '+compEsc(TI_STATUS[r.status]||r.status)+'</span></div>'+list(r.blockers,'err')+list(r.warnings,'muted')+(r.change_kind==='CHANGED'?'<h4 style="margin:8px 0 4px;">Что изменится в системе</h4>'+thDiffTable(r.diff):'')+(r.result?'<div class="ttk-mini">Результат: '+compEsc(JSON.stringify(r.result))+'</div>':'')+
       '<div class="grid2"><label class="ttk-mini">Название<input id="tiName" '+(ed?'':'disabled')+' value="'+compAttr(r.name)+'"></label><label class="ttk-mini">Вид<select id="tiKindSel" '+(ed?'':'disabled')+'><option value="DISH"'+(r.kind==='DISH'?' selected':'')+'>Блюдо</option><option value="PF"'+(r.kind==='PF'?' selected':'')+'>Полуфабрикат</option></select></label></div>'+
       '<div class="grid2"><label class="ttk-mini">Выход, г'+(r.yield_source&&r.yield_source!=='карта'?' (источник: '+compEsc(r.yield_source)+')':'')+'<input id="tiYield" '+(ed?'':'disabled')+' value="'+compAttr(r.yield_g||'')+'"></label><label class="ttk-mini">Подача<select id="tiServing" '+(ed?'':'disabled')+'><option value="">определить автоматически</option><option value="HOT"'+(r.serving_mode==='HOT'?' selected':'')+'>горячая</option><option value="COLD"'+(r.serving_mode==='COLD'?' selected':'')+'>холодная</option></select></label></div>'+
       '<label class="ttk-mini"><input type="checkbox" id="tiLink" '+(ed?'':'disabled')+(r.link_existing?' checked':'')+' style="width:auto;"> Если объект с таким названием уже есть — связать с ним (рецептура существующего не меняется)</label>'+
@@ -3642,7 +3712,7 @@
   function tiReopen(){call('UPDATE_TTK_IMPORT_ROW',{rowId:tiState.row.row_id,reopen:true},function(r){tiState.row=r;renderTiDetail();loadTtkImport(tiState.importId);},function(e){alert(e);});}
   // Техкарты ПФ (PfTechCore.gs).
   var pft={list:[],ctx:null,steps:[],cardId:''};
-  function openPfTech(pfId){['ttkCatalogCard','ttkEditorCard','techNormsCard','ttkImportCard'].forEach(function(id){document.getElementById(id).classList.add('hidden');});document.getElementById('pfTechCard').classList.remove('hidden');loadPfTechList(function(){if(pfId)pftOpen(pfId);});}
+  function openPfTech(pfId){['ttkHistoryCard','ttkCatalogCard','ttkEditorCard','techNormsCard','ttkImportCard'].forEach(function(id){document.getElementById(id).classList.add('hidden');});document.getElementById('pfTechCard').classList.remove('hidden');loadPfTechList(function(){if(pfId)pftOpen(pfId);});}
   function closePfTech(){document.getElementById('pfTechCard').classList.add('hidden');document.getElementById('ttkCatalogCard').classList.remove('hidden');}
   function loadPfTechList(cb){call('GET_PF_TECH_LIST',{},function(list){pft.list=list||[];renderPfTechList();if(cb)cb();},function(e){document.getElementById('pftList').innerHTML='<tr><td colspan="4" class="err">'+compEsc(e)+'</td></tr>';});}
   function renderPfTechList(){var q=document.getElementById('pftSearch').value.trim().toLowerCase();document.getElementById('pftList').innerHTML=pft.list.filter(function(p){return !q||String(p.название).toLowerCase().indexOf(q)!==-1;}).map(function(p){var b=p.tech_status==='утверждена'?'b-ok':(p.tech_status==='черновик'?'b-warn':'b-info');return '<tr><td><b>'+compEsc(p.название)+'</b><div class="ttk-mini">выход '+compEsc(p.выход)+' '+compEsc(p.единица||'')+'</div></td><td>'+(p.срок_хранения_часов?compEsc(p.срок_хранения_часов)+' ч':'—')+'<div class="ttk-mini">'+compEsc(p.условия_хранения||'')+'</div></td><td><span class="badge '+b+'">'+compEsc(p.tech_status==='нет'?'нет техкарты':p.tech_status+' v'+p.tech_version)+'</span>'+(p.has_draft&&p.tech_status==='утверждена'?'<div class="ttk-mini">есть черновик</div>':'')+'</td><td><button class="btn secondary small" style="width:auto;" onclick="pftOpen(\''+compAttr(p.pf_id)+'\')">Открыть</button></td></tr>';}).join('')||'<tr><td colspan="4" class="muted">Полуфабрикатов нет.</td></tr>';}

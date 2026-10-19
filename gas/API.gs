@@ -249,6 +249,13 @@ var ACTION_HANDLERS = {
   DECIDE_TTK_CCP_PROPOSAL: function (data, session) { return decideTtkCcpProposal_(data || {}, session); },
   TRANSFER_TTK_CCP_TO_PPK: function (data, session) { return transferTtkCcpToPpk_(data || {}, session); },
   // Импорт архива ТТК (TtkImportCore.gs).
+  SEARCH_TTK: function (data, session) { return searchTtk_(data || {}, session); },
+  GET_TTK_HISTORY: function (data, session) { return getTtkHistory_(data || {}, session); },
+  COMPARE_TTK_VERSIONS: function (data, session) { return compareTtkVersions_(data || {}, session); },
+  RESTORE_TTK_VERSION: function (data, session) { return restoreTtkVersion_(data || {}, session); },
+  GET_TTK_DRIVE_STATUS: function (data, session) { return getTtkDriveStatus_(session); },
+  SET_TTK_DRIVE_SOURCE: function (data, session) { return setTtkDriveSource_(data || {}, session); },
+  SYNC_TTK_DRIVE: function (data, session) { return syncTtkDrive_(data || {}, session); },
   PREVIEW_TTK_IMPORT: function (data, session) { return previewTtkImport_(data || {}, session); },
   GET_TTK_IMPORTS: function (data, session) { return getTtkImports_(session); },
   GET_TTK_IMPORT: function (data, session) { return getTtkImport_(data || {}, session); },

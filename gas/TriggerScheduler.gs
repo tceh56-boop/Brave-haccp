@@ -27,6 +27,7 @@ var DAILY_TRIGGER_HOURS_ = {
   complianceMatrixStage38Trigger_: 3,
   complianceCockpitStage39Trigger_: 4,
   enterpriseBoardPackStage40Trigger_: 5,
+  ttkDriveSyncTrigger_: 5,
   labScheduleTrigger_: 6,
   kpiTargetsStage41Trigger_: 6,
   expiryCheckTrigger_: 7,

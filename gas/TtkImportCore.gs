@@ -81,7 +81,7 @@ function previewTtkImport_(data, session) {
     if (data.importId) {
       batch = findOne_('TTK_IMPORT_BATCHES', 'import_id', data.importId); assertOwnedByOrg_(session, batch, 'TTK_IMPORT_BATCHES:' + data.importId);
     } else {
-      batch = { import_id: generateId_('TTK_IMPORT_BATCHES'), organization_id: session.organization_id, source_name: String(data.sourceName || 'архив ТТК'), status: 'PREVIEW', total: 0, created_by: session.user_id, created_at: nowIso_() };
+      batch = { import_id: generateId_('TTK_IMPORT_BATCHES'), organization_id: session.organization_id, source_name: String(data.sourceName || 'архив ТТК'), status: 'PREVIEW', total: 0, created_by: session.user_id, created_at: nowIso_(), source_type: data.sourceType || 'FILE', source_id: data.sourceId || '' };
       insertRow_('TTK_IMPORT_BATCHES', batch);
     }
     var archiveNames = {}, refNames = {};
@@ -90,7 +90,9 @@ function previewTtkImport_(data, session) {
     var idx = _tiOrgIndex_(session.organization_id);
     var existing = findRows_('TTK_IMPORT_ROWS', function (r) { return r.import_id === batch.import_id; });
     var seen = {};
-    existing.forEach(function (r) { seen[r.norm_name + '#' + r.fingerprint] = r.row_id; seen[r.norm_name] = seen[r.norm_name] || r.row_id; });
+    var fileOf = {};
+    // Пропущенная строка не делает новую дубликатом; прежняя версия того же файла Диска — тоже.
+    existing.forEach(function (r) { fileOf[r.row_id] = r.drive_file_id || ''; if (r.status === 'SKIPPED') return; seen[r.norm_name + '#' + r.fingerprint] = r.row_id; seen[r.norm_name] = seen[r.norm_name] || r.row_id; });
     var created = [];
     cards.forEach(function (card) {
       var norm = _tiNorm_(card.name), fp = _tiFingerprint_(card);
@@ -100,10 +102,14 @@ function previewTtkImport_(data, session) {
       var mapping = (card.lines || []).map(function (l) { return _tiMapLine_(l, idx, archiveNames); });
       var warnings = (card.issues || []).slice();
       var status = 'PREVIEW', dupOf = '';
-      if (seen[norm + '#' + fp]) { status = 'DUPLICATE'; dupOf = seen[norm + '#' + fp]; }
-      else if (seen[norm]) warnings.push('Есть одноимённая карта с другим составом — проверьте, какая актуальна.');
-      if (!isPf && idx.dishes[norm]) warnings.push('Блюдо с таким названием уже есть в системе.');
-      if (isPf && idx.pfs[norm]) warnings.push('ПФ с таким названием уже есть в системе.');
+      var drive = card.drive || {}, changed = drive.change_kind === 'CHANGED' && drive.entity_id;
+      if (changed) isPf = drive.entity_type === 'PF';
+      var sameFile = function (id) { return drive.file_id && fileOf[id] === drive.file_id; };
+      if (seen[norm + '#' + fp] && !sameFile(seen[norm + '#' + fp])) { status = 'DUPLICATE'; dupOf = seen[norm + '#' + fp]; }
+      else if (seen[norm] && !sameFile(seen[norm])) warnings.push('Есть одноимённая карта с другим составом — проверьте, какая актуальна.');
+      if (changed) warnings.push('Карта изменена в файле — подтверждение обновит рецептуру и создаст новую версию ' + (isPf ? 'техкарты ПФ' : 'ТТК') + ' (черновик).');
+      else if (!isPf && idx.dishes[norm]) warnings.push('Блюдо с таким названием уже есть в системе.');
+      else if (isPf && idx.pfs[norm]) warnings.push('ПФ с таким названием уже есть в системе.');
       if (refNames[norm] && !_tiIsPfName_(card.name)) warnings.push('На карту ссылаются другие карты как на компонент — импортируется как ПФ.');
       var row = {
         row_id: generateId_('TTK_IMPORT_ROWS'), import_id: batch.import_id, organization_id: session.organization_id,
@@ -112,15 +118,17 @@ function previewTtkImport_(data, session) {
         serving_mode: isPf ? '' : guessServingMode_('', catText, steps),
         card_json: JSON.stringify({ lines: card.lines || [], technology: card.technology || '', yield_raw: card.yield_raw || '', production_basis: card.production_basis || '', format: card.format || '' }),
         steps_json: JSON.stringify(steps), mapping_json: JSON.stringify(mapping), warnings_json: JSON.stringify(warnings),
-        status: status, duplicate_of: dupOf, link_existing: false, entity_id: '', ttk_version_id: '', result_json: '',
-        decided_by: '', decided_at: '', created_at: nowIso_()
+        status: status, duplicate_of: dupOf, link_existing: !!changed, entity_id: changed ? drive.entity_id : '', ttk_version_id: '', result_json: '',
+        decided_by: '', decided_at: '', created_at: nowIso_(),
+        drive_file_id: drive.file_id || '', change_kind: drive.change_kind || '', diff_json: drive.diff ? JSON.stringify(drive.diff) : ''
       };
       insertRow_('TTK_IMPORT_ROWS', row);
+      fileOf[row.row_id] = row.drive_file_id;
       seen[norm + '#' + fp] = seen[norm + '#' + fp] || row.row_id; seen[norm] = seen[norm] || row.row_id;
       created.push(row.row_id);
     });
     updateRow_('TTK_IMPORT_BATCHES', findOne_('TTK_IMPORT_BATCHES', 'import_id', batch.import_id), { total: existing.length + created.length });
-    return { import_id: batch.import_id, added: created.length, total: existing.length + created.length };
+    return { import_id: batch.import_id, added: created.length, total: existing.length + created.length, row_ids: created };
   });
 }
 
@@ -166,7 +174,8 @@ function _tiRowView_(r, by, full) {
   var v = { row_id: r.row_id, name: r.name, category: r.category, kind: r.kind, yield_g: r.yield_g, yield_source: r.yield_source, serving_mode: r.serving_mode,
     status: r.status, duplicate_of: r.duplicate_of, entity_id: r.entity_id, ttk_version_id: r.ttk_version_id, warnings: warnings,
     steps_count: steps.length, has_thermal: steps.some(function (s) { return techStepType_(s) === 'THERMAL'; }),
-    blockers: r.status === 'PREVIEW' ? _tiBlockers_(r, by) : [], link_existing: r.link_existing === true || r.link_existing === 'TRUE' };
+    blockers: r.status === 'PREVIEW' ? _tiBlockers_(r, by) : [], link_existing: r.link_existing === true || r.link_existing === 'TRUE',
+    change_kind: r.change_kind || '', diff: _tiJson_(r.diff_json, []) };
   if (full) { v.card = _tiJson_(r.card_json, {}); v.steps = steps; v.mapping = _tiJson_(r.mapping_json, []); v.result = _tiJson_(r.result_json, null); v.source_path = r.source_path; }
   return v;
 }
@@ -200,7 +209,7 @@ function updateTtkImportRow_(data, session) {
     var r = findOne_('TTK_IMPORT_ROWS', 'row_id', data.rowId); assertOwnedByOrg_(session, r, 'TTK_IMPORT_ROWS:' + data.rowId);
     if (['PREVIEW', 'DUPLICATE', 'ERROR', 'SKIPPED'].indexOf(r.status) === -1) throw new Error('Строку в статусе ' + r.status + ' менять нельзя.');
     var patch = {}, card = _tiJson_(r.card_json, {});
-    if (data.kind !== undefined) { if (['DISH', 'PF'].indexOf(data.kind) === -1) throw new Error('kind: DISH или PF.'); patch.kind = data.kind; }
+    if (data.kind !== undefined) { if (['DISH', 'PF'].indexOf(data.kind) === -1) throw new Error('kind: DISH или PF.'); if (r.change_kind === 'CHANGED' && data.kind !== r.kind) throw new Error('Изменённая карта обновляет существующий объект — вид менять нельзя.'); patch.kind = data.kind; }
     if (data.name !== undefined) { if (!String(data.name).trim()) throw new Error('Пустое название.'); patch.name = String(data.name).trim(); patch.norm_name = _tiNorm_(patch.name); }
     if (data.yield_g !== undefined) { var y = Number(String(data.yield_g).replace(',', '.')); if (!(y > 0)) throw new Error('Выход должен быть положительным числом.'); patch.yield_g = y; patch.yield_source = 'технолог'; }
     if (data.serving_mode !== undefined) { if (['HOT', 'COLD', ''].indexOf(data.serving_mode) === -1) throw new Error('Режим подачи: HOT, COLD или пусто.'); patch.serving_mode = data.serving_mode; }
@@ -229,10 +238,39 @@ function skipTtkImportRow_(data, session) {
   if (r.status === 'CONFIRMED') throw new Error('Подтверждённую карту пропустить нельзя.');
   if (!data.reason) throw new Error('Укажите причину.');
   updateRow_('TTK_IMPORT_ROWS', r, { status: 'SKIPPED', result_json: JSON.stringify({ reason: data.reason }), decided_by: session.user_id, decided_at: nowIso_() });
+  if (typeof markTtkDriveFileDecision_ === 'function') markTtkDriveFileDecision_(r, 'SKIPPED');
   return { row_id: r.row_id, status: 'SKIPPED' };
 }
 
 function _tiBaseUnit_(unit) { return unit === 'л' || unit === 'мл' ? 'л' : unit === 'шт' ? 'шт' : 'кг'; }
+
+/** Строки рецептуры из карты: ингредиент (существующий, карта архива или новый продукт), количество, единица, потери. */
+function _tiResolveLines_(r, card, mapping, by, idx, session, result) {
+  var out = [];
+  (card.lines || []).forEach(function (l, i) {
+    var m = mapping[i] || { type: 'NEW_PRODUCT' };
+    if (m.type === 'SKIP') { result.skipped_lines.push(l.name); return; }
+    var qty = Number(l.brutto) > 0 ? Number(l.brutto) : Number(l.netto), net = Number(l.netto) > 0 ? Number(l.netto) : qty, unit = l.unit;
+    var ingredientId;
+    if (m.type === 'PRODUCT' || m.type === 'PF') ingredientId = m.id;
+    else if (m.type === 'ARCHIVE') {
+      var ref = _tiResolveRef_(by, m.norm, r.row_id); ingredientId = ref.entity_id;
+      if (unit === 'порция') { qty = qty * Number(ref.yield_g) / 1000; net = net * Number(ref.yield_g) / 1000; unit = 'кг'; }
+    } else {
+      var k = _tiNorm_(l.name);
+      ingredientId = idx.products[k];
+      if (!ingredientId) {
+        var gid = idx.globals[k] || '';
+        ingredientId = createProduct_({ organization_id: session.organization_id, название: String(l.name).trim(), единица: _tiBaseUnit_(unit), global_product_id: gid, userId: session.user_id }).product_id;
+        idx.products[k] = ingredientId; result.created_products.push(l.name + (gid ? ' (КБЖУ из справочника)' : ''));
+      }
+    }
+    if (unit === 'порция') unit = 'шт';
+    var loss = qty > 0 && net < qty ? Math.round((1 - net / qty) * 1000) / 10 : 0;
+    out.push({ ingredientId: ingredientId, qty: qty, net: net, unit: unit, loss: loss, name: l.name });
+  });
+  return out;
+}
 
 /** Подтверждение одной строки (внутри общего lock): создание объекта, рецептуры, черновика ТТК. */
 function _tiConfirmOne_(r, by, session, cache) {
@@ -243,6 +281,11 @@ function _tiConfirmOne_(r, by, session, cache) {
   var idx = cache.idx;
   var linkExisting = r.link_existing === true || r.link_existing === 'TRUE';
   var entityId = r.kind === 'PF' ? idx.pfs[r.norm_name] : idx.dishes[r.norm_name];
+  if (r.change_kind === 'CHANGED' && r.entity_id) {
+    var ent = r.kind === 'PF' ? getSemiFinishedById_(r.entity_id) : findOne_('DISHES', 'dish_id', r.entity_id);
+    assertOwnedByOrg_(session, ent, (r.kind === 'PF' ? 'SEMI_FINISHED:' : 'DISHES:') + r.entity_id);
+    entityId = r.entity_id; linkExisting = true;
+  }
   if (entityId && !linkExisting) throw new Error((r.kind === 'PF' ? 'ПФ' : 'Блюдо') + ' «' + r.name + '» уже есть в системе. Отметьте «связать с существующим» или переименуйте.');
   var fresh = !entityId;
   if (fresh) {
@@ -252,40 +295,29 @@ function _tiConfirmOne_(r, by, session, cache) {
   } else if (getRecipeLines_(r.kind === 'PF' ? 'PF' : 'DISH', entityId).length) {
     result.note = 'Связано с существующим объектом: рецептура не менялась.';
   }
+  if (r.change_kind === 'CHANGED' && !fresh) {
+    // Карта изменена в файле: рецептура приводится к новой карте, ТТК/техкарта ПФ — новая версия-черновик.
+    result.change = applyTtkCardChange_(r, card, _tiResolveLines_(r, card, mapping, by, idx, session, result), steps, entityId, session);
+    updateRow_('TTK_IMPORT_ROWS', r, { status: 'CONFIRMED', entity_id: entityId, ttk_version_id: result.change.ttk_version_id || '', result_json: JSON.stringify(result), decided_by: session.user_id, decided_at: nowIso_() });
+    r.status = 'CONFIRMED'; r.entity_id = entityId;
+    if (typeof markTtkDriveFileDecision_ === 'function') markTtkDriveFileDecision_(r, 'SYNCED');
+    return result;
+  }
   if (fresh || !result.note) {
-    (card.lines || []).forEach(function (l, i) {
-      var m = mapping[i] || { type: 'NEW_PRODUCT' };
-      if (m.type === 'SKIP') { result.skipped_lines.push(l.name); return; }
-      var qty = Number(l.brutto) > 0 ? Number(l.brutto) : Number(l.netto), net = Number(l.netto) > 0 ? Number(l.netto) : qty, unit = l.unit;
-      var ingredientId;
-      if (m.type === 'PRODUCT' || m.type === 'PF') ingredientId = m.id;
-      else if (m.type === 'ARCHIVE') {
-        var ref = _tiResolveRef_(by, m.norm, r.row_id); ingredientId = ref.entity_id;
-        if (unit === 'порция') { qty = qty * Number(ref.yield_g) / 1000; net = net * Number(ref.yield_g) / 1000; unit = 'кг'; }
-      } else {
-        var k = _tiNorm_(l.name);
-        ingredientId = idx.products[k];
-        if (!ingredientId) {
-          var gid = idx.globals[k] || '';
-          ingredientId = createProduct_({ organization_id: session.organization_id, название: String(l.name).trim(), единица: _tiBaseUnit_(unit), global_product_id: gid, userId: session.user_id }).product_id;
-          idx.products[k] = ingredientId; result.created_products.push(l.name + (gid ? ' (КБЖУ из справочника)' : ''));
-        }
-      }
-      if (unit === 'порция') unit = 'шт';
-      var loss = qty > 0 && net < qty ? Math.round((1 - net / qty) * 1000) / 10 : 0;
-      addRecipeLine_(r.kind === 'PF' ? 'PF' : 'DISH', entityId, ingredientId, qty, net, unit, loss, session);
+    _tiResolveLines_(r, card, mapping, by, idx, session, result).forEach(function (x) {
+      addRecipeLine_(r.kind === 'PF' ? 'PF' : 'DISH', entityId, x.ingredientId, x.qty, x.net, x.unit, x.loss, session);
       result.recipe_lines++;
     });
   }
   if (r.kind === 'PF' && typeof createPfTechFromImport_ === 'function') {
-    if (String(card.technology || '').trim().length >= 10 || steps.length) result.pf_tech = createPfTechFromImport_(entityId, card.technology || '', steps, r.source_path || r.name, session).pf_tech_id;
+    if (String(card.technology || '').trim().length >= 10 || steps.length) result.pf_tech = createPfTechFromImport_(entityId, card.technology || '', steps, r.source_path || r.name, session, r.drive_file_id ? 'Google Диск: ' : '').pf_tech_id;
     else result.pf_tech_skipped = 'Нет текста технологии — техкарта ПФ не создана.';
   }
   if (r.kind === 'DISH') {
     if (String(card.technology || '').trim().length >= 10) {
       var shelf = typeof calcShelfLife_ === 'function' ? calcShelfLife_('DISH', entityId, session, steps, r.serving_mode) : null;
       var ttk = createTtkVersion_({
-        dishId: entityId, источник: 'Архив ТТК: ' + (r.source_path || r.name), область_применения: r.name, технология: card.technology,
+        dishId: entityId, источник: (r.drive_file_id ? 'Google Диск: ' : 'Архив ТТК: ') + (r.source_path || r.name), область_применения: r.name, технология: card.technology,
         условия_хранения: shelf && shelf.hours !== null ? shelf.conditions : TTK_FILL_PLACEHOLDER,
         срок_реализации: shelf && shelf.hours !== null ? shelf.text : TTK_FILL_PLACEHOLDER,
         технологическиеЭтапы: steps, режим_подачи: r.serving_mode
@@ -295,6 +327,7 @@ function _tiConfirmOne_(r, by, session, cache) {
   }
   updateRow_('TTK_IMPORT_ROWS', r, { status: 'CONFIRMED', entity_id: entityId, ttk_version_id: result.ttk || '', result_json: JSON.stringify(result), decided_by: session.user_id, decided_at: nowIso_() });
   r.status = 'CONFIRMED'; r.entity_id = entityId;
+  if (typeof markTtkDriveFileDecision_ === 'function') markTtkDriveFileDecision_(r, 'SYNCED');
   return result;
 }
 

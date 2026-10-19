@@ -1,7 +1,7 @@
 {
-  "built_at": "2026-10-19T14:21:20.835071+00:00",
-  "stage": 111,
-  "name": "Приёмка сырья по документу: распознавание из МонШеф",
+  "built_at": "2026-10-19T14:44:13.800108+00:00",
+  "stage": 112,
+  "name": "ТТК из Google Диска, поиск ТТК, история версий",
   "files": [
     {
       "name": "INSTALL.md",
@@ -37,6 +37,11 @@
       "name": "STAGE110_CCP_JOURNALS.md",
       "bytes": 9912,
       "sha256": "b01b26f87b27a39dc019e77c4d683f1131466ef464645f9c74dcfd338a0a6565"
+    },
+    {
+      "name": "STAGE111_RECEIPT_RECOGNITION.md",
+      "bytes": 11521,
+      "sha256": "b11931b633c97805765c93513e618416bc8687b9fde7400ed0c18238cb7a2abd"
     },
     {
       "name": "STAGE25_AUTOMATION_DECISION_ENGINE.md",
@@ -160,8 +165,8 @@
     },
     {
       "name": "gas/API.gs",
-      "bytes": 113077,
-      "sha256": "cced9de278c0aa8e8fb040e501a90c85988042a60a1751451c121c1cc6a0b62f"
+      "bytes": 113741,
+      "sha256": "e1fa6e8f94f01fcd993132216785ce2d8558861da3fdb0c6565dc3fce662e20d"
     },
     {
       "name": "gas/AiCopilotStage24.gs",
@@ -295,8 +300,8 @@
     },
     {
       "name": "gas/Config.gs",
-      "bytes": 159654,
-      "sha256": "8fb0fc73d9f9def66a7c2e97b8696f6daa120dcc2e2d852df2314e65678ff3a1"
+      "bytes": 160634,
+      "sha256": "8396054b1fe2b46d113c45c294e07ffeff68635f252771457361b0353f014dec"
     },
     {
       "name": "gas/ConfigurationCenterStage28.gs",
@@ -360,8 +365,8 @@
     },
     {
       "name": "gas/Deploy.gs",
-      "bytes": 17920,
-      "sha256": "8a7eab6b0a155b5de76f784ddb22d130f51e9cae37337c06aef5f60770423c75"
+      "bytes": 17990,
+      "sha256": "985a298461ebb350444500202b844c7881f52ea5013d6c21e9abf68fa7dbcb60"
     },
     {
       "name": "gas/Economics.gs",
@@ -450,8 +455,8 @@
     },
     {
       "name": "gas/Index.html",
-      "bytes": 414450,
-      "sha256": "86cef1775bfe8a21d089e7ec3652bf8aff94df57ffb05f15745d13ecbdc05bd2"
+      "bytes": 429608,
+      "sha256": "56bfe38b6097391eb94d554c8a75b84c9f4f272b92a94eb96ef1a26e5bda1f6e"
     },
     {
       "name": "gas/Integrations.gs",
@@ -467,6 +472,11 @@
       "name": "gas/InvoiceOcr.gs",
       "bytes": 756,
       "sha256": "e68c726832d663beeb4be57644d8783de13816be8224233af3e258d719a0352f"
+    },
+    {
+      "name": "gas/InvoiceRecognitionCore.gs",
+      "bytes": 44406,
+      "sha256": "1e7b40ca03d082a633716a7347995ab746f5638fde6b4347c46421bd6466aee6"
     },
     {
       "name": "gas/JournalOrchestrationP21.gs",
@@ -585,8 +595,8 @@
     },
     {
       "name": "gas/PfTechCore.gs",
-      "bytes": 12482,
-      "sha256": "6cfb9079863c3b76a2159508583bf0548d54e953829eaf71ffef29861c31f94e"
+      "bytes": 12512,
+      "sha256": "c5fae6da16a214fedb071f30b7a6a6c52d72edbb0d8430eada171fec2bbd1917"
     },
     {
       "name": "gas/PlanMenu.gs",
@@ -765,13 +775,13 @@
     },
     {
       "name": "gas/TriggerScheduler.gs",
-      "bytes": 4777,
-      "sha256": "4ea53d10a6d5044a0eda473db0eed81a5158579d217a7daa3851df353b13c68e"
+      "bytes": 4804,
+      "sha256": "968d13b01fb75a862fdc2219910863b0c4951e52f267c8b25369a4af7d010622"
     },
     {
       "name": "gas/TtkImportCore.gs",
-      "bytes": 25883,
-      "sha256": "ad88e1b51f6a3f6b175a6133a445701a43f890f724f6ec40774f77477677e188"
+      "bytes": 29167,
+      "sha256": "965e506b384eda51755db5613424edb5f232f578e4744bd19a32a8714a308695"
     },
     {
       "name": "gas/Users.gs",
@@ -829,7 +839,7 @@
       "sha256": "93e824c657f4045a8ed16edff8793a32210f45a4a2f6ebd9492f367358416a7e"
     }
   ],
-  "file_count": 165,
-  "aggregate_sha256": "4476f91f1d847ac0dc047d5672f92a5be3c7e47146ae7db83e8600b9415a2413",
+  "file_count": 167,
+  "aggregate_sha256": "9e026997e8cf76ea24d42a8f78a928c466b000cfb8e786275037143b3a6368ba",
   "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
 }

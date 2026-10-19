@@ -136,10 +136,10 @@ function generatePfCcpProposals_(data, session) {
 }
 
 /** Для импорта архива: черновик техкарты ПФ из этапов карты; срок — по нормам или заглушка. */
-function createPfTechFromImport_(pfId, technology, steps, sourcePath, session) {
+function createPfTechFromImport_(pfId, technology, steps, sourcePath, session, sourceLabel) {
   var shelf = calcShelfLife_('PF', pfId, session, steps);
   var hasNorm = shelf.hours !== null;
-  return savePfTechDraft_({ pfId: pfId, источник: 'Архив ТТК: ' + sourcePath, технология: technology, steps: steps,
+  return savePfTechDraft_({ pfId: pfId, источник: (sourceLabel || 'Архив ТТК: ') + sourcePath, технология: technology, steps: steps,
     условия_хранения: hasNorm ? shelf.conditions : PF_TECH_PLACEHOLDER, срок_хранения_часов: hasNorm ? shelf.hours : '' }, session);
 }
 
