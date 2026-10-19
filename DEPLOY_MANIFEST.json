@@ -1,7 +1,7 @@
 {
-  "built_at": "2026-10-19T14:44:13.800108+00:00",
-  "stage": 112,
-  "name": "ТТК из Google Диска, поиск ТТК, история версий",
+  "built_at": "2026-10-19T15:16:17.786349+00:00",
+  "stage": 113,
+  "name": "Меркурий (ВСД), QR кассового чека, корректировки приёмки",
   "files": [
     {
       "name": "INSTALL.md",
@@ -42,6 +42,11 @@
       "name": "STAGE111_RECEIPT_RECOGNITION.md",
       "bytes": 11521,
       "sha256": "b11931b633c97805765c93513e618416bc8687b9fde7400ed0c18238cb7a2abd"
+    },
+    {
+      "name": "STAGE112_TTK_DRIVE_SEARCH.md",
+      "bytes": 12998,
+      "sha256": "c10caec9f00e7200a083ed8ea55fe48260d5eab15716f93ef1fd540ba780171e"
     },
     {
       "name": "STAGE25_AUTOMATION_DECISION_ENGINE.md",
@@ -165,8 +170,8 @@
     },
     {
       "name": "gas/API.gs",
-      "bytes": 113741,
-      "sha256": "e1fa6e8f94f01fcd993132216785ce2d8558861da3fdb0c6565dc3fce662e20d"
+      "bytes": 115364,
+      "sha256": "32ede4da848986c3de2b9081f3dc0092c948ea0b371bc49e0cd8d35f6790d4d4"
     },
     {
       "name": "gas/AiCopilotStage24.gs",
@@ -300,8 +305,8 @@
     },
     {
       "name": "gas/Config.gs",
-      "bytes": 160634,
-      "sha256": "8396054b1fe2b46d113c45c294e07ffeff68635f252771457361b0353f014dec"
+      "bytes": 163038,
+      "sha256": "8b5a7644ca9d2956cc655bf75f324ee6ba9e7a035d16137ae9ee727887a79f5e"
     },
     {
       "name": "gas/ConfigurationCenterStage28.gs",
@@ -365,8 +370,8 @@
     },
     {
       "name": "gas/Deploy.gs",
-      "bytes": 17990,
-      "sha256": "985a298461ebb350444500202b844c7881f52ea5013d6c21e9abf68fa7dbcb60"
+      "bytes": 18175,
+      "sha256": "e6736c08df19012f819ebd461ca09ee14d1be1a49ad89fabe3ac9993afd23525"
     },
     {
       "name": "gas/Economics.gs",
@@ -455,8 +460,8 @@
     },
     {
       "name": "gas/Index.html",
-      "bytes": 429608,
-      "sha256": "56bfe38b6097391eb94d554c8a75b84c9f4f272b92a94eb96ef1a26e5bda1f6e"
+      "bytes": 448789,
+      "sha256": "18999f5047fcac9eed51a8ef8bdedf4c566d7b64dce92e0aacb06aba6effb424"
     },
     {
       "name": "gas/Integrations.gs",
@@ -535,13 +540,13 @@
     },
     {
       "name": "gas/OperationalClosureStage11.gs",
-      "bytes": 30697,
-      "sha256": "225a63f8f4a94b160761edf389c15df0c9554fbbc6be52c3751f3eabe52a152f"
+      "bytes": 31070,
+      "sha256": "440e0af80941d3bb6f9cb4dc97d0bc28938f1100bf0bfd04ceffda6b2f8bffca"
     },
     {
       "name": "gas/OperationalHardeningStage12.gs",
-      "bytes": 14549,
-      "sha256": "5535669ff122410e6caf7cebe72bac25272d2ad383d6b472c2cd073c3dcf8c73"
+      "bytes": 15697,
+      "sha256": "b9ef72a9aaa047b8f22af9aa1cf44ab3a854e770576a4148b67a49ba8f9ad392"
     },
     {
       "name": "gas/OperationalUatStage13.gs",
@@ -775,13 +780,33 @@
     },
     {
       "name": "gas/TriggerScheduler.gs",
-      "bytes": 4804,
-      "sha256": "968d13b01fb75a862fdc2219910863b0c4951e52f267c8b25369a4af7d010622"
+      "bytes": 4834,
+      "sha256": "ec3199a625e45604680d2d02e6e4046b18ea75751cd4901b7db52539b1cb0d91"
+    },
+    {
+      "name": "gas/TtkCardParser.gs",
+      "bytes": 14037,
+      "sha256": "d73f0a3f90b8b97d18fd35ba3a2d7114e6aaec6e8c34454e397fd5714fe5b732"
+    },
+    {
+      "name": "gas/TtkDriveCore.gs",
+      "bytes": 34176,
+      "sha256": "f9da27dc514b81260472a1e1830651f3f232dd4637ba0e4adc12a43d06a92e09"
+    },
+    {
+      "name": "gas/TtkHistoryCore.gs",
+      "bytes": 8744,
+      "sha256": "13d9b51cfa1319fa4e6cc2f5c700be416b7e0118ccd418bd2bb1728d30b02525"
     },
     {
       "name": "gas/TtkImportCore.gs",
       "bytes": 29167,
       "sha256": "965e506b384eda51755db5613424edb5f232f578e4744bd19a32a8714a308695"
+    },
+    {
+      "name": "gas/TtkSearchCore.gs",
+      "bytes": 9027,
+      "sha256": "29ed87871d399c326db94ad1efee9562c093d1eb272dfc505151ba323663ef01"
     },
     {
       "name": "gas/Users.gs",
@@ -839,7 +864,7 @@
       "sha256": "93e824c657f4045a8ed16edff8793a32210f45a4a2f6ebd9492f367358416a7e"
     }
   ],
-  "file_count": 167,
-  "aggregate_sha256": "9e026997e8cf76ea24d42a8f78a928c466b000cfb8e786275037143b3a6368ba",
+  "file_count": 172,
+  "aggregate_sha256": "9c226f0ef8fd6d18ed9fe0c8270487a398242b6cbb243665964754c7d3f35e60",
   "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
 }

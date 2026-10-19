@@ -60,6 +60,8 @@ function _invUnit_(u){var x=String(u||'').toLowerCase().replace(/[.\s]/g,'');ret
 function buildInvoiceDraftState_(doc, lines, session, draftId){
   var active=lines.filter(function(l){return !l.skip;});
   var integrity=_documentIntegrityCheck_(doc,active,session,draftId||'');
+  // Тот же кассовый чек (ФН/ФД/ФП) уже проведён — повтор (FiscalQrCore.gs).
+  if(doc.fiscal_qr&&doc.fiscal_qr.duplicate_of){integrity.status=DOCUMENT_INTEGRITY_STATUS.DUPLICATE;integrity.reasons=(integrity.reasons||[]).concat(['Кассовый чек уже проведён в приёмке '+doc.fiscal_qr.duplicate_of+'.']);}
   var mapped=[], errors=[], warnings=[];
   lines.forEach(function(line,i){
     line.line_no=line.line_no||i+1;
