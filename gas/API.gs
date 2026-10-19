@@ -249,6 +249,11 @@ var ACTION_HANDLERS = {
   DECIDE_TTK_CCP_PROPOSAL: function (data, session) { return decideTtkCcpProposal_(data || {}, session); },
   TRANSFER_TTK_CCP_TO_PPK: function (data, session) { return transferTtkCcpToPpk_(data || {}, session); },
   // Импорт архива ТТК (TtkImportCore.gs).
+  SCAN_BANQUET_BLANK: function (data, session) { return scanBanquetBlank_(data || {}, session); },
+  GET_BANQUET_SCAN: function (data, session) { return getBanquetScan_(data || {}, session); },
+  GET_BANQUET_SCANS: function (data, session) { return getBanquetScans_(session); },
+  UPDATE_BANQUET_SCAN: function (data, session) { return updateBanquetScan_(data || {}, session); },
+  CREATE_EVENT_FROM_BANQUET_SCAN: function (data, session) { return createEventFromBanquetScan_(data || {}, session); },
   ATTACH_FISCAL_QR: function (data, session) { return attachFiscalQr_(data || {}, session); },
   CREATE_RECEIPT_CORRECTION: function (data, session) { return createReceiptCorrection_(data || {}, session); },
   DECIDE_RECEIPT_CORRECTION: function (data, session) { return decideReceiptCorrection_(data || {}, session); },

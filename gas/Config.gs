@@ -55,6 +55,8 @@ var CONFIG = {
     MERCURY_SUPPLIER_MAP: 'MERCURY_SUPPLIER_MAP',
     FISCAL_QR_EVIDENCE: 'FISCAL_QR_EVIDENCE',
     RECEIPT_CORRECTIONS: 'RECEIPT_CORRECTIONS',
+    BANQUET_SCANS: 'BANQUET_SCANS',
+    BANQUET_ALIASES: 'BANQUET_ALIASES',
     BREAKDOWN_PLANS: 'BREAKDOWN_PLANS',
     BREAKDOWN_PLAN_OUTPUTS: 'BREAKDOWN_PLAN_OUTPUTS',
     BREAKDOWN_PLAN_STEPS: 'BREAKDOWN_PLAN_STEPS',
@@ -287,6 +289,8 @@ var CONFIG = {
     VET_DOCUMENTS: ['vsd_id','organization_id','location_id','uuid','number_text','issue_date','product_name','volume','unit','unit_guid','consignor_be','consignor_ent','consignor_name','consignee_ent','consignee_name','producers','country','mfr_batches','production_date','expiry_date','waybill_json','refs_json','mercury_status','status','supplier_id','product_id','batch_ids','draft_id','line_no','check_json','confirm_json','raw_xml','raw_ns_json','application_id','attempt','sending_at','sending_by','utilized_at','utilized_by','stock_entry','result','error','updated_at','created_at','created_by'],
     MERCURY_EXCHANGE_LOG: ['log_id','organization_id','at','kind','vsd_id','application_id','http','app_status','code','message','raw_fragment','user_id'],
     FISCAL_QR_EVIDENCE: ['evidence_id','organization_id','draft_id','qr_raw','fiscal_datetime','total','fn','fd','fp','operation','fiscal_key','match_status','warnings_json','created_at','created_by'],
+    BANQUET_SCANS: ['scan_id','organization_id','location_id','status','mode','meta_json','items_json','warnings_json','completeness_json','event_id','created_by','created_at','updated_at'],
+    BANQUET_ALIASES: ['alias_id','organization_id','alias_key','raw_name','dish_id','hits','active','created_by','created_at','updated_at'],
     RECEIPT_CORRECTIONS: ['correction_id','organization_id','location_id','batch_id','draft_id','document_number','supplier_id','product_id','field','before','after','unit','reason','status','created_by','created_at','decided_by','decided_at','decision_comment','applied_json'],
     MERCURY_SUPPLIER_MAP: ['map_id','organization_id','be_guid','ent_guid','name_in_vsd','supplier_id','created_by','created_at'],
     TTK_DRIVE_SOURCES: ['source_id','organization_id','folder_id','folder_name','active','last_sync_at','last_status','last_result_json','created_by','created_at'],
@@ -417,7 +421,7 @@ var CONFIG = {
 
     // v2, новое: банкетный/событийный модуль «План-меню» (см. PlanMenu.gs)
     PLAN_MENU_EVENTS: ['event_id', 'organization_id', 'location_id', 'название', 'дата', 'время', 'гостей', 'статус', 'ответственный_id', 'создано'],
-    PLAN_MENU_ITEMS: ['item_id', 'event_id', 'dish_id', 'порций_на_гостя', 'порций_итого'],
+    PLAN_MENU_ITEMS: ['item_id', 'event_id', 'dish_id', 'порций_на_гостя', 'порций_итого', 'примечание', 'источник'],
 
     // P0.2, новое (ТЗ §7) — идемпотентность: один operation_id = максимум одно реальное
     // исполнение. результат_json хранит уже готовый ответ (envelope), чтобы повтор с тем
@@ -753,7 +757,7 @@ var CONFIG = {
   ID_PREFIXES: {
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
-    RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL', TECH_NORMS: 'TNORM', TTK_CCP_PROPOSALS: 'TCCP', TTK_IMPORT_BATCHES: 'TIMP', TTK_IMPORT_ROWS: 'TIMR', TTK_DRIVE_SOURCES: 'TDS', TTK_DRIVE_FILES: 'TDF', VET_DOCUMENTS: 'VSD', MERCURY_EXCHANGE_LOG: 'MXL', MERCURY_SUPPLIER_MAP: 'MSM', FISCAL_QR_EVIDENCE: 'FQR', RECEIPT_CORRECTIONS: 'RCOR', PF_TECH_CARDS: 'PFTC', OCR_ALIASES: 'OCRA',
+    RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL', TECH_NORMS: 'TNORM', TTK_CCP_PROPOSALS: 'TCCP', TTK_IMPORT_BATCHES: 'TIMP', TTK_IMPORT_ROWS: 'TIMR', TTK_DRIVE_SOURCES: 'TDS', TTK_DRIVE_FILES: 'TDF', VET_DOCUMENTS: 'VSD', MERCURY_EXCHANGE_LOG: 'MXL', MERCURY_SUPPLIER_MAP: 'MSM', FISCAL_QR_EVIDENCE: 'FQR', RECEIPT_CORRECTIONS: 'RCOR', BANQUET_SCANS: 'BQS', BANQUET_ALIASES: 'BQA', PF_TECH_CARDS: 'PFTC', OCR_ALIASES: 'OCRA',
     WAREHOUSE_OPS: 'WOP', BATCHES: 'BATCH', MARKINGS: 'MRK', MARKING_JOURNAL: 'MRKJ', LABEL_PRINT_JOBS: 'LPJ', LABEL_PRINT_ITEMS: 'LPI',
     PRODUCTION: 'PRD', PRODUCTION_INGREDIENT_USAGE: 'PIU', SALE_INGREDIENT_USAGE: 'SIU', WASTE_RECORDS: 'WST', DEFECTS: 'DEF',
     WRITE_OFFS: 'WR', PURCHASE_REQUESTS: 'REQ', BUDGET_PLANS: 'BUD', CASH_TRANSACTIONS: 'CASH', AUTOMATION_DECISIONS: 'AUTO', AUTOMATION_RULES: 'ARULE', AUTOMATION_EVENT_DISPATCH: 'AED', AUTOMATION_WORKFLOWS: 'AWF', AUTOMATION_WORKFLOW_STEPS: 'AWFS', CONFIGURATION_VERSIONS: 'CFG', CONFIGURATION_VALUES: 'CFGV', MASTER_DATA_REGISTRY: 'MD', MASTER_DATA_ALIASES: 'MDA', DATA_RECONCILIATIONS: 'DQR', TRACEABILITY_RUNS: 'TRUN', TRACEABILITY_FINDINGS: 'TFND', PERIOD_CLOSURES: 'PCLOSE', PERIOD_CLOSURE_FINDINGS: 'PCF', PERIOD_REOPEN_REQUESTS: 'PRR', AUDIT_EVIDENCE_VAULT: 'AEV', AUDIT_EVIDENCE_CHECKPOINTS: 'AEC', COMPLIANCE_EVIDENCE_PACKS: 'EPK', COMPLIANCE_EVIDENCE_ITEMS: 'EPI', CAPA_CASES: 'CAPA', CAPA_ACTIONS: 'CAPAA', CAPA_VERIFICATIONS: 'CAPAV', BOARD_PACKS: 'BPK', KPI_TARGETS: 'KPI', KPI_VARIANCES: 'KPIV', KPI_ACTIONS: 'KPIA', COMPLIANCE_CONTROLS: 'CTRL', COMPLIANCE_CONTROL_LINKS: 'CLNK', MANAGEMENT_ACTION_BACKLOG: 'MAB', WORKFORCE_PLANS: 'WFP', SUPPLIER_SCORECARDS: 'SSC', PROCUREMENT_ACTIONS: 'PRA', INVENTORY_POLICIES: 'INVP', CAPACITY_PLANS: 'CAPP', SCENARIOS: 'SCN', EXECUTION_PLANS: 'EXPL', EXECUTION_ITEMS: 'EXI', SHIFT_PLANS: 'SHP', SHIFT_ASSIGNMENTS: 'SHA', PRODUCTION_CALENDARS: 'PCAL', PRODUCTION_CALENDAR_ITEMS: 'PCALI', DEMAND_SENSING_PLANS: 'DSEN', MRP_RUNS: 'MRP', CUSTOMER_CHANNEL_ANALYTICS: 'CCA', CHANNEL_MARGIN_SNAPSHOTS: 'CMS', LABOR_FORECASTS: 'LFR', DIGITAL_TWIN_V2_SNAPSHOTS: 'DTV2', PLANNING_RUNS: 'PLANRUN', PLANNING_PROPOSALS: 'PLANPROP', APPROVAL_GATES: 'APG', EXECUTION_OUTCOMES: 'EXOUT', EXECUTION_REQUESTS: 'EXREQ',
@@ -1082,6 +1086,7 @@ var CONFIG = {
     CHECK_DOCUMENT_INTEGRITY:'warehouse_receive', RUN_HACCP_DECISION_ENGINE:'ppk', GET_HACCP_DECISIONS:'ppk',
     GET_EMERGENCY_CENTER:'dashboard', GENERATE_TTK_A4_PDF:'recipes', GET_TECH_SPEC:'recipes', GET_TECH_SPEC_DOCUMENT:'recipes',
     GET_TTK_NORMS_CONTEXT:'recipes', GET_TECH_NORMS:'recipes', GET_TTK_CCP_PROPOSALS:'recipes', VERIFY_TECH_NORM:'ppk', RESET_TECH_NORM:'ppk', GENERATE_TTK_CCP_PROPOSALS:'ppk', DECIDE_TTK_CCP_PROPOSAL:'ppk', TRANSFER_TTK_CCP_TO_PPK:'ppk',
+    SCAN_BANQUET_BLANK:'plan_menu', GET_BANQUET_SCAN:'plan_menu', GET_BANQUET_SCANS:'plan_menu', UPDATE_BANQUET_SCAN:'plan_menu', CREATE_EVENT_FROM_BANQUET_SCAN:'plan_menu',
     ATTACH_FISCAL_QR:'warehouse_receive', CREATE_RECEIPT_CORRECTION:'warehouse_receive', GET_RECEIPT_BATCHES:'warehouse_view', GET_RECEIPT_CORRECTIONS:'warehouse_view', DECIDE_RECEIPT_CORRECTION:'audit_admin',
     FETCH_VSD:'warehouse_receive', LINK_VSD_TO_DRAFT_LINE:'warehouse_receive', LINK_VSD_TO_BATCHES:'warehouse_receive', REJECT_VSD:'warehouse_receive', MAP_MERCURY_SUPPLIER:'warehouse_receive',
     GET_VSD_LIST:'warehouse_view', CHECK_VSD:'warehouse_view', SYNC_VSD:'warehouse_view', GET_MERCURY_CONFIG:'warehouse_view', CANCEL_VSD:'ppk', SAVE_MERCURY_CONFIG:'configuration_admin', TEST_MERCURY_CONNECTION:'configuration_admin',

@@ -1285,6 +1285,18 @@
   </section>
 
   <section id="view-planmenu" class="hidden">
+    <div class="card" id="bqCard">
+      <h2>Бланк банкета</h2>
+      <div class="muted" style="margin-bottom:8px;">Фото или PDF заполненного бланка заказа. Система соберёт таблицу (наклон снимка, переносы названий, пометки справа), сверит цена × кол-во = сумма и итог бланка, сопоставит строки с ТТК. Проверьте черновик — мероприятие создаётся только после этого.</div>
+      <input type="file" id="bqFile" accept="image/*,application/pdf" capture="environment">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn small" type="button" onclick="bqScan()">Распознать бланк</button>
+        <button class="btn secondary small" type="button" onclick="bqList()">Прошлые бланки</button>
+      </div>
+      <div class="err" id="bqErr"></div>
+      <div id="bqListBox"></div>
+      <div id="bqEditor"></div>
+    </div>
     <div class="card">
       <h2>Новое мероприятие</h2>
       <input type="text" id="evtName" placeholder="Название *">
@@ -4684,6 +4696,74 @@
   var lastPlanMenuDishes = [];
   var currentPlanMenuEventId = null;
 
+  // ---- Бланк банкета → черновик → мероприятие (BanquetOcrCore.gs) ----
+  var bq = { scan: null };
+  var BQ_MATCH_CLS = { 'подтверждена': 'b-ok', 'предполагаемая': 'b-warn', 'несколько вариантов': 'b-warn', 'не найдена': 'b-crit', 'не требуется': 'b-info' };
+  function bqErr(t) { document.getElementById('bqErr').textContent = t || ''; }
+  function bqScan() {
+    var f = document.getElementById('bqFile').files[0]; if (!f) { bqErr('Выберите фото или PDF бланка.'); return; }
+    bqErr(''); document.getElementById('bqEditor').innerHTML = '<div class="muted">Распознавание бланка… до минуты.</div>';
+    var r = new FileReader(); r.onload = function () {
+      call('SCAN_BANQUET_BLANK', { base64Image: String(r.result).split(',')[1], mimeType: f.type || 'image/jpeg' }, function (x) { bqRender(x); }, function (e) { document.getElementById('bqEditor').innerHTML = ''; bqErr(e); });
+    }; r.readAsDataURL(f);
+  }
+  function bqList() {
+    call('GET_BANQUET_SCANS', {}, function (rows) {
+      document.getElementById('bqListBox').innerHTML = rows.length ? rows.map(function (r) { return '<div class="row-between" style="font-size:13px;margin:4px 0;"><span>' + compEsc(r.date || 'дата не прочитана') + ' · ' + compEsc(r.format || 'бланк') + (r.guests ? ' · ' + r.guests + ' гостей' : '') + ' · ' + (r.status === 'CREATED' ? 'мероприятие создано' : 'черновик') + '</span><button class="btn secondary small" style="width:auto;" type="button" onclick="bqOpen(\'' + compAttr(r.scan_id) + '\')">Открыть</button></div>'; }).join('') : '<div class="muted">Бланков пока нет.</div>';
+    }, function (e) { bqErr(e); });
+  }
+  function bqOpen(id) { call('GET_BANQUET_SCAN', { scanId: id }, function (x) { bqRender(x); }, function (e) { bqErr(e); }); }
+  function bqDishOptions(it) {
+    var cur = it.dish_id || '', seen = {}; // подсказка не предвыбирается: похожее подтверждает человек
+    var h = '<option value="">— блюдо (ТТК) —</option>';
+    var c = (it.suggest ? [{ dish_id: it.suggest.dish_id, name: it.suggest.name, score: it.suggest.score }] : []).concat(it.candidates || []).filter(function (x) { if (seen[x.dish_id]) return false; seen[x.dish_id] = 1; return true; });
+    if (c.length) h += '<optgroup label="Похожие">' + c.map(function (x) { return '<option value="' + compAttr(x.dish_id) + '"' + (x.dish_id === cur ? ' selected' : '') + '>' + compEsc(x.name) + ' (' + Math.round(x.score * 100) + '%)</option>'; }).join('') + '</optgroup>';
+    h += '<optgroup label="Все блюда">' + (lastPlanMenuDishes || []).filter(function (d) { return !seen[d.dish_id]; }).map(function (d) { return '<option value="' + compAttr(d.dish_id) + '"' + (d.dish_id === cur ? ' selected' : '') + '>' + compEsc(d.название) + '</option>'; }).join('') + '</optgroup>';
+    return h;
+  }
+  function bqRender(x) {
+    bq.scan = x; var m = x.meta || {}, done = x.status !== 'DRAFT', dis = done ? ' disabled' : '';
+    var h = '<div style="margin-top:10px;padding:10px;border:1px solid #ddd;border-radius:10px;">';
+    h += '<div class="muted">Режим: ' + compEsc(x.mode) + '</div>';
+    if (x.completeness && x.completeness.text) h += '<div class="' + (x.completeness.status === 'подтверждена' ? 'muted' : 'err') + '">' + compEsc(x.completeness.text) + '</div>';
+    (x.warnings || []).forEach(function (w) { h += '<div class="muted">⚠ ' + compEsc(w) + '</div>'; });
+    h += '<div class="grid2" style="margin-top:6px;"><input id="bqFormat" placeholder="Формат (банкет, фуршет…)" value="' + compAttr(m.format || '') + '"' + dis + '><input id="bqPlace" placeholder="Место" value="' + compAttr(m.place || '') + '"' + dis + '></div>';
+    h += '<div class="grid2"><div><input type="date" id="bqDate" value="' + compAttr(m.date || '') + '"' + dis + '>' + (m.date_note ? '<div class="muted" style="margin:-4px 0 6px;">' + compEsc(m.date_note) + '</div>' : '') + '</div><input id="bqTime" placeholder="Время" value="' + compAttr(m.time || '') + '"' + dis + '></div>';
+    h += '<div class="grid2"><input type="number" id="bqGuests" placeholder="Гостей *" value="' + compAttr(m.guests || '') + '"' + dis + '><input id="bqContact" placeholder="Контакт" value="' + compAttr(m.contact || '') + '"' + dis + '></div>';
+    h += '<div style="overflow:auto;"><table class="ttk-table" style="font-size:13px;"><thead><tr><th></th><th>Строка бланка</th><th>Цена × кол-во = сумма</th><th>Блюдо (ТТК)</th></tr></thead><tbody>' + (x.items || []).map(function (it) {
+      var svc = it.match_status === 'не требуется';
+      return '<tr class="bq-row" data-row="' + compAttr(it.row_id) + '" style="' + (it.skip ? 'opacity:.5;' : '') + '"><td><input type="checkbox" class="bq-skip" style="width:auto;" title="не включать"' + (it.skip ? ' checked' : '') + dis + '></td>' +
+        '<td><b>' + compEsc(it.name || '(название не прочитано)') + '</b>' + (it.yield ? ' <span class="muted">' + compEsc(it.yield) + '</span>' : '') + (it.note ? ' <span class="badge b-info">' + compEsc(it.note) + '</span>' : '') + (it.name_ocr ? '<div class="muted">на бланке: ' + compEsc(it.name_ocr) + '</div>' : '') +
+        (it.warnings || []).map(function (w) { return '<div class="muted">⚠ ' + compEsc(w) + '</div>'; }).join('') + '</td>' +
+        '<td>' + compEsc(it.price === null ? '—' : it.price) + ' × <input class="bq-qty" style="width:70px;display:inline-block;margin:0;" value="' + compAttr(it.qty === null ? '' : it.qty) + '"' + dis + '> = ' + compEsc(it.sum === null ? '—' : it.sum) + '</td>' +
+        '<td>' + (svc ? '<span class="badge b-info">не требуется</span>' : '<select class="bq-dish" data-orig="' + compAttr(it.dish_id || '') + '"' + dis + '>' + bqDishOptions(it) + '</select><span class="badge ' + (BQ_MATCH_CLS[it.match_status] || 'b-info') + '">' + compEsc(it.match_status) + '</span>' + (it.match_reasons && it.match_reasons.length && !it.dish_id ? '<div class="muted">' + compEsc(it.match_reasons[0]) + '</div>' : '') + (it.suggest && !it.dish_id ? '<button class="btn secondary small" type="button" onclick="bqAccept(\'' + compAttr(it.row_id) + '\',\'' + compAttr(it.suggest.dish_id) + '\')">Да, это «' + compEsc(it.suggest.name) + '»</button>' : '')) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+    if (!done) h += '<div style="margin-top:8px;"><button class="btn secondary small" type="button" onclick="bqSave()">Сохранить</button><button class="btn small" type="button" onclick="bqCreate()">Создать мероприятие</button></div>';
+    else h += '<div class="muted" style="margin-top:8px;">Мероприятие создано — оно в списке «Мероприятия точки».</div>';
+    h += '<div id="bqMsg" class="muted"></div></div>';
+    document.getElementById('bqEditor').innerHTML = h;
+  }
+  function bqAccept(rowId, dishId) { var tr = document.querySelector('#bqEditor .bq-row[data-row="' + rowId + '"] .bq-dish'); if (tr) tr.value = dishId; bqSave(); }
+  function bqCollect() {
+    var items = [];
+    document.querySelectorAll('#bqEditor .bq-row').forEach(function (tr) {
+      var p = { row_id: tr.getAttribute('data-row'), skip: tr.querySelector('.bq-skip').checked, qty: tr.querySelector('.bq-qty').value };
+      var sel = tr.querySelector('.bq-dish'); if (sel && sel.value !== sel.getAttribute('data-orig')) p.dish_id = sel.value;
+      items.push(p);
+    });
+    var g = function (id) { return document.getElementById(id).value.trim(); };
+    return { scanId: bq.scan.scan_id, meta: { format: g('bqFormat'), place: g('bqPlace'), date: g('bqDate'), time: g('bqTime'), guests: g('bqGuests'), contact: g('bqContact') }, items: items };
+  }
+  function bqSave(after) { bqErr(''); call('UPDATE_BANQUET_SCAN', bqCollect(), function (x) { bqRender(x); if (x.learned) document.getElementById('bqMsg').textContent = 'Запомнено соответствий: ' + x.learned + ' — в следующих бланках сопоставятся сами.'; if (after) after(x); }, function (e) { bqErr(e); }); }
+  function bqCreate() {
+    bqSave(function (x) {
+      if (!confirm('Создать мероприятие «План-меню» из бланка? Порции итого — как на бланке.')) return;
+      call('CREATE_EVENT_FROM_BANQUET_SCAN', { scanId: x.scan_id }, function (r) {
+        bqOpen(x.scan_id);
+        call('GET_PLAN_MENU_EVENTS', {}, function (events) { lastPlanMenuEvents = events; loadPlanMenuEvents(); openPlanMenuEventEditor(r.event.event_id); });
+      }, function (e) { bqErr(e); });
+    });
+  }
   function initPlanMenuView() {
     call('GET_DISHES', {}, function (dishes) {
       lastPlanMenuDishes = dishes;
@@ -4755,7 +4835,7 @@
     call('GET_PLAN_MENU_ITEMS', { eventId: currentPlanMenuEventId }, function (items) {
       document.querySelector('#tblEventItems tbody').innerHTML = items.length ? items.map(function (i) {
         var name = findCachedName(lastPlanMenuDishes, 'dish_id', i.dish_id) || i.dish_id;
-        return '<tr><td>' + compEsc(name) + '</td><td>' + i.порций_на_гостя + '</td><td>' + i.порций_итого + '</td></tr>';
+        return '<tr><td>' + compEsc(name) + (i.примечание ? ' <span class="muted">(' + compEsc(i.примечание) + ')</span>' : '') + '</td><td>' + i.порций_на_гостя + '</td><td>' + i.порций_итого + '</td></tr>';
       }).join('') : '<tr><td colspan="3" class="muted">Позиций пока нет.</td></tr>';
     });
   }

@@ -47,6 +47,7 @@ function runAllMigrations() {
   report.mercury = migrateMercurySchema_();
   report.fiscalQr = migrateFiscalQrSchema_();
   report.receiptCorrections = migrateReceiptCorrectionSchema_();
+  report.banquetOcr = migrateBanquetOcrSchema_();
   Logger.log('runAllMigrations: готово. Запустите deployPreflight() для проверки.');
   return report;
 }
