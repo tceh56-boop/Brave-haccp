@@ -63,7 +63,8 @@ function getPfTechContext_(data, session) {
     pf: strip(pf), versions: cards.map(strip), selected: strip(selected), steps: steps, step_types: TECH_STEP_TYPES,
     recipes: getRecipeLines_('PF', pf.pf_id, session).map(strip),
     shelf_life: shelf, ccp: proposeCcp_('PF', pf.pf_id, session, steps),
-    proposals: selected ? findRows_('TTK_CCP_PROPOSALS', function (r) { return r.pf_tech_id === selected.pf_tech_id && r.status !== 'ЗАМЕНЕНО'; }).map(strip) : []
+    proposals: selected ? findRows_('TTK_CCP_PROPOSALS', function (r) { return r.pf_tech_id === selected.pf_tech_id && r.status !== 'ЗАМЕНЕНО'; }).map(strip) : [],
+    journals: typeof getCcpJournalsFor_ === 'function' ? getCcpJournalsFor_(pf.pf_id, session) : []
   };
 }
 

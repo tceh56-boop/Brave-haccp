@@ -450,11 +450,16 @@ function decideTtkCcpProposal_(data, session) {
 /** Принятая точка → контроль (+ предел) в черновике ППК. В действующую ППК не пишет. */
 function _tnMaterializeCcp_(p, merged, draft, session, role) {
   var c = _ppkCtx_(session, session.location_id);
-  var control = { control_id: _ppkId_('PPK_CONTROLS'), ppk_id: draft.ppk_id, organization_id: session.organization_id, location_id: c.locationId, process_id: '', stage_id: '', product_id: '', hazard_id: '', point_type: merged.point_type, control_name: merged.control_name, purpose: (p.parent_type === 'PF' ? 'Из техкарты ПФ ' : 'Из ТТК ') + p.dish_id + ', этап ' + merged.step, risk_description: merged.hazard, critical_limit_ref: '', monitoring_parameter: merged.parameter, monitoring_method: merged.monitoring_method, frequency: merged.frequency, responsible_role: role || 'ШЕФ-ПОВАР', journal_definition_id: '', corrective_action: merged.corrective_action, verification_method: 'Проверка записей журнала технологом', status: 'DRAFT', human_confirmed: false, confirmed_by: '', confirmed_at: '', source: 'TTK_PROPOSAL:' + p.proposal_id, created_at: nowIso_() };
+  // Решение технолога в ТТК (числовой предел + пункт документа) — это и есть подтверждение
+  // человеком: точка и предел попадают в черновик ППК подтверждёнными, иначе шлюз
+  // готовности ППК (buildPpkReadinessGate_) не даст его утвердить. product_id = блюдо/ПФ:
+  // движок ХАССП применяет контроль только к этому продукту, а не ко всему сырью.
+  var decidedBy = p.decided_by || session.user_id;
+  var control = { control_id: _ppkId_('PPK_CONTROLS'), ppk_id: draft.ppk_id, organization_id: session.organization_id, location_id: c.locationId, process_id: '', stage_id: '', product_id: p.dish_id, hazard_id: '', point_type: merged.point_type, control_name: merged.control_name, purpose: (p.parent_type === 'PF' ? 'Из техкарты ПФ ' : 'Из ТТК ') + p.dish_id + ', этап ' + merged.step, risk_description: merged.hazard, critical_limit_ref: '', monitoring_parameter: merged.parameter, monitoring_method: merged.monitoring_method, frequency: merged.frequency, responsible_role: role || 'ШЕФ-ПОВАР', journal_definition_id: '', corrective_action: merged.corrective_action, verification_method: 'Проверка записей журнала технологом', status: 'CONFIRMED', human_confirmed: true, confirmed_by: decidedBy, confirmed_at: p.decided_at || nowIso_(), source: 'TTK_PROPOSAL:' + p.proposal_id, created_at: nowIso_() };
   insertRow_('PPK_CONTROLS', control);
   var limitId = '';
   if (merged.point_type !== 'PRP') {
-    var limit = { limit_id: _ppkId_('PPK_CRITICAL_LIMITS'), ppk_id: draft.ppk_id, organization_id: session.organization_id, location_id: c.locationId, control_id: control.control_id, parameter: merged.parameter, min_value: merged.min_value, max_value: merged.max_value, unit: merged.unit, applicable_stage: merged.step, applicable_product: p.dish_id, source: 'TTK_PROPOSAL', source_document: merged.source_document + ', ' + merged.clause, effective_date: todayDateStr_(), version: 1, approved_by: '', status: 'DRAFT', created_at: nowIso_() };
+    var limit = { limit_id: _ppkId_('PPK_CRITICAL_LIMITS'), ppk_id: draft.ppk_id, organization_id: session.organization_id, location_id: c.locationId, control_id: control.control_id, parameter: merged.parameter, min_value: merged.min_value, max_value: merged.max_value, unit: merged.unit, applicable_stage: merged.step, applicable_product: p.dish_id, source: 'TTK_PROPOSAL', source_document: merged.source_document + ', ' + merged.clause, effective_date: todayDateStr_(), version: 1, approved_by: decidedBy, status: 'CONFIRMED', created_at: nowIso_() };
     insertRow_('PPK_CRITICAL_LIMITS', limit);
     updateRow_('PPK_CONTROLS', findOne_('PPK_CONTROLS', 'control_id', control.control_id), { critical_limit_ref: limit.limit_id });
     limitId = limit.limit_id;
@@ -462,12 +467,25 @@ function _tnMaterializeCcp_(p, merged, draft, session, role) {
   return { control_id: control.control_id, limit_id: limitId };
 }
 
-/** Перенос принятых, но ещё не перенесённых точек в текущий черновик ППК. */
+/** Карта, к которой относится предложение, не в архиве (ККТ архивной ТТК/техкарты в новую ППК не переносится). */
+function _tnProposalCardActive_(p) {
+  if (p.pf_tech_id) { var c = findOne_('PF_TECH_CARDS', 'pf_tech_id', p.pf_tech_id); return !!c && c.status !== 'архив'; }
+  if (p.ttk_version_id) { var t = findOne_('TTK_VERSIONS', 'ttk_version_id', p.ttk_version_id); return !!t && t.status !== 'архив'; }
+  return true;
+}
+
+/**
+ * Перенос принятых точек в текущий черновик ППК. Новая версия ППК не копирует контроли
+ * предыдущей, поэтому переносятся и точки, уже перенесённые в прошлые версии, — если
+ * их карта не в архиве и в этом черновике их ещё нет.
+ */
 function transferTtkCcpToPpk_(data, session) {
   return withLock_(function () {
     var draft = findRows_('PPK_VERSIONS', function (r) { return r.organization_id === session.organization_id && r.status === 'DRAFT'; })[0];
     if (!draft) throw new Error('Нет черновика ППК: создайте новую версию ППК.');
-    var rows = findRows_('TTK_CCP_PROPOSALS', function (r) { return r.organization_id === session.organization_id && r.status === 'ПРИНЯТО' && !r.ppk_control_id && (!data.ttkVersionId || r.ttk_version_id === data.ttkVersionId); });
+    var inDraft = {};
+    findRows_('PPK_CONTROLS', function (c) { return c.ppk_id === draft.ppk_id; }).forEach(function (c) { inDraft[String(c.source || '')] = true; });
+    var rows = findRows_('TTK_CCP_PROPOSALS', function (r) { return r.organization_id === session.organization_id && r.status === 'ПРИНЯТО' && !inDraft['TTK_PROPOSAL:' + r.proposal_id] && _tnProposalCardActive_(r) && (!data.ttkVersionId || r.ttk_version_id === data.ttkVersionId); });
     rows.forEach(function (p) {
       var ids = _tnMaterializeCcp_(p, p, draft, session, data.responsibleRole);
       updateRow_('TTK_CCP_PROPOSALS', p, { ppk_id: draft.ppk_id, ppk_control_id: ids.control_id, ppk_limit_id: ids.limit_id });

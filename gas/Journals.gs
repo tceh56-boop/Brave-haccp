@@ -235,7 +235,8 @@ function getJournalTriggerSchedule_(loc, def, triggers) {
 
 function generateJournalSlotsForLocation_(loc) {
   var dateStr=todayDateStr_();
-  var defs=getJournalDefinitions_(loc.organization_id,loc.location_id).filter(function(d){return d.обязательность;});
+  // Журналы ККТ «по партии» создаются при выпуске партии (createCcpBatchPending_), не по слотам смены.
+  var defs=getJournalDefinitions_(loc.organization_id,loc.location_id).filter(function(d){return d.обязательность&&d.периодичность!=='по_партии';});
   var created=[];
   defs.forEach(function(def){
     var triggers=getJournalTriggers_(loc.organization_id,loc.location_id,def.definition_id);

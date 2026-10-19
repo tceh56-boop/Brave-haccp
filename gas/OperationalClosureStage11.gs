@@ -110,7 +110,8 @@ function runHaccpDecisionEngine_(ctx,session){
     var line=ctx.line||{};
     if(lim){
       var raw = ctx.value!==undefined && ctx.value!=='' ? ctx.value : (lim.value_field && line[lim.value_field]!==undefined ? line[lim.value_field] : (lim.parameter && line[lim.parameter]!==undefined ? line[lim.parameter] : '')); var value=Number(raw);
-      if(!isNaN(value)){
+      // Нет измерения — нет оценки: Number('') === 0 раньше давал ложный BLOCK по любому пределу с нижней границей.
+      if(raw!==''&&raw!==null&&raw!==undefined&&!isNaN(value)){
         var min=lim.min_value!==''&&lim.min_value!=null?Number(lim.min_value):null, max=lim.max_value!==''&&lim.max_value!=null?Number(lim.max_value):null;
         if((min!==null&&!isNaN(min)&&value<min)||(max!==null&&!isNaN(max)&&value>max)){out.decision=HACCP_DECISION.BLOCK;out.reasons.push('Критический предел нарушен: '+(c.control_name||c.control_id));}
       }

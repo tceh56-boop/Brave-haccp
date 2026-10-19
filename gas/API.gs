@@ -255,6 +255,9 @@ var ACTION_HANDLERS = {
   // Техкарта полуфабриката (PfTechCore.gs).
   GET_PF_TECH_CONTEXT: function (data, session) { return getPfTechContext_(data || {}, session); },
   GET_PF_TECH_LIST: function (data, session) { return getPfTechList_(session); },
+  // Журналы ККТ (CcpJournalsCore.gs).
+  GENERATE_CCP_JOURNALS: function (data, session) { return generateCcpJournals_(data || {}, session); },
+  GET_CCP_JOURNALS: function (data, session) { return getCcpJournalsFor_(data.parentId, session); },
   SAVE_PF_TECH_DRAFT: function (data, session) { return savePfTechDraft_(data || {}, session); },
   APPROVE_PF_TECH: function (data, session) { return approvePfTech_(data || {}, session); },
   GENERATE_PF_CCP_PROPOSALS: function (data, session) { return generatePfCcpProposals_(data || {}, session); },

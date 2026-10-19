@@ -1,12 +1,42 @@
 {
-  "built_at": "2026-10-03T18:26:29.221660+00:00",
-  "stage": 105,
-  "name": "CORE100 Hardening Pack 101–105",
+  "built_at": "2026-10-19T11:31:04.974219+00:00",
+  "stage": 110,
+  "name": "ТТК: ТУ, нормативы, импорт архива, техкарты ПФ, журналы ККТ (106–110)",
   "files": [
+    {
+      "name": "INSTALL.md",
+      "bytes": 2260,
+      "sha256": "b06e3dcad6a4bbf13f5934cb70047fce36045349125e675b56c89c48e279f5f6"
+    },
     {
       "name": "STAGE101_105_HARDENING.md",
       "bytes": 2543,
       "sha256": "a0debdb28da4111739db947785f70304b4c5af9481f8aee1fe12996ac94486d8"
+    },
+    {
+      "name": "STAGE106_TECH_SPEC_TU.md",
+      "bytes": 7202,
+      "sha256": "50c6dc7e62b5148484c65688bc816ff777d9125fd525ca1508be15c539fed499"
+    },
+    {
+      "name": "STAGE107_TTK_NORMS_CCP.md",
+      "bytes": 11429,
+      "sha256": "be0320f61948c0828deaad3066f0d9eca1b8a1b486f7928ae69fc10c895518dd"
+    },
+    {
+      "name": "STAGE108_TTK_ARCHIVE_IMPORT.md",
+      "bytes": 9222,
+      "sha256": "f88ba351249f0396f1f4746c167e098a3a467ba3a5d39414294a3b5c00afeb06"
+    },
+    {
+      "name": "STAGE109_PF_TECH_CARDS.md",
+      "bytes": 7726,
+      "sha256": "574b6834b408a8ebafaecc6d1305f6a9e677c787f2c9c8bd48c4b8cd296f45f4"
+    },
+    {
+      "name": "STAGE110_CCP_JOURNALS.md",
+      "bytes": 9912,
+      "sha256": "b01b26f87b27a39dc019e77c4d683f1131466ef464645f9c74dcfd338a0a6565"
     },
     {
       "name": "STAGE25_AUTOMATION_DECISION_ENGINE.md",
@@ -130,8 +160,8 @@
     },
     {
       "name": "gas/API.gs",
-      "bytes": 109788,
-      "sha256": "eff7fc652faeb483acfb0a535123b7a1a17bc734f3d6bdaba1ec22fffd2dcddd"
+      "bytes": 112606,
+      "sha256": "9ec6d19b9c4df6513b8d1fbee97e31b09006fc2cb4c6ce47827e2cfcda214603"
     },
     {
       "name": "gas/AiCopilotStage24.gs",
@@ -225,8 +255,13 @@
     },
     {
       "name": "gas/CascadeEngine.gs",
-      "bytes": 16530,
-      "sha256": "da045403e488092d68e893cc0ed99169518a4a2cc781e57f1c23c0937718af10"
+      "bytes": 16501,
+      "sha256": "404ad6344f9767c4b6699d205a22980ca5aa985957457f50418c3ca7d8f210e7"
+    },
+    {
+      "name": "gas/CcpJournalsCore.gs",
+      "bytes": 11348,
+      "sha256": "abdf6d2e23fa5f3357a4ef19831c32bb48e3e48a3b7c0d6b1947462e93e8c440"
     },
     {
       "name": "gas/Compliance.gs",
@@ -260,8 +295,8 @@
     },
     {
       "name": "gas/Config.gs",
-      "bytes": 156030,
-      "sha256": "e2d91d5f738d79bace3cf20ef0e877f9c6e1562aff16349fb1706e58e3c775d7"
+      "bytes": 159136,
+      "sha256": "1e90fd21ff0432bd6cf5a0aa3c272c960abdb10d8d5e8a6c9cf1b18fc4dc7dd3"
     },
     {
       "name": "gas/ConfigurationCenterStage28.gs",
@@ -325,8 +360,8 @@
     },
     {
       "name": "gas/Deploy.gs",
-      "bytes": 16950,
-      "sha256": "ed16182f8b0c6e2c2dc724c70f94553fa0db2d5f8254597e07327573ce26f046"
+      "bytes": 17854,
+      "sha256": "2e6c569067c4035327eb89f3a6ae9178f7e79c484287f802736290bc5722a208"
     },
     {
       "name": "gas/Economics.gs",
@@ -415,8 +450,8 @@
     },
     {
       "name": "gas/Index.html",
-      "bytes": 574576,
-      "sha256": "582e178f1e11f4af3ee50c55de170ecf2f1aef189152132602d8e049cf310310"
+      "bytes": 401167,
+      "sha256": "d1b735c01fabe6e931b4f8fc23af126b7a9b2422cf941cf0da8eae0de54e3d4e"
     },
     {
       "name": "gas/Integrations.gs",
@@ -440,8 +475,8 @@
     },
     {
       "name": "gas/Journals.gs",
-      "bytes": 45504,
-      "sha256": "39947535e0d694e95fabaa72d1d25d498f6f2dc295e5d7dad5234fcdf7e57fee"
+      "bytes": 45720,
+      "sha256": "96afc2279718b092d1780d52b2dfbc251c3d2d4e785c4afba43877283c4c78ae"
     },
     {
       "name": "gas/KpiTargetsStage41.gs",
@@ -460,8 +495,8 @@
     },
     {
       "name": "gas/Main.gs",
-      "bytes": 12589,
-      "sha256": "8a87715345bc7d002fe60091d5f5dbb2f330191e6f533924e9ba2af02c701d8c"
+      "bytes": 8868,
+      "sha256": "1afa6301cdc8f4b51f12961501d96f73b93831a9cc2c1a0867196244fa0eda28"
     },
     {
       "name": "gas/ManagementEconomics.gs",
@@ -490,8 +525,8 @@
     },
     {
       "name": "gas/OperationalClosureStage11.gs",
-      "bytes": 27858,
-      "sha256": "1c2fb6dca7da65908508c2300d2963a67a1ac32cdcff8222b61997da8a648d2b"
+      "bytes": 28190,
+      "sha256": "4c189d6c57dd0ce830656c6d853b965f812f1fa8b414a29a28d803b5a4b78e0e"
     },
     {
       "name": "gas/OperationalHardeningStage12.gs",
@@ -549,6 +584,11 @@
       "sha256": "e640235125fb0e27c8ff81974b0f19a5f03955c99bb7a21db80f0724cd193a75"
     },
     {
+      "name": "gas/PfTechCore.gs",
+      "bytes": 12482,
+      "sha256": "6cfb9079863c3b76a2159508583bf0548d54e953829eaf71ffef29861c31f94e"
+    },
+    {
       "name": "gas/PlanMenu.gs",
       "bytes": 11147,
       "sha256": "ffa41cf677cef667abdcfb73294bf4d1eb2cdd6a5d076e02cb428beead22b58b"
@@ -565,8 +605,8 @@
     },
     {
       "name": "gas/Ppk.gs",
-      "bytes": 17707,
-      "sha256": "f705e662d0a763d7191373857c73dde76b2384ece245047e893810ee048320c5"
+      "bytes": 18405,
+      "sha256": "05de313f54e728e8a48941fe34bfec4eb5e37a3a5bde7154bc631c55e937268f"
     },
     {
       "name": "gas/PpkDocuments.gs",
@@ -600,8 +640,8 @@
     },
     {
       "name": "gas/ProductImport.gs",
-      "bytes": 17776,
-      "sha256": "f3afc7ed2ff4aeee06be0e1e59567931a1f1285dd96630e12ec350180a5748ce"
+      "bytes": 19310,
+      "sha256": "c3f9df6d071cf1635dddf8e41efa8d16e09ed7a7cc5f2038faf9b849120453a8"
     },
     {
       "name": "gas/ProductMaster.gs",
@@ -610,8 +650,8 @@
     },
     {
       "name": "gas/Production.gs",
-      "bytes": 15979,
-      "sha256": "fc6603795f1983e1f2dd9b3131e7c7d3a28b1d56bab3179b531b39a8c9c86f24"
+      "bytes": 16380,
+      "sha256": "e4e49cef7eabeba073107a261ff7830b23a839754066e9676c62645c2973f42a"
     },
     {
       "name": "gas/ProductionDispatchStage21.gs",
@@ -679,6 +719,11 @@
       "sha256": "acf6cc4f61bb3f4d132be6d690c29d1ca146e12093adf109abe3e4805ed3dfac"
     },
     {
+      "name": "gas/Setup.gs",
+      "bytes": 2850,
+      "sha256": "c8db2ec586fa653dd021e0aab071bb2d41a3b4dfbd461b72b276537d43214378"
+    },
+    {
       "name": "gas/SupplierDocuments.gs",
       "bytes": 8425,
       "sha256": "22bf03044a25d43cc094ae960ee418177f12c0d253ad9192b94bc13ee4e2497f"
@@ -695,8 +740,8 @@
     },
     {
       "name": "gas/TTKCore.gs",
-      "bytes": 13253,
-      "sha256": "332ae437242cb7dc53e860bcedd0dfb176c394ae9163a0b2b73084f5f34b9195"
+      "bytes": 17615,
+      "sha256": "64e0c74b581e32160df4fe83b00ada231fde9418a5f1b0ceec2db7dc425487f1"
     },
     {
       "name": "gas/Tasks.gs",
@@ -704,9 +749,29 @@
       "sha256": "0c2204d8aa1c420a6870a57846b02cda4225ce2228f687b147adbb3030db77c4"
     },
     {
+      "name": "gas/TechNormsCore.gs",
+      "bytes": 55363,
+      "sha256": "4b4f72d591635b5bf0830d6236aee6f863082ab60b8e38a7377cadc176160ca7"
+    },
+    {
+      "name": "gas/TechSpecCore.gs",
+      "bytes": 45818,
+      "sha256": "d08cf9df91a6d5aca65d66820653671f2b909f717ffd03da1bd129f7a96f85bb"
+    },
+    {
       "name": "gas/TraceabilityStage32.gs",
       "bytes": 15427,
       "sha256": "7144b668327521c5f1c4b1f028476c8fad58488e9d7620f6091b6c099a9c4905"
+    },
+    {
+      "name": "gas/TriggerScheduler.gs",
+      "bytes": 4777,
+      "sha256": "4ea53d10a6d5044a0eda473db0eed81a5158579d217a7daa3851df353b13c68e"
+    },
+    {
+      "name": "gas/TtkImportCore.gs",
+      "bytes": 25883,
+      "sha256": "ad88e1b51f6a3f6b175a6133a445701a43f890f724f6ec40774f77477677e188"
     },
     {
       "name": "gas/Users.gs",
@@ -742,9 +807,29 @@
       "name": "gas/migrations_001_PPK_GENERATOR.gs",
       "bytes": 503,
       "sha256": "54a17bdb4e86f48c3a77ec74d1ccad3c6287dc493287f0e6278e118936ce7972"
+    },
+    {
+      "name": "install/Installer.gs",
+      "bytes": 2806,
+      "sha256": "eeed04458753d729d65892181f043a75ba1db74982c4f76256547a02866d6486"
+    },
+    {
+      "name": "install/appsscript.json",
+      "bytes": 302,
+      "sha256": "90f57ba80e18cd52087e31e0f0ebc64019675a433b04a2743916cb8108c15e01"
+    },
+    {
+      "name": "tools/build_manifest.py",
+      "bytes": 1796,
+      "sha256": "062df47c4b436a8e563f1c6f999c589c7623a676b386fa09ea84a69570d48aee"
+    },
+    {
+      "name": "tools/ttk_archive/extract_ttk_archive.py",
+      "bytes": 11737,
+      "sha256": "93e824c657f4045a8ed16edff8793a32210f45a4a2f6ebd9492f367358416a7e"
     }
   ],
-  "file_count": 148,
-  "aggregate_sha256": "2b9fcac605c8b79c944c48779cbab336c7a77fb9496c55bd7475981f3b28c071",
+  "file_count": 165,
+  "aggregate_sha256": "4307a4eae62075ba0c9822672f1add5443e5028fdcd4dcd5859920e0767ae173",
   "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
 }
