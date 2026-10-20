@@ -1,7 +1,7 @@
 {
-  "built_at": "2026-10-19T19:41:54.219351+00:00",
-  "stage": 115,
-  "name": "Мастер ППК: цифровое предприятие",
+  "built_at": "2026-10-20T05:34:32.429773+00:00",
+  "stage": 116,
+  "name": "Инструкция для персонала, логотип, исправления интерфейса",
   "files": [
     {
       "name": "INSTALL.md",
@@ -57,6 +57,11 @@
       "name": "STAGE114_BANQUET_BLANK.md",
       "bytes": 9210,
       "sha256": "e6b1830d697cabfe0fd4d30bbb5e5795515d596efd21ce62d4fa5d40a7b1cfe7"
+    },
+    {
+      "name": "STAGE115_PPK_WIZARD.md",
+      "bytes": 13451,
+      "sha256": "34a6c73c10e2a02239ccd475e18f5de4dd18f69f723a92cd1b9fb449e1f1d829"
     },
     {
       "name": "STAGE25_AUTOMATION_DECISION_ENGINE.md",
@@ -199,14 +204,39 @@
       "sha256": "00a9f54756bd2961dfcc53f283abbbacdef3daee6d09e11820a93cc8988f8c7b"
     },
     {
+      "name": "docs/ppk_wizard/print2.png",
+      "bytes": 159883,
+      "sha256": "bc2cd45f5ca8122d7bb9a912aafd4184235c8ab0b04d60b8da8e55288577369c"
+    },
+    {
+      "name": "docs/ppk_wizard/w10.png",
+      "bytes": 94571,
+      "sha256": "536c213f97c0197cbdd3c8f44969eb4418482d6eb2073bea8aba4471f86bb3a3"
+    },
+    {
+      "name": "docs/ppk_wizard/w2.png",
+      "bytes": 90941,
+      "sha256": "2f362bcf62f139e0c2e9717a15f0f6fb42b47ccbd33fbe6c575f8369dc61abf3"
+    },
+    {
+      "name": "docs/ppk_wizard/w3.png",
+      "bytes": 165332,
+      "sha256": "6f4eaf020881e51c7cce3e36da7f06a078e478c10b96b19bfb78b4d310388c52"
+    },
+    {
+      "name": "docs/ppk_wizard/w5.png",
+      "bytes": 215856,
+      "sha256": "277e9c192a0f48a43e11598191ac346af877fc88da76c67236eb419890bdcd85"
+    },
+    {
       "name": "gas/AI.gs",
       "bytes": 4581,
       "sha256": "d4623f50729218e120e9bb4137d7dc612c785deb106e578527cf038f4bc77045"
     },
     {
       "name": "gas/API.gs",
-      "bytes": 118145,
-      "sha256": "97ead0d698a57ead80cd343f9f47c3b430de0c91fce381f711bc49da50115926"
+      "bytes": 118577,
+      "sha256": "69e57a73a585e28fb64f9e4735472f16155a358266c98504f2a5c6f4841f5b24"
     },
     {
       "name": "gas/AiCopilotStage24.gs",
@@ -245,8 +275,8 @@
     },
     {
       "name": "gas/Auth.gs",
-      "bytes": 33742,
-      "sha256": "68661ea9623d1136a8eae03cb9bda9f26c961ba74b2faa8b9d2380e77c90015b"
+      "bytes": 34184,
+      "sha256": "ae6ad7e3339cc71bd6884160169e0b21e46e5b4f75b9bdf3f37a9509c0fcc7b0"
     },
     {
       "name": "gas/AutomationDecisionStage25.gs",
@@ -345,8 +375,8 @@
     },
     {
       "name": "gas/Config.gs",
-      "bytes": 166335,
-      "sha256": "545c347beb82eaa3a4ac5d6616432dc94cfbaa0ad80caf1bb2bd04dfaa6a1158"
+      "bytes": 166400,
+      "sha256": "794acffa0860ab56bd1ef94d6ea4cca77a5e6af5c5dd6d8f56c2dfbfa9849e76"
     },
     {
       "name": "gas/ConfigurationCenterStage28.gs",
@@ -420,8 +450,8 @@
     },
     {
       "name": "gas/EmployeeSafetyIntegration.gs",
-      "bytes": 18303,
-      "sha256": "70821b118b26b4214ba1feb53bfce836661147b07e8d08e328168d50a6d5c706"
+      "bytes": 18378,
+      "sha256": "133644293d101356303258652263ebd64df3fc0f90413a3d67d1e712d2f75808"
     },
     {
       "name": "gas/EnterpriseE2E.gs",
@@ -505,8 +535,8 @@
     },
     {
       "name": "gas/Index.html",
-      "bytes": 504032,
-      "sha256": "a943b50cf903e5f4756aaca83bad6a3e0b8c56655b0485fa93c7a0a16c24cf3a"
+      "bytes": 510684,
+      "sha256": "c90e9c4f8ade4cd34deeedbd57dd58a085891dcbca4eddb50b84bec6da25c173"
     },
     {
       "name": "gas/Integrations.gs",
@@ -515,8 +545,8 @@
     },
     {
       "name": "gas/Inventory.gs",
-      "bytes": 10924,
-      "sha256": "746c4b689abf07ca4da115aaf5e018dce967c07298e347c9330820bd6f940f99"
+      "bytes": 11400,
+      "sha256": "a56f07e1e5abd546320d5d406e36c68e20248bf7a08fa4e270a778edd236dbc4"
     },
     {
       "name": "gas/InvoiceOcr.gs",
@@ -535,8 +565,8 @@
     },
     {
       "name": "gas/Journals.gs",
-      "bytes": 45720,
-      "sha256": "96afc2279718b092d1780d52b2dfbc251c3d2d4e785c4afba43877283c4c78ae"
+      "bytes": 47016,
+      "sha256": "52f03abb5cd82d9f743195d51b94150898b816207c054b17b7788e029f83d2f0"
     },
     {
       "name": "gas/KpiTargetsStage41.gs",
@@ -550,8 +580,8 @@
     },
     {
       "name": "gas/Labeling.gs",
-      "bytes": 11844,
-      "sha256": "55286c6d6248df0396ab3b6e1999142efc497c17120706d32a88060075616741"
+      "bytes": 13297,
+      "sha256": "b1b8506613eed3831e180cc36df0a08e86566c5d1a751a934a7cd1629440b185"
     },
     {
       "name": "gas/Main.gs",
@@ -699,6 +729,11 @@
       "sha256": "6768a30ea89c4960baed5d1893b2fb4d30d412f44a1145648dc27c39bf115fed"
     },
     {
+      "name": "gas/PpkWizardCore.gs",
+      "bytes": 100730,
+      "sha256": "b8acf30e1c81ed1812e8c843129f80e149dcee23031ae3341036c9b04a2a8a77"
+    },
+    {
       "name": "gas/PriceCascade.gs",
       "bytes": 2297,
       "sha256": "7cb18a72c248d53b836b336e6b530626f23187b77ab35c4a3cba561bc714c22b"
@@ -765,8 +800,8 @@
     },
     {
       "name": "gas/Safety.gs",
-      "bytes": 42855,
-      "sha256": "7537c74d4a03af3b57f30275792ac6033a342e43f9d8ddeb81522850dcaf651a"
+      "bytes": 43036,
+      "sha256": "097824091fd85008bc4209c196fcc9a88283ff34172a16e9d3da9fc76f1be344"
     },
     {
       "name": "gas/SaleFulfillment.gs",
@@ -919,7 +954,7 @@
       "sha256": "93e824c657f4045a8ed16edff8793a32210f45a4a2f6ebd9492f367358416a7e"
     }
   ],
-  "file_count": 183,
-  "aggregate_sha256": "91c7433bb0424cf295b56a95abba0a1e38c6ff402966324eeca83718a52ae605",
+  "file_count": 190,
+  "aggregate_sha256": "5127681258ae49ca1d2419773f33a1cc2e60b656221da2ad59d4310c27e7cedf",
   "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
 }

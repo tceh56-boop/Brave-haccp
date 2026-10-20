@@ -258,7 +258,20 @@ function _createPendingIfNew_(organizationId,locationId,workshopId,journalType,d
   insertRow_('AUTO_JOURNAL_PENDING',pending); return pending;
 }
 
-function getPendingAutoJournals_(locationId) { return findRows_('AUTO_JOURNAL_PENDING',function(r){return r.location_id===locationId&&r.статус==='ожидание';}); }
+/** Ожидающие записи для экрана «Журналы»: с названием журнала, оборудованием и нормой, по времени слота. */
+function getPendingAutoJournals_(locationId) {
+  var defs = {}, eq = {};
+  return findRows_('AUTO_JOURNAL_PENDING', function (r) { return r.location_id === locationId && r.статус === 'ожидание'; }).map(function (r) {
+    var d = r.definition_id ? (defs[r.definition_id] = defs[r.definition_id] || findOne_('JOURNAL_DEFINITIONS', 'definition_id', r.definition_id)) : null;
+    var e = d && d.equipment_id ? (eq[d.equipment_id] = eq[d.equipment_id] || findOne_('EQUIPMENT', 'equipment_id', d.equipment_id)) : null;
+    var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; });
+    o.название = d ? String(d.название || '').replace(/ — [^—]+$/, '') : '';
+    o.оборудование = e ? e.название : '';
+    o.норма = d && (d.мин_норма !== '' || d.макс_норма !== '') ? String(d.мин_норма === '' ? '' : d.мин_норма) + '…' + String(d.макс_норма === '' ? '' : d.макс_норма) + (d.единица ? ' ' + d.единица : '') : '';
+    if (!o.тип_ответа && d) o.тип_ответа = d.тип_ответа;
+    return o;
+  }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)) || Number(a.slot_time || 0) - Number(b.slot_time || 0); });
+}
 
 /**
  * Сотрудник подтверждает слот, вводя РЕАЛЬНОЕ измеренное значение (система никогда не

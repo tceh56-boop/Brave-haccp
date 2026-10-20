@@ -114,7 +114,7 @@ function _createSafetyTrainingTasks_(employeeId, assignments, session) {
   (assignments||[]).forEach(function(a){
     var existing = findRows_('TASKS', function(t){ return t.organization_id===u.organization_id && t.type==='briefing' && t.source_entity_id===a.assignment_id && t.status==='открыта'; })[0];
     if (existing) return;
-    var task = createTask_({organizationId:u.organization_id,locationId:a.location_id,type:'briefing',title:'Пройти инструктаж: '+a.instruction_id,description:'Ознакомление, предусмотренная проверка знаний и подтверждение по назначению '+a.assignment_id,responsibleId:employeeId,priority:'обычный',dueAt:a.due_at||'',sourceEntityId:a.assignment_id,userId:session.user_id,session:session});
+    var task = createTask_({organizationId:u.organization_id,locationId:a.location_id,type:'briefing',title:'Пройти инструктаж: '+((findOne_('SAFETY_DOCUMENTS','document_id',a.instruction_id)||{}).title||a.instruction_id),description:'Ознакомление, предусмотренная проверка знаний и подтверждение по назначению '+a.assignment_id,responsibleId:employeeId,priority:'обычный',dueAt:a.due_at||'',sourceEntityId:a.assignment_id,userId:session.user_id,session:session});
     created.push(task);
   });
   return created;

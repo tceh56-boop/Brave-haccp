@@ -957,7 +957,7 @@ var CONFIG = {
     GET_PRODUCTION_DISPATCH_PLAN: 'production', CREATE_PRODUCTION_DISPATCH_PLAN: 'production', APPROVE_PRODUCTION_DISPATCH_PLAN: 'production', SET_PRODUCTION_DISPATCH_CONFIG: 'production',
     GET_BATCH_PASSPORT: 'warehouse_view', GENERATE_PPK_INSPECTION_PACKET: 'ppk', GET_PPK_INSPECTION_PACKET: 'ppk', GET_PRODUCTION_ENTERPRISE_DASHBOARD: 'dashboard',
     GET_CRITICAL_INCIDENTS: 'critical_incidents', CREATE_CRITICAL_INCIDENT: 'critical_incidents', RESOLVE_CRITICAL_INCIDENT: 'critical_incidents', GET_QUARANTINE_CASES: 'critical_incidents', RELEASE_QUARANTINE: 'critical_incidents', GET_CRITICAL_INCIDENT_DASHBOARD: 'dashboard',
-    START_INVENTORY: 'inventory', SUBMIT_INVENTORY_LINE: 'inventory', CLOSE_INVENTORY: 'inventory', GET_INVENTORY: 'inventory', CREATE_ADJUSTMENT_FROM_INVENTORY: 'inventory',
+    START_INVENTORY: 'inventory', SUBMIT_INVENTORY_LINE: 'inventory', CLOSE_INVENTORY: 'inventory', GET_INVENTORY: 'inventory', GET_OPEN_INVENTORY: 'inventory', CREATE_ADJUSTMENT_FROM_INVENTORY: 'inventory',
 
     ADD_JOURNAL_ENTRY: 'journals', GET_JOURNALS: 'journals',
     CONFIRM_AUTO_JOURNAL: 'journals', GET_PENDING_JOURNALS: 'journals', SUBMIT_JOURNAL_VALUE: 'journals',
@@ -966,7 +966,7 @@ var CONFIG = {
     GET_WORKSHOPS: 'workshops_use', CREATE_WORKSHOP: 'workshops_manage', UPDATE_WORKSHOP: 'workshops_manage',
     GET_EQUIPMENT: 'equipment', CREATE_EQUIPMENT: 'equipment', UPDATE_EQUIPMENT: 'equipment',
     GENERATE_LABEL: 'marking', GET_LABEL: 'marking', GET_BATCH_BY_QR: 'warehouse_view',
-    GET_MARKING_JOURNAL: 'marking', CREATE_LABEL_PRINT_JOB: 'marking', VERIFY_LABEL_PRINT: 'marking', OPEN_CONTAINER: 'marking',
+    GET_MARKING_JOURNAL: 'marking', GET_MARKING_BATCHES: 'marking', CREATE_LABEL_PRINT_JOB: 'marking', VERIFY_LABEL_PRINT: 'marking', OPEN_CONTAINER: 'marking',
     CONFIRM_BATCH_SHELF_LIFE: 'warehouse_receive',
 
     GET_ECONOMICS: 'economics',

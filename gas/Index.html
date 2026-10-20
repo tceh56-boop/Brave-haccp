@@ -78,8 +78,13 @@
 
   /* ---------- Логотип-анимация (крепость-маскот + буквы «ЕХ») ---------- */
   .cehPlate{background:var(--white);border-radius:14px;box-shadow:0 10px 24px -12px rgba(0,0,0,.35);display:inline-flex;align-items:center;justify-content:center;padding:18px 24px;}
-  .cehWordmark{width:clamp(140px,50vw,220px);height:auto;overflow:visible;}
-  .cehWordmark .cehMascot{animation:cehBounce 1.5s ease-in-out infinite;transform-origin:200px 240px;}
+  .cehWordmark{width:clamp(170px,56vw,260px);height:auto;overflow:visible;fill:var(--brown);}
+  .cehWordmark .cehEye{fill:var(--white);}
+  .cehLogoInline{display:block;height:36px;width:auto;fill:var(--yellow);}
+  .cehLogoInline .cehEye{fill:var(--brown);}
+  .cehLogoInline.menu{height:34px;fill:var(--brown);}
+  .cehLogoInline.menu .cehEye{fill:var(--white);}
+  .cehWordmark .cehMascot{animation:cehBounce 1.5s ease-in-out infinite;transform-origin:232px 300px;}
   .cehWordmark .cehEye{animation:cehBlink 3.6s ease-in-out infinite;transform-origin:center;transform-box:fill-box;}
   .cehWordmark.static .cehMascot,.cehWordmark.static .cehEye{animation:none;}
   @keyframes cehBounce{0%,100%{transform:translateY(0) scaleY(1);}30%{transform:translateY(-14px) scaleY(1.05);}55%{transform:translateY(0) scaleY(.93);}75%{transform:translateY(-4px) scaleY(1.02);}}
@@ -142,33 +147,13 @@
 
 <div id="bootScreen">
   <div class="cehPlate">
-  <svg class="cehWordmark" viewBox="0 0 460 290">
-    <g class="cehMascot">
-      <path d="M 20.0,175.0 L 20.0,48.0 L 20.0,20.0 L 38.8,20.0 L 38.8,34.0 L 57.5,34.0 L 57.5,20.0 L 76.2,20.0 L 76.2,34.0 L 95.0,34.0 L 95.0,48.0 L 95.0,130.0 L 112.0,130.0 L 112.0,48.0 L 112.0,14.0 L 130.8,14.0 L 130.8,30.0 L 149.5,30.0 L 149.5,14.0 L 168.2,14.0 L 168.2,30.0 L 187.0,30.0 L 187.0,48.0 L 187.0,175.0 L 20.0,175.0 Z" fill="var(--black)"/>
-      <path d="M 122,160 L 178,160 Q 184,160 184,200 Q 184,240 152,240 Q 120,240 120,200 Q 120,166 122,160 Z" fill="var(--black)"/>
-      <circle class="cehEye" cx="140" cy="195" r="7" fill="var(--white)"/>
-      <circle class="cehEye" cx="164" cy="195" r="7" fill="var(--white)"/>
-      <path d="M 130,212 Q 130,232 152,232 Q 174,232 174,212" fill="none" stroke="var(--white)" stroke-width="7" stroke-linecap="round"/>
-    </g>
-    <text class="cehLetter e" x="212" y="175" font-size="190" font-weight="900" font-family="-apple-system,Segoe UI,Roboto,Arial,sans-serif" fill="var(--black)">Е</text>
-    <text class="cehLetter h" x="330" y="175" font-size="190" font-weight="900" font-family="-apple-system,Segoe UI,Roboto,Arial,sans-serif" fill="var(--black)">Х</text>
-  </svg>
+  <svg class="cehWordmark" viewBox="0 0 780 330" role="img" aria-label="ЦЕХ"><path d="M44,48 L66,58 L84,46 L84,84 L90,84 L90,52 L99,44 L100,160 L180,160 L180,48 L203,58 L214,44 L214,82 L221,82 L221,74 L240,68 L246,80 L262,66 L262,268 L198,268 L198,246 L44,246 Z"/><g class="cehMascot"><path d="M174,308 A58,50 0 0 1 290,308 L270,308 A38,32 0 0 0 194,308 Z"/><circle class="cehEye" cx="218" cy="238" r="8"/><circle class="cehEye" cx="246" cy="238" r="8"/></g><path class="cehLetter e" d="M314,66 L488,66 L488,118 L372,118 L372,132 L470,132 L470,178 L372,178 L372,194 L490,194 L490,246 L314,246 Z"/><path class="cehLetter h" d="M506,66 L578,66 L616,124 L654,66 L724,66 L652,154 L728,246 L656,246 L616,186 L576,246 L504,246 L580,154 Z"/></svg>
   </div>
   <div class="spinner"></div>
 </div>
 
 <div id="loginScreen" class="hidden">
-  <svg class="cehWordmark static" viewBox="0 0 460 290" style="width:clamp(110px,30vw,150px);margin-bottom:2px;">
-    <g class="cehMascot">
-      <path d="M 20.0,175.0 L 20.0,48.0 L 20.0,20.0 L 38.8,20.0 L 38.8,34.0 L 57.5,34.0 L 57.5,20.0 L 76.2,20.0 L 76.2,34.0 L 95.0,34.0 L 95.0,48.0 L 95.0,130.0 L 112.0,130.0 L 112.0,48.0 L 112.0,14.0 L 130.8,14.0 L 130.8,30.0 L 149.5,30.0 L 149.5,14.0 L 168.2,14.0 L 168.2,30.0 L 187.0,30.0 L 187.0,48.0 L 187.0,175.0 L 20.0,175.0 Z" fill="var(--brown)"/>
-      <path d="M 122,160 L 178,160 Q 184,160 184,200 Q 184,240 152,240 Q 120,240 120,200 Q 120,166 122,160 Z" fill="var(--brown)"/>
-      <circle class="cehEye" cx="140" cy="195" r="7" fill="var(--beige)"/>
-      <circle class="cehEye" cx="164" cy="195" r="7" fill="var(--beige)"/>
-      <path d="M 130,212 Q 130,232 152,232 Q 174,232 174,212" fill="none" stroke="var(--beige)" stroke-width="7" stroke-linecap="round"/>
-    </g>
-    <text x="212" y="175" font-size="190" font-weight="900" font-family="-apple-system,Segoe UI,Roboto,Arial,sans-serif" fill="var(--brown)">Е</text>
-    <text x="330" y="175" font-size="190" font-weight="900" font-family="-apple-system,Segoe UI,Roboto,Arial,sans-serif" fill="var(--brown)">Х</text>
-  </svg>
+  <svg class="cehWordmark static" viewBox="0 0 780 330" role="img" aria-label="ЦЕХ" style="width:clamp(150px,44vw,200px);margin-bottom:6px;"><path d="M44,48 L66,58 L84,46 L84,84 L90,84 L90,52 L99,44 L100,160 L180,160 L180,48 L203,58 L214,44 L214,82 L221,82 L221,74 L240,68 L246,80 L262,66 L262,268 L198,268 L198,246 L44,246 Z"/><g class="cehMascot"><path d="M174,308 A58,50 0 0 1 290,308 L270,308 A38,32 0 0 0 194,308 Z"/><circle class="cehEye" cx="218" cy="238" r="8"/><circle class="cehEye" cx="246" cy="238" r="8"/></g><path d="M314,66 L488,66 L488,118 L372,118 L372,132 L470,132 L470,178 L372,178 L372,194 L490,194 L490,246 L314,246 Z"/><path d="M506,66 L578,66 L616,124 L654,66 L724,66 L652,154 L728,246 L656,246 L616,186 L576,246 L504,246 L580,154 Z"/></svg>
   <div class="muted" id="loginSub">Выберите сотрудника</div>
   <div class="err" id="loginErr"></div>
 
@@ -189,13 +174,13 @@
 <div id="app" class="hidden">
 <header>
   <button class="hamburger" onclick="toggleMenu()" aria-label="Меню">☰</button>
-  <div class="logo">ЦЕХ</div>
+  <div class="logo"><svg class="cehLogoInline" viewBox="0 0 780 330" role="img" aria-label="ЦЕХ"><path d="M44,48 L66,58 L84,46 L84,84 L90,84 L90,52 L99,44 L100,160 L180,160 L180,48 L203,58 L214,44 L214,82 L221,82 L221,74 L240,68 L246,80 L262,66 L262,268 L198,268 L198,246 L44,246 Z"/><g class="cehMascot"><path d="M174,308 A58,50 0 0 1 290,308 L270,308 A38,32 0 0 0 194,308 Z"/><circle class="cehEye" cx="218" cy="238" r="8"/><circle class="cehEye" cx="246" cy="238" r="8"/></g><path d="M314,66 L488,66 L488,118 L372,118 L372,132 L470,132 L470,178 L372,178 L372,194 L490,194 L490,246 L314,246 Z"/><path d="M506,66 L578,66 L616,124 L654,66 L724,66 L652,154 L728,246 L656,246 L616,186 L576,246 L504,246 L580,154 Z"/></svg></div>
   <div class="who" onclick="doLogout()"><span id="whoName"></span><br><span id="whoRole" class="muted"></span></div>
 </header>
 
 <div id="menuOverlay" onclick="closeMenu()"></div>
 <nav id="sideMenu">
-  <div class="menuHead">ЦЕХ</div>
+  <div class="menuHead"><svg class="cehLogoInline menu" viewBox="0 0 780 330" role="img" aria-label="ЦЕХ"><path d="M44,48 L66,58 L84,46 L84,84 L90,84 L90,52 L99,44 L100,160 L180,160 L180,48 L203,58 L214,44 L214,82 L221,82 L221,74 L240,68 L246,80 L262,66 L262,268 L198,268 L198,246 L44,246 Z"/><g class="cehMascot"><path d="M174,308 A58,50 0 0 1 290,308 L270,308 A38,32 0 0 0 194,308 Z"/><circle class="cehEye" cx="218" cy="238" r="8"/><circle class="cehEye" cx="246" cy="238" r="8"/></g><path d="M314,66 L488,66 L488,118 L372,118 L372,132 L470,132 L470,178 L372,178 L372,194 L490,194 L490,246 L314,246 Z"/><path d="M506,66 L578,66 L616,124 L654,66 L724,66 L652,154 L728,246 L656,246 L616,186 L576,246 L504,246 L580,154 Z"/></svg></div>
   <div class="menuGroupLabel">Оперативное</div>
   <button class="menuItem active" data-view="dashboard" data-module="dashboard" onclick="navTo('dashboard')">Главная</button>
   <button class="menuItem" data-view="warehouse" data-module="warehouse_view" onclick="navTo('warehouse')">Склад</button>
@@ -534,7 +519,7 @@
     </div>
     <div class="card"><h2>Мои назначенные инструктажи</h2><div id="safetyAssignments" class="muted">Загрузка…</div></div>
     <div class="card"><h2>Быстрый доступ / аварийные инструкции</h2><div id="safetyEmergency" class="muted">—</div></div>
-    <div class="card"><h2>Контур</h2><div class="muted">Документ → версия → требование → назначение → ознакомление → тест → результат → подтверждение → Audit → напоминание → повторный инструктаж.</div><pre id="safetyOutput" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto;">—</pre></div>
+    <div class="card"><h2>Контур</h2><div class="muted">Документ → версия → требование → назначение → ознакомление → тест → результат → подтверждение → Audit → напоминание → повторный инструктаж.</div><div id="safetyOutput" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto;">—</div></div>
   </section>
 
   <section id="view-rules" class="hidden">
@@ -809,7 +794,7 @@
 <section id="view-marking" class="hidden">
   <div class="card"><h2>🏷️ Маркировка и этикетки</h2>
     <div class="formGrid">
-      <div><label>Партия</label><input id="markBatchId" placeholder="BATCH-..."></div>
+      <div><label>Партия (продукт · остаток · годен до)</label><select id="markBatchId"><option value="">Загрузка партий…</option></select></div>
       <div><label>Количество этикеток</label><input id="markLabelQty" type="number" min="1" value="1"></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
@@ -1481,7 +1466,7 @@
   };
 
   function applyRoleVisibility(role) {
-    var allowed = CLIENT_ROLE_MODULES[role];
+    var allowed = SESSION.modules || CLIENT_ROLE_MODULES[role];
     document.querySelectorAll('#sideMenu button[data-module]').forEach(function (b) {
       var ok = allowed === 'all' || (allowed && allowed.indexOf(b.dataset.module) !== -1);
       b.classList.toggle('hidden', !ok);
@@ -1496,7 +1481,7 @@
    * таблицу остатков он видит, а форму приёма — нет).
    */
   function hasClientModule(moduleName) {
-    var allowed = CLIENT_ROLE_MODULES[SESSION.роль];
+    var allowed = SESSION.modules || CLIENT_ROLE_MODULES[SESSION.роль];
     return allowed === 'all' || (allowed && allowed.indexOf(moduleName) !== -1);
   }
   function applyModuleGates() {
@@ -1519,7 +1504,7 @@
     call('GET_SESSION', {}, function (data) {
       applySessionData(data);
       if (SESSION.requiresLocation) { showScreen('locationScreen'); renderLocationList(data.locations); }
-      else { showScreen('app'); loadDashboard(); }
+      else { showScreen('app'); openHomeView(); }
     }, function () {
       localStorage.removeItem('tsekh_token');
       SESSION.token = null;
@@ -1534,6 +1519,7 @@
     SESSION.locationId = data.location_id || null;
     SESSION.роль = data.роль;
     SESSION.requiresLocation = !!data.requires_location;
+    SESSION.modules = data.modules || CLIENT_ROLE_MODULES[data.роль];
     localStorage.setItem('tsekh_token', data.token);
     document.getElementById('whoName').textContent = data.имя;
     document.getElementById('whoRole').textContent = data.роль;
@@ -1595,7 +1581,7 @@
         if (!res.ok) { document.getElementById('loginErr').textContent = res.error; pin = ''; renderPinDots(); return; }
         applySessionData(res.data);
         if (SESSION.requiresLocation) { showScreen('locationScreen'); renderLocationList(res.data.locations); }
-        else { showScreen('app'); loadDashboard(); }
+        else { showScreen('app'); openHomeView(); }
       })
       .withFailureHandler(function () { document.getElementById('loginErr').textContent = 'Ошибка соединения.'; })
       .api('LOGIN', { pin: pin, userId: selectedUserId }, null);
@@ -1610,14 +1596,14 @@
     call('SELECT_LOCATION', { locationId: locationId }, function (data) {
       applySessionData(data);
       showScreen('app');
-      loadDashboard();
+      openHomeView();
     });
   }
 
   function doLogout() {
     call('LOGOUT', {}, function () {
       localStorage.removeItem('tsekh_token');
-      SESSION.token = null;
+      SESSION.token = null; SESSION.modules = null; SESSION.роль = null; applyModuleGates();
       pin = ''; selectedUserId = null;
       showScreen('loginScreen');
       loadUserPicker();
@@ -1645,6 +1631,14 @@
   }
   function navTo(name) { showView(name); closeMenu(); }
 
+  /** После входа — «Главная», если она доступна роли, иначе первый доступный раздел меню
+   *  (у повара, кладовщика, лаборанта нет «Главной» — раньше каждый вход начинался с ошибки прав). */
+  function openHomeView() {
+    if (hasClientModule('dashboard')) { showView('dashboard'); return; }
+    var first = document.querySelector('#sideMenu button.menuItem:not(.hidden)');
+    if (first) showView(first.dataset.view);
+  }
+
   function showView(name) {
     document.querySelectorAll('main > section[id^="view-"]').forEach(function (s) {
       s.classList.toggle('hidden', s.id !== 'view-' + name);
@@ -1660,6 +1654,7 @@
     if (name === 'tasks') loadTasks();
     if (name === 'lab') loadLab();
     if (name === 'ppk') loadPpk();
+    if (name === 'marking') loadMarkingBatches();
     if (name === 'rules') loadRules();
     if (name === 'integrations') loadIntegrations();
     if (name === 'recovery') loadRecoveryView();
@@ -1859,6 +1854,9 @@
       });
       document.getElementById('noCritical').classList.toggle('hidden', d.критические_остатки.length > 0);
     });
+    var aiCard = document.getElementById('aiList').closest('.card');
+    if (aiCard) aiCard.classList.toggle('hidden', !hasClientModule('ai'));
+    if (!hasClientModule('ai')) return;
     call('GET_AI_RECOMMENDATIONS', {}, function (recs) {
       var el = document.getElementById('aiList');
       el.innerHTML = recs.length ? recs.map(function (r) { return '<div style="margin-bottom:6px;">• ' + compEsc(r) + '</div>'; }).join('') : 'Отклонений не обнаружено.';
@@ -2260,7 +2258,7 @@
   function loadPurchasing() {
     call('GET_PURCHASE_REQUESTS', {}, function (rows) {
       var tbody = document.querySelector('#tblPurchasing tbody');
-      tbody.innerHTML = rows.map(function (r) { return '<tr><td>' + r.product_id + '</td><td>' + r.количество + '</td><td>' + r.статус + '</td></tr>'; }).join('');
+      tbody.innerHTML = rows.length ? rows.map(function (r) { return '<tr><td>' + compEsc(r.название || r.product_id) + '</td><td>' + compEsc(r.количество) + ' ' + compEsc(r.единица || '') + '</td><td>' + compEsc(r.статус) + '</td></tr>'; }).join('') : '<tr><td colspan="3" class="muted">Заявок нет.</td></tr>';
     });
   }
 
@@ -2268,8 +2266,9 @@
     call('GET_PENDING_JOURNALS', {}, function (rows) {
       var el = document.getElementById('pendingJournals');
       el.innerHTML = rows.length ? rows.map(function (r) {
-        var label = r.текст_вопроса || r.journal_type;
-        return '<div class="row-between" style="margin-bottom:8px;"><span><b>' + label + '</b><br><small class="muted">' + r.date + ' ' + String(Math.floor(Number(r.slot_time||0)/60)).padStart(2,'0') + ':' + String(Number(r.slot_time||0)%60).padStart(2,'0') + '</small></span><button class="btn secondary" style="width:auto;" onclick="promptConfirmJournal(\'' + r.pending_id + '\',\'' + (r.тип_ответа||'ЧИСЛО') + '\',\'' + String(label).replace(/'/g,'\\\'') + '\')">Подтвердить</button></div>';
+        var label = r.текст_вопроса || r.название || r.journal_type;
+        var head = r.название ? r.название + (r.оборудование ? ' — ' + r.оборудование : '') : label;
+        return '<div class="row-between" style="margin-bottom:8px;"><span><b>' + compEsc(head) + '</b>' + (r.текст_вопроса && r.название ? '<br><span class="muted">' + compEsc(r.текст_вопроса) + '</span>' : '') + '<br><small class="muted">' + r.date + ' ' + String(Math.floor(Number(r.slot_time||0)/60)).padStart(2,'0') + ':' + String(Number(r.slot_time||0)%60).padStart(2,'0') + (r.норма ? ' · норма ' + compEsc(r.норма) : '') + '</small></span><button class="btn secondary" style="width:auto;" onclick="promptConfirmJournal(\'' + r.pending_id + '\',\'' + (r.тип_ответа||'ЧИСЛО') + '\',\'' + String(label).replace(/'/g,'\\\'') + '\')">Подтвердить</button></div>';
       }).join('') : 'Нет ожидающих записей.';
     });
   }
@@ -2296,6 +2295,7 @@
   /* ================= Раунд v3 — секондарные разделы (Задачи/Лаборатория/ППК/Нормативная база/Интеграции/AI) ================= */
 
   /* ---------- Задачи (Tasks.gs, CREATE_TASK/GET_TASKS/COMPLETE_TASK) ---------- */
+  var TASK_TYPE_RU = { journal: 'Журнал', corrective: 'Корректирующее действие', cleaning: 'Уборка', chemical: 'Химия', lab: 'Лаборатория', maintenance: 'Обслуживание оборудования', briefing: 'Инструктаж', production: 'Производство', purchase: 'Закупка', haccp: 'ХАССП', integration: 'Интеграция', ai: 'AI' };
   function loadTasks() {
     var status = document.getElementById('taskStatusFilter').value;
     call('GET_TASKS', { status: status || undefined }, function (rows) {
@@ -2304,9 +2304,9 @@
       el.innerHTML = rows.map(function (t) {
         var overdue = t.due_at && t.status === 'открыта' && new Date(t.due_at).getTime() < Date.now();
         var badge = t.status === 'выполнено' ? '<span class="badge b-ok">выполнено</span>' : (overdue ? '<span class="badge b-crit">просрочена</span>' : '<span class="badge b-info">открыта</span>');
-        return '<div class="taskrow"><div class="row-between"><b>' + t.title + '</b>' + badge + '</div>' +
-          '<div class="muted">[' + t.type + ']' + (t.due_at ? ' срок: ' + String(t.due_at).replace('T', ' ').slice(0, 16) : '') + '</div>' +
-          (t.description ? '<div class="muted">' + t.description + '</div>' : '') +
+        return '<div class="taskrow"><div class="row-between"><b>' + compEsc(t.title) + '</b>' + badge + '</div>' +
+          '<div class="muted">' + compEsc(TASK_TYPE_RU[t.type] || t.type) + (t.due_at ? ' срок: ' + String(t.due_at).replace('T', ' ').slice(0, 16) : '') + '</div>' +
+          (t.description ? '<div class="muted">' + compEsc(t.description) + '</div>' : '') +
           (t.status === 'открыта' ? '<button class="btn secondary small" style="margin-top:6px;" onclick="completeTaskPrompt(\'' + t.task_id + '\')">Выполнено</button>' : '') +
           '</div>';
       }).join('');
@@ -2611,10 +2611,10 @@
 
   function initSafetyView(){ loadSafetyDashboard(); loadMySafety(); loadSafetyEmergency(); }
   function loadSafetyDashboard(){ call('GET_SAFETY_DASHBOARD',{},function(d){document.getElementById('safTotal').textContent=d.employees_total;document.getElementById('safPassed').textContent=d.passed;document.getElementById('safFailed').textContent=d.not_passed;document.getElementById('safExpired').textContent=d.overdue;},function(e){document.getElementById('safetyOutput').textContent=e;}); }
-  function loadMySafety(){ call('GET_MY_SAFETY_ASSIGNMENTS',{},function(rows){document.getElementById('safetyAssignments').innerHTML=rows.length?rows.map(function(a){return '<div class="row-between" style="padding:8px 0;border-bottom:1px solid var(--line)"><span>'+compEsc(a.instruction_id)+' v'+compEsc(a.instruction_version)+'<br><small>'+compEsc(a.briefing_type)+' · '+compEsc(a.status)+'</small></span><button class="btn secondary small" style="width:auto" onclick="openSafetyAssignmentUi('+jsArg(a.assignment_id)+')">Открыть</button></div>';}).join(''):'Нет назначений.';},function(e){document.getElementById('safetyAssignments').textContent=e;}); }
+  function loadMySafety(){ call('GET_MY_SAFETY_ASSIGNMENTS',{},function(rows){document.getElementById('safetyAssignments').innerHTML=rows.length?rows.map(function(a){var ST={ASSIGNED:'назначен',OPENED:'открыт',IN_PROGRESS:'идёт',WAITING_TEST:'ждёт теста',PASSED:'пройден',CONFIRMED:'пройден',COMPLETED:'пройден',FAILED:'не пройден',OVERDUE:'просрочен',EXPIRED:'истёк'};return '<div class="row-between" style="padding:8px 0;border-bottom:1px solid var(--line)"><span>'+compEsc(a.instruction_title||a.instruction_id)+' · версия '+compEsc(a.instruction_version)+'<br><small>'+compEsc(String(a.briefing_type).toLowerCase())+' инструктаж · '+compEsc(ST[a.status]||a.status)+'</small></span><button class="btn secondary small" style="width:auto" onclick="openSafetyAssignmentUi('+jsArg(a.assignment_id)+')">Открыть</button></div>';}).join(''):'Нет назначений.';},function(e){document.getElementById('safetyAssignments').textContent=e;}); }
   function openSafetyAssignmentUi(id){ call('OPEN_SAFETY_ASSIGNMENT',{assignmentId:id},function(){call('START_SAFETY_BRIEFING',{assignmentId:id},function(){startSafetyTestUi(id);},function(e){document.getElementById('safetyOutput').textContent=e;});},function(e){document.getElementById('safetyOutput').textContent=e;}); }
-  function startSafetyTestUi(id){ call('START_SAFETY_TEST',{assignmentId:id},function(d){var qs=d.questions||[];var answers={};var html='<b>'+compEsc(d.test.title)+'</b>';qs.forEach(function(q,i){html+='<div style="margin:12px 0"><div>'+((i+1)+'. ')+compEsc(q.question_text)+'</div><label><input type="radio" name="sq_'+q.question_id+'" value="ДА"> ДА</label> <label><input type="radio" name="sq_'+q.question_id+'" value="НЕТ"> НЕТ</label></div>';});html+='<button class="btn" onclick="submitSafetyTestUi(\''+d.attempt.attempt_id+'\','+JSON.stringify(qs.map(function(q){return q.question_id;}))+')">Проверить тест</button>';document.getElementById('safetyOutput').innerHTML=html;},function(e){document.getElementById('safetyOutput').textContent=e;}); }
-  function submitSafetyTestUi(attemptId,qids){var answers={};qids.forEach(function(id){var x=document.querySelector('input[name="sq_'+id+'"]:checked');if(x)answers[id]=x.value;});call('COMPLETE_SAFETY_TEST',{attemptId:attemptId,answers:answers},function(r){document.getElementById('safetyOutput').textContent=JSON.stringify(r,null,2);loadMySafety();},function(e){document.getElementById('safetyOutput').textContent=e;});}
+  function startSafetyTestUi(id){ call('START_SAFETY_TEST',{assignmentId:id},function(d){var qs=d.questions||[];var answers={};var html='<div style="white-space:normal;font-family:inherit;font-size:14px"><b>'+compEsc(d.test.title)+'</b>';qs.forEach(function(q,i){html+='<div style="margin:12px 0"><div>'+((i+1)+'. ')+compEsc(q.question_text)+'</div><label style="display:inline-flex;gap:6px;align-items:center;margin-right:18px"><input type="radio" style="width:auto" name="sq_'+q.question_id+'" value="ДА"> ДА</label><label style="display:inline-flex;gap:6px;align-items:center"><input type="radio" style="width:auto" name="sq_'+q.question_id+'" value="НЕТ"> НЕТ</label></div>';});html+='<button class="btn" onclick="submitSafetyTestUi('+jsArg(d.attempt.attempt_id)+','+JSON.stringify(qs.map(function(q){return q.question_id;})).replace(/"/g,'&quot;')+')">Проверить тест</button>';document.getElementById('safetyOutput').innerHTML=html+'</div>';},function(e){document.getElementById('safetyOutput').textContent=e;}); }
+  function submitSafetyTestUi(attemptId,qids){var answers={};qids.forEach(function(id){var x=document.querySelector('input[name="sq_'+id+'"]:checked');if(x)answers[id]=x.value;});call('COMPLETE_SAFETY_TEST',{attemptId:attemptId,answers:answers},function(r){var ok=r.passed===true||String(r.passed)==='true';document.getElementById('safetyOutput').innerHTML='<div style="white-space:normal;font-family:inherit;font-size:14px"><span class="badge '+(ok?'b-ok':'b-crit')+'">'+(ok?'Тест пройден':'Тест не пройден')+'</span>'+(r.score!==undefined&&r.score!==''?' <span class="muted">результат: '+compEsc(r.score)+'%</span>':'')+(ok?'':'<div class="muted" style="margin-top:6px">Перечитайте инструкцию и пройдите тест ещё раз или обратитесь к руководителю.</div>')+'</div>';loadMySafety();},function(e){document.getElementById('safetyOutput').textContent=e;});}
   function loadSafetyEmergency(){call('GET_SAFETY_EMERGENCY',{},function(rows){document.getElementById('safetyEmergency').innerHTML=rows.length?rows.map(function(d){return '<div style="padding:6px 0"><b>'+compEsc(d.title)+'</b> · v'+compEsc(d.version)+(d.file_id?' · <span class="muted">документ загружен</span>':'')+'</div>';}).join(''):'Аварийные инструкции не заведены в активном контуре.';});}
   function loadSafetyGate(){call('GET_SAFETY_FINAL_GATE',{},function(g){document.getElementById('safetyGateBadge').textContent=g.ready?'READY':'NOT READY';document.getElementById('safetyOutput').textContent=JSON.stringify(g,null,2);},function(e){document.getElementById('safetyOutput').textContent=e;});}
 
@@ -4343,6 +4343,11 @@
     });
     renderInventoryState();
     if (currentInventoryId) loadInventorySummary();
+    else call('GET_OPEN_INVENTORY', {}, function (inv) {
+      if (!inv) return;
+      currentInventoryId = inv.inventory_id; inventoryClosed = false;
+      saveInventoryTrackingState(); renderInventoryState(); loadInventorySummary();
+    });
   }
 
   function saveInventoryTrackingState() {
@@ -5323,7 +5328,7 @@
 </script>
 
 
-<div id="stage11-center" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
+<div id="stage11-center" class="hidden" data-module-gate="recovery" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
   <h3 style="margin-top:0">🚨 Аварийный центр</h3>
   <button onclick="loadEmergencyCenterUI()">Обновить</button>
   <button onclick="syncOfflineUI()">Синхронизировать offline</button>
@@ -5336,7 +5341,7 @@ function syncOfflineUI(){var q=JSON.parse(localStorage.getItem('TSEKH_OFFLINE_QU
 window.addEventListener('online',function(){if(localStorage.getItem('TSEKH_OFFLINE_QUEUE'))syncOfflineUI();});
 </script>
 
-<div id="breakdown-map-ui" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
+<div id="breakdown-map-ui" class="hidden" data-module-gate="recovery" style="margin:16px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
   <h3 style="margin-top:0">🥩 Карта разбора сырья</h3>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
     <input id="breakdown-plan-id" placeholder="ID карты разбора" style="min-width:280px;padding:8px;">
@@ -5373,11 +5378,15 @@ function loadBreakdownMapUI(){
 
 
 <script>
-function markPrintLabelUI(reprint){var id=(document.getElementById('markBatchId').value||'').trim();var qty=Number(document.getElementById('markLabelQty').value)||1;if(!id){alert('Укажите ID партии.');return;}call('CREATE_LABEL_PRINT_JOB',{batchId:id,quantity:qty,reprint:!!reprint},function(x){renderMarkLabel(x);},function(e){document.getElementById('markResult').innerHTML='<b style="color:#b00">'+compEsc(String(e))+'</b>';});}
-function renderMarkLabel(x){var m=x.marking||{};var qr='https://quickchart.io/qr?size=180&text='+encodeURIComponent(String(x.qr_payload||''));var mid=compEsc(m.marking_id||'');var jid=compEsc((x.print_job||{}).print_job_id||'');var h='<div id="printLabel" style="max-width:420px;border:1px solid #222;padding:14px;font-family:Arial;background:#fff"><div style="font-size:11px">ЦЕХ · ВНУТРЕННЯЯ МАРКИРОВКА</div><h2 style="margin:6px 0">'+compEsc(x.название||'')+'</h2><div><b>Партия:</b> '+compEsc(x.партия_номер||x.batch_id)+'</div><div><b>Дата изготовления/вскрытия:</b> '+compEsc(x.дата_изготовления||x.дата_прихода||'')+'</div><div><b>Годен до:</b> '+compEsc(x.срок_годности||'НЕ ЗАДАН')+'</div><div><b>Количество:</b> '+compEsc(x.количество||'')+' '+compEsc(x.единица||'')+'</div>'+(x.условия_хранения?'<div><b>Хранение:</b> '+compEsc(x.условия_хранения)+'</div>':'')+'<div><b>Тип:</b> '+compEsc(m.marking_type||x.marking_type||'')+'</div><div><b>Код:</b> '+compEsc(m.code||x.marking_code||'')+'</div><img src="'+qr+'" style="width:130px;height:130px;margin-top:8px"><div style="font-size:10px">QR: '+compEsc(x.qr_payload||'')+'</div></div><button class="btn" style="margin-top:8px" onclick="window.print()">🖨 Печать страницы</button><button class="btn" style="margin-left:8px" onclick="markVerifyUI(\"'+mid+'\",\"'+jid+'\")">✓ Проверка этикетки</button>';document.getElementById('markResult').innerHTML=h;}
+function markPrintLabelUI(reprint){var id=(document.getElementById('markBatchId').value||'').trim();var qty=Number(document.getElementById('markLabelQty').value)||1;if(!id){alert('Выберите партию.');return;}call('CREATE_LABEL_PRINT_JOB',{batchId:id,quantity:qty,reprint:!!reprint},function(x){renderMarkLabel(x);},function(e){document.getElementById('markResult').innerHTML='<b style="color:#b00">'+compEsc(String(e))+'</b>';});}
+var MARK_TYPE_RU={PRODUCT_BATCH:'партия сырья',SEMI_FINISHED:'полуфабрикат',DISH:'готовое блюдо',OPENED_CONTAINER:'вскрытая тара'};
+function markDT(v){var s=String(v||'');if(!s)return '';var m=/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(s);if(!m)return s;if(/Z$|[+-]\d{2}:?\d{2}$/.test(s)){var d=new Date(s);if(!isNaN(d)){var p=function(n){return String(n).padStart(2,'0');};return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes());}}return m[3]+'.'+m[2]+'.'+m[1]+(m[4]?' '+m[4]+':'+m[5]:'');}
+function renderMarkLabel(x){var m=x.marking||{};var qr='https://quickchart.io/qr?size=180&text='+encodeURIComponent(String(x.qr_payload||''));var type=m.marking_type||x.marking_type||'';var h='<div id="printLabel" style="max-width:420px;border:1px solid #222;padding:14px;font-family:Arial;background:#fff"><div style="font-size:11px">ЦЕХ · ВНУТРЕННЯЯ МАРКИРОВКА</div><h2 style="margin:6px 0">'+compEsc(x.название||'')+'</h2><div><b>Партия:</b> '+compEsc(x.партия_номер||x.batch_id)+'</div><div><b>'+(type==='OPENED_CONTAINER'?'Вскрыто':'Дата изготовления')+':</b> '+compEsc(markDT(x.дата_изготовления||x.дата_прихода||''))+'</div><div><b>Годен до:</b> '+compEsc(x.срок_годности?markDT(x.срок_годности):'НЕ ЗАДАН')+'</div><div><b>Количество:</b> '+compEsc(x.количество||'')+' '+compEsc(x.единица||'')+'</div>'+(x.условия_хранения?'<div><b>Хранение:</b> '+compEsc(x.условия_хранения)+'</div>':'')+'<div><b>Вид:</b> '+compEsc(MARK_TYPE_RU[type]||type)+'</div><div><b>Код:</b> '+compEsc(m.code||x.marking_code||'')+'</div><img src="'+qr+'" style="width:130px;height:130px;margin-top:8px"><div style="font-size:10px">QR: '+compEsc(x.qr_payload||'')+'</div></div><button class="btn" style="margin-top:8px" onclick="window.print()">🖨 Печать страницы</button><button class="btn" style="margin-left:8px" onclick="markVerifyUI('+jsArg(m.marking_id||'')+','+jsArg((x.print_job||{}).print_job_id||'')+')">✓ Проверка этикетки</button>';document.getElementById('markResult').innerHTML=h;}
 function markVerifyUI(markingId,jobId){call('VERIFY_LABEL_PRINT',{markingId:markingId,printJobId:jobId,verified:true,scan:markingId},function(x){document.getElementById('markResult').insertAdjacentHTML('afterbegin','<div class="badge b-ok">Маркировка проверена и записана в HACCP-журнал.</div>');},function(e){alert(String(e));});}
-function markOpenContainerUI(){var id=(document.getElementById('markBatchId').value||'').trim();if(!id){alert('Укажите исходную партию тары.');return;}var qty=prompt('Количество вскрываемой тары/продукта:','1');if(!qty)return;var expiry=prompt('Годен до после вскрытия (ISO YYYY-MM-DDTHH:mm:ss) или оставьте пустым, если норматив настроен:','');call('OPEN_CONTAINER',{batchId:id,quantity:Number(qty),expiryDate:expiry||''},function(x){document.getElementById('markBatchId').value=x.batch_id;renderMarkLabel(x);},function(e){alert(String(e));});}
-function markLoadJournalUI(){var id=(document.getElementById('markBatchId').value||'').trim();call('GET_MARKING_JOURNAL',id?{batchId:id}:{},function(rows){document.getElementById('markResult').innerHTML='<pre style="white-space:pre-wrap">'+compEsc(JSON.stringify(rows,null,2))+'</pre>';},function(e){document.getElementById('markResult').textContent=String(e);});}
+var MARK_OP_RU={PRINT:'Печать',REPRINT:'Перепечатка',VERIFY:'Проверка этикетки',OPEN_CONTAINER:'Вскрытие тары',CREATE:'Создание маркировки',REVOKE:'Отзыв'};
+function loadMarkingBatches(selectId){call('GET_MARKING_BATCHES',{},function(rows){var el=document.getElementById('markBatchId');el.innerHTML=rows.length?'<option value="">— выберите партию —</option>'+rows.map(function(b){return '<option value="'+compAttr(b.batch_id)+'">'+compEsc(b.product+' · '+b.remaining+' '+b.unit+(b.expiry?' · до '+b.expiry:'')+(b.status&&b.status!=='активна'?' · '+b.status:''))+'</option>';}).join(''):'<option value="">Партий с остатком нет</option>';if(selectId)el.value=selectId;},function(e){document.getElementById('markResult').textContent=String(e);});}
+function markOpenContainerUI(){var id=(document.getElementById('markBatchId').value||'').trim();if(!id){alert('Выберите партию, тару которой вскрываете.');return;}var qty=prompt('Количество вскрываемой тары/продукта:','1');if(!qty)return;var expiry=prompt('Годен до после вскрытия — ГГГГ-ММ-ДД ЧЧ:ММ (с этикетки производителя). Оставьте пустым — срок возьмётся из правила ХАССП для продукта:','');if(expiry===null)return;expiry=String(expiry).trim();if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(expiry))expiry=expiry.replace(' ','T')+':00';call('OPEN_CONTAINER',{batchId:id,quantity:Number(qty),expiryDate:expiry||''},function(x){loadMarkingBatches(x.batch_id);renderMarkLabel(x);},function(e){alert(String(e));});}
+function markLoadJournalUI(){var id=(document.getElementById('markBatchId').value||'').trim();call('GET_MARKING_JOURNAL',id?{batchId:id}:{},function(rows){document.getElementById('markResult').innerHTML=rows.length?'<div style="overflow:auto"><table class="ttk-table"><tr><th>Время</th><th>Операция</th><th>Продукт</th><th>Партия</th><th>Результат</th><th>Сотрудник</th></tr>'+rows.slice(0,100).map(function(r){return '<tr><td>'+compEsc(markDT(r.timestamp))+'</td><td>'+compEsc(MARK_OP_RU[r.operation]||r.operation)+'</td><td>'+compEsc(r.product_name)+'</td><td>'+compEsc(r.batch_id)+'</td><td>'+compEsc({PASS:'выполнено',FAIL:'ошибка'}[r.status]||r.status)+'</td><td>'+compEsc(r.operator_name)+'</td></tr>';}).join('')+'</table></div>':'Записей нет.';},function(e){document.getElementById('markResult').textContent=String(e);});}
 </script>
 
 </body>

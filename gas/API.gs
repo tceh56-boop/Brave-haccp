@@ -353,6 +353,7 @@ var ACTION_HANDLERS = {
   // P0.3 — fromLocationId ВСЕГДА session.location_id (откуда сессия, а не что пришлёт клиент, ТЗ P0.1); toLocationId — клиентский, проверяется на принадлежность той же организации внутри transferStock_.
   TRANSFER_STOCK: function (data, session) { return transferStock_(data.productId, session.location_id, data.toLocationId, data.qty, session.user_id, session); },
   FIND_PRODUCT_BY_BARCODE: function (data, session) { return findProductByBarcode_(session.organization_id, data.barcode); },
+  GET_MARKING_BATCHES: function (data, session) { return getMarkingBatches_(session); },
   GENERATE_LABEL: function (data, session) { return generateBatchLabel_(data.batchId, session); },
   GET_LABEL: function (data, session) { return generateBatchLabel_(data.batchId, session); },
   GET_MARKING_JOURNAL: function (data, session) { return getMarkingJournal_(data || {}, session); },
@@ -367,7 +368,7 @@ var ACTION_HANDLERS = {
   GET_WRITEOFFS: function (data, session) { return getWriteOffs_(session.location_id, data.since); },
 
   CREATE_PURCHASE_REQUEST: function (data, session) { return createPurchaseRequest_(session.location_id, data.productId, data.qty, session.user_id, session); },
-  GET_PURCHASE_REQUESTS: function (data, session) { return getPurchaseRequests_(session.location_id); },
+  GET_PURCHASE_REQUESTS: function (data, session) { return getPurchaseRequests_(session.location_id).map(function (r) { var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; }); var p = getProductById_(r.product_id); o.название = p ? p.название : r.product_id; o.единица = p ? p.единица : ''; return o; }); },
   UPDATE_PURCHASE_REQUEST_STATUS: function (data, session) { return updatePurchaseRequestStatus_(data.requestId, data.status, session); },
 
   CREATE_PRODUCTION_TASK: function (data, session) { return createProductionTask_(session.location_id, data.parentType, data.parentId, data.qty, session.user_id, data.workshopId, session); },
@@ -403,6 +404,7 @@ var ACTION_HANDLERS = {
   START_INVENTORY: function (data, session) { return startInventory_(session.location_id, session.user_id, session); },
   SUBMIT_INVENTORY_LINE: function (data, session) { return submitInventoryLine_(data.inventoryId, data.productId, data.participok, data.factQty, session.user_id, session); },
   CLOSE_INVENTORY: function (data, session) { return closeInventory_(data.inventoryId, session); },
+  GET_OPEN_INVENTORY: function (data, session) { return getOpenInventory_(session.location_id); },
   GET_INVENTORY: function (data, session) { return getInventorySummary_(data.inventoryId, session); },
   CREATE_ADJUSTMENT_FROM_INVENTORY: function (data, session) { return createAdjustmentFromInventoryLine_(data.lineId, session); },
 
