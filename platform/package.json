@@ -1,0 +1,31 @@
+{
+  "name": "ceh-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ЦЕХ — единая система управления общепитом (ТЗ v1/v2)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "migrate": "tsx src/server/db/migrate.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "next": "16.3.8",
+    "pg": "8.23.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.9",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "^8.3.1",
+    "vitest": "5.0.3"
+  }
+}
