@@ -53,6 +53,7 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
       {(can('control.manage') || can('catalog.manage')) && (
         <p className="small"><Link href={`/app/${orgId}/setup`}>Объекты контроля, правила, товары и поставщики →</Link></p>
       )}
+      {can('reg.read') && <p className="small"><Link href={`/app/${orgId}/regulatory`}>Нормативный реестр и профиль предприятия →</Link></p>}
       <div className="tabs" role="tablist">
         {tabs.filter((t) => t[2]).map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>)}
       </div>

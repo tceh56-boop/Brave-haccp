@@ -114,7 +114,7 @@ export default function ObjectPage({ params }: { params: Promise<{ objectId: str
         )}
       </div>
 
-      {(can('control.manage') || can('control.approve')) && <Rules objectId={objectId} />}
+      {(can('control.manage') || can('control.approve')) && <Rules objectId={objectId} onChanged={load} />}
     </>
   );
 }
@@ -144,13 +144,14 @@ function HistoryRow({ h, tz, onFixed, canFix }: { h: Hist; tz: string; onFixed: 
   );
 }
 
-function Rules({ objectId }: { objectId: string }) {
+function Rules({ objectId, onChanged }: { objectId: string; onChanged: () => void }) {
   const { org, can } = useOrg();
   const [rules, setRules] = useState<Rule[] | null>(null);
-  const [f, setF] = useState({ minValue: '', maxValue: '', frequencyHours: '', sourceRef: '', reaction: '', allowIsolation: false });
+  const [f, setF] = useState({ minValue: '', maxValue: '', frequencyHours: '', sourceRef: '', reaction: '', allowIsolation: false, requirementId: '' });
+  const [linkable, setLinkable] = useState<{ id: string; label: string; state_label: string }[]>([]);
   const { busy, error, run } = useSubmit();
   const load = useCallback(() => api<Rule[]>(`/orgs/${org.id}/objects/${objectId}/rules`).then(setRules), [org.id, objectId]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); if (can('reg.read')) api<typeof linkable>(`/orgs/${org.id}/regulatory/linkable`).then(setLinkable).catch(() => undefined); }, [load, org.id, can]);
   const STATUS: Record<string, string> = { draft: 'проект', approved: 'действует', retired: 'выведено' };
   return (
     <div className="card">
@@ -161,13 +162,13 @@ function Rules({ objectId }: { objectId: string }) {
           <div><b>v{r.version}: {r.criterion}</b>{r.frequency_hours && `, каждые ${n(r.frequency_hours)} ч`}<div className="small muted">{r.source_ref}</div>
             {r.approved_by_name && <div className="small muted">утвердил: {r.approved_by_name}</div>}</div>
           <div className="row"><span className={`badge ${r.status === 'approved' ? 'ok' : r.status === 'draft' ? 'warn' : ''}`}>{STATUS[r.status]}</span>
-            {r.status === 'draft' && can('control.approve') && <button className="btn small" onClick={() => run(async () => { await api(`/orgs/${org.id}/rules/${r.id}/approve`, { body: {} }); await load(); })}>Утвердить</button>}</div>
+            {r.status === 'draft' && can('control.approve') && <button className="btn small" onClick={() => run(async () => { await api(`/orgs/${org.id}/rules/${r.id}/approve`, { body: {} }); await load(); onChanged(); })}>Утвердить</button>}</div>
         </div>
       ))}
       {can('control.manage') && (
         <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-          await api(`/orgs/${org.id}/objects/${objectId}/rules`, { body: { minValue: f.minValue || null, maxValue: f.maxValue || null, frequencyHours: f.frequencyHours || null, sourceRef: f.sourceRef, reaction: f.reaction || null, allowIsolation: f.allowIsolation } });
-          setF({ minValue: '', maxValue: '', frequencyHours: '', sourceRef: '', reaction: '', allowIsolation: false }); await load();
+          await api(`/orgs/${org.id}/objects/${objectId}/rules`, { body: { minValue: f.minValue || null, maxValue: f.maxValue || null, frequencyHours: f.frequencyHours || null, sourceRef: f.sourceRef || null, reaction: f.reaction || null, allowIsolation: f.allowIsolation, requirementId: f.requirementId || null } });
+          setF({ minValue: '', maxValue: '', frequencyHours: '', sourceRef: '', reaction: '', allowIsolation: false, requirementId: '' }); await load();
         }); }}>
           <h3 style={{ marginTop: 14 }}>Новый проект правила</h3>
           <div className="grid2">
@@ -175,7 +176,13 @@ function Rules({ objectId }: { objectId: string }) {
             <div><label htmlFor="rmax">Не выше, °C</label><input id="rmax" inputMode="decimal" value={f.maxValue} onChange={(e) => setF({ ...f, maxValue: e.target.value })} /></div>
             <div><label htmlFor="rfr">Замер каждые, ч</label><input id="rfr" inputMode="decimal" value={f.frequencyHours} onChange={(e) => setF({ ...f, frequencyHours: e.target.value })} /></div>
           </div>
-          <label htmlFor="rsrc">Основание (документ, пункт, процедура)</label><input id="rsrc" required value={f.sourceRef} onChange={(e) => setF({ ...f, sourceRef: e.target.value })} />
+          <label htmlFor="rreq">Требование из нормативного реестра</label>
+          <select id="rreq" value={f.requirementId} onChange={(e) => setF({ ...f, requirementId: e.target.value })}>
+            <option value="">— не из реестра —</option>{linkable.map((r) => <option key={r.id} value={r.id}>{r.label} · {r.state_label}</option>)}
+          </select>
+          <label htmlFor="rsrc">{f.requirementId ? 'Дополнительно: процедура предприятия (необязательно)' : 'Основание (документ, пункт, утверждённая процедура)'}</label>
+          <input id="rsrc" required={!f.requirementId} value={f.sourceRef} onChange={(e) => setF({ ...f, sourceRef: e.target.value })} />
+          {linkable.length === 0 && <p className="small muted">В реестре нет применимых требований действующих редакций — укажите основание вручную.</p>}
           <label htmlFor="rre">Реакция на отклонение (утверждённые шаги)</label><textarea id="rre" rows={3} value={f.reaction} onChange={(e) => setF({ ...f, reaction: e.target.value })} />
           <label className="row" style={{ fontWeight: 400 }}><input type="checkbox" style={{ width: 22, minHeight: 22 }} checked={f.allowIsolation} onChange={(e) => setF({ ...f, allowIsolation: e.target.checked })} /> Процедура разрешает изолировать продукцию при отклонении</label>
           {error && <div className="err">{error}</div>}
