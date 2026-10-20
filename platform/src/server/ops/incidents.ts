@@ -3,6 +3,10 @@ import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, optText, openTask, closeTasksFor, notifyRoles, assertSiteAccess, getSite } from './common';
+import { capaForIncident } from './capa';
+
+/** Отклонение высокого и критического риска после закрытия уходит в CAPA: причина, предупреждение, проверка эффективности. */
+const NEEDS_CAPA = new Set(['critical', 'high']);
 
 /**
  * Отклонения и проблемы (ТЗ v2 §2, §5, §12): Новая → В работе → Ожидает проверки → Закрыта.
@@ -110,7 +114,8 @@ export async function getIncident(userId: string, orgId: string, id: string) {
     if (i.entity_type === 'control_object') {
       allowIsolation = !!(await tx.query(`select allow_isolation from control_rules where control_object_id = $1 and status = 'approved'`, [i.entity_id])).rows[0]?.allow_isolation;
     }
-    return { incident: { ...i, severity_label: SEVERITY_LABEL[i.severity], status_label: STATUS_LABEL[i.status] }, events, lots: await affectedLots(tx, i), allowIsolation };
+    const capa = (await tx.query(`select id, status from capas where incident_id = $1`, [id])).rows[0] || null;
+    return { incident: { ...i, severity_label: SEVERITY_LABEL[i.severity], status_label: STATUS_LABEL[i.status] }, events, lots: await affectedLots(tx, i), allowIsolation, capa };
   });
 }
 
@@ -149,7 +154,10 @@ export async function recordIncidentAction(userId: string, orgId: string, id: st
     await tx.query(`update incidents set status = $2, action_note = $3, action_by = $4, action_at = now(), responsible_user_id = coalesce(responsible_user_id, $4),
       closed_at = case when $2 = 'closed' then now() else null end where id = $1`, [id, next, d.note, userId]);
     await addEvent(tx, orgId, id, userId, 'action', d.note, isolated.length ? { isolated_lots: isolated } : undefined);
-    if (next === 'closed') await closeTasksFor(tx, orgId, 'incident', id, userId, d.note);
+    if (next === 'closed') {
+      await closeTasksFor(tx, orgId, 'incident', id, userId, d.note);
+      if (NEEDS_CAPA.has(i.severity)) await capaForIncident(tx, orgId, id, userId);
+    }
     else await notifyRoles(tx, { orgId, siteId: i.site_id, roles: ['haccp_lead', 'chef'], title: `Проверьте закрытие: ${i.title}`, body: d.note, entityType: 'incident', entityId: id });
     await audit.record(tx, { organizationId: orgId, siteId: i.site_id, actorUserId: userId, action: 'incident.action', entityType: 'incident', entityId: id,
       before: { status: i.status }, after: { status: next, note: d.note, isolated_lots: isolated } });
@@ -167,8 +175,9 @@ export async function confirmIncident(userId: string, orgId: string, id: string,
     await tx.query(`update incidents set status = 'closed', confirmed_by = $2, confirmed_at = now(), closed_at = now() where id = $1`, [id, userId]);
     await addEvent(tx, orgId, id, userId, 'confirmed', d.note || 'закрытие подтверждено');
     await closeTasksFor(tx, orgId, 'incident', id, userId, 'закрыто с подтверждением');
-    await audit.record(tx, { organizationId: orgId, siteId: i.site_id, actorUserId: userId, action: 'incident.confirm', entityType: 'incident', entityId: id, before: { status: i.status }, after: { status: 'closed' } });
-    return { ok: true };
+    const capa = NEEDS_CAPA.has(i.severity) ? await capaForIncident(tx, orgId, id, userId) : null;
+    await audit.record(tx, { organizationId: orgId, siteId: i.site_id, actorUserId: userId, action: 'incident.confirm', entityType: 'incident', entityId: id, before: { status: i.status }, after: { status: 'closed', capa_id: capa?.id } });
+    return { ok: true, capaId: capa?.id || null };
   });
 }
 

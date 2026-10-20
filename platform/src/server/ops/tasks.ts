@@ -12,16 +12,19 @@ const SPECIAL: Record<string, string> = {
   confirm_expiry: 'Задача закроется, когда будет подтверждён срок партии.',
   quarantine_decision: 'Задача закроется после решения по карантину.',
   incident: 'Задача закроется вместе с отклонением.',
+  capa: 'Задача закроется, когда CAPA будет выполнено.',
+  capa_verify: 'Задача закроется после проверки эффективности CAPA.',
 };
 
 export function taskHref(orgId: string, t: { kind: string; entity_type: string | null; entity_id: string | null; id: string }) {
   if (t.entity_type === 'lot' && t.entity_id) return `/app/${orgId}/lots/${t.entity_id}`;
   if (t.entity_type === 'incident' && t.entity_id) return `/app/${orgId}/incidents/${t.entity_id}`;
   if (t.entity_type === 'control_object' && t.entity_id) return `/app/${orgId}/objects/${t.entity_id}`;
+  if (t.entity_type === 'capa' && t.entity_id) return `/app/${orgId}/capa/${t.entity_id}`;
   return `/app/${orgId}/tasks#${t.id}`;
 }
 
-const ACTION: Record<string, string> = { confirm_expiry: 'Подтвердить срок', quarantine_decision: 'Решить по карантину', incident: 'Открыть отклонение' };
+const ACTION: Record<string, string> = { confirm_expiry: 'Подтвердить срок', quarantine_decision: 'Решить по карантину', incident: 'Открыть отклонение', capa: 'Выполнить CAPA', capa_verify: 'Проверить эффективность' };
 
 export async function listTasks(userId: string, orgId: string, opts: { siteId?: string | null; all?: boolean } = {}) {
   return inOrg(userId, orgId, 'task.read', async (tx, m) => {

@@ -55,6 +55,9 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
       )}
       {can('reg.read') && <p className="small"><Link href={`/app/${orgId}/regulatory`}>Нормативный реестр и профиль предприятия →</Link></p>}
       {can('journal.read') && <p className="small"><Link href={`/app/${orgId}/journals`}>Журналы J01–J53: просмотр, печать, подпись →</Link></p>}
+      {can('haccp.read') && <p className="small"><Link href={`/app/${orgId}/haccp`}>План ХАССП: опасности, ККТ, мониторинг →</Link></p>}
+      {can('capa.read') && <p className="small"><Link href={`/app/${orgId}/capa`}>CAPA: корректирующие и предупреждающие действия →</Link></p>}
+      {can('pack.export') && <p className="small"><Link href={`/app/${orgId}/pack`}>Пакет документов для проверки →</Link></p>}
       <div className="tabs" role="tablist">
         {tabs.filter((t) => t[2]).map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>)}
       </div>

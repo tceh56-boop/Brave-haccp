@@ -45,6 +45,15 @@ export const PERMISSIONS = {
   'journal.read': 'Просмотр и выгрузка журналов',
   'journal.record': 'Ручная запись в журнал',
   'journal.sign': 'Подпись журнала за период',
+  'haccp.read': 'Просмотр плана ХАССП',
+  'haccp.manage': 'Ведение плана ХАССП: этапы, опасности, мониторинг',
+  'haccp.approve': 'Утверждение плана ХАССП',
+  'capa.read': 'Просмотр CAPA',
+  'capa.manage': 'Ведение CAPA: причина, действия, исполнение',
+  'capa.verify': 'Проверка эффективности CAPA',
+  'evidence.read': 'Просмотр доказательств',
+  'evidence.add': 'Прикрепление доказательств (фото, документы)',
+  'pack.export': 'Пакет документов для проверки',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -53,20 +62,20 @@ interface RoleDef { label: string; summary: string; permissions: Permission[] }
 
 const ALL = Object.keys(PERMISSIONS) as Permission[];
 
-const STAFF: Permission[] = ['org.read', 'site.read', 'catalog.read', 'control.read', 'measure.record', 'receipt.record', 'lot.read', 'task.read', 'task.work', 'incident.read', 'incident.report', 'stock.consume', 'journal.read', 'journal.record'];
-const READ_OPS: Permission[] = ['org.read', 'site.read', 'dashboard.read', 'catalog.read', 'control.read', 'lot.read', 'task.read', 'incident.read', 'trace.read', 'reg.read', 'journal.read'];
+const STAFF: Permission[] = ['org.read', 'site.read', 'catalog.read', 'control.read', 'measure.record', 'receipt.record', 'lot.read', 'task.read', 'task.work', 'incident.read', 'incident.report', 'stock.consume', 'journal.read', 'journal.record', 'evidence.read', 'evidence.add'];
+const READ_OPS: Permission[] = ['org.read', 'site.read', 'dashboard.read', 'catalog.read', 'control.read', 'lot.read', 'task.read', 'incident.read', 'trace.read', 'reg.read', 'journal.read', 'haccp.read', 'capa.read', 'evidence.read', 'pack.export'];
 
 export const ROLES = {
   owner: { label: 'Владелец', summary: 'Настройки организации, экономика, приглашения, утверждение ключевых документов', permissions: ALL },
   enterprise_admin: { label: 'Администратор предприятия', summary: 'Площадки, роли, справочники, журналы, интеграции', permissions: ALL },
   director: { label: 'Директор / управляющий', summary: 'Операционные отчёты, задачи, контроль исполнения',
-    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign'] },
+    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify'] },
   chef: { label: 'Шеф / су-шеф', summary: 'ТТК, рецептуры, производственные задания, выходы и списания',
-    permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign'] },
+    permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify'] },
   technologist: { label: 'Технолог', summary: 'Технологические параметры, расчёты, документы',
-    permissions: [...READ_OPS, 'catalog.manage', 'control.manage', 'control.approve', 'task.work', 'incident.report', 'incident.work', 'reg.manage', 'reg.verify'] },
+    permissions: [...READ_OPS, 'catalog.manage', 'control.manage', 'control.approve', 'task.work', 'incident.report', 'incident.work', 'reg.manage', 'reg.verify', 'haccp.manage', 'capa.manage', 'evidence.add'] },
   haccp_lead: { label: 'Ответственный ХАССП', summary: 'Опасности, журналы, CAPA, доказательства',
-    permissions: [...STAFF, 'member.read', 'dashboard.read', 'control.manage', 'control.approve', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'trace.read', 'reg.read', 'reg.manage', 'reg.verify', 'journal.sign'] },
+    permissions: [...STAFF, 'member.read', 'dashboard.read', 'control.manage', 'control.approve', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'trace.read', 'reg.read', 'reg.manage', 'reg.verify', 'journal.sign', 'haccp.read', 'haccp.manage', 'capa.read', 'capa.manage', 'capa.verify', 'pack.export'] },
   storekeeper: { label: 'Кладовщик / закупщик', summary: 'Заказы, приёмка, партии, склад, инвентаризация',
     permissions: [...STAFF, 'catalog.manage', 'dashboard.read', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read'] },
   line_staff: { label: 'Сотрудник цеха', summary: 'Назначенные задания и журналы без изменения утверждённых норм', permissions: STAFF },

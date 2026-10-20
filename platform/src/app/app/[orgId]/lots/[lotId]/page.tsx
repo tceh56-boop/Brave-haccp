@@ -6,6 +6,7 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { d, dt, n } from '@/lib/fmt';
 import { useOperationId } from '@/lib/op';
+import { Evidence } from '@/components/Evidence';
 
 interface LotCard { lot: { id: string; product: string; lot_no: string | null; quantity: string; unit: string; status: string; status_label: string; status_reason: string | null;
   expires_at: string | null; expiry_basis: string | null; expiry_state: string; expiry_label: string; received_at: string; manufactured_at: string | null; storage_name: string | null; storage_object_id: string | null; site_name: string; supplier: string | null; document_no: string | null };
@@ -69,6 +70,7 @@ export default function LotPage({ params }: { params: Promise<{ lotId: string }>
       )}
       <LotActions lotId={lotId} status={l.status} quantity={l.quantity} unit={l.unit} onDone={load} />
       {c.tasks.length > 0 && <div className="card"><h3>Открытые задачи</h3><ul className="list">{c.tasks.map((t) => <li key={t.id}>{t.title}</li>)}</ul></div>}
+      <Evidence entityType="lot" entityId={lotId} title="Фото маркировки и документы" />
     </>
   );
 }

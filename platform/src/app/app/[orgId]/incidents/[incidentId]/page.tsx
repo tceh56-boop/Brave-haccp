@@ -5,10 +5,12 @@ import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
+import { Evidence } from '@/components/Evidence';
 
 interface Inc { incident: { id: string; title: string; what: string; status: string; status_label: string; severity: string; severity_label: string; rule_source: string | null; recommended_action: string | null;
   entity_type: string | null; entity_id: string | null; requires_confirmation: boolean; action_note: string | null; action_by: string | null; due_at: string | null; created_at: string };
-  events: { at: string; event: string; note: string | null; who: string | null }[]; lots: { id: string; product: string; lot_no: string | null; quantity: string; unit: string; status: string }[]; allowIsolation: boolean }
+  events: { at: string; event: string; note: string | null; who: string | null }[]; lots: { id: string; product: string; lot_no: string | null; quantity: string; unit: string; status: string }[]; allowIsolation: boolean;
+  capa: { id: string; status: string } | null }
 
 const EVENT: Record<string, string> = { created: 'Создано', repeat: 'Повторное отклонение', remeasure_ok: 'Повторный замер', taken: 'Взято в работу', action: 'Действие', confirmed: 'Закрытие подтверждено', returned: 'Возвращено на доработку' };
 
@@ -83,6 +85,19 @@ export default function IncidentPage({ params }: { params: Promise<{ incidentId:
           {!can('incident.work') && i.status !== 'pending_review' && <p className="small muted">Ответственный уведомлён. Если ситуация меняется — <Link href={`/app/${org.id}/report?entityType=${i.entity_type || ''}&entityId=${i.entity_id || ''}`}>сообщите</Link>.</p>}
         </div>
       )}
+
+      {c.capa ? (
+        <div className="card between"><span>CAPA: причина, предупреждение, проверка эффективности</span><Link className="btn small secondary" href={`/app/${org.id}/capa/${c.capa.id}`}>Открыть CAPA</Link></div>
+      ) : can('capa.manage') && (
+        <div className="card">
+          <button className="btn block secondary" disabled={busy} onClick={() => run(async () => {
+            const r = await api<{ id: string }>(`/orgs/${org.id}/capa`, { body: { incidentId } });
+            location.assign(`/app/${org.id}/capa/${r.id}`);
+          })}>Открыть CAPA по этому отклонению</button>
+        </div>
+      )}
+
+      <Evidence entityType="incident" entityId={incidentId} />
 
       <div className="card">
         <h2>Ход работы</h2>

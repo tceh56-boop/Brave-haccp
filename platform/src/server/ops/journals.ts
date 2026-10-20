@@ -7,6 +7,7 @@ import { inOrg, parse, optText, assertSiteAccess, getSite, fmtNum } from './comm
 import { criterionText } from './control';
 import { expiryState, EXPIRY_LABEL, LOT_STATUS_LABEL } from './lots';
 import { STATUS_LABEL as INC_STATUS } from './incidents';
+import { approvedPlan, PLAN_STATUS } from './haccp';
 
 /**
  * Журналы ХАССП J01–J53 (книга «Журналы_J01-J53.xlsx»). ТЗ v2 §0, §12: запись делается один раз — журнал
@@ -21,11 +22,12 @@ import formsJson from '../../../data/reference/journal_forms.json';
 const FORMS: FormDef[] = (formsJson as { forms: FormDef[] }).forms;
 export const FORM_BY_CODE = new Map(FORMS.map((f) => [f.code, f]));
 
-type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents';
+type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan';
 /** Формы, собираемые из событий. Остальные — ручная запись. */
 const AUTO: Record<string, Source> = {
   J01: 'cold', J25: 'cold', J42: 'cold_grid', J04: 'room', J43: 'room_grid',
   J03: 'receipt', J21: 'receipt', J39: 'receipt', J05: 'lots', J29: 'lots', J34: 'incidents',
+  J30: 'plans', J31: 'hazards', J32: 'plan',   // реестры из плана ХАССП (не зависят от периода)
 };
 /**
  * Для ручных семейств — форма, в которой хранятся данные. Пара форм (J02 ↔ J40) — одни данные, печатный вид
@@ -158,12 +160,39 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
     return { columns: f.columns, rows };
   }
   if (src === 'incidents') {
-    const is = (await c.tx.query(`select i.*, ru.full_name as responsible, cu.full_name as confirmer, au.full_name as actor from incidents i
+    const is = (await c.tx.query(`select i.*, ru.full_name as responsible, cu.full_name as confirmer, au.full_name as actor,
+        k.root_cause as capa_cause, k.corrective_action as capa_action, k.preventive_action as capa_prevent, k.status as capa_status from incidents i
       left join users ru on ru.id = i.responsible_user_id left join users cu on cu.id = i.confirmed_by left join users au on au.id = i.action_by
+      left join capas k on k.incident_id = i.id
       where i.organization_id = $1 and (i.site_id = $2 or i.site_id is null) and i.created_at between ${periodSql(3, 4, 5)} order by i.created_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
-    const rows = is.map((i) => [i.id.slice(0, 8), fmtDT(i.created_at, tz), INC_KIND[i.kind] || i.kind, i.what, i.recommended_action || '', '', i.action_note || '',
+    const rows = is.map((i) => [i.id.slice(0, 8), fmtDT(i.created_at, tz), INC_KIND[i.kind] || i.kind, i.what, i.recommended_action || '',
+      i.capa_cause ? `CAPA: ${i.capa_cause}` : i.capa_status ? 'CAPA: причина устанавливается' : '',
+      [i.action_note, i.capa_action ? `CAPA — корректирующее: ${i.capa_action}` : '', i.capa_prevent ? `предупреждающее: ${i.capa_prevent}` : ''].filter(Boolean).join('; '),
       i.responsible || i.actor || i.responsible_role || '', fmtDT(i.due_at, tz), i.closed_at ? `${fmtDT(i.closed_at, tz)}${i.confirmer ? ` / ${i.confirmer}` : ''}` : INC_STATUS[i.status]]);
     return { columns: f.columns, rows };
+  }
+  if (src === 'plans') {
+    const ps = (await c.tx.query(`select p.*, a.full_name as approver, cr.full_name as creator from haccp_plans p left join users a on a.id = p.approved_by
+      join users cr on cr.id = p.created_by where p.organization_id = $1 order by p.version`, [c.orgId])).rows;
+    const rows = ps.map((p) => [`ПХ-${p.version}`, p.scope, `версия ${p.version}`, fmtD(p.created_at, tz), p.approved_at ? fmtD(p.approved_at, tz) : '',
+      p.change_reason || 'первичная разработка', p.approver || p.creator, PLAN_STATUS[p.status], 'план ХАССП в системе ЦЕХ']);
+    return { columns: f.columns, rows };
+  }
+  if (src === 'hazards' || src === 'plan') {
+    const plan = await approvedPlan(c.tx, c.orgId);
+    if (!plan) return { columns: f.columns, rows: [] };
+    const ver = `версия ${plan.plan.version} от ${fmtD(plan.plan.approved_at, tz)}`;
+    const lvl = (n: number | null) => (n ? String(n) : 'не оценено');
+    if (src === 'hazards') {
+      return { columns: f.columns, rows: plan.hazards.map((h) => [h.code, h.step_name || '', h.type_label, h.description, lvl(h.likelihood), lvl(h.severity),
+        h.control_measures || '', h.class_label || '—', h.monitoring?.responsible_label || '', ver]) };
+    }
+    return { columns: f.columns, rows: plan.hazards.filter((h) => h.monitoring).map((h) => {
+      const m = h.monitoring!;
+      const limit = m.critical_limit || (m.control_rule_id ? `по правилу: ${criterionText(m)}` : '—');
+      return [h.code, h.step_name || '', h.class_label || '', h.description, limit, [m.method, m.device ? `прибор: ${m.device}` : '', m.record_form ? `запись: ${m.record_form}` : ''].filter(Boolean).join('; '),
+        m.frequency, m.responsible_label, m.corrective_action, ver];
+    }) };
   }
   // Ручная форма: записи хранятся в форме-источнике семейства; показываются её столбцы.
   const data = dataFormOf(code);

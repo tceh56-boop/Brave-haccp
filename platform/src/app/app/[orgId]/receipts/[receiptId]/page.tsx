@@ -5,6 +5,7 @@ import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { d, n } from '@/lib/fmt';
+import { Evidence } from '@/components/Evidence';
 
 interface Line { id: string; product: string; quantity: string; unit: string; lot_no: string | null; expires_at: string | null; expiry_basis: string | null; temperature: string | null; decision: string; decision_reason: string | null; storage_name: string | null; lot_id: string | null }
 interface R { receipt: { id: string; status: string; status_label: string; document_no: string | null; supplier: string | null; site_id: string }; lines: Line[] }
@@ -130,6 +131,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
           {!allOk && <p className="small muted">«Принять» доступно, когда все проверки — «Да».</p>}
         </div>
       )}
+      <Evidence entityType="receipt" entityId={receiptId} title="Накладная, сертификаты, фото" />
     </>
   );
 }
