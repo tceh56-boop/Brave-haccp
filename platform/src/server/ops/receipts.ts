@@ -116,6 +116,9 @@ export async function completeReceipt(userId: string, orgId: string, receiptId: 
         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
         [orgId, r.site_id, l.product_id, l.id, l.lot_no, l.quantity, l.unit, l.manufactured_at, l.expires_at, l.expiry_basis, l.storage_object_id, status, l.decision_reason])).rows[0];
       await tx.query(`update receipt_lines set lot_id = $2 where id = $1`, [l.id, lot.id]);
+      // Приход — первое движение партии в журнале склада.
+      await tx.query(`insert into stock_movements (organization_id, site_id, lot_id, product_id, kind, quantity, unit, reason, ref_type, ref_id, created_by)
+        values ($1, $2, $3, $4, 'receipt', $5, $6, $7, 'receipt', $8, $9)`, [orgId, r.site_id, lot.id, l.product_id, l.quantity, l.unit, `приёмка ${r.document_no || ''}`.trim(), r.id, userId]);
       created.lots++;
       if (!l.expires_at) {
         created.unconfirmed++;
