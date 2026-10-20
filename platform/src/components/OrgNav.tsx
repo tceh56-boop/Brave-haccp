@@ -12,13 +12,13 @@ export function OrgNav() {
     { href: `${base}/shift`, label: 'Смена', show: can('measure.record') || can('receipt.record') },
     { href: `${base}/problems`, label: 'Проблемы', show: can('incident.read') },
     { href: `${base}/tasks`, label: 'Задачи', show: can('task.read') },
-    { href: `${base}/lots`, label: 'Сроки', show: can('lot.read') },
+    { href: `${base}/stock`, label: 'Склад', show: can('lot.read') },
     { href: base, label: 'Управление', show: true },
   ].filter((i) => i.show);
   return (
     <nav className="bottomnav" aria-label="Разделы">
       {items.map((i) => {
-        const active = i.href === base ? path === base : path.startsWith(i.href);
+        const active = i.href === base ? path === base : path.startsWith(i.href) || (i.label === 'Склад' && path.startsWith(`${base}/lots`));
         return <Link key={i.href} href={i.href} aria-current={active ? 'page' : undefined}>{i.label}</Link>;
       })}
     </nav>

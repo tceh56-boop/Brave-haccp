@@ -14,8 +14,10 @@ const ProductInput = z.object({
 
 export async function listProducts(userId: string, orgId: string, q?: string | null) {
   return inOrg(userId, orgId, 'catalog.read', async (tx) => (await tx.query(
-    `select id, name, unit, category, barcode from products where organization_id = $1 and status = 'active'
-       and ($2::text is null or name ilike '%' || $2 || '%' or barcode = $2) order by name limit 200`, [orgId, q || null])).rows);
+    `select p.id, p.name, p.unit, p.category, p.barcode, p.reference_product_id, r.code as reference_code, r.name as reference_name, r.verification_status as reference_status
+       from products p left join reference_products r on r.id = p.reference_product_id
+      where p.organization_id = $1 and p.status = 'active'
+       and ($2::text is null or p.name ilike '%' || $2 || '%' or p.barcode = $2) order by p.name limit 500`, [orgId, q || null])).rows);
 }
 
 export async function createProduct(userId: string, orgId: string, input: unknown) {

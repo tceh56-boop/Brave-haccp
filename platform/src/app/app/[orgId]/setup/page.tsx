@@ -18,6 +18,7 @@ export default function SetupPage() {
       <h1>Настройка контроля и справочников</h1>
       <SitePicker />
       {can('control.read') && siteId && <Objects />}
+      {can('catalog.manage') && <Reference />}
       {can('catalog.read') && <Catalog />}
     </>
   );
@@ -61,7 +62,7 @@ function Objects() {
 
 function Catalog() {
   const { org, can } = useOrg();
-  const [products, setProducts] = useState<{ id: string; name: string; unit: string; category: string | null }[]>([]);
+  const [products, setProducts] = useState<{ id: string; name: string; unit: string; category: string | null; reference_name: string | null; reference_code: string | null }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; inn: string | null }[]>([]);
   const [p, setP] = useState({ name: '', unit: 'кг', category: '' });
   const [s, setS] = useState({ name: '', inn: '' });
@@ -72,8 +73,8 @@ function Catalog() {
     <>
       <div className="card">
         <h2>Товары</h2>
-        <p className="small muted">Временный справочник для приёмки. Единый каталог (1549 позиций MON CHEF, без автоматического слияния дублей) подключается на этапе 3.</p>
-        <ul className="list">{products.map((x) => <li key={x.id}>{x.name} <span className="small muted">({x.unit}{x.category ? `, ${x.category}` : ''})</span></li>)}</ul>
+        <p className="small muted">Товары предприятия. Привязка к справочнику MON CHEF даёт справочную пищевую ценность и условия хранения (статус «на проверке» — не утверждённая норма).</p>
+        <ul className="list">{products.map((x) => <li key={x.id}>{x.name} <span className="small muted">({x.unit}{x.category ? `, ${x.category}` : ''})</span>{x.reference_code && <div className="small muted">справочник: {x.reference_code} «{x.reference_name}»</div>}</li>)}</ul>
         {can('catalog.manage') && (
           <form className="row" style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/products`, { body: { ...p, category: p.category || null } }); setP({ name: '', unit: p.unit, category: '' }); load(); }); }}>
             <input aria-label="Название товара" required placeholder="Название" value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} style={{ flex: 3 }} />
@@ -95,5 +96,41 @@ function Catalog() {
       </div>
       {error && <div className="err">{error}</div>}
     </>
+  );
+}
+
+interface Ref { id: string; code: string; name: string; product_type: string | null; kcal_100: string | null; protein_100: string | null; fat_100: string | null; carbs_100: string | null; shelf_fridge: string | null; verification_status: string; duplicate_group: string | null }
+
+/** Справочник MON CHEF: 1549 ProductID; одинаковые названия не сливаются — выбирает человек. */
+function Reference() {
+  const { org } = useOrg();
+  const [q, setQ] = useState('');
+  const [found, setFound] = useState<Ref[]>([]);
+  const [unit, setUnit] = useState('кг');
+  const [created, setCreated] = useState<string | null>(null);
+  const { busy, error, run } = useSubmit();
+  useEffect(() => {
+    if (q.trim().length < 2) { setFound([]); return; }
+    const t = setTimeout(() => { api<Ref[]>(`/orgs/${org.id}/reference?q=${encodeURIComponent(q.trim())}`).then(setFound).catch(() => undefined); }, 250);
+    return () => clearTimeout(t);
+  }, [q, org.id]);
+  return (
+    <div className="card">
+      <h2>Справочник продуктов MON CHEF</h2>
+      <p className="small muted">1549 позиций. Пищевая ценность и сроки — справочные, «на проверке»: перед использованием в документах их подтверждает специалист.</p>
+      <input aria-label="Поиск в справочнике" placeholder="Название продукта" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="row" style={{ marginTop: 8 }}><span className="small">Единица учёта нового товара:</span>
+        <select aria-label="Единица нового товара" value={unit} onChange={(e) => setUnit(e.target.value)} style={{ width: 'auto' }}>{['кг', 'г', 'л', 'мл', 'шт'].map((u) => <option key={u}>{u}</option>)}</select></div>
+      {created && <div className="okbox">Товар «{created}» добавлен.</div>}
+      {error && <div className="err">{error}</div>}
+      <ul className="list">{found.map((r) => (
+        <li key={r.id} className="between">
+          <div><b>{r.name}</b> <span className="small muted">{r.code}{r.product_type ? ` · ${r.product_type}` : ''}</span>
+            <div className="small">{r.kcal_100 !== null ? `${Number(r.kcal_100)} ккал, Б ${Number(r.protein_100)} · Ж ${Number(r.fat_100)} · У ${Number(r.carbs_100)} на 100 г` : 'КБЖУ нет'}{r.shelf_fridge ? ` · холодильник: ${r.shelf_fridge}` : ''}</div>
+            <div className="row" style={{ marginTop: 4 }}><span className="badge warn">на проверке</span>{r.duplicate_group && <span className="badge">есть одноимённые — сверьте</span>}</div></div>
+          <button className="btn secondary small" disabled={busy} onClick={() => run(async () => { const p = await api<{ name: string }>(`/orgs/${org.id}/products/from-reference`, { body: { referenceId: r.id, unit } }); setCreated(p.name); })}>Добавить</button>
+        </li>
+      ))}</ul>
+    </div>
   );
 }
