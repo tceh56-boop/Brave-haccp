@@ -33,6 +33,7 @@ export default function ShiftPage() {
         <Link className="tile" href={`${base}/tasks`}>Задачи<span className="sub">{s ? `открыто: ${s.myTasks}` : '…'}</span></Link>
         <Link className={`tile ${s?.openIncidents ? 'alert' : ''}`} href={`${base}/problems`}>Проблемы<span className="sub">{s ? (s.openIncidents ? `открыто: ${s.openIncidents}` : 'нет открытых') : '…'}</span></Link>
         <Link className="tile" href={`${base}/report`}>Сообщить<span className="sub">о проблеме</span></Link>
+        {can('journal.record') && <Link className="tile" href={`${base}/journals`}>Журналы<span className="sub">ручные записи</span></Link>}
       </div>
       <div className="card" id="temps">
         <h2>Температура</h2>
