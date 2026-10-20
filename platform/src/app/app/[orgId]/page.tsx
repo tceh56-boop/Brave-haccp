@@ -1,7 +1,7 @@
 'use client';
-import { use, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AppShell } from '@/components/AppShell';
+import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 
@@ -50,6 +50,9 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
     <>
       <p className="small"><Link href="/app">← Мои предприятия</Link></p>
       <div className="between"><h1 style={{ margin: 0 }}>{org.name}</h1><span className="badge">{m.role_label}</span></div>
+      {(can('control.manage') || can('catalog.manage')) && (
+        <p className="small"><Link href={`/app/${orgId}/setup`}>Объекты контроля, правила, товары и поставщики →</Link></p>
+      )}
       <div className="tabs" role="tablist">
         {tabs.filter((t) => t[2]).map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>)}
       </div>
@@ -271,7 +274,7 @@ function OrgForm({ org, canEdit, onSaved }: { org: Org; canEdit: boolean; onSave
   );
 }
 
-export default function Page({ params }: { params: Promise<{ orgId: string }> }) {
-  const { orgId } = use(params);
-  return <AppShell>{(me) => <OrgPage orgId={orgId} meId={me.id} />}</AppShell>;
+export default function Page() {
+  const { org, me } = useOrg();
+  return <OrgPage orgId={org.id} meId={me.id} />;
 }

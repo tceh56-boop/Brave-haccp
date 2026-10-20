@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, optText, assertSiteAccess, fmtNum } from './common';
-import { activeRule, criterionText, KIND_LABEL } from './control';
+import { activeRule, criterionText } from './control';
 import { raiseIncident } from './incidents';
 
 /**
@@ -60,7 +60,7 @@ export async function recordMeasurement(userId: string, orgId: string, input: un
     if (result === 'deviation' && rule) {
       const tz = (await tx.query(`select timezone from organizations where id = $1`, [orgId])).rows[0]?.timezone || 'Europe/Moscow';
       const when = measuredAt.toLocaleString('ru-RU', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-      const what = `${KIND_LABEL[o.kind]} «${o.name}»: ${fmtNum(d.value)} ${d.unit} при пределе ${criterionText(rule)}. Замер ${when}.`;
+      const what = `«${o.name}»: ${fmtNum(d.value)} ${d.unit} при пределе ${criterionText(rule)}. Замер ${when}.`;
       const inc = await raiseIncident(tx, {
         orgId, siteId: o.site_id, severity: 'high', kind: 'temperature_deviation', title: `Температура вне предела: ${o.name}`, what,
         entityType: 'control_object', entityId: o.id, responsibleRole: 'haccp_lead', dueMinutes: 30, ruleSource: rule.source_ref,
