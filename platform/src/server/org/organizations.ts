@@ -209,7 +209,7 @@ export async function acceptInvitation(user: SessionUser, token: unknown) {
       [inv.organization_id, user.id, inv.role, inv.site_ids, inv.position]);
     await tx.query(`update invitations set accepted_at = now(), accepted_by = $2 where id = $1`, [inv.id, user.id]);
     await audit.record(tx, { organizationId: inv.organization_id, actorUserId: user.id, action: 'member.add', entityType: 'membership', entityId: user.id,
-      after: { role: inv.role, site_ids: inv.site_ids }, reason: `приглашение ${inv.id}` });
+      after: { role: inv.role, site_ids: inv.site_ids, invitation_id: inv.id }, reason: 'по приглашению' });
     return { organizationId: inv.organization_id as string };
   });
 }
