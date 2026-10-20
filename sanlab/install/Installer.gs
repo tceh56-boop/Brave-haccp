@@ -3,8 +3,22 @@
  * Создаёт на вашем Google Диске проект Apps Script «San.Lab CRM» из готовой сборки dist/gas.
  *
  * 1. script.google.com → «Новый проект» → вставьте этот файл вместо Code.gs.
- * 2. Выберите функцию install → «Выполнить» → выдайте разрешения.
- * 3. В журнале появится ссылка на созданный проект. Откройте его и продолжайте по README (setup → развёртывание).
+ * 2. «Настройки проекта» (шестерёнка слева) → включите «Показывать файл манифеста appsscript.json».
+ * 3. Вернитесь в «Редактор» → откройте appsscript.json → замените его содержимое на:
+ *
+ *    {
+ *      "timeZone": "Asia/Yekaterinburg",
+ *      "runtimeVersion": "V8",
+ *      "exceptionLogging": "STACKDRIVER",
+ *      "oauthScopes": [
+ *        "https://www.googleapis.com/auth/drive",
+ *        "https://www.googleapis.com/auth/drive.scripts",
+ *        "https://www.googleapis.com/auth/script.external_request"
+ *      ]
+ *    }
+ *
+ * 4. Сохраните, выберите функцию install → «Выполнить» → выдайте разрешения заново.
+ * 5. В журнале появится ссылка на созданный проект. Откройте его и продолжайте по README (setup → развёртывание).
  */
 
 var SANLAB_SOURCE = 'https://raw.githubusercontent.com/tceh56-boop/Brave-haccp/claude/awesome-clarke-gz52h1/sanlab/install/project.json';
