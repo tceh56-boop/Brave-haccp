@@ -1,0 +1,22 @@
+{
+  "product": "Mon Chef",
+  "release": "FINAL",
+  "entry": "Code.gs",
+  "ui": "App.html",
+  "production_stack": "V54-V63",
+  "core": [
+    "ProductID / Resource identity",
+    "Unified Stock / Resource Engine",
+    "TTK / production planning",
+    "Banquet dispatcher",
+    "Deficit / surplus reconciliation",
+    "Production order flow",
+    "HACCP / FACT bridge",
+    "RBAC / audit",
+    "Release / pilot controls"
+  ],
+  "brand": "MON CHEF",
+  "internal_versions_visible_in_ui": false,
+  "single_stock_source": "Склад_Партии",
+  "go_live_requirement": "Pilot on a copy of real data, backup/restore drill, acceptance test, security review and regulatory/e-signature validation where applicable"
+}

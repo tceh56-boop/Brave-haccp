@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вода, отходы, вредители</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+</style><style>.sec{font-weight:700;margin:16px 0 8px;font-size:15px}.formcard{background:#fff;border:1px dashed var(--line);border-radius:14px;padding:12px;margin-bottom:10px;display:none}.formcard.on{display:block}</style></head><body><div class="wrap">
+<h1>Вода, отходы, вредители</h1>
+<div class="sub">Результаты лаборатории и подрядчиков вносятся по их документам: номер протокола или акта обязателен. Несоответствие открывает отклонение.</div>
+<div class="tabs" id="tabs"></div>
+<div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', D = null, TAB = 'water';
+var TABS = [['water', 'Вода'], ['waste', 'Отходы'], ['pests', 'Вредители']];
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function load() { call('mcEnvGet', [TOKEN]).then(function (r) { if (!r || r.success === false) { document.getElementById('body').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } D = r.data; draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function chip(cls, t) { return '<span class="chip ' + cls + '">' + esc(t) + '</span>'; }
+function inp(id, lbl, type, val) { return '<div><label>' + lbl + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function sel(id, lbl, opts) { return '<div><label>' + lbl + '</label><select id="' + id + '"><option value="">— выберите —</option>' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; }).join('') + '</select></div>'; }
+function form(id, title, fields, fn) { return '<div class="formcard" id="' + id + '"><div class="nm">' + title + '</div><div class="grid" style="margin-top:8px">' + fields + '</div><div class="acts"><button class="btn pri" onclick="' + fn + '">Сохранить</button><button class="btn" onclick="tog(\'' + id + '\')">Отмена</button></div><div class="msg" id="' + id + 'm"></div></div>'; }
+function tog(id) { document.getElementById(id).classList.toggle('on'); }
+function card(title, meta, right) { return '<div class="card"><div class="row"><div><div class="nm">' + title + '</div>' + (meta ? '<div class="meta">' + meta + '</div>' : '') + '</div>' + (right || '') + '</div></div>'; }
+function draw() {
+  document.getElementById('tabs').innerHTML = TABS.map(function (t) { return '<button class="' + (t[0] === TAB ? 'on' : '') + '" onclick="TAB=\'' + t[0] + '\';draw()">' + t[1] + '</button>'; }).join('');
+  var h = '';
+  if (TAB === 'water') {
+    var w = D.water, srcOpts = w.sources.map(function (s) { return [s.id, s.name]; }), planOpts = w.plans.map(function (p) { return [p.id, p.source + ' · ' + p.parameter]; });
+    h += '<div class="acts"><button class="btn pri" onclick="tog(\'fRes\')">+ Результат по протоколу</button><button class="btn" onclick="tog(\'fPlan\')">+ Пункт плана</button><button class="btn" onclick="tog(\'fSrc\')">+ Источник</button></div>';
+    h += form('fSrc', 'Источник воды', inp('sN', 'Название') + inp('sT', 'Тип', 'text', 'централизованное водоснабжение') + inp('sP', 'Точка отбора проб') + inp('sR', 'Ответственный'), 'saveSrc()');
+    h += form('fPlan', 'Пункт плана контроля воды', sel('pS', 'Источник', srcOpts) + inp('pP', 'Показатель (микробиология, органолептика…)') + inp('pD', 'Периодичность, дней', 'number') + inp('pN', 'Норматив (документ, норма)') + inp('pL', 'Лаборатория') + inp('pR', 'Ответственный'), 'savePlan()');
+    h += form('fRes', 'Результат лабораторного контроля воды', sel('rP', 'Пункт плана', planOpts) + inp('rD', 'Дата отбора', 'date') + inp('rN', 'Протокол №') + inp('rA', 'Фактическое значение (из протокола)') + sel('rR', 'Результат по протоколу', [['PASS', 'соответствует'], ['FAIL', 'не соответствует']]), 'saveRes()');
+    h += '<div class="sec">План контроля</div>' + (w.plans.length ? w.plans.map(function (p) { return card(esc(p.source) + ' · ' + esc(p.parameter), 'раз в ' + esc(p.period) + ' дн. · ' + esc(p.norm) + (p.lab ? ' · ' + esc(p.lab) : '') + ' · последний отбор: ' + esc(p.last || 'не было'), p.overdue ? chip('r', 'Просрочен') : chip('g', 'В срок')); }).join('') : '<div class="empty">План контроля воды не составлен</div>');
+    h += '<div class="sec">Результаты</div>' + (w.controls.length ? w.controls.map(function (c) { return card(esc(c.parameter) + ' · протокол ' + esc(c.protocol), esc(c.date) + (c.dev ? ' · отклонение ' + esc(c.dev) : ''), c.result === 'PASS' ? chip('g', 'Соответствует') : chip('r', 'Не соответствует')); }).join('') : '<div class="empty">Результатов нет</div>');
+  } else if (TAB === 'waste') {
+    var x = D.waste;
+    h += '<div class="acts"><button class="btn pri" onclick="tog(\'fWa\')">+ Накопление</button></div>';
+    h += form('fWa', 'Накопление отходов', sel('wT', 'Вид', x.types.map(function (t) { return [t, t]; })) + inp('wC', 'Тара/контейнер') + inp('wZ', 'Зона') + inp('wQ', 'Количество', 'number') + inp('wU', 'Ед.', 'text', 'кг'), 'saveWaste()');
+    h += x.records.length ? x.records.map(function (r) {
+      var right = r.status === 'ВЫВЕЗЕНО' ? chip('g', 'Вывезено') : (r.overdue ? chip('r', 'Пора вывозить') : chip('a', 'Накоплено'));
+      var meta = esc(r.qty) + ' ' + esc(r.unit) + ' · ' + esc(r.container) + ' · ' + esc(r.area) + ' · с ' + esc(r.at) + (r.status === 'ВЫВЕЗЕНО' ? ' · вывез ' + esc(r.contractor) + ' ' + esc(r.removed) + ', ' + esc(r.document) : '');
+      var c = card(esc(r.type), meta, right);
+      if (r.status !== 'ВЫВЕЗЕНО') c += form('fR' + r.id, 'Вывоз', inp('rc' + r.id, 'Подрядчик') + inp('rk' + r.id, 'Договор') + inp('rd' + r.id, 'Документ (акт, талон)'), 'removeWaste(\'' + r.id + '\')') + '<div class="acts" style="margin:-4px 0 10px"><button class="btn" onclick="tog(\'fR' + r.id + '\')">Оформить вывоз</button></div>';
+      return c;
+    }).join('') : '<div class="empty">Записей нет</div>';
+  } else {
+    var p = D.pests, planOpts2 = p.plans.map(function (x) { return [x.id, x.kind + ' · ' + x.contractor + ' · дог. ' + x.contract]; });
+    h += '<div class="acts"><button class="btn pri" onclick="tog(\'fEv\')">+ Осмотр / обработка</button><button class="btn" onclick="tog(\'fPp\')">+ План / договор</button></div>';
+    h += form('fPp', 'План и договор', inp('ppK', 'Вид работ (дезинсекция, дератизация)') + inp('ppC', 'Подрядчик') + inp('ppN', 'Договор №') + inp('ppV', 'Действует до', 'date') + inp('ppD', 'Периодичность, дней', 'number') + inp('ppZ', 'Зоны'), 'savePest()');
+    h += form('fEv', 'Осмотр или обработка', sel('eP', 'План/договор', planOpts2) + sel('eT', 'Тип', [['осмотр', 'осмотр'], ['обработка', 'обработка']]) + inp('eZ', 'Зона') + inp('eA', 'Препарат (для обработки)') + inp('eN', 'Акт № подрядчика') + sel('eR', 'Результат', [['не обнаружено', 'не обнаружено'], ['обнаружено', 'обнаружено']]), 'saveEv()');
+    h += '<div class="sec">Планы и договоры</div>' + (p.plans.length ? p.plans.map(function (x) { return card(esc(x.kind) + ' · ' + esc(x.contractor), 'договор ' + esc(x.contract) + ' до ' + esc(x.validTo) + ' · раз в ' + esc(x.period) + ' дн. · последнее: ' + esc(x.last || 'не было'), x.expired ? chip('r', 'Договор истёк') : x.overdue ? chip('r', 'Просрочено') : chip('g', 'В срок')); }).join('') : '<div class="empty">Плана нет</div>');
+    h += '<div class="sec">Мероприятия</div>' + (p.events.length ? p.events.map(function (e) { return card(esc(e.type) + ' · ' + esc(e.zone), esc(e.date) + ' · акт ' + esc(e.act) + (e.agent ? ' · ' + esc(e.agent) : '') + (e.dev ? ' · отклонение ' + esc(e.dev) : ''), e.result === 'обнаружено' ? chip('r', 'Обнаружено') : chip('g', 'Не обнаружено')); }).join('') : '<div class="empty">Мероприятий нет</div>');
+  }
+  document.getElementById('body').innerHTML = h;
+}
+function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function save(fn, payload, fid) {
+  var m = document.getElementById(fid + 'm');
+  call(fn, [JSON.stringify(payload), TOKEN]).then(function (r) {
+    if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    m.className = 'msg ok'; m.textContent = 'Сохранено'; setTimeout(load, 600);
+  }, function () { m.className = 'msg err'; m.textContent = 'Нет связи — не сохранено'; });
+}
+function saveSrc() { save('mcEnvSaveWaterSource', { name: v('sN'), type: v('sT'), point: v('sP'), responsible: v('sR') }, 'fSrc'); }
+function savePlan() { save('mcEnvSaveWaterPlan', { sourceId: v('pS'), parameter: v('pP'), periodDays: v('pD'), norm: v('pN'), lab: v('pL'), responsible: v('pR') }, 'fPlan'); }
+function saveRes() { save('mcEnvRecordWaterControl', { planId: v('rP'), sampledAt: v('rD'), protocol: v('rN'), actual: v('rA'), result: v('rR') }, 'fRes'); }
+function saveWaste() { save('mcEnvWasteAccumulate', { type: v('wT'), container: v('wC'), area: v('wZ'), qty: v('wQ'), unit: v('wU') }, 'fWa'); }
+function removeWaste(id) { save('mcEnvWasteRemove', { id: id, contractor: v('rc' + id), contract: v('rk' + id), document: v('rd' + id) }, 'fR' + id); }
+function savePest() { save('mcEnvSavePestPlan', { kind: v('ppK'), contractor: v('ppC'), contract: v('ppN'), validTo: v('ppV'), periodDays: v('ppD'), zones: v('ppZ') }, 'fPp'); }
+function saveEv() { save('mcEnvRecordPestEvent', { planId: v('eP'), type: v('eT'), zone: v('eZ'), agent: v('eA'), act: v('eN'), result: v('eR') }, 'fEv'); }
+load();
+</script></body></html>

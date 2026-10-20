@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Температуры</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.big{font-size:22px;font-weight:700}.tbl{width:100%;border-collapse:collapse;font-size:14px}.tbl td,.tbl th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.tbl th{font-size:12px;color:var(--mut);font-weight:600}
+@media(max-width:640px){.tbl .hm{display:none}}
+</style></head><body><div class="wrap">
+<h1>Температуры</h1>
+<div class="sub">Единый реестр: замеры холодильников, складов, витрин, термообработки, охлаждения, приёмки и проб — из этого экрана, журналов и контроля ККТ. Отклонение → карантин партии → корректирующее действие → повторный замер → решение ответственного (выпустить или забраковать). Значения вводит человек.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', D = null, TAB = 'open';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function v(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
+var RES = { OK: ['g', 'норма'], DEVIATION: ['r', 'отклонение'], NO_RANGE: ['a', 'нет диапазона'], INVALID: ['r', 'не число'] };
+var ST = { OPEN: ['r', 'Открыто'], RECHECK_FAIL: ['r', 'Повтор вне нормы'], RECHECK_OK: ['a', 'Ждёт решения'], RELEASED: ['g', 'Выпущено'], REJECTED: ['r', 'Забраковано'], CLOSED: ['g', 'Норма'], NO_RANGE: ['a', 'Нет диапазона'], IN_SOURCE: ['a', 'Отрабатывается в ККТ/приёмке'] };
+function load() { call('mcGetTemperatures', [TOKEN]).then(function (r) { if (!r || r.success === false) { document.getElementById('body').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } D = r.data; draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function setTab(t) { TAB = t; draw(); }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; }
+function draw() {
+  document.getElementById('tabs').innerHTML = [['open', 'Отклонения', D.open.length], ['new', '+ Замер', ''], ['all', 'Все замеры', D.measurements.length], ['obj', 'Объекты контроля', D.objects.length]].map(function (t) { return '<button class="' + (TAB === t[0] ? 'on' : '') + '" onclick="setTab(\'' + t[0] + '\')">' + t[1] + (t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join('');
+  var h = '';
+  if (TAB === 'open') h = D.open.length ? D.open.map(card).join('') : '<div class="empty">Открытых отклонений нет</div>';
+  if (TAB === 'all') h = D.measurements.length ? '<div class="card"><table class="tbl"><tr><th>Время</th><th>Объект</th><th>Факт</th><th class="hm">Норма</th><th class="hm">Источник</th><th>Итог</th></tr>' + D.measurements.map(function (m) { var r = RES[m.result] || ['', m.result]; return '<tr><td>' + esc(m.at) + '</td><td>' + esc(m.type) + ': ' + esc(m.object) + (m.batchId ? '<div class="meta">партия ' + esc(m.batchId) + '</div>' : '') + '</td><td><b>' + esc(m.value) + ' ' + esc(m.unit) + '</b></td><td class="hm">' + esc(range(m)) + '</td><td class="hm">' + esc(m.source) + '<div class="meta">' + esc(m.employee) + '</div></td><td><span class="chip ' + r[0] + '">' + r[1] + '</span></td></tr>'; }).join('') + '</table></div>' : '<div class="empty">Замеров пока нет</div>';
+  if (TAB === 'new') h = formNew();
+  if (TAB === 'obj') h = objList();
+  document.getElementById('body').innerHTML = h;
+  if (TAB === 'obj' && D.canSetup) oSync();
+}
+function range(m) { return (m.min === '' && m.max === '') ? '—' : (m.min === '' ? '…' : m.min) + ' … ' + (m.max === '' ? '…' : m.max); }
+function card(m) {
+  var st = ST[m.status] || ['', m.status], id = esc(m.id);
+  var h = '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(m.type) + ': ' + esc(m.object) + '</div><div class="meta">' + esc(m.at) + ' · ' + esc(m.employee) + ' · ' + esc(m.source) + (m.batchId ? ' · партия ' + esc(m.batchId) : '') + (m.deviationId ? ' · отклонение ' + esc(m.deviationId) : '') + '</div>' +
+    '<div class="big">' + esc(m.value) + ' ' + esc(m.unit) + ' <span class="meta">норма ' + esc(range(m)) + '</span></div>' + (m.action ? '<div class="meta">Корректирующее действие: ' + esc(m.action) + '</div>' : '') + '</div><span class="chip ' + st[0] + '">' + st[1] + '</span></div>';
+  if (m.status !== 'RECHECK_OK') h += '<div class="grid" style="margin-top:10px"><div style="grid-column:span 2"><label>Корректирующее действие *</label><input id="ca_' + id + '" placeholder="что сделано: продукт переложен, оборудование отремонтировано…"></div><div><label>Повторный замер, °C *</label><input id="rv_' + id + '" type="number" step="any"></div></div><div class="acts"><button class="btn pri" onclick="recheck(\'' + id + '\',this)">Записать повторный замер</button></div>';
+  if (D.canDecide) h += '<div class="acts"><input id="dc_' + id + '" placeholder="Комментарий (для брака — причина)" style="flex:1;min-width:200px">' + (m.status === 'RECHECK_OK' ? '<button class="btn pri" onclick="decide(\'' + id + '\',\'RELEASE\',this)">Выпустить</button>' : '') + '<button class="btn bad" onclick="decide(\'' + id + '\',\'REJECT\',this)">Забраковать</button></div>';
+  return h + '</div>';
+}
+function recheck(id, btn) { btn.disabled = true; call('mcTemperatureRecheck', [JSON.stringify({ measurementId: id, value: v('rv_' + id), correctiveAction: v('ca_' + id) }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg(r.data.result === 'OK' ? 'Повторный замер в норме — нужно решение ответственного' : 'Повторный замер снова вне нормы', r.data.result === 'OK'); load(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function decide(id, d, btn) { btn.disabled = true; call('mcTemperatureDecision', [JSON.stringify({ measurementId: id, decision: d, comment: v('dc_' + id) }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg(d === 'RELEASE' ? 'Выпущено' : 'Забраковано', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function eqSel(id) { return '<select id="' + id + '"><option value="">— прибор —</option>' + D.equipment.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + (e.effective === 'BLOCKED' ? ' (нельзя: ' + esc(e.reason) + ')' : '') + '</option>'; }).join('') + '</select>'; }
+function formNew() {
+  var act = D.objects.filter(function (o) { return o.status === 'ACTIVE'; });
+  return '<div class="card"><div class="grid"><div style="grid-column:span 2"><label>Объект контроля</label><select id="nObj" onchange="nSync()"><option value="">— процесс без объекта (термообработка, охлаждение…) —</option>' + act.map(function (o) { return '<option value="' + esc(o.id) + '">' + esc(D.types[o.type] || o.type) + ': ' + esc(o.name) + ' (' + (o.min === null ? '…' : o.min) + '…' + (o.max === null ? '…' : o.max) + ' ' + esc(o.unit) + ')</option>'; }).join('') + '</select></div>' +
+    '<div id="nProc"><label>Процесс</label><select id="nType">' + ['COOKING', 'COOLING', 'REGENERATION', 'TRANSPORT'].map(function (k) { return '<option value="' + k + '">' + esc(D.types[k]) + '</option>'; }).join('') + '</select></div>' +
+    '<div id="nObjName"><label>Что измеряли</label><input id="nName" placeholder="блюдо / партия / машина"></div><div id="nMin"><label>Мин, °C (по ТТК)</label><input id="nmin" type="number" step="any"></div><div id="nMax"><label>Макс, °C (по ТТК)</label><input id="nmax" type="number" step="any"></div>' +
+    '<div><label>Измерено, °C *</label><input id="nVal" type="number" step="any"></div><div><label>Прибор</label>' + eqSel('nEq') + '</div><div><label>Партия (если продукт)</label><input id="nBatch" placeholder="B…"></div></div>' +
+    '<div class="acts"><button class="btn pri" onclick="saveNew(this)">Записать замер</button></div></div>';
+}
+function nSync() { var o = v('nObj'); ['nProc', 'nObjName', 'nMin', 'nMax'].forEach(function (i) { document.getElementById(i).style.display = o ? 'none' : ''; }); }
+function saveNew(btn) {
+  var d = { objectId: v('nObj'), value: v('nVal'), equipmentId: v('nEq'), batchId: v('nBatch') };
+  if (!d.objectId) { d.type = v('nType'); d.object = v('nName'); d.min = v('nmin'); d.max = v('nmax'); }
+  btn.disabled = true;
+  call('mcRecordTemperature', [JSON.stringify(d), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg(r.data.result === 'DEVIATION' ? 'Отклонение зафиксировано' + (r.data.batchStatus ? ', партия в карантине' : '') + ' — нужен повторный замер' : 'Замер записан: норма', r.data.result !== 'DEVIATION'); TAB = r.data.result === 'DEVIATION' ? 'open' : 'all'; load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+var EDIT = null;
+function objList() {
+  var h = D.objects.length ? D.objects.map(function (o) { var on = o.status === 'ACTIVE';
+    return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(o.name) + '</div><div class="meta">' + esc(D.types[o.type] || o.type) + ' · допустимо ' + fmt(o.min) + '…' + fmt(o.max) + ' ' + esc(o.unit) + (o.setpoint !== null ? ' · установлено ' + fmt(o.setpoint) + ' ' + esc(o.unit) : '') +
+      (o.hMin !== null || o.hMax !== null ? ' · влажность ' + fmt(o.hMin, 1) + '…' + fmt(o.hMax, 1) + ' %' + (o.hSet !== null ? ', установлено ' + o.hSet + ' %' : '') : '') + (o.equipmentId ? ' · прибор ' + esc(o.equipmentId) : '') + '</div>' +
+      (o.question && on ? '<div class="meta">Вопрос сотруднику в ' + esc((o.checkTimes || []).join(', ')) + ': <b>«' + esc(o.question) + '»</b> — да / нет (при «нет» вносит фактическую). Журнал ' + esc(o.journalId) + '.</div>' : '') + '</div>' +
+      '<span class="chip ' + (on ? 'g' : '') + '">' + (on ? 'в работе' : 'выведен') + '</span></div>' +
+      (D.canSetup ? '<div class="acts"><button class="btn" onclick="editObj(\'' + esc(o.id) + '\')">Изменить</button><button class="btn' + (on ? ' bad' : '') + '" onclick="toggleObj(\'' + esc(o.id) + '\',this)">' + (on ? 'Вывести из работы' : 'Вернуть в работу') + '</button></div>' : '') + '</div>'; }).join('') : '<div class="empty">Объектов пока нет</div>';
+  if (D.canSetup) { var e = EDIT || {}, t = e.type || 'REFRIGERATOR';
+    h = '<div class="card"><div class="nm">' + (EDIT ? 'Изменить: ' + esc(e.name) : 'Новый объект контроля') + '</div><div class="grid" style="margin-top:8px"><div><label>Тип</label><select id="oType" onchange="oSync()">' + ['REFRIGERATOR', 'FREEZER', 'DISPLAY', 'STORAGE', 'HOT_HOLDING', 'TRANSPORT'].map(function (k) { return '<option value="' + k + '"' + (k === t ? ' selected' : '') + '>' + esc(D.types[k]) + '</option>'; }).join('') + '</select></div><div style="grid-column:span 2"><label>Название и место</label><input id="oName" placeholder="Холодильник №5, холодный цех" value="' + esc(e.name || '') + '"></div>' +
+      '<div><label>Мин, °C *</label><input id="oMin" type="number" step="any" value="' + val(e.min) + '"></div><div><label>Макс, °C *</label><input id="oMax" type="number" step="any" value="' + val(e.max) + '"></div><div id="oSetW"><label>Установленная t°, °C *</label><input id="oSet" type="number" step="any" value="' + val(e.setpoint) + '"></div>' +
+      '<div class="oH"><label>Влажность мин, %</label><input id="oHMin" type="number" step="any" value="' + val(e.hMin) + '"></div><div class="oH"><label>Влажность макс, %</label><input id="oHMax" type="number" step="any" value="' + val(e.hMax) + '"></div><div class="oH"><label>Установленная влажность, %</label><input id="oHSet" type="number" step="any" value="' + val(e.hSet) + '"></div>' +
+      '<div id="oTimesW"><label>Время проверок</label><input id="oTimes" placeholder="09:00, 21:00" value="' + esc(e.times || '') + '"></div><div><label>Прибор</label>' + eqSel('oEq') + '</div></div>' +
+      '<div class="note">Диапазон — по документу (инструкция оборудования, условия хранения продукции, СанПиН). Система его не подставляет. По установленной температуре сотрудник получает вопрос «Холодильник №5: температура +2 °C?» и отвечает «да» или «нет»; при «нет» вносит фактическую. Время проверок пусто — начало и конец смены (помещение — начало смены).</div>' +
+      '<div class="acts"><button class="btn pri" onclick="saveObj(this)">' + (EDIT ? 'Сохранить' : 'Добавить') + '</button>' + (EDIT ? '<button class="btn" onclick="EDIT=null;draw()">Отмена</button>' : '') + '</div></div>' + h; }
+  return h;
+}
+function fmt(n, plain) { return n === null || n === undefined || n === '' ? '…' : (!plain && Number(n) > 0 ? '+' : '') + String(n).replace('.', ','); }
+function val(n) { return n === null || n === undefined ? '' : esc(n); }
+function oSync() { var t = v('oType'), sch = D.scheduled && D.scheduled[t]; [].forEach.call(document.querySelectorAll('.oH'), function (x) { x.style.display = t === 'STORAGE' ? '' : 'none'; }); ['oSetW', 'oTimesW'].forEach(function (i) { var x = document.getElementById(i); if (x) x.style.display = sch ? '' : 'none'; }); }
+function editObj(id) { EDIT = D.objects.filter(function (o) { return o.id === id; })[0] || null; draw(); if (EDIT && EDIT.equipmentId) { var s = document.getElementById('oEq'); if (s) s.value = EDIT.equipmentId; } window.scrollTo(0, 0); }
+function objJson(o, extra) { var d = { id: o.id, type: o.type, name: o.name, min: o.min, max: o.max, setpoint: o.setpoint, hMin: o.hMin, hMax: o.hMax, hSet: o.hSet, times: o.times, equipmentId: o.equipmentId, status: o.status }; for (var k in extra) d[k] = extra[k]; return JSON.stringify(d); }
+function toggleObj(id, btn) { var o = D.objects.filter(function (x) { return x.id === id; })[0]; if (!o) return; btn.disabled = true;
+  call('mcSaveTempObject', [objJson(o, { status: o.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg(o.status === 'ACTIVE' ? 'Объект выведен: проверки по нему больше не ставятся' : 'Объект в работе', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function saveObj(btn) { btn.disabled = true;
+  var t = v('oType'), d = { type: t, name: v('oName'), min: v('oMin'), max: v('oMax'), setpoint: v('oSet'), times: v('oTimes'), equipmentId: v('oEq') };
+  if (t === 'STORAGE') { d.hMin = v('oHMin'); d.hMax = v('oHMax'); d.hSet = v('oHSet'); }
+  if (EDIT) { d.id = EDIT.id; d.status = EDIT.status; }
+  call('mcSaveTempObject', [JSON.stringify(d), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg((EDIT ? 'Сохранено' : 'Объект добавлен') + (r.data && r.data.question ? '. Вопрос: «' + r.data.question + '» в ' + (r.data.times || []).join(', ') : ''), true); EDIT = null; load(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+load();
+</script></body></html>

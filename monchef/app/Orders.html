@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Заказы поставщикам</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}.tbl th{font-size:12px;color:var(--mut)}
+</style></head><body><div class="wrap">
+<h1>Заказы поставщикам</h1>
+<div class="sub">Заказ → отправлен → подтверждён → приёмка на склад партиями в карантин.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+// срок поставки: в старых строках листа он записан текстом даты JS («Fri Aug 28 2026 …») — показываем дд.мм.гггг
+function fdue(v) { var s = String(v), m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); if (m) return m[3] + '.' + m[2] + '.' + m[1]; var d = new Date(s); if (isNaN(d.getTime())) return s.slice(0, 15); return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear(); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' && /^[\[{"]/.test(x) ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && !(typeof r === 'string' && /^err/i.test(r)) && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { if (typeof r === 'string') return r.replace(/^err:\s*/, ''); return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dataOf(r) { return r && r.data !== undefined ? r.data : r; }
+function v(id) { var e = document.getElementById(id); return e ? String(e.value).trim() : ''; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; window.scrollTo(0, 0); }
+function fld(id, l, val, type, extra) { return '<div' + (extra || '') + '><label>' + l + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function tabs(list, cur, fn) { document.getElementById('tabs').innerHTML = list.map(function (t) { return '<button class="' + (cur === t[0] ? 'on' : '') + '" onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + (t[2] !== undefined && t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join(''); }
+function fileUrl(id, cb) { var f = document.getElementById(id); f = f && f.files && f.files[0]; if (!f) return cb('', ''); var r = new FileReader(); r.onload = function () { cb(r.result, f.type); }; r.onerror = function () { cb('', ''); }; r.readAsDataURL(f); }
+
+var O = [], SUP = [], TAB = 'open', ST = { draft: ['a', 'Черновик'], sent: ['a', 'Отправлен'], confirmed: ['g', 'Подтверждён'], received: ['g', 'Принят'], partial: ['a', 'Частично принят'], cancelled: ['', 'Отменён'] };
+function load() { Promise.all([call('getSupplierOrders', ['', TOKEN]), call('mcGetSuppliers', [TOKEN])]).then(function (a) { O = Array.isArray(a[0]) ? a[0] : (dataOf(a[0]) || []); SUP = (dataOf(a[1]) || []).filter(function (s) { return s.status !== 'BLOCKED'; }); draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function setTab(t) { TAB = t; draw(); }
+var LINES = [];
+function draw() {
+  var open = O.filter(function (o) { return o.status !== 'received' && o.status !== 'cancelled'; });
+  tabs([['open', 'В работе', open.length], ['new', '+ Новый заказ', ''], ['all', 'Все', O.length]], TAB, 'setTab');
+  var h = '';
+  if (TAB === 'new') { if (!LINES.length) LINES = [{ name: '', qty: '', unit: 'кг', price: '' }];
+    h = '<div class="card"><div class="grid"><div style="grid-column:span 2"><label>Поставщик *</label><input id="oSup" list="supL"><datalist id="supL">' + SUP.map(function (s) { return '<option value="' + esc(s.name) + '">'; }).join('') + '</datalist></div>' + fld('oDue', 'Срок поставки', '', 'date') + fld('oCom', 'Комментарий', '', 'text', ' style="grid-column:span 3"') + '</div>' +
+      '<label style="margin-top:10px">Позиции</label><div id="lines"></div><div class="acts"><button class="btn" onclick="LINES.push({name:\'\',qty:\'\',unit:\'кг\',price:\'\'});drawLines()">+ Позиция</button><button class="btn pri" onclick="create(this)">Создать заказ</button></div><div class="note">Заказ у заблокированного поставщика не создаётся. Закупка под конкретный банкет — в карточке банкета.</div></div>'; }
+  else { var list = TAB === 'open' ? open : O;
+    h = list.length ? list.map(function (o, i) { var st = ST[o.status] || ['', o.status];
+      return '<div class="card"><div class="row" onclick="toggle(\'' + esc(o.id) + '\')"><div><div class="nm">' + esc(o.id) + ' · ' + esc(o.supplier || 'поставщик не указан') + '</div><div class="meta">' + esc(o.date) + ' · позиций ' + (o.items || []).length + (o.total ? ' · ' + esc(o.total) + ' ₽' : '') + (o.dueDate ? ' · к ' + esc(fdue(o.dueDate)) : '') + (o.comment ? ' · ' + esc(o.comment) : '') + '</div></div><span class="chip ' + st[0] + '">' + st[1] + '</span></div><div id="od_' + esc(o.id) + '"></div></div>'; }).join('') : '<div class="empty">Заказов нет</div>'; }
+  document.getElementById('body').innerHTML = h; if (TAB === 'new') drawLines();
+}
+function drawLines() { var b = document.getElementById('lines'); if (!b) return; b.innerHTML = LINES.map(function (l, i) { return '<div class="grid" style="grid-template-columns:3fr 1fr 1fr 1fr 34px;margin-top:6px"><input value="' + esc(l.name) + '" placeholder="Товар" onchange="LINES[' + i + '].name=this.value"><input type="number" step="any" value="' + esc(l.qty) + '" placeholder="Кол-во" onchange="LINES[' + i + '].qty=this.value"><select onchange="LINES[' + i + '].unit=this.value">' + ['кг', 'г', 'л', 'мл', 'шт'].map(function (u) { return '<option' + (u === l.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select><input type="number" step="any" value="' + esc(l.price) + '" placeholder="Цена" onchange="LINES[' + i + '].price=this.value"><button class="btn" onclick="LINES.splice(' + i + ',1);drawLines()">×</button></div>'; }).join(''); }
+function create(btn) {
+  var items = LINES.filter(function (l) { return l.name && parseFloat(l.qty) > 0; }).map(function (l) { var q = parseFloat(l.qty), p = parseFloat(l.price) || 0; return { name: l.name.trim(), qty: q, unit: l.unit, price: p, sum: Math.round(q * p * 100) / 100 }; });
+  if (!v('oSup')) return msg('Укажите поставщика'); if (!items.length) return msg('Добавьте позиции с количеством');
+  btn.disabled = true;
+  call('createSupplierOrder', [JSON.stringify(items), v('oSup'), v('oCom'), v('oDue'), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Заказ не создан: ' + errText(r)); LINES = []; msg('Заказ ' + (r.id || (dataOf(r) || {}).id || '') + ' создан', true); TAB = 'open'; load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function toggle(id) {
+  var box = document.getElementById('od_' + id); if (box.innerHTML) { box.innerHTML = ''; return; }
+  var o = O.filter(function (x) { return x.id === id; })[0], h = '<div style="margin-top:10px">' + (o.items || []).map(function (it, i) { return '<div class="grid" style="grid-template-columns:3fr 1fr 1fr 1fr 1.4fr;margin-top:6px;align-items:center"><div>' + esc(it.name) + '<div class="meta">заказано ' + esc(it.qty) + ' ' + esc(it.unit) + '</div></div>' +
+    (o.status === 'cancelled' || o.status === 'received' ? '' : '<input id="rq_' + i + '" type="number" step="any" value="' + esc(it.qty) + '" title="Принято"><input id="ru_' + i + '" value="' + esc(it.unit || 'кг') + '"><input id="rp_' + i + '" type="number" step="any" value="' + esc(it.price || '') + '" placeholder="Цена"><input id="re_' + i + '" type="date" title="Срок годности">') + '</div>'; }).join('');
+  if (o.status !== 'cancelled' && o.status !== 'received') h += '<div class="acts">' + (o.status === 'draft' ? '<button class="btn" onclick="act(\'sendSupplierOrder\',\'' + esc(id) + '\')">Отправлен поставщику</button>' : '') + (o.status === 'sent' ? '<button class="btn" onclick="act(\'confirmSupplierOrder\',\'' + esc(id) + '\')">Поставщик подтвердил</button>' : '') +
+    '<button class="btn pri" onclick="receive(\'' + esc(id) + '\',this)">Принять на склад</button>' + (EDITABLE[o.status] ? '<button class="btn" onclick="editItems(\'' + esc(id) + '\')">✎ Изменить позиции</button>' : '') +
+    '<button class="btn bad" onclick="act(\'cancelSupplierOrder\',\'' + esc(id) + '\')">Отменить</button>' + (o.status !== 'partial' ? '<button class="btn bad" onclick="delOrder(\'' + esc(id) + '\',this)">🗑 Удалить</button>' : '') + '</div><div class="note">Принятые товары приходуются партиями в карантин — дальше входной контроль (Склад → «Контроль партий»).</div>';
+  else if (o.status === 'cancelled') h += '<div class="acts"><button class="btn bad" onclick="delOrder(\'' + esc(id) + '\',this)">🗑 Удалить заказ</button></div>';
+  box.innerHTML = h + '</div>';
+}
+// правка позиций — до приёмки; удаление — пока по заказу ничего не принято (содержимое остаётся в аудите)
+var EDITABLE = { draft: 1, sent: 1, confirmed: 1 }, ELINES = [], EID = '';
+function editItems(id) {
+  var o = O.filter(function (x) { return x.id === id; })[0]; if (!o) return;
+  EID = id; ELINES = (o.items || []).map(function (it) { return { name: it.name, qty: it.qty, unit: it.unit || 'кг', price: it.price || '' }; });
+  drawEdit();
+}
+function drawEdit() {
+  var box = document.getElementById('od_' + EID); if (!box) return;
+  box.innerHTML = '<div style="margin-top:10px"><label>Позиции заказа</label>' + ELINES.map(function (l, i) { return '<div class="grid" style="grid-template-columns:3fr 1fr 1fr 1fr 34px;margin-top:6px"><input id="en_' + i + '" value="' + esc(l.name) + '" placeholder="Товар" onchange="ELINES[' + i + '].name=this.value"><input id="eq_' + i + '" type="number" step="any" value="' + esc(l.qty) + '" placeholder="Кол-во" onchange="ELINES[' + i + '].qty=this.value"><select onchange="ELINES[' + i + '].unit=this.value">' + ['кг', 'г', 'л', 'мл', 'шт'].map(function (u) { return '<option' + (u === l.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select><input type="number" step="any" value="' + esc(l.price) + '" placeholder="Цена" onchange="ELINES[' + i + '].price=this.value"><button class="btn" onclick="ELINES.splice(' + i + ',1);drawEdit()">×</button></div>'; }).join('') +
+    '<div class="acts"><button class="btn" onclick="ELINES.push({name:\'\',qty:\'\',unit:\'кг\',price:\'\'});drawEdit()">+ Позиция</button><button class="btn pri" onclick="saveItems(this)">💾 Сохранить позиции</button><button class="btn" onclick="EID=\'\';load()">Отмена</button></div><div class="note">Правка видна в журнале аудита: что было и что стало.</div></div>';
+}
+function saveItems(btn) {
+  var items = ELINES.filter(function (l) { return String(l.name || '').trim(); });
+  if (!items.length) return msg('В заказе должна остаться хотя бы одна позиция');
+  for (var i = 0; i < items.length; i++) if (!(parseFloat(items[i].qty) > 0)) return msg('«' + items[i].name + '»: укажите количество');
+  btn.disabled = true;
+  call('mcOrderUpdateItems', [EID, JSON.stringify(items), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не сохранено: ' + errText(r)); msg('Позиции заказа ' + EID + ' сохранены', true); EID = ''; load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function delOrder(id, btn) {
+  if (!confirm('Удалить заказ ' + id + '? Его содержимое останется в журнале аудита.')) return;
+  btn.disabled = true;
+  call('mcOrderDelete', [id, TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не удалено: ' + errText(r)); msg('Заказ ' + id + ' удалён', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function act(fn, id) { call(fn, [id, TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); msg('Готово', true); load(); }); }
+function receive(id, btn) {
+  var o = O.filter(function (x) { return x.id === id; })[0], items = [];
+  (o.items || []).forEach(function (it, i) { var q = parseFloat(v('rq_' + i)); if (q > 0) items.push({ name: it.name, qty: q, unit: v('ru_' + i) || 'кг', price: parseFloat(v('rp_' + i)) || 0, expiry: v('re_' + i) }); });
+  if (!items.length) return msg('Укажите принятое количество');
+  if (!confirm('Принять товары и оприходовать на склад?')) return;
+  btn.disabled = true;
+  call('receiveSupplierOrder', [id, JSON.stringify(items), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не принято: ' + errText(r)); msg('Заказ принят: партии на складе ждут входного контроля', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+load();
+
+</script></body></html>

@@ -1,0 +1,22 @@
+{
+  "product": "MON CHEF",
+  "build": "Integrated Application 1.0",
+  "entrypoint": "App.html",
+  "server": "Code.gs",
+  "integration": "MonChef_Application_Integration.gs",
+  "internal_release_numbers_visible_in_ui": false,
+  "duplicate_server_functions": false,
+  "modules": [
+    "Catalog/TTK", "Banquets", "Weekly planning", "Procurement/Receiving", "Stock/FEFO",
+    "Production Pick", "TTK Production Engine", "Production Scheduler", "Production Release",
+    "Banquet Fulfillment", "Banquet Closure", "HACCP/PPK", "Sanitation", "Task Center",
+    "Banquet Allocation", "Unified Dispatcher", "Deficits", "Inventory Revision", "Surplus",
+    "Deficit-Surplus Bridge", "TTK Deficit Recalculation", "ProductID/Units", "Resource/Stock Engine",
+    "Security/Audit", "Release/Pilot controls", "Batch lifecycle/Traceability", "Veterinary documents (FGIS Mercury)"
+  ],
+  "validation": {
+    "gs_syntax": "PASS",
+    "app_javascript_syntax": "PASS",
+    "duplicate_functions": "PASS"
+  }
+}
