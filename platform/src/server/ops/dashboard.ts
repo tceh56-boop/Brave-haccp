@@ -3,7 +3,7 @@ import { measurementDue, KIND_LABEL, criterionText } from './control';
 import { expiryState, sweepExpiredLots } from './lots';
 import { SEVERITY_LABEL, STATUS_LABEL } from './incidents';
 import { taskHref } from './tasks';
-import { ROLES, type Role } from '../access/roles';
+import { ROLES, roleHas, type Role } from '../access/roles';
 
 /**
  * Дашборд проблем (ТЗ v2 §2, AT-06): «обнаружил → открыл → исправил». Порядок:
@@ -29,7 +29,7 @@ export async function getProblems(userId: string, orgId: string, siteId?: string
   const siteIds = sites.map((s) => s.id);
   const siteName = new Map(sites.map((s) => [s.id, s.name]));
 
-  return inOrg(userId, orgId, 'incident.read', async (tx) => {
+  return inOrg(userId, orgId, 'incident.read', async (tx, m) => {
     const cards: ProblemCard[] = [];
     const now = new Date();
 
@@ -84,6 +84,14 @@ export async function getProblems(userId: string, orgId: string, siteId?: string
     for (const t of tasks) {
       cards.push({ key: `task:${t.id}`, priority: 6, tone: 'warn', title: `Просрочена задача: ${t.title}`, what: t.details || '', where: siteName.get(t.site_id) || '',
         at: t.created_at, risk: 'Просрочено', responsible: roleLabel(t.assignee_role), due_at: t.due_at, source: null, action: 'Выполнить', href: taskHref(orgId, t) });
+    }
+
+    // Нормативный реестр: утверждённая редакция с наступившей датой проверки актуальности (ТЗ v2 §7).
+    if (roleHas(m.role, 'reg.read')) {
+      const due = (await tx.query(`select v.id, v.edition, v.next_check_at, s.id as source_id, s.code, u.full_name as owner from reg_source_versions v join reg_sources s on s.id = v.source_id
+        left join users u on u.id = v.owner_user_id where v.organization_id = $1 and v.workflow_status = 'approved' and v.next_check_at <= current_date`, [orgId])).rows;
+      for (const v of due) cards.push({ key: `reg:${v.id}`, priority: 7, tone: 'warn', title: `Пора проверить актуальность: ${v.code}`, what: `Редакция «${v.edition}» — плановая проверка по официальному источнику.`,
+        where: 'Нормативный реестр', at: null, risk: 'Предупреждение', responsible: v.owner, due_at: v.next_check_at, source: null, action: 'Проверить редакцию', href: `/app/${orgId}/regulatory/${v.source_id}` });
     }
 
     cards.sort((a, b) => a.priority - b.priority || String(a.at || '').localeCompare(String(b.at || '')));

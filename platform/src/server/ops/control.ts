@@ -4,6 +4,7 @@ import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, optText, getSite, assertSiteAccess, fmtNum } from './common';
+import { requirementRef } from './regulatory';
 
 /**
  * Объекты контроля (холодильники, склады, линии раздачи) и правила контроля.
@@ -83,10 +84,12 @@ const RuleInput = z.object({
   maxValue: num.optional().nullable(),
   frequencyHours: num.optional().nullable(),
   graceMinutes: z.number().int().min(0).max(240).default(30),
-  sourceRef: z.string({ error: 'Укажите основание: документ, пункт или утверждённую процедуру.' }).trim().min(5, 'Укажите основание: документ, пункт или утверждённую процедуру.').max(500),
+  sourceRef: z.string().trim().max(500).optional().nullable(),
+  requirementId: z.uuid().optional().nullable(),   // требование нормативного реестра (этап 4)
   reaction: optText(1000),
   allowIsolation: z.boolean().default(false),
 }).refine((r) => r.minValue != null || r.maxValue != null, 'Задайте хотя бы одну границу.')
+  .refine((r) => !!r.requirementId || (r.sourceRef || '').length >= 5, 'Укажите основание: требование из нормативного реестра, документ и пункт или утверждённую процедуру.')
   .refine((r) => r.minValue == null || r.maxValue == null || r.minValue <= r.maxValue, 'Нижняя граница больше верхней.');
 
 /** Проект правила. В силу не вступает до утверждения. */
@@ -96,10 +99,13 @@ export async function createRule(userId: string, orgId: string, input: unknown) 
     const o = (await tx.query(`select id, site_id from control_objects where id = $1 and organization_id = $2`, [d.controlObjectId, orgId])).rows[0];
     if (!o) throw Errors.notFound('Объект контроля не найден.');
     const unit = d.parameter === 'temperature' ? '°C' : '%';
+    // Ссылка на требование реестра: только действующая/вступающая редакция и подтверждённая применимость.
+    const reqRef = d.requirementId ? await requirementRef(tx, orgId, d.requirementId) : null;
+    const sourceRef = reqRef ? (d.sourceRef ? `${reqRef}; ${d.sourceRef}` : reqRef) : d.sourceRef!;
     const version = Number((await tx.query(`select coalesce(max(version), 0) + 1 as v from control_rules where control_object_id = $1 and parameter = $2`, [o.id, d.parameter])).rows[0].v);
-    const r = (await tx.query(`insert into control_rules (organization_id, control_object_id, parameter, unit, min_value, max_value, frequency_hours, grace_minutes, source_ref, reaction, allow_isolation, version, created_by)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning *`,
-      [orgId, o.id, d.parameter, unit, d.minValue ?? null, d.maxValue ?? null, d.frequencyHours ?? null, d.graceMinutes, d.sourceRef, d.reaction, d.allowIsolation, version, userId])).rows[0];
+    const r = (await tx.query(`insert into control_rules (organization_id, control_object_id, parameter, unit, min_value, max_value, frequency_hours, grace_minutes, source_ref, reaction, allow_isolation, version, created_by, requirement_id)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
+      [orgId, o.id, d.parameter, unit, d.minValue ?? null, d.maxValue ?? null, d.frequencyHours ?? null, d.graceMinutes, sourceRef, d.reaction, d.allowIsolation, version, userId, d.requirementId || null])).rows[0];
     await audit.record(tx, { organizationId: orgId, siteId: o.site_id, actorUserId: userId, action: 'control.rule_draft', entityType: 'control_rule', entityId: r.id, after: r });
     return r;
   });
