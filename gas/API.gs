@@ -238,6 +238,8 @@ var ACTION_HANDLERS = {
   GENERATE_TTK_A4_PDF: function (data, session) { return generateTtkA4Pdf_(session, data || {}); },
   // ТУ: расчёт КБЖУ/физ-хим/аллергенов по рецептуре и документ ТУ (TechSpecCore.gs).
   GET_TECH_SPEC: function (data, session) { return getTechSpec_(data || {}, session); },
+  GET_NUTRITION_MATCHES: function (data, session) { return getNutritionMatches_(data || {}, session); },
+  APPLY_NUTRITION_MATCHES: function (data, session) { return applyNutritionMatches_(data || {}, session); },
   GET_TECH_SPEC_DOCUMENT: function (data, session) { return getTechSpecDocument_(data || {}, session); },
   // Нормативный контур ТТК: этапы, срок годности, предложения ККТ (TechNormsCore.gs).
   GET_TTK_NORMS_CONTEXT: function (data, session) { return getTtkNormsContext_(data || {}, session); },

@@ -953,6 +953,8 @@
         <textarea id="ttkAllergens" rows="2" placeholder="Аллергенная информация"></textarea>
         <div class="row-between" style="margin-top:10px;"><h3 style="margin:0;">Расчётные показатели ТУ (авто)</h3><span><button class="btn secondary small" style="width:auto;" onclick="ttkRefreshTechSpec()">Пересчитать</button> <button class="btn secondary small" style="width:auto;" onclick="ttkOpenTuDoc()">Документ ТУ</button></span></div>
         <div id="ttkTechSpec" class="muted" style="margin-top:6px;">Расчёт появится после добавления состава.</div>
+        <div class="row-between" style="margin-top:10px;"><h3 style="margin:0;">КБЖУ ингредиентов</h3><button class="btn secondary small" style="width:auto;" onclick="ttkNutritionMatch()">Сопоставить с базой КБЖУ</button></div>
+        <div id="ttkNutriMatch" class="muted" style="margin-top:6px;">Система подберёт продукт из базы КБЖУ к каждому ингредиенту по названию. Привязку подтверждаете вы.</div>
         <div class="ttk-actions"><button class="btn secondary" onclick="ttkGoTab(3)">← ПФ</button><button class="btn secondary" onclick="ttkGoTab(5)">Далее: HACCP →</button></div>
       </div>
 
@@ -3828,6 +3830,26 @@
       (spec.shelf_life?'<div class="ttk-mini">Срок годности по нормам: <b>'+compEsc(spec.shelf_life.text||'не определён')+'</b> · '+compEsc(spec.shelf_life.status)+' · '+compEsc(spec.shelf_life.conditions||'')+'</div>':'')+warn;
     if(editable){var nf=document.getElementById('ttkNutrition'),af=document.getElementById('ttkAllergens');if(nf&&!nf.value)nf.value=spec.text.пищевая_ценность;if(af&&!af.value)af.value=spec.text.аллергенная_информация;}
   }
+  var ttkNutri={items:[]};
+  var NUTRI_METHOD_BADGE={'точно':'b-ok','частично':'b-info','похоже':'b-warn','не найдено':'b-crit'};
+  function ttkNutritionMatch(){var box=document.getElementById('ttkNutriMatch');if(!ttkEditor.dishId){box.innerHTML='<div class="err">Сначала сохраните блюдо.</div>';return;}
+    box.innerHTML='Подбираю…';call('GET_NUTRITION_MATCHES',{dishId:ttkEditor.dishId},function(r){ttkNutri=r;renderTtkNutri();},function(e){box.innerHTML='<div class="err">'+compEsc(e)+'</div>';});}
+  function nutriKbju(c){return c?(compEsc(c.protein)+' / '+compEsc(c.fat)+' / '+compEsc(c.carbohydrate)+(c.kcal!==''&&c.kcal!=null?' · '+compEsc(c.kcal)+' ккал':'')+(c.verified?'':' <span class="muted">(не подтверждено)</span>')):'—';}
+  function renderTtkNutri(){var box=document.getElementById('ttkNutriMatch'),r=ttkNutri,st=r.stats||{};
+    if(!r.base_size){box.innerHTML='<div class="err">База КБЖУ пуста. Директор загружает её один раз: «Соответствие → Импорт», файл базы продуктов в формате MON CHEF (CSV).</div>';return;}
+    var head='<div class="muted" style="margin-bottom:6px;">В базе '+r.base_size+' продуктов с КБЖУ. Сырья в рецептуре: '+st.total+', уже привязано: '+st.linked+(st.no_kbju_needed?', соль и вода: '+st.no_kbju_needed:'')+'. Предложено: точно '+st.exact+', частично '+st.partial+', похоже '+st.guess+', не найдено '+st.not_found+'.</div>';
+    if(!r.items.length){box.innerHTML=head+'<div><span class="badge b-ok">Все ингредиенты привязаны</span></div>';return;}
+    var rows=r.items.map(function(it,i){var c=it.candidates[0];
+      var sel=it.candidates.length?'<select data-nutri="'+i+'" onchange="ttkNutriPick('+i+')">'+it.candidates.map(function(x,j){return '<option value="'+j+'">'+compEsc(x.name)+' — '+compEsc(x.method)+'</option>';}).join('')+'</select>':'<span class="muted">в базе нет похожего продукта</span>';
+      var chk=it.candidates.length?'<input type="checkbox" data-nutri-ok="'+i+'"'+(c&&c.method!=='похоже'?' checked':'')+'>':'';
+      return '<tr><td>'+compEsc(it.name)+(it.linked_without_kbju?'<br><span class="muted">привязан к «'+compEsc(it.linked_without_kbju)+'» без КБЖУ</span>':'')+'</td><td>'+sel+'</td><td><span class="badge '+(NUTRI_METHOD_BADGE[it.method]||'b-info')+'">'+compEsc(it.method)+'</span></td><td id="nutriKbju'+i+'">'+nutriKbju(c)+'</td><td style="text-align:center">'+chk+'</td></tr>';}).join('');
+    box.innerHTML=head+'<div style="overflow-x:auto;"><table class="ttk-table"><tr><th>Ингредиент</th><th>Продукт из базы</th><th>Совпадение</th><th>Б / Ж / У на 100 г</th><th>Привязать</th></tr>'+rows+'</table></div>'+
+      '<div class="muted" style="margin:6px 0;">«Похоже» не отмечено заранее: проверьте продукт и отметьте сами. Чего нет в базе — добавьте в базу и повторите.</div>'+
+      '<button class="btn small" style="width:auto;" onclick="ttkNutriApply()">Привязать отмеченные</button>';}
+  function ttkNutriPick(i){var j=Number(document.querySelector('[data-nutri="'+i+'"]').value);document.getElementById('nutriKbju'+i).innerHTML=nutriKbju(ttkNutri.items[i].candidates[j]);}
+  function ttkNutriApply(){var links=[];ttkNutri.items.forEach(function(it,i){var ok=document.querySelector('[data-nutri-ok="'+i+'"]');if(!ok||!ok.checked)return;var j=Number(document.querySelector('[data-nutri="'+i+'"]').value)||0;links.push({productId:it.product_id,globalProductId:it.candidates[j].global_product_id});});
+    if(!links.length){alert('Отметьте хотя бы один ингредиент.');return;}
+    call('APPLY_NUTRITION_MATCHES',{links:links},function(res){var msg='Привязано: '+res.linked+'.';if(res.errors&&res.errors.length)msg+=' Ошибки: '+res.errors.map(function(e){return e.error;}).join('; ');alert(msg);ttkNutritionMatch();ttkRefreshTechSpec();},function(e){alert(e);});}
   function ttkRefreshTechSpec(){if(!ttkEditor.dishId)return;call('GET_TECH_SPEC',{dishId:ttkEditor.dishId,ttkSteps:ttkEditor.steps,storage:document.getElementById('ttkStorage').value.trim(),shelfLife:document.getElementById('ttkShelf').value.trim()},function(spec){ttkEditor.ctx.tech_spec=spec;var v=ttkEditor.ctx.selected_ttk;renderTtkTechSpec(spec,ttkEditor.mode==='new'||(v&&v.status==='черновик'));},function(e){document.getElementById('ttkTechSpec').innerHTML='<div class="err">'+compEsc(e)+'</div>';});}
   function ttkOpenTuDoc(){if(!ttkEditor.dishId)return;var w=window.open('','_blank');if(!w){alert('Разрешите всплывающие окна.');return;}call('GET_TECH_SPEC_DOCUMENT',{dishId:ttkEditor.dishId,ttkSteps:ttkEditor.steps,storage:document.getElementById('ttkStorage').value.trim(),shelfLife:document.getElementById('ttkShelf').value.trim(),organoleptic:document.getElementById('ttkQuality').value.trim()},function(res){w.document.open();w.document.write(res.html);w.document.close();},function(e){w.close();alert(e);});}
   // Нормативный контур: разбор технологии в этапы и предложения ККТ (TechNormsCore.gs).

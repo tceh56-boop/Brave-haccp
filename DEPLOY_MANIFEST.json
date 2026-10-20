@@ -1,7 +1,7 @@
 {
-  "built_at": "2026-10-20T05:34:32.429773+00:00",
+  "built_at": "2026-10-20T05:58:34.304100+00:00",
   "stage": 116,
-  "name": "Инструкция для персонала, логотип, исправления интерфейса",
+  "name": "Инструкция для персонала, логотип, исправления интерфейса, КБЖУ как в MON CHEF",
   "files": [
     {
       "name": "INSTALL.md",
@@ -62,6 +62,11 @@
       "name": "STAGE115_PPK_WIZARD.md",
       "bytes": 13451,
       "sha256": "34a6c73c10e2a02239ccd475e18f5de4dd18f69f723a92cd1b9fb449e1f1d829"
+    },
+    {
+      "name": "STAGE116_STAFF_MANUAL.md",
+      "bytes": 9246,
+      "sha256": "7eecf3fb4a79dfd5a597e3c83f60ddb3f1b87490bda7592e83fe66786a9114a4"
     },
     {
       "name": "STAGE25_AUTOMATION_DECISION_ENGINE.md",
@@ -235,8 +240,8 @@
     },
     {
       "name": "gas/API.gs",
-      "bytes": 118577,
-      "sha256": "69e57a73a585e28fb64f9e4735472f16155a358266c98504f2a5c6f4841f5b24"
+      "bytes": 118791,
+      "sha256": "b016cc37101f9a5260c6c0e90b8c955c5efcc365e65223d2bb13261fca6beaf2"
     },
     {
       "name": "gas/AiCopilotStage24.gs",
@@ -375,8 +380,8 @@
     },
     {
       "name": "gas/Config.gs",
-      "bytes": 166400,
-      "sha256": "794acffa0860ab56bd1ef94d6ea4cca77a5e6af5c5dd6d8f56c2dfbfa9849e76"
+      "bytes": 166617,
+      "sha256": "474814e0dd5f3d66ac5562fa3be4cf6fc54e8e221a4092c4121c2aeb3b6016dd"
     },
     {
       "name": "gas/ConfigurationCenterStage28.gs",
@@ -535,8 +540,8 @@
     },
     {
       "name": "gas/Index.html",
-      "bytes": 510684,
-      "sha256": "c90e9c4f8ade4cd34deeedbd57dd58a085891dcbca4eddb50b84bec6da25c173"
+      "bytes": 515489,
+      "sha256": "985ec826f09b708ff2212afc34ea23fdae57f281c8bfd10326e35f9c2a29c0c0"
     },
     {
       "name": "gas/Integrations.gs",
@@ -860,8 +865,8 @@
     },
     {
       "name": "gas/TechSpecCore.gs",
-      "bytes": 45818,
-      "sha256": "d08cf9df91a6d5aca65d66820653671f2b909f717ffd03da1bd129f7a96f85bb"
+      "bytes": 46485,
+      "sha256": "e1125767c1e5e1d80977c352210407b01d581dbff71d14dbe58d6588bf87458b"
     },
     {
       "name": "gas/TraceabilityStage32.gs",
@@ -949,12 +954,77 @@
       "sha256": "062df47c4b436a8e563f1c6f999c589c7623a676b386fa09ea84a69570d48aee"
     },
     {
+      "name": "tools/manual/.gitignore",
+      "bytes": 49,
+      "sha256": "a68640de39a3942eeb3140311aa7a28b2aca8ad980481fce5dc8df2aba667a8e"
+    },
+    {
+      "name": "tools/manual/README.md",
+      "bytes": 2074,
+      "sha256": "933f34629455c4119253203f896a2d3a649910dab1a892698b46cfdbb35c9716"
+    },
+    {
+      "name": "tools/manual/assets/invoice.jpg",
+      "bytes": 200,
+      "sha256": "a91b794765a82dd433cffe7083edc9916a531e3c3bbe1ac4ee1b7763e7fdac2b"
+    },
+    {
+      "name": "tools/manual/assets/ttk_cards.json",
+      "bytes": 44366,
+      "sha256": "52b12dfbad3f4a3a984452d26160a43f57ce2a75f091e072558df0e725acf172"
+    },
+    {
+      "name": "tools/manual/build.js",
+      "bytes": 23879,
+      "sha256": "d7b784912a403ed79a6ee2d70952658cefb13d06ca71618119a8fc30af4b329f"
+    },
+    {
+      "name": "tools/manual/content.js",
+      "bytes": 61209,
+      "sha256": "0a1d56c9179e9d0adf88ec6ac03fea020008e3b15ef346894d95b921a264b324"
+    },
+    {
+      "name": "tools/manual/demo.js",
+      "bytes": 19279,
+      "sha256": "b9e2343b5062c689abf5bfe38d2070ba20b90df53d6bf3a1e94ef79884cdfbd3"
+    },
+    {
+      "name": "tools/manual/gasemu.js",
+      "bytes": 9271,
+      "sha256": "b7b020ccd9c2fe9a6b8e8b078026f55ec86511d72ea808bb5781db5d48bd1363"
+    },
+    {
+      "name": "tools/manual/logo_new.svg",
+      "bytes": 870,
+      "sha256": "5105c7ebe1ed53a8e1a8c4d004bf1e97efba0daee167467410cc26f20200bdb0"
+    },
+    {
+      "name": "tools/manual/package.json",
+      "bytes": 550,
+      "sha256": "9ba3c5e4d9d3c2553ef6e535295a79911be22add064c63dd7fb42c6db0040cac"
+    },
+    {
+      "name": "tools/manual/seed.js",
+      "bytes": 2908,
+      "sha256": "05110c9db4fe3bb23af33d9a073d603f558a539b27e2a0f559475dd632af8b5d"
+    },
+    {
+      "name": "tools/manual/stand.js",
+      "bytes": 6017,
+      "sha256": "a8ba9635c3da8a22d798b992d4a9b2c4d950ef60a6f9db91ea80e791ed104836"
+    },
+    {
+      "name": "tools/manual/tour.js",
+      "bytes": 23901,
+      "sha256": "c2bece4b5ce1cd1dbdf6bd7f5fdc49b2ec609371e9e8e8a7ba13bea51c75df85"
+    },
+    {
       "name": "tools/ttk_archive/extract_ttk_archive.py",
       "bytes": 11737,
       "sha256": "93e824c657f4045a8ed16edff8793a32210f45a4a2f6ebd9492f367358416a7e"
     }
   ],
-  "file_count": 190,
-  "aggregate_sha256": "5127681258ae49ca1d2419773f33a1cc2e60b656221da2ad59d4310c27e7cedf",
+  "file_count": 204,
+  "aggregate_sha256": "96509fc6e1ae6cd30cf6f3e17a8ca024773481d2f4e706024fe555b6b324fd2a",
   "aggregate_method": "SHA-256 of sorted name|file_sha256 lines"
 }
