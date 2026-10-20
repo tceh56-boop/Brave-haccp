@@ -1,0 +1,100 @@
+<script>
+/* San.Lab — главная панель по ролям и графики */
+
+function kpi(label, value, hint, tone, page, params) {
+  return '<button class="kpi ' + (tone || '') + '" ' + (page ? link(page, params) : '') + '><span class="l">' + esc(label) + '</span><span class="v">' + value + '</span>' + (hint ? '<span class="h">' + hint + '</span>' : '') + '</button>';
+}
+function visitLi(v, opts) {
+  var tone = v.attention ? 'bad' : v.status === 'IN_PROGRESS' ? 'ok' : v.status === 'CLOSED' || v.status === 'APPROVED' ? '' : 'info';
+  var flag = v.is_late_start ? 'не начат вовремя' : v.is_overrun ? 'идёт дольше плана' : v.no_report ? 'нет отчёта > 24 ч' : v.calendar_sync === 'ERROR' ? 'ошибка Calendar' : '';
+  return '<div class="li" ' + link('visit', { visit_id: v.visit_id }) + '><span class="sev ' + tone + '"></span><span class="tm">' + (opts && opts.day ? '<span class="small muted" style="display:block;font-weight:500">' + fDay(v.planned_start) + '</span>' : '') + fT(v.planned_start) + '</span>' +
+    '<div class="txt"><b>' + esc(v.site_name) + '</b> <span class="muted small">' + esc(v.service_name) + '</span><div class="t2">' + esc(v.address) + '</div><div class="t2"><span class="mono">' + v.visit_id + '</span> · ' + esc(shortName(v.employee_name)) + (flag ? ' · <b style="color:var(--bad)">' + flag + '</b>' : '') + '</div></div>' + vPill(v.status) + '</div>';
+}
+function taskLi(t) {
+  return '<div class="li" ' + link('task', { task_id: t.task_id }) + '><span class="sev ' + (t.overdue || t.priority === 'CRITICAL' ? 'bad' : t.priority === 'HIGH' ? 'warn' : 'info') + '"></span><div class="txt"><b>' + esc(t.title) + '</b><div class="t2">' + esc(t.site_name || t.source_label) + ' · ' + esc(shortName(t.responsible_name)) + ' · срок ' + fD(t.due_date) + (t.overdue ? ' · <b style="color:var(--bad)">просрочена</b>' : '') + '</div></div>' + prioTag(t.priority) + ' ' + tPill(t.status) + '</div>';
+}
+function card(title, body, extra) { return '<section class="card"><header><h2>' + title + '</h2><div class="grow"></div>' + (extra || '') + '</header><div class="body">' + body + '</div></section>'; }
+function emptyLine(t) { return '<div class="empty">' + t + '</div>'; }
+
+/* Сгруппированные столбцы: начислено и поступило по месяцам (одна ось, подсказка при наведении) */
+var MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+function barChart(series) {
+  var W = 640, H = 230, L = 52, R = 8, T = 12, B = 28;
+  var max = 0; series.forEach(function (s) { max = Math.max(max, s.accrued, s.received); });
+  var step = max > 400000 ? 100000 : max > 200000 ? 50000 : max > 80000 ? 20000 : 10000;
+  var top = Math.max(step, Math.ceil(max / step) * step);
+  var y = function (v) { return T + (H - T - B) * (1 - v / top); };
+  var gw = (W - L - R) / series.length, bw = Math.min(16, (gw - 10) / 2);
+  var g = '';
+  for (var t = 0; t <= top; t += step) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="var(--line)" stroke-width="1"/><text x="' + (L - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end" font-size="11" fill="var(--muted)">' + (t >= 1000 ? Math.round(t / 1000) + 'k' : t) + '</text>';
+  var bars = '';
+  series.forEach(function (s, i) {
+    var cx = L + gw * i + gw / 2, m = Number(s.month.slice(5)) - 1;
+    var bar = function (v, x, col) { if (!v) return ''; var yy = y(v), h = H - B - yy, r = Math.min(4, h); return '<path d="M' + x + ' ' + (H - B) + 'V' + (yy + r) + 'q0 -' + r + ' ' + r + ' -' + r + 'h' + (bw - 2 * r) + 'q' + r + ' 0 ' + r + ' ' + r + 'V' + (H - B) + 'z" fill="' + col + '"/>'; };
+    bars += bar(s.accrued, cx - bw - 1, 'var(--s1)') + bar(s.received, cx + 1, 'var(--s2)');
+    bars += '<text x="' + cx + '" y="' + (H - 9) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' + MONTHS[m] + '</text>';
+    bars += '<rect x="' + (cx - gw / 2) + '" y="' + T + '" width="' + gw + '" height="' + (H - T - B) + '" fill="transparent" data-tip="' + esc(MONTHS[m] + ' ' + s.month.slice(0, 4) + ': начислено ' + money(s.accrued) + ', поступило ' + money(s.received) + ', расходы ' + money(s.expenses)) + '" data-x="' + cx + '"/>';
+  });
+  return '<div class="legend"><span><i style="background:var(--s1)"></i>Начислено</span><span><i style="background:var(--s2)"></i>Поступило</span></div>' +
+    '<div class="chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Начислено и поступило по месяцам">' + g + '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="var(--line-2)"/>' + bars + '</svg><div class="tip" hidden></div></div>';
+}
+function bindChart(root) {
+  $$('.chart', root).forEach(function (ch) {
+    var tip = $('.tip', ch), svg = $('svg', ch);
+    ch.addEventListener('mousemove', function (ev) {
+      var r = ev.target.closest('[data-tip]');
+      if (!r) { tip.hidden = true; return; }
+      var box = svg.getBoundingClientRect(), k = box.width / svg.viewBox.baseVal.width;
+      tip.hidden = false; tip.textContent = r.getAttribute('data-tip');
+      tip.style.left = Math.min(Math.max(Number(r.getAttribute('data-x')) * k, 120), box.width - 120) + 'px'; tip.style.top = (ev.clientY - box.top) + 'px';
+    });
+    ch.addEventListener('mouseleave', function () { tip.hidden = true; });
+  });
+}
+
+Pages.home = {
+  title: function () { var h = new Date().getHours(); return (h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер') + ', ' + String(S.me.full_name).split(' ')[1] + '!'; },
+  sub: function () { return S.me.role_label + ' · ' + new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()); },
+  load: function () { return call('dashboard.get'); },
+  view: function (d) {
+    if (d.role === 'SPECIALIST') return Pages.home.specialist(d.blocks.my);
+    var k = d.kpi || {}, b = d.blocks, h = '<div class="kpis">';
+    if (k.visits_today !== undefined) {
+      h += kpi('Выезды сегодня', k.visits_today_done + '<small> / ' + k.visits_today + '</small>', 'в работе: ' + k.visits_in_progress, '', 'visits', { period: 'today' });
+      h += kpi('Требуют внимания', k.visits_attention, 'опоздания, нет отчёта, ошибки', k.visits_attention ? 'bad' : 'good', 'visits', { attention: true, period: 'all' });
+    }
+    if (k.reviews !== undefined) h += kpi('Отчёты на проверке', k.reviews, k.reviews_overdue ? '<b style="color:var(--bad)">просрочено: ' + k.reviews_overdue + '</b>' : 'возвращено: ' + k.returned, k.reviews_overdue ? 'warn' : '', 'review');
+    h += kpi('Просроченные задачи', k.tasks_overdue, 'открыто: ' + k.tasks_open + (k.tasks_to_verify ? ', на проверке: ' + k.tasks_to_verify : ''), k.tasks_overdue ? 'bad' : 'good', 'tasks', { filter: 'overdue' });
+    if (k.critical_open !== undefined) h += kpi('Критические замечания', k.critical_open, 'открытые критические задачи', k.critical_open ? 'bad' : 'good', 'tasks', { filter: 'critical' });
+    if (k.lab_active !== undefined) h += kpi('Лаборатория', k.lab_active, (k.lab_overdue ? '<b style="color:var(--bad)">просрочено: ' + k.lab_overdue + '</b> · ' : '') + 'к рассмотрению: ' + k.lab_to_review, k.lab_overdue ? 'warn' : '', 'lab');
+    if (k.receivable !== undefined) h += kpi('Дебиторская задолженность', money(k.receivable), k.overdue_invoices ? '<b style="color:var(--bad)">просроченных счетов: ' + k.overdue_invoices + '</b>' : 'просрочек нет', k.overdue_invoices ? 'warn' : '', 'finance');
+    if (k.clients_active !== undefined) h += kpi('Активные клиенты', k.clients_active, '', '', 'clients');
+    if (k.system_errors) h += kpi('Ошибки интеграций', k.system_errors, 'Calendar: ' + k.calendar_errors, 'bad', 'settings', { tab: 'errors' });
+    h += '</div>';
+
+    var left = '', right = '';
+    if (b.today) left += card('Сегодня', b.today.length ? '<div class="list">' + b.today.map(function (v) { return visitLi(v); }).join('') + '</div>' : emptyLine('На сегодня выездов нет'), '<button class="btn sm" ' + link('visits', { period: 'week' }) + '>Календарь</button>');
+    if (b.finance) left += card('Динамика выручки', barChart(b.finance.series) + '<p class="small muted" style="margin:10px 0 0">Начислено и поступило по дате операции. Не выставлено по утверждённым выездам: ' + b.finance.unbilled + '.' + (b.finance.pending_adjustments ? ' Корректировок на утверждении: ' + b.finance.pending_adjustments + '.' : '') + '</p>', '<button class="btn sm" ' + link('finance') + '>Финансы</button>');
+    if (b.queue) left += card('Очередь проверки отчётов', b.queue.length ? Pages.review.table(b.queue) : emptyLine('Очередь пуста'), '<button class="btn sm" ' + link('review') + '>Все</button>');
+    if (b.lab) left += card('Лабораторные сроки', Pages.lab.statusStrip(b.lab.by_status) + (b.lab.urgent.length ? '<div class="list">' + b.lab.urgent.map(function (s) { return Pages.lab.li(s); }).join('') + '</div>' : emptyLine('Срочных проб нет')), '<button class="btn sm" ' + link('lab') + '>Все пробы</button>');
+    if (b.attention) right += card('Требует внимания', b.attention.length ? '<div class="list">' + b.attention.map(function (v) { return visitLi(v, { day: true }); }).join('') + '</div>' : emptyLine('Всё по плану'));
+    right += card('Задачи и просрочки', b.tasks.length ? '<div class="list">' + b.tasks.map(taskLi).join('') + '</div>' : emptyLine('Нет срочных задач'), '<button class="btn sm" ' + link('tasks') + '>Все задачи</button>');
+    if (b.workload) right += card('Загрузка специалистов', '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Сотрудник</th><th class="r">Сегодня</th><th class="r">Открыто</th><th class="r">За 30 дн.</th></tr></thead><tbody>' +
+      b.workload.map(function (w) { return '<tr><td>' + esc(shortName(w.full_name)) + '</td><td class="r">' + w.today + '</td><td class="r">' + w.open + '</td><td class="r">' + w.done_30d + '</td></tr>'; }).join('') + '</tbody></table></div>');
+    if (b.finance && b.finance.overdue.length) right += card('Просроченные счета', '<div class="list">' + b.finance.overdue.map(function (o) { return '<div class="li" ' + link('finance', { tab: 'invoices' }) + '><span class="sev bad"></span><div class="txt"><b>' + esc(o.client_name) + '</b><div class="t2">' + esc(o.invoice_no) + ' · срок ' + fD(o.due_date) + ' · ' + o.days + ' дн.</div></div><b class="num">' + money(o.outstanding) + '</b></div>'; }).join('') + '</div>');
+    return h + '<div class="grid g-main"><div class="stack" style="gap:16px">' + left + '</div><div class="stack" style="gap:16px">' + right + '</div></div>';
+  },
+  specialist: function (m) {
+    var start = m.today.filter(function (v) { return v.status === 'ASSIGNED' || v.status === 'RESCHEDULED'; }).length;
+    var h = '<div class="kpis">' + kpi('Сегодня', m.today.length + '<small> ' + plural(m.today.length, 'выезд', 'выезда', 'выездов') + '</small>', start ? 'к началу: ' + start : 'всё начато', '', 'myvisits') +
+      kpi('Нужно действие', m.returned.length + m.awaiting.length, 'возвращено: ' + m.returned.length + ', без отчёта: ' + m.awaiting.length, m.returned.length ? 'bad' : '', 'myvisits', { tab: 'action' }) +
+      kpi('Мои задачи', m.tasks.length, m.tasks.filter(function (t) { return t.overdue; }).length + ' просрочено', m.tasks.some(function (t) { return t.overdue; }) ? 'bad' : '', 'tasks') + '</div>';
+    if (m.returned.length || m.awaiting.length) h += card('Требуют действия', '<div class="list">' + m.returned.concat(m.awaiting).map(function (v) { return visitLi(v, { day: true }); }).join('') + '</div>');
+    h += card('Мои выезды сегодня', m.today.length ? '<div class="list">' + m.today.map(function (v) { return visitLi(v); }).join('') + '</div>' : emptyLine('На сегодня назначений нет'));
+    h += card('Ближайшие', m.upcoming.length ? '<div class="list">' + m.upcoming.map(function (v) { return visitLi(v, { day: true }); }).join('') + '</div>' : emptyLine('Новых назначений нет'));
+    if (m.tasks.length) h += card('Мои задачи', '<div class="list">' + m.tasks.map(taskLi).join('') + '</div>');
+    return h;
+  },
+  after: function (d, p, c) { bindChart(c); }
+};
+</script>

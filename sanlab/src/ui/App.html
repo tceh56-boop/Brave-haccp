@@ -1,0 +1,465 @@
+<script>
+/* San.Lab — клиент: транспорт, состояние, оболочка, общие компоненты.
+   Один и тот же код работает в Apps Script (google.script.run) и в демо (ядро в браузере). */
+'use strict';
+
+var S = { me: null, lk: null, token: '', page: 'home', params: {}, stack: [], unread: 0, data: null, dirty: {} };
+var Pages = {};
+var A = {};
+var TZ = 'Asia/Yekaterinburg';
+
+/* ---------- Транспорт ---------- */
+function newRid() { return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+function transport(action, payload, rid) {
+  return new Promise(function (resolve, reject) {
+    if (window.SANLAB_DEMO) {
+      setTimeout(function () {
+        try { resolve(window.SANLAB_DEMO.api(action, payload, S.token, rid)); } catch (e) { reject(e); }
+      }, 90 + Math.random() * 120);
+      return;
+    }
+    google.script.run.withSuccessHandler(function (s) { resolve(JSON.parse(s)); })
+      .withFailureHandler(function (e) { reject(e); }).api(action, payload, S.token, rid);
+  });
+}
+/* Чтение — без request_id; изменения — с request_id, повтор сети использует тот же id (без дублей) */
+function call(action, payload, opts) {
+  var read = /\.(list|get|me|mine|queue|summary|preview|html|mode)$/.test(action);
+  var rid = read ? '' : (opts && opts.rid) || newRid();
+  var attempt = function (n) {
+    return transport(action, payload || {}, rid).then(function (res) {
+      if (res.ok) return res.data;
+      var err = { code: res.code, message: res.message, details: res.details, request_id: res.request_id };
+      if (res.code === 'ACCOUNT_DISABLED' || res.code === 'AUTH_REQUIRED') { setTimeout(function () { boot(true); }, 50); }
+      throw err;
+    }, function (e) {
+      if (n < 1) return attempt(n + 1);
+      throw { code: 'NETWORK', message: 'Нет связи с сервером. Данные не сохранены — проверьте сеть и повторите.', request_id: rid };
+    });
+  };
+  return attempt(0);
+}
+
+/* ---------- Утилиты ---------- */
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function $(sel, root) { return (root || document).querySelector(sel); }
+function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+var _dtf = null, _df = null, _tf = null;
+function dtf() { if (!_dtf) { _dtf = new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); _df = new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' }); _tf = new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }); } return _dtf; }
+function fDT(iso) { if (!iso) return '—'; dtf(); return _dtf.format(new Date(iso)).replace(',', ''); }
+function fD(iso) { if (!iso) return '—'; dtf(); return _df.format(new Date(iso)); }
+function fT(iso) { if (!iso) return ''; dtf(); return _tf.format(new Date(iso)); }
+function dayKey(iso) { var d = new Date(new Date(iso).getTime() + 5 * 3600000); return d.toISOString().slice(0, 10); }
+function todayKey() { return dayKey(new Date().toISOString()); }
+function fDay(iso) {
+  var k = dayKey(iso), t = todayKey();
+  var diff = Math.round((new Date(k) - new Date(t)) / 86400000);
+  if (diff === 0) return 'Сегодня'; if (diff === 1) return 'Завтра'; if (diff === -1) return 'Вчера';
+  return fD(iso).slice(0, 5);
+}
+function money(n) { var v = Math.round((Number(n) || 0)); return v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽'; }
+function plural(n, a, b, c) { n = Math.abs(n) % 100; var n1 = n % 10; if (n > 10 && n < 20) return c; if (n1 > 1 && n1 < 5) return b; if (n1 === 1) return a; return c; }
+function initials(name) { var p = String(name || '').split(/\s+/); return ((p[1] || '')[0] || '') + ((p[0] || '')[0] || ''); }
+function shortName(name) { var p = String(name || '').split(/\s+/); return p[0] + (p[1] ? ' ' + p[1][0] + '.' : '') + (p[2] ? p[2][0] + '.' : ''); }
+function isoLocal(iso) { if (!iso) return ''; var d = new Date(iso); var off = d.getTimezoneOffset(); return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16); }
+function fromLocal(v) { return v ? new Date(v).toISOString() : ''; }
+function addDaysIso(n) { return new Date(Date.now() + n * 86400000).toISOString(); }
+function startOfDayIso(offset) { var t = todayKey(); return new Date(new Date(t + 'T00:00:00+05:00').getTime() + (offset || 0) * 86400000).toISOString(); }
+function lsGet(k) { try { return JSON.parse(localStorage.getItem('sanlab_' + k)); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem('sanlab_' + k, JSON.stringify(v)); } catch (e) { } }
+function opt(list, val, empty) {
+  var h = empty !== undefined ? '<option value="">' + esc(empty) + '</option>' : '';
+  for (var i = 0; i < list.length; i++) h += '<option value="' + esc(list[i][0]) + '"' + (String(list[i][0]) === String(val) ? ' selected' : '') + '>' + esc(list[i][1]) + '</option>';
+  return h;
+}
+function dictOpts(d) { return Object.keys(d).map(function (k) { return [k, d[k]]; }); }
+function empName(id) { var e = (S.lk.employees || []).filter(function (x) { return x.id === id; })[0]; return e ? e.name : (id === 'SYSTEM' ? 'Система' : id || ''); }
+function siteById(id) { return (S.lk.sites || []).filter(function (x) { return x.id === id; })[0] || {}; }
+
+/* ---------- Иконки ---------- */
+var IC = {
+  home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  clients: '<path d="M4 21V7l8-4 8 4v14"/><path d="M9 21v-5h6v5M9 10h.01M15 10h.01M9 13h.01M15 13h.01"/>',
+  visits: '<rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/><path d="m9 15 2 2 4-4"/>',
+  myvisits: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  review: '<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.2-4.4"/>',
+  lab: '<path d="M9 3h6M10 3v6.2L4.6 18.4A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.4-2.6L14 9.2V3"/><path d="M7.5 14.5h9"/>',
+  tasks: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8.5 12 2.4 2.4 4.6-4.8"/>',
+  finance: '<rect x="2.5" y="6" width="19" height="13" rx="2"/><path d="M2.5 10h19M6.5 15h4"/>',
+  documents: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+  analytics: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  staff: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.5c2.4.2 4 1.7 4.5 4.5"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.6 15H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.7 4.4V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1.3z"/>',
+  audit: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  camera: '<path d="M14.5 4h-5L7.5 6.5H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13" r="3.5"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  back: '<path d="m15 18-6-6 6-6"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  play: '<path d="m7 4 13 8-13 8z"/>',
+  flag: '<path d="M4 22V4M4 4h12l-2 4 2 4H4"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+  pin: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+  more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+  alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
+  theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"/>'
+};
+function ic(name, cls) { return '<svg' + (cls ? ' class="' + cls + '"' : '') + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[name] || '') + '</svg>'; }
+var LOGO_MARK = '<svg viewBox="0 0 34 38" aria-hidden="true"><path d="M17 1.5 2.5 6.8v11.1c0 9 6.2 16.6 14.5 18.6 8.3-2 14.5-9.6 14.5-18.6V6.8z" fill="#123A7A" stroke="#DCE6F7" stroke-width="1.6"/><path d="M14 9.5h6M15 9.5v6.3l-5.2 9.1a1.4 1.4 0 0 0 1.2 2.1h12a1.4 1.4 0 0 0 1.2-2.1L19 15.8V9.5" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><path d="M11.6 22.6h10.8l1.9 3.2c.4.7-.1 1.2-.8 1.2H10.5c-.7 0-1.2-.5-.8-1.2z" fill="#3BB15A"/></svg>';
+
+var MENU = {
+  home: ['Главная', 'home'], myvisits: ['Мои выезды', 'myvisits'], clients: ['Клиенты и объекты', 'clients'], visits: ['Выезды и календарь', 'visits'],
+  review: ['Проверка отчётов', 'review'], lab: ['Лаборатория', 'lab'], tasks: ['Задачи', 'tasks'], finance: ['Финансы', 'finance'],
+  documents: ['Документы', 'documents'], analytics: ['Отчёты и аналитика', 'analytics'], staff: ['Сотрудники', 'staff'], settings: ['Настройки', 'settings'], audit: ['Журнал аудита', 'audit']
+};
+
+/* ---------- Статусы ---------- */
+var VISIT_TONE = { ASSIGNED: '', RESCHEDULED: 'warn', IN_PROGRESS: 'ok', AWAITING_REPORT: 'warn', IN_REVIEW: '', RETURNED: 'bad', APPROVED: 'ok', CLOSED: 'mute', CANCELLED: 'mute' };
+var TASK_TONE = { NEW: '', IN_PROGRESS: 'warn', ON_CHECK: '', CLOSED: 'ok', CANCELLED: 'mute' };
+var LAB_TONE = { REGISTERED: 'mute', COLLECTED: '', SENT: '', ACCEPTED: '', AWAITING: 'warn', RESULT: 'warn', REVIEWED: 'ok', CANCELLED: 'mute' };
+function pill(label, tone) { return '<span class="pill ' + (tone || '') + '">' + esc(label) + '</span>'; }
+function vPill(st) { return pill(S.lk.dict.visit[st] || st, VISIT_TONE[st]); }
+function tPill(st) { return pill(S.lk.dict.task[st] || st, TASK_TONE[st]); }
+function lPill(st, overdue) { return pill((S.lk.dict.lab[st] || st) + (overdue ? ' · просрочено' : ''), overdue ? 'bad' : LAB_TONE[st]); }
+function prioTag(p) { return '<span class="tag ' + (p === 'CRITICAL' ? 'crit' : p === 'HIGH' ? 'high' : '') + '">' + esc(S.lk.dict.priority[p] || p) + '</span>'; }
+function sevTag(p) { return p && p !== 'NORMAL' ? '<span class="tag ' + (p === 'CRITICAL' ? 'crit' : p === 'HIGH' ? 'high' : '') + '">' + esc(S.lk.dict.severity[p] || p) + '</span>' : ''; }
+
+/* ---------- Тосты, модальные окна ---------- */
+function toast(msg, tone) {
+  var box = $('#toasts'); if (!box) return;
+  var t = document.createElement('div'); t.className = 'toast ' + (tone || ''); t.textContent = msg; t.setAttribute('role', 'status');
+  box.appendChild(t); setTimeout(function () { t.remove(); }, tone === 'bad' ? 7000 : 3500);
+}
+function errText(e) {
+  var m = esc(e && e.message || 'Ошибка');
+  if (e && e.details && e.details.missing && e.details.missing.length) {
+    m += '<ul>' + e.details.missing.map(function (x) { return '<li>' + esc(x.text || x) + '</li>'; }).join('') + '</ul>';
+  }
+  if (e && e.code === 'INTERNAL') m += '<div class="small">Код запроса: <span class="mono">' + esc(e.request_id) + '</span></div>';
+  return m;
+}
+function showErr(e) {
+  if (e && e.details && e.details.missing) return modal({ title: 'Не хватает данных', body: '<div class="alert bad">' + errText(e) + '</div>', actions: [['Понятно', 'close', 'pri']] });
+  toast((e && e.message) || 'Ошибка', 'bad');
+}
+var _modalStack = [];
+function modal(o) {
+  var ov = document.createElement('div'); ov.className = 'overlay';
+  ov.innerHTML = '<div class="modal ' + (o.wide ? 'wide' : '') + '" role="dialog" aria-modal="true"><header><h3>' + esc(o.title) + '</h3><button class="icon-btn" data-m="close" aria-label="Закрыть">' + ic('x') + '</button></header>' +
+    '<div class="mbody">' + (o.body || '') + '</div>' + (o.actions && o.actions.length ? '<footer>' + o.actions.map(function (a) { return '<button class="btn ' + (a[2] || '') + '" data-m="' + a[1] + '">' + a[0] + '</button>'; }).join('') + '</footer>' : '') + '</div>';
+  document.body.appendChild(ov);
+  var api = {
+    el: ov, body: $('.mbody', ov),
+    close: function () { ov.remove(); _modalStack.pop(); },
+    error: function (e) { var b = $('.merr', ov); if (!b) { b = document.createElement('div'); b.className = 'alert bad merr'; api.body.insertBefore(b, api.body.firstChild); } b.innerHTML = errText(e); b.scrollIntoView({ block: 'nearest' }); },
+    busy: function (on) { $$('footer .btn', ov).forEach(function (b) { b.disabled = !!on; }); var p = $('footer .btn.pri, footer .btn.go, footer .btn.danger', ov); if (p) p.classList.toggle('busy', !!on); }
+  };
+  ov.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-m]');
+    if (ev.target === ov && !o.sticky) return api.close();
+    if (!b) return;
+    var k = b.getAttribute('data-m');
+    if (k === 'close') return api.close();
+    if (o.on && o.on[k]) o.on[k](api, b, ev);
+  });
+  _modalStack.push(api);
+  if (o.ready) o.ready(api);
+  var f = $('input:not([type=hidden]):not([type=checkbox]), select, textarea', api.body); if (f && window.innerWidth > 820) f.focus();
+  return api;
+}
+function confirmBox(title, text, okText, tone) {
+  return new Promise(function (res) {
+    modal({ title: title, body: '<p style="margin:0">' + text + '</p>', actions: [['Отмена', 'close'], [okText || 'Подтвердить', 'ok', tone || 'pri']], on: { ok: function (m) { m.close(); res(true); } } });
+  });
+}
+
+/* ---------- Формы ---------- */
+function fieldHtml(f, v) {
+  if (v === undefined || v === null) v = f.value !== undefined ? f.value : '';
+  var id = 'f_' + f.name, req = f.required ? ' <i>*</i>' : '';
+  var lab = f.label ? '<label for="' + id + '">' + esc(f.label) + req + '</label>' : '';
+  var hint = f.hint ? '<div class="hint">' + f.hint + '</div>' : '';
+  var cls = 'fld' + (f.full || f.type === 'textarea' ? ' full' : '');
+  var inp;
+  switch (f.type) {
+    case 'textarea': inp = '<textarea class="inp" id="' + id + '" name="' + f.name + '" rows="' + (f.rows || 3) + '" placeholder="' + esc(f.placeholder || '') + '">' + esc(v) + '</textarea>'; break;
+    case 'select': inp = '<select class="sel" id="' + id + '" name="' + f.name + '">' + opt(f.options || [], v, f.empty !== undefined ? f.empty : (f.required ? undefined : '—')) + '</select>'; break;
+    case 'checkbox': return '<div class="' + cls + '"><label class="row" style="font-weight:500"><input type="checkbox" id="' + id + '" name="' + f.name + '"' + (v === true || v === 'true' ? ' checked' : '') + '> ' + esc(f.label) + '</label>' + hint + '</div>';
+    case 'checks': inp = '<div class="row">' + (f.options || []).map(function (o) { var on = (',' + v + ',').indexOf(',' + o[0] + ',') >= 0; return '<label class="tag" style="padding:4px 8px"><input type="checkbox" name="' + f.name + '" value="' + esc(o[0]) + '"' + (on ? ' checked' : '') + '> ' + esc(o[1]) + '</label>'; }).join('') + '</div>'; break;
+    case 'datetime': inp = '<input class="inp" type="datetime-local" id="' + id + '" name="' + f.name + '" value="' + esc(isoLocal(v)) + '">'; break;
+    case 'date': inp = '<input class="inp" type="date" id="' + id + '" name="' + f.name + '" value="' + esc(v ? isoLocal(v).slice(0, 10) : '') + '">'; break;
+    case 'number': inp = '<input class="inp num" type="number" step="' + (f.step || 'any') + '" id="' + id + '" name="' + f.name + '" value="' + esc(v) + '" inputmode="decimal">'; break;
+    case 'file': inp = '<input class="inp" style="padding-top:6px" type="file" id="' + id + '" name="' + f.name + '"' + (f.accept ? ' accept="' + f.accept + '"' : '') + '>'; break;
+    case 'info': return '<div class="' + cls + ' full">' + f.html + '</div>';
+    case 'hidden': return '<input type="hidden" name="' + f.name + '" value="' + esc(v) + '">';
+    default: inp = '<input class="inp" type="' + (f.type || 'text') + '" id="' + id + '" name="' + f.name + '" value="' + esc(v) + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.inputmode ? ' inputmode="' + f.inputmode + '"' : '') + '>';
+  }
+  return '<div class="' + cls + '">' + lab + inp + hint + '</div>';
+}
+function formHtml(fields, values) { values = values || {}; return '<form class="fgrid" onsubmit="return false">' + fields.map(function (f) { return fieldHtml(f, values[f.name]); }).join('') + '</form>'; }
+function readForm(root, fields) {
+  var out = {}, missing = [];
+  fields.forEach(function (f) {
+    if (f.type === 'info') return;
+    if (f.type === 'checks') { out[f.name] = $$('input[name="' + f.name + '"]:checked', root).map(function (x) { return x.value; }).join(','); return; }
+    var el = $('[name="' + f.name + '"]', root); if (!el) return;
+    var v;
+    if (f.type === 'checkbox') v = el.checked;
+    else if (f.type === 'datetime') v = fromLocal(el.value);
+    else if (f.type === 'date') v = el.value ? new Date(el.value + 'T12:00:00+05:00').toISOString() : '';
+    else if (f.type === 'file') v = el.files && el.files[0] ? el.files[0] : null;
+    else v = String(el.value).trim();
+    if (f.required && (v === '' || v === null)) { missing.push(f.label); el.setAttribute('aria-invalid', 'true'); }
+    out[f.name] = v;
+  });
+  if (missing.length) throw { message: 'Заполните обязательные поля: ' + missing.join(', ') };
+  return out;
+}
+/* Форма в модальном окне. submit(values, modalApi) → Promise */
+function openForm(o) {
+  var m = modal({
+    title: o.title, wide: o.wide, sticky: true,
+    body: (o.intro || '') + formHtml(o.fields, o.values),
+    actions: [['Отмена', 'close'], [o.okText || 'Сохранить', 'ok', o.okTone || 'pri']],
+    on: {
+      ok: function (api) {
+        var v;
+        try { v = readForm(api.el, o.fields); } catch (e) { return api.error(e); }
+        api.busy(true);
+        Promise.resolve(o.submit(v, api)).then(function (r) {
+          api.busy(false);
+          if (r === false) return;
+          api.close(); if (o.done) o.done(r); else if (o.toast !== false) toast(o.toastText || 'Сохранено', 'ok');
+        }, function (e) { api.busy(false); if (o.onError && o.onError(e, api, v)) return; api.error(e); });
+      }
+    },
+    ready: o.ready
+  });
+  return m;
+}
+
+/* ---------- Файлы ---------- */
+function readFileB64(file, maxSide) {
+  return new Promise(function (resolve, reject) {
+    var fr = new FileReader();
+    fr.onerror = function () { reject({ message: 'Не удалось прочитать файл' }); };
+    fr.onload = function () {
+      var dataUrl = fr.result;
+      if (!/^image\/(jpeg|png|webp)/.test(file.type) || !maxSide) return resolve({ name: file.name, mime: file.type || 'application/octet-stream', b64: dataUrl.split(',')[1] });
+      var img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, maxSide / Math.max(img.width, img.height));
+        var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve({ name: file.name.replace(/\.\w+$/, '') + '.jpg', mime: 'image/jpeg', b64: c.toDataURL('image/jpeg', 0.85).split(',')[1] });
+      };
+      img.onerror = function () { resolve({ name: file.name, mime: file.type, b64: dataUrl.split(',')[1] }); };
+      img.src = dataUrl;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function uploadFile(file, meta) {
+  return readFileB64(file, meta.document_type === 'PHOTO' || /^image\//.test(file.type) ? 1600 : 0).then(function (f) {
+    var p = {}; for (var k in meta) p[k] = meta[k];
+    p.file_name = f.name; p.mime_type = f.mime; p.data_base64 = f.b64;
+    return call('files.upload', p);
+  });
+}
+var _thumbCache = {};
+function loadThumbs(root) {
+  $$('[data-thumb]', root || document).forEach(function (el) {
+    var id = el.getAttribute('data-thumb');
+    if (_thumbCache[id]) { el.style.backgroundImage = 'url(' + _thumbCache[id] + ')'; return; }
+    call('files.get', { document_id: id, thumb: true }).then(function (r) {
+      if (!/^image\//.test(r.mime_type)) return;
+      _thumbCache[id] = 'data:' + r.mime_type + ';base64,' + r.data_base64;
+      el.style.backgroundImage = 'url(' + _thumbCache[id] + ')'; el.textContent = '';
+    }, function () { el.textContent = 'нет доступа'; });
+  });
+}
+function b64ToBlobUrl(b64, mime) {
+  var bin = atob(b64), arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([arr], { type: mime }));
+}
+function utf8FromB64(b64) { try { return decodeURIComponent(escape(atob(b64))); } catch (e) { return atob(b64); } }
+/* Просмотр файла: фото — в окне, HTML-отчёт — во фрейме, PDF — во фрейме/новой вкладке */
+A.openFile = function (el) {
+  var id = el.getAttribute('data-id');
+  var m = modal({ title: 'Файл ' + id, wide: true, body: '<div class="skeleton"></div>' });
+  call('files.get', { document_id: id }).then(function (r) {
+    var d = r.document, head = '<div class="row small muted"><span class="mono">' + esc(d.file_name) + '</span><span>· ' + esc(fDT(d.created_at)) + '</span>' + (String(d.is_actual) === 'false' ? '<span class="pill bad">неактуален: ' + esc(d.invalid_reason) + '</span>' : '') + '</div>';
+    if (/^image\//.test(r.mime_type)) m.body.innerHTML = head + '<img alt="" style="width:100%;border-radius:8px" src="data:' + r.mime_type + ';base64,' + r.data_base64 + '">';
+    else if (r.mime_type === 'text/html') { m.body.innerHTML = head + '<iframe title="Документ" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>'; $('iframe', m.body).srcdoc = utf8FromB64(r.data_base64); }
+    else { var url = b64ToBlobUrl(r.data_base64, r.mime_type); m.body.innerHTML = head + '<iframe title="Документ" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:8px" src="' + url + '"></iframe><a class="btn" target="_blank" href="' + url + '">Открыть в новой вкладке</a>'; }
+  }, function (e) { m.body.innerHTML = '<div class="alert bad">' + errText(e) + '</div>'; });
+};
+/* Печать по правилам проекта: window.open + document.write + print */
+function printHtml(html) {
+  var w = window.open('', '_blank');
+  if (!w) { var m = modal({ title: 'Предпросмотр', wide: true, body: '<iframe title="Отчёт" style="width:100%;height:72vh;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>' }); $('iframe', m.body).srcdoc = html; return; }
+  w.document.open(); w.document.write(html); w.document.close(); setTimeout(function () { try { w.print(); } catch (e) { } }, 400);
+}
+
+/* ---------- Навигация ---------- */
+function go(page, params, opts) {
+  if (Object.keys(S.dirty).length && !(opts && opts.force)) {
+    return confirmBox('Есть несохранённые изменения', 'Комментарии, которые ещё не отправлены на сервер, останутся черновиком на этом устройстве. Уйти со страницы?', 'Уйти').then(function () { S.dirty = {}; go(page, params, { force: true }); });
+  }
+  if (!opts || !opts.noPush) S.stack.push({ page: S.page, params: S.params });
+  if (S.stack.length > 30) S.stack.shift();
+  S.page = page; S.params = params || {};
+  lsSet('last_' + S.me.employee_id, { page: page, params: S.params });
+  render();
+}
+function back() { var p = S.stack.pop(); if (p) go(p.page, p.params, { noPush: true }); else go('home', {}, { noPush: true }); }
+A.go = function (el) { var p = el.getAttribute('data-page'), raw = el.getAttribute('data-params'); go(p, raw ? JSON.parse(raw) : {}); closeSide(); };
+A.back = function () { back(); };
+A.reload = function () { render(true); };
+function link(page, params) { return 'data-a="go" data-page="' + page + '" data-params="' + esc(JSON.stringify(params || {})) + '"'; }
+function closeSide() { var s = $('.side'); if (s) s.classList.remove('open'); }
+A.burger = function () { $('.side').classList.toggle('open'); };
+A.theme = function () {
+  var cur = document.documentElement.getAttribute('data-theme');
+  var dark = cur ? cur === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark'); lsSet('theme', dark ? 'light' : 'dark');
+};
+
+function shellHtml() {
+  var me = S.me;
+  var nav = me.menu.map(function (k) { var m = MENU[k]; if (!m) return ''; return '<button data-a="go" data-page="' + k + '" data-k="' + k + '">' + ic(m[1]) + '<span>' + m[0] + '</span><span class="cnt" hidden></span></button>'; }).join('');
+  var tabs = me.role === 'SPECIALIST' ? ['home', 'myvisits', 'tasks', 'lab'] : me.menu.slice(0, 4);
+  var tabbar = '<nav class="tabbar" aria-label="Разделы">' + tabs.map(function (k) { return '<button data-a="go" data-page="' + k + '" data-k="' + k + '">' + ic(MENU[k][1]) + '<span>' + (k === 'home' ? 'Главная' : MENU[k][0].split(' ')[0]) + '</span></button>'; }).join('') + '<button data-a="burger">' + ic('more') + '<span>Ещё</span></button></nav>';
+  return (window.SANLAB_DEMO ? '<div class="demo-bar">Демо-режим: данные вымышленные и хранятся только в этом браузере. <button data-a="demoSwitch">Сменить роль</button><button data-a="demoReset">Сбросить демо-данные</button></div>' : '') +
+    '<div class="shell"><aside class="side"><div class="brand">' + LOGO_MARK + '<div><b>San<i>.</i>Lab</b><small>Безопасность · Контроль · Здоровье</small></div></div><nav class="nav" aria-label="Разделы">' + nav + '</nav>' +
+    '<div class="me"><div class="ava">' + esc(initials(me.full_name)) + '</div><div class="who"><b>' + esc(shortName(me.full_name)) + '</b><span>' + esc(me.role_label) + '</span></div><button data-a="logout" title="Выйти" aria-label="Выйти">' + ic('logout') + '</button></div></aside>' +
+    '<div class="main"><div class="top"><button class="icon-btn burger" data-a="burger" aria-label="Меню">' + ic('menu') + '</button><div style="min-width:0"><h1 id="title"></h1><div class="sub" id="subtitle"></div></div><div class="grow"></div>' +
+    '<label class="search">' + ic('search') + '<input id="gsearch" placeholder="Поиск по ID: VIS-000842" autocomplete="off"></label>' +
+    '<button class="icon-btn" data-a="theme" title="Тема" aria-label="Сменить тему">' + ic('theme') + '</button>' +
+    '<button class="icon-btn" data-a="bell" aria-label="Уведомления">' + ic('bell') + '<span class="dot" id="bellDot" hidden></span></button></div>' +
+    '<div class="content" id="content"></div></div></div>' + tabbar + '<div class="toasts" id="toasts" aria-live="polite"></div>';
+}
+
+function render(soft) {
+  var p = Pages[S.page];
+  if (!p || S.me.menu.indexOf(S.page) < 0 && ['visit', 'client', 'report', 'sample', 'task'].indexOf(S.page) < 0) { S.page = 'home'; p = Pages.home; }
+  $$('[data-k]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-k') === (p.menu || S.page)); });
+  $('#title').textContent = typeof p.title === 'function' ? p.title(S.params) : p.title;
+  $('#subtitle').textContent = '';
+  var c = $('#content');
+  if (!soft) { c.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="height:240px"></div>'; window.scrollTo(0, 0); }
+  var token = S.renderToken = Math.random();
+  Promise.resolve(p.load ? p.load(S.params) : null).then(function (data) {
+    if (token !== S.renderToken) return;
+    S.data = data;
+    c.innerHTML = p.view(data, S.params);
+    if (p.title && typeof p.title === 'function') $('#title').textContent = p.title(S.params, data);
+    if (p.sub) $('#subtitle').textContent = p.sub(data, S.params);
+    if (p.after) p.after(data, S.params, c);
+  }, function (e) {
+    if (token !== S.renderToken) return;
+    c.innerHTML = '<div class="card"><div class="body" style="padding-top:16px"><div class="alert bad">' + errText(e) + '</div><div class="row" style="margin-top:12px"><button class="btn" data-a="back">' + ic('back') + 'Назад</button><button class="btn" data-a="reload">' + ic('refresh') + 'Повторить</button></div></div></div>';
+  });
+}
+
+/* ---------- Уведомления ---------- */
+function pollBell() {
+  call('notifications.mine').then(function (r) {
+    S.unread = r.unread; S.notes = r.rows;
+    var d = $('#bellDot'); if (d) { d.hidden = !r.unread; d.textContent = r.unread > 99 ? '99+' : r.unread; }
+  }, function () { });
+}
+var NOTE_PAGE = { Visits: 'visit', Tasks: 'task', LabSamples: 'sample', Reports: 'report', Finance: 'finance' };
+A.bell = function () {
+  var old = $('.drop'); if (old) { old.remove(); return; }
+  var d = document.createElement('div'); d.className = 'card drop';
+  var rows = S.notes || [];
+  d.innerHTML = '<header><h2>Уведомления</h2><div class="grow"></div>' + (S.unread ? '<button class="btn sm" data-a="readAll">Прочитать все</button>' : '') + '</header><div class="body"><div class="list">' +
+    (rows.length ? rows.slice(0, 30).map(function (n) {
+      var pg = NOTE_PAGE[n.entity_type], prm = {};
+      if (pg === 'visit') prm.visit_id = n.entity_id; if (pg === 'task') prm.task_id = n.entity_id; if (pg === 'sample') prm.sample_id = n.entity_id; if (pg === 'report') prm.report_id = n.entity_id;
+      return '<div class="li" ' + (pg ? link(pg, prm) : '') + '><span class="sev ' + (n.read_at ? '' : 'info') + '"></span><div class="txt"><b>' + esc(n.title) + '</b><div class="t2">' + esc(n.message) + '</div><div class="t2">' + fDT(n.created_at) + ' · <span class="mono">' + esc(n.entity_id) + '</span></div></div></div>';
+    }).join('') : '<div class="empty">Уведомлений нет</div>') + '</div></div>';
+  document.body.appendChild(d);
+  setTimeout(function () { document.addEventListener('click', function h(ev) { if (!d.contains(ev.target)) { d.remove(); document.removeEventListener('click', h); } }); }, 0);
+};
+A.readAll = function () { call('notifications.read', { all: true }).then(function () { var d = $('.drop'); if (d) d.remove(); pollBell(); }); };
+
+/* Глобальный поиск по ID */
+function gsearch(q) {
+  q = String(q || '').trim().toUpperCase();
+  var m = q.match(/^(VIS|CLI|LAB|TSK|REP|DOC|SITE|FIN)-?(\d{1,6})$/);
+  if (!m) { toast('Введите ID, например VIS-000842 или LAB-000219'); return; }
+  var id = m[1] + '-' + ('000000' + m[2]).slice(-6);
+  var map = { VIS: ['visit', 'visit_id'], CLI: ['client', 'client_id'], LAB: ['sample', 'sample_id'], TSK: ['task', 'task_id'], REP: ['report', 'report_id'] };
+  if (m[1] === 'SITE') { var s = siteById(id); if (s.client_id) return go('client', { client_id: s.client_id }); return toast('Объект не найден или недоступен', 'bad'); }
+  if (m[1] === 'DOC') return A.openFile({ getAttribute: function () { return id; } });
+  if (m[1] === 'FIN') return go('finance', { tab: 'ops', q: id });
+  var p = {}; p[map[m[1]][1]] = id; go(map[m[1]][0], p);
+}
+
+/* ---------- Запуск ---------- */
+document.addEventListener('click', function (ev) {
+  var el = ev.target.closest('[data-a]');
+  if (!el) return;
+  var fn = A[el.getAttribute('data-a')];
+  if (fn) { ev.preventDefault(); fn(el, ev); }
+});
+document.addEventListener('change', function (ev) {
+  var el = ev.target.closest('[data-c]'); if (!el) return;
+  var fn = A[el.getAttribute('data-c')]; if (fn) fn(el, ev);
+});
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter' && ev.target.id === 'gsearch') gsearch(ev.target.value);
+  if (ev.key === 'Enter' && ev.target.getAttribute('data-enter')) { var fn = A[ev.target.getAttribute('data-enter')]; if (fn) fn(ev.target, ev); }
+  if (ev.key === 'Escape' && _modalStack.length) _modalStack[_modalStack.length - 1].close();
+});
+window.addEventListener('beforeunload', function (ev) { if (Object.keys(S.dirty).length) { ev.preventDefault(); ev.returnValue = ''; } });
+
+function boot(force) {
+  var th = lsGet('theme'); if (th) document.documentElement.setAttribute('data-theme', th);
+  var root = $('#app');
+  if (window.SANLAB_DEMO && (force || !S.token)) return window.SANLAB_DEMO.login(root);
+  if (!window.SANLAB_DEMO && force) { S.token = ''; try { sessionStorage.removeItem('sanlab_token'); } catch (e) { } }
+  call('auth.mode').then(function (m) {
+    if (!window.SANLAB_DEMO && m.mode === 'PIN' && !S.token) { try { S.token = sessionStorage.getItem('sanlab_token') || ''; } catch (e) { } if (!S.token) return pinLogin(root, m); }
+    return Promise.all([call('auth.me'), call('lookups.get')]).then(function (r) {
+      S.me = r[0]; S.lk = r[1]; S.stack = [];
+      root.innerHTML = shellHtml();
+      var last = lsGet('last_' + S.me.employee_id);
+      S.page = last && S.me.menu.indexOf(last.page) >= 0 ? last.page : 'home'; S.params = last && S.page === last.page ? last.params || {} : {};
+      render(); pollBell();
+      clearInterval(S.poll); S.poll = setInterval(pollBell, 60000);
+    });
+  }).catch(function (e) {
+    if (!window.SANLAB_DEMO && e && (e.code === 'AUTH_REQUIRED' || e.code === 'AUTH_FAILED')) return pinLogin(root, {});
+    root.innerHTML = '<div class="login"><div class="box"><div class="alert bad">' + errText(e) + '</div><p class="muted small">Проверьте, что вы вошли в рабочий Google-аккаунт, и обратитесь к администратору San.Lab.</p></div></div>';
+  });
+}
+function pinLogin(root, m) {
+  root.innerHTML = '<div class="login"><div class="box" style="max-width:420px"><div class="logo">' + LOGO_MARK.replace('<svg', '<svg style="width:52px;height:58px"') + '<b>San<i>.</i>Lab</b></div>' +
+    '<div class="merr"></div>' + formHtml([{ name: 'email', label: 'Рабочий e-mail', type: 'email', full: true, required: true }, { name: 'pin', label: 'PIN-код', type: 'password', inputmode: 'numeric', full: true, required: true }]) +
+    '<button class="btn pri big" data-a="pinGo">Войти</button></div></div>';
+}
+A.pinGo = function (el) {
+  var box = el.closest('.box'), v;
+  try { v = readForm(box, [{ name: 'email', label: 'E-mail', required: true }, { name: 'pin', label: 'PIN', required: true }]); } catch (e) { $('.merr', box).innerHTML = '<div class="alert bad">' + esc(e.message) + '</div>'; return; }
+  el.classList.add('busy');
+  call('auth.login', { email: v.email, pin: v.pin }).then(function (r) { S.token = r.token; try { sessionStorage.setItem('sanlab_token', r.token); } catch (e) { } boot(); },
+    function (e) { el.classList.remove('busy'); $('.merr', box).innerHTML = '<div class="alert bad">' + esc(e.message) + '</div>'; });
+};
+A.logout = function () {
+  S.token = ''; try { sessionStorage.removeItem('sanlab_token'); } catch (e) { }
+  clearInterval(S.poll);
+  if (window.SANLAB_DEMO) return window.SANLAB_DEMO.login($('#app'));
+  $('#app').innerHTML = '<div class="login"><div class="box" style="max-width:420px"><b>Вы вышли из San.Lab.</b><p class="muted">Чтобы выйти из Google-аккаунта, используйте меню аккаунта Google.</p><button class="btn pri" data-a="relogin">Войти снова</button></div></div>';
+};
+A.relogin = function () { boot(); };
+</script>

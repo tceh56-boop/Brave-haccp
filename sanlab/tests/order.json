@@ -1,0 +1,1 @@
+["core/Config.gs","core/Validation.gs","core/Repository.gs","core/AuthService.gs","core/ClientService.gs","core/VisitService.gs","core/ChecklistService.gs","core/FileService.gs","core/ReportService.gs","core/LabService.gs","core/TaskService.gs","core/FinanceService.gs","core/DashboardService.gs","core/Api.gs","core/Seed.gs","demo/MemoryPlatform.js"]

@@ -1,0 +1,389 @@
+<script>
+/* San.Lab — выезды: список, календарь недели, карточка, мобильный чек-лист, фото, пробы, отчёт */
+
+function canDo(action) { var r = { 'visits.create': ['OWNER', 'COORDINATOR'] }[action]; return r ? r.indexOf(S.me.role) >= 0 : false; }
+function periodRange(p) {
+  if (p === 'today') return { from: startOfDayIso(0), to: startOfDayIso(1) };
+  if (p === 'week') return { from: startOfDayIso(-1), to: startOfDayIso(7) };
+  if (p === 'month') return { from: startOfDayIso(-30), to: startOfDayIso(31) };
+  return {};
+}
+
+Pages.visits = {
+  title: 'Выезды и календарь',
+  load: function (p) {
+    var r = periodRange(p.view === 'cal' ? 'cal' : (p.period || 'week'));
+    if (p.view === 'cal') { var w0 = Number(p.week || 0) * 7; var mon = (new Date(todayKey()).getUTCDay() + 6) % 7; r = { from: startOfDayIso(w0 - mon), to: startOfDayIso(w0 - mon + 7) }; }
+    return call('visits.list', { from: r.from, to: r.to, status: p.status, employee_id: p.employee_id, q: p.q, attention: p.attention, asc: true, desc: false });
+  },
+  sub: function (d) { return d.total + ' ' + plural(d.total, 'выезд', 'выезда', 'выездов'); },
+  view: function (d, p) {
+    var per = p.period || 'week', emps = S.lk.employees.filter(function (e) { return e.active && ['SPECIALIST', 'OWNER', 'COORDINATOR', 'QC'].indexOf(e.role) >= 0; });
+    var h = '<div class="filters">' +
+      '<div class="chips">' + [['list', 'Список'], ['cal', 'Неделя']].map(function (x) { return '<button class="' + ((p.view || 'list') === x[0] ? 'on' : '') + '" data-a="vf" data-k="view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      (p.view === 'cal' ? '<div class="chips"><button data-a="vf" data-k="week" data-v="' + (Number(p.week || 0) - 1) + '">←</button><button data-a="vf" data-k="week" data-v="0" class="' + (!Number(p.week) ? 'on' : '') + '">Эта неделя</button><button data-a="vf" data-k="week" data-v="' + (Number(p.week || 0) + 1) + '">→</button></div>'
+        : '<div class="chips">' + [['today', 'Сегодня'], ['week', 'Неделя'], ['month', 'Месяц'], ['all', 'Все']].map(function (x) { return '<button class="' + (per === x[0] ? 'on' : '') + '" data-a="vf" data-k="period" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>') +
+      '<select class="sel" data-c="vfSel" data-k="status" aria-label="Статус">' + opt(dictOpts(S.lk.dict.visit), p.status, 'Все статусы') + '</select>' +
+      (S.me.role !== 'SPECIALIST' ? '<select class="sel" data-c="vfSel" data-k="employee_id" aria-label="Исполнитель">' + opt(emps.map(function (e) { return [e.id, shortName(e.name)]; }), p.employee_id, 'Все исполнители') + '</select>' : '') +
+      '<label class="chips" style="padding:3px 8px"><input type="checkbox" data-c="vfChk" data-k="attention"' + (p.attention ? ' checked' : '') + '> Требуют внимания</label>' +
+      '<div class="grow" style="flex:1"></div>' + (canDo('visits.create') ? '<button class="btn pri" data-a="visitNew">' + ic('plus') + 'Создать выезд</button>' : '') + '</div>';
+    if (p.view === 'cal') return h + Pages.visits.week(d.rows, p);
+    return h + '<section class="card"><div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Дата и время</th><th>Объект</th><th>Услуга</th><th>Исполнитель</th><th>Статус</th><th>ID</th></tr></thead><tbody>' +
+      (d.rows.length ? d.rows.map(function (v) {
+        return '<tr class="click' + (v.attention ? ' att' : '') + '" ' + link('visit', { visit_id: v.visit_id }) + '><td class="num"><b>' + fDay(v.planned_start) + '</b> ' + fT(v.planned_start) + '–' + fT(v.planned_end) + (v.reschedule_count > 0 ? '<span class="t2">перенос ×' + v.reschedule_count + '</span>' : '') + '</td>' +
+          '<td><b>' + esc(v.site_name) + '</b><span class="t2">' + esc(v.client_name) + ' · ' + esc(v.address) + '</span></td><td>' + esc(v.service_name) + '</td><td>' + esc(shortName(v.employee_name)) + '</td>' +
+          '<td>' + vPill(v.status) + (v.is_late_start ? '<span class="t2" style="color:var(--bad)">не начат вовремя</span>' : v.no_report ? '<span class="t2" style="color:var(--bad)">нет отчёта</span>' : v.calendar_sync === 'ERROR' ? '<span class="t2" style="color:var(--bad)">ошибка Calendar</span>' : '') + '</td><td class="mono">' + v.visit_id + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="empty">Выездов по фильтру нет</td></tr>') + '</tbody></table></div></section>';
+  },
+  week: function (rows, p) {
+    var mon = (new Date(todayKey()).getUTCDay() + 6) % 7, days = [];
+    for (var i = 0; i < 7; i++) days.push(dayKey(startOfDayIso(Number(p.week || 0) * 7 - mon + i + 0.5)));
+    var by = {}; rows.forEach(function (v) { (by[dayKey(v.planned_start)] = by[dayKey(v.planned_start)] || []).push(v); });
+    var names = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    return '<div class="card" style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));min-width:1050px">' + days.map(function (k, i) {
+      var list = (by[k] || []).sort(function (a, b) { return a.planned_start < b.planned_start ? -1 : 1; });
+      return '<div style="border-right:1px solid var(--line);min-height:320px' + (k === todayKey() ? ';background:var(--accent-soft)' : '') + '"><div style="padding:10px;border-bottom:1px solid var(--line);font-weight:600">' + names[i] + ' <span class="muted">' + k.slice(8) + '.' + k.slice(5, 7) + '</span></div><div style="padding:8px;display:flex;flex-direction:column;gap:6px">' +
+        list.map(function (v) { return '<button class="kpi" style="padding:8px;gap:2px;box-shadow:none' + (v.attention ? ';border-color:var(--bad)' : '') + '" ' + link('visit', { visit_id: v.visit_id }) + '><b class="num" style="font-size:12px">' + fT(v.planned_start) + '–' + fT(v.planned_end) + '</b><span style="font-size:13px;font-weight:600">' + esc(v.site_name) + '</span><span class="small muted">' + esc(shortName(v.employee_name)) + '</span>' + vPill(v.status) + '</button>'; }).join('') + '</div></div>';
+    }).join('') + '</div></div>';
+  }
+};
+A.vf = function (el) { var p = JSON.parse(JSON.stringify(S.params)); p[el.getAttribute('data-k')] = el.getAttribute('data-v'); S.params = p; render(true); };
+A.vfSel = function (el) { S.params[el.getAttribute('data-k')] = el.value; render(true); };
+A.vfChk = function (el) { S.params[el.getAttribute('data-k')] = el.checked; if (el.checked) S.params.period = 'all'; render(true); };
+
+/* ---------- Создание и перенос ---------- */
+function siteOptions(clientId) { return S.lk.sites.filter(function (s) { return s.active && (!clientId || s.client_id === clientId); }).map(function (s) { return [s.id, s.name + ' — ' + s.address]; }); }
+function execOptions() { return S.lk.employees.filter(function (e) { return e.active && ['SPECIALIST', 'OWNER', 'COORDINATOR', 'QC'].indexOf(e.role) >= 0; }).sort(function (a, b) { return (a.role === 'SPECIALIST' ? 0 : 1) - (b.role === 'SPECIALIST' ? 0 : 1); }).map(function (e) { return [e.id, e.name + (e.role !== 'SPECIALIST' ? ' (' + S.lk.dict.roles[e.role] + ')' : '')]; }); }
+function conflictHandler(e, api, v, submit) {
+  if (e.code !== 'SCHEDULE_CONFLICT') return false;
+  api.error({ message: e.message + '. Проверьте расписание или назначьте с пересечением.' });
+  var b = document.createElement('button'); b.className = 'btn danger'; b.textContent = 'Назначить с пересечением';
+  b.onclick = function () { v.force = true; api.busy(true); submit(v).then(function (r) { api.close(); toast('Сохранено с пересечением', 'ok'); go('visit', { visit_id: r.visit.visit_id }); }, function (e2) { api.busy(false); api.error(e2); }); };
+  $('.merr', api.el).appendChild(b);
+  return true;
+}
+A.visitNew = function (el, ev, preset) {
+  preset = preset || {};
+  var start = new Date(Date.now() + 86400000); start.setMinutes(0, 0, 0); start.setHours(10);
+  var fields = [
+    { name: 'client_id', label: 'Клиент', type: 'select', options: S.lk.clients.filter(function (c) { return c.status === 'ACTIVE'; }).map(function (c) { return [c.id, c.name]; }), empty: 'Все клиенты' },
+    { name: 'site_id', label: 'Объект', type: 'select', required: true, options: siteOptions(preset.client_id), empty: 'Выберите объект' },
+    { name: 'service_id', label: 'Услуга', type: 'select', required: true, options: S.lk.services.filter(function (s) { return s.active; }).map(function (s) { return [s.id, s.name]; }), empty: 'Выберите услугу' },
+    { name: 'employee_id', label: 'Исполнитель', type: 'select', required: true, options: execOptions(), empty: 'Выберите исполнителя' },
+    { name: 'planned_start', label: 'Дата и время', type: 'datetime', required: true, value: start.toISOString() },
+    { name: 'duration_hours', label: 'Длительность, ч', type: 'number', value: 2, step: 0.5 },
+    { name: 'instructions', label: 'Инструкции для исполнителя', type: 'textarea', placeholder: 'Пропускной режим, контакт, особенности объекта, нужные материалы' }
+  ];
+  var submit = function (v) { return call('visits.create', v); };
+  openForm({
+    title: 'Новый выезд', fields: fields, values: preset, okText: 'Назначить',
+    intro: '<div class="alert small">Будут созданы запись выезда, папка в Drive и событие в календаре. Исполнитель получит уведомление.</div>',
+    ready: function (api) {
+      var cs = $('[name=client_id]', api.el), ss = $('[name=site_id]', api.el);
+      cs.addEventListener('change', function () { ss.innerHTML = opt(siteOptions(cs.value), '', 'Выберите объект'); });
+      ss.addEventListener('change', function () { var s = siteById(ss.value); if (s.client_id) cs.value = s.client_id; });
+    },
+    submit: function (v) { delete v.client_id; return submit(v); },
+    onError: function (e, api, v) { return conflictHandler(e, api, v, submit); },
+    done: function (r) { toast('Выезд ' + r.visit.visit_id + ' назначен' + (r.visit.calendar_sync === 'ERROR' ? ', но событие календаря не создано — повторите из карточки' : ''), r.visit.calendar_sync === 'ERROR' ? 'bad' : 'ok'); go('visit', { visit_id: r.visit.visit_id }); }
+  });
+};
+A.visitResched = function () {
+  var v = S.data.visit;
+  var submit = function (x) { x.visit_id = v.visit_id; x.row_version = v.row_version; return call('visits.reschedule', x); };
+  openForm({
+    title: 'Перенос выезда ' + v.visit_id, okText: 'Перенести',
+    fields: [{ name: 'planned_start', label: 'Новое время', type: 'datetime', required: true, value: v.planned_start }, { name: 'employee_id', label: 'Исполнитель', type: 'select', options: execOptions(), value: v.employee_id, required: true },
+      { name: 'reason', label: 'Причина переноса', type: 'textarea', required: true, placeholder: 'Обязательно: история сохраняется' }],
+    submit: submit, onError: function (e, api, x) { return conflictHandler(e, api, x, submit); },
+    done: function () { toast('Перенесено, событие календаря обновлено', 'ok'); render(true); }
+  });
+};
+A.visitCancel = function () {
+  var v = S.data.visit;
+  openForm({ title: 'Отмена выезда ' + v.visit_id, okText: 'Отменить выезд', okTone: 'danger', fields: [{ name: 'reason', label: 'Причина отмены', type: 'textarea', required: true }],
+    submit: function (x) { x.visit_id = v.visit_id; return call('visits.cancel', x); }, done: function () { toast('Выезд отменён'); render(true); } });
+};
+
+/* ---------- Мои выезды (мобильный кабинет) ---------- */
+Pages.myvisits = {
+  title: 'Мои выезды',
+  load: function () { return call('visits.list', { mine: true, from: startOfDayIso(-45), to: startOfDayIso(30), asc: true, desc: false }); },
+  view: function (d, p) {
+    var tab = p.tab || 'today', t = todayKey();
+    var groups = {
+      today: d.rows.filter(function (v) { return dayKey(v.planned_start) === t && v.status !== 'CANCELLED'; }),
+      next: d.rows.filter(function (v) { return dayKey(v.planned_start) > t && ['ASSIGNED', 'RESCHEDULED'].indexOf(v.status) >= 0; }),
+      action: d.rows.filter(function (v) { return ['RETURNED', 'AWAITING_REPORT', 'IN_PROGRESS'].indexOf(v.status) >= 0 || v.is_late_start; }),
+      done: d.rows.filter(function (v) { return ['IN_REVIEW', 'APPROVED', 'CLOSED'].indexOf(v.status) >= 0; }).reverse()
+    };
+    var names = [['today', 'Сегодня'], ['action', 'Нужно действие'], ['next', 'Ближайшие'], ['done', 'Отправленные']];
+    var list = groups[tab];
+    return '<div class="chips" style="align-self:flex-start">' + names.map(function (n) { return '<button class="' + (tab === n[0] ? 'on' : '') + '" data-a="vf" data-k="tab" data-v="' + n[0] + '">' + n[1] + ' <b>' + groups[n[0]].length + '</b></button>'; }).join('') + '</div>' +
+      '<section class="card"><div class="body" style="padding-top:6px">' + (list.length ? '<div class="list">' + list.map(function (v) { return visitLi(v, { day: tab !== 'today' }); }).join('') + '</div>' : emptyLine('Здесь пусто')) + '</div></section>';
+  }
+};
+
+/* ---------- Карточка выезда ---------- */
+Pages.visit = {
+  menu: 'visits',
+  title: function (p, d) { return d ? d.visit.site_name : 'Выезд ' + (p.visit_id || ''); },
+  sub: function (d) { return d.visit.visit_id + ' · ' + d.visit.service_name; },
+  load: function (p) { return call('visits.get', { visit_id: p.visit_id }); },
+  view: function (d, p) {
+    if (S.me.role === 'SPECIALIST') Pages.visit.menu = 'myvisits'; else Pages.visit.menu = 'visits';
+    var v = d.visit, c = d.can, tab = p.tab || (c.edit || c.start ? 'check' : 'info');
+    var answered = d.results.filter(function (r) { return r.result; }).length;
+    var acts = '';
+    if (c.start) acts += '<button class="btn go big" data-a="vStart">' + ic('play') + 'Начать выезд</button>';
+    if (c.finish) acts += '<button class="btn pri big" data-a="vFinish">' + ic('flag') + 'Завершить выезд</button>';
+    if (c.submit) acts += '<button class="btn pri big" data-a="vSubmit">' + ic('send') + 'Отправить на проверку</button>';
+    if (c.review && v.report_id) acts += '<button class="btn pri" ' + link('report', { report_id: v.report_id }) + '>Проверить отчёт</button>';
+    if (c.close) acts += '<button class="btn" data-a="vClose">Закрыть выезд</button>';
+    if (c.reschedule) acts += '<button class="btn" data-a="visitResched">Перенести</button>';
+    if (c.cancel) acts += '<button class="btn danger" data-a="visitCancel">Отменить</button>';
+    if (c.retryCalendar) acts += '<button class="btn danger" data-a="vCal">' + ic('refresh') + 'Повторить синхронизацию Calendar</button>';
+    var lastRep = d.reports[0];
+    var notice = '';
+    if (v.status === 'RETURNED' && lastRep) notice = '<div class="alert bad"><b>Отчёт возвращён на доработку</b> (' + fDT(lastRep.reviewed_at) + '):<br>' + esc(lastRep.review_comment) + '</div>';
+    if (v.calendar_sync === 'ERROR') notice += '<div class="alert warn">Событие календаря не синхронизировано. Выезд сохранён — статус ведётся в San.Lab.</div>';
+    if (v.status_reason && (v.status === 'RESCHEDULED' || v.status === 'CANCELLED')) notice += '<div class="alert">' + esc(v.status_reason) + '</div>';
+    var tabs = [['check', 'Чек-лист ' + answered + '/' + d.items.length], ['photos', 'Фото ' + d.photos.filter(function (x) { return String(x.is_actual) !== 'false'; }).length], ['samples', 'Пробы ' + d.samples.length], ['report', 'Отчёт' + (d.reports.length ? ' v' + d.reports[0].version : '')], ['info', 'Объект'], ['tasks', 'Задачи ' + d.tasks.length]];
+    if (S.me.role !== 'SPECIALIST') tabs.push(['history', 'История']);
+    var head = '<section class="card"><div class="body" style="padding-top:16px;display:flex;flex-direction:column;gap:14px">' +
+      '<div class="rec-head"><button class="back" data-a="back">' + ic('back') + 'Назад</button></div>' +
+      '<div class="rec-head"><div class="grow"><div class="row" style="margin-bottom:6px">' + vPill(v.status) + '<span class="mono muted">' + v.visit_id + '</span></div>' +
+      '<h2>' + esc(v.site_name) + '</h2><div class="muted">' + esc(v.client_name) + ' · ' + esc(v.service_name) + '</div></div>' +
+      '<dl class="kv"><dt>План</dt><dd class="num">' + fDay(v.planned_start) + ', ' + fT(v.planned_start) + '–' + fT(v.planned_end) + '</dd><dt>Факт</dt><dd class="num">' + (v.actual_start ? fT(v.actual_start) + (v.actual_end ? '–' + fT(v.actual_end) : ' — идёт') : '—') + '</dd><dt>Исполнитель</dt><dd>' + esc(v.employee_name) + '</dd></dl></div>' +
+      (d.items.length && v.status !== 'ASSIGNED' && v.status !== 'RESCHEDULED' ? '<div class="progress" title="Заполнено ' + answered + ' из ' + d.items.length + '"><i style="width:' + Math.round(answered / Math.max(1, d.items.length) * 100) + '%"></i></div>' : '') +
+      notice + (acts ? '<div class="actionbar">' + acts + '</div>' : '') + '</div>' +
+      '<div class="tabs" role="tablist">' + tabs.map(function (t) { return '<button class="' + (tab === t[0] ? 'on' : '') + '" data-a="vf" data-k="tab" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="body" id="vtab" style="padding-top:14px">' + (Pages.visit['t_' + tab] || Pages.visit.t_info)(d) + '</div></section>';
+    return head;
+  },
+  after: function (d, p, c) { loadThumbs(c); if (p.tab === 'history') Pages.visit.loadHistory(d); },
+
+  t_info: function (d) {
+    var s = d.site, cl = d.client, v = d.visit;
+    return '<div class="grid g2"><dl class="kv"><dt>Адрес</dt><dd>' + esc(s.address) + '</dd><dt>Контакт на объекте</dt><dd>' + esc(s.contact_name || '—') + (s.contact_phone ? '<br><span class="mono">' + esc(s.contact_phone) + '</span>' : '') + '</dd>' +
+      '<dt>Заказчик</dt><dd>' + esc(cl.legal_name) + (cl.contact_person ? '<br>' + esc(cl.contact_person) + ' <span class="mono">' + esc(cl.contact_phone || '') + '</span>' : '') + '</dd><dt>Чек-лист</dt><dd>' + esc(d.checklist ? d.checklist.name + ', версия ' + d.checklist.version : '—') + '</dd></dl>' +
+      '<div class="stack">' + (v.instructions ? '<div class="alert"><b>Инструкции к выезду</b><br>' + esc(v.instructions) + '</div>' : '') + (s.instructions ? '<div class="alert"><b>Об объекте</b><br>' + esc(s.instructions) + '</div>' : '') +
+      '<a class="btn" target="_blank" rel="noopener" href="https://yandex.ru/maps/?text=' + encodeURIComponent(s.address || '') + '">' + ic('pin') + 'Открыть на карте</a></div></div>';
+  },
+
+  /* ---- Чек-лист ---- */
+  t_check: function (d) {
+    if (!d.items.length) return emptyLine('Чек-лист не назначен');
+    var c = d.can;
+    var res = {}; d.results.forEach(function (r) { res[r.check_item_id] = r; });
+    var miss = {}; (d.missing || []).forEach(function (m) { miss[m.item] = m.text; });
+    var h = '';
+    if (!c.edit && (d.visit.status === 'ASSIGNED' || d.visit.status === 'RESCHEDULED')) h += '<div class="alert">Чек-лист откроется для заполнения после нажатия «Начать выезд» на объекте.</div>';
+    if (c.edit && d.missing && d.missing.length) h += '<div class="alert warn">Осталось заполнить: ' + d.missing.length + '. Пункты с недостающими данными отмечены красной рамкой.</div>';
+    var sec = null;
+    d.items.forEach(function (it, i) {
+      if (it.section !== sec) { sec = it.section; h += '<div class="ck-sec">' + esc(sec || 'Пункты') + '</div>'; }
+      h += Pages.visit.ckItem(d, it, res[it.check_item_id], miss[it.check_item_id], i + 1);
+    });
+    return '<div class="stack" style="gap:8px">' + h + '</div>';
+  },
+  ckItem: function (d, it, r, missText, n) {
+    var c = d.can, cur = r ? r.result : '', draft = lsGet('draft_' + d.visit.visit_id + '_' + it.check_item_id);
+    var photos = d.photos.filter(function (p) { return p.check_item_id === it.check_item_id; });
+    var livePhotos = photos.filter(function (p) { return String(p.is_actual) !== 'false'; });
+    if (String(it.photo_required) === 'true' && cur && cur !== 'NA' && !livePhotos.length && !(r && String(r.photo_waived) === 'true')) missText = 'Обязательное фото не приложено — сделайте снимок';
+    else if (missText && /фото/i.test(missText) && livePhotos.length) missText = '';
+    var needComment = cur === 'NOK' || cur === 'NA' || (draft && draft.result && draft.result !== 'OK');
+    var shownRes = draft && draft.result ? draft.result : cur;
+    var h = '<div class="ck' + (missText && c.edit ? ' miss' : '') + '" id="ck_' + it.check_item_id + '">' +
+      '<div class="q"><span class="muted num" style="width:22px">' + n + '</span><b>' + esc(it.text) + '</b>' + sevTag(it.severity) + (String(it.photo_required) === 'true' ? '<span class="tag" title="Обязательное фото">' + ic('camera').replace('<svg', '<svg style="width:12px;height:12px;vertical-align:-2px"') + ' фото</span>' : '') + '</div>' +
+      '<div class="seg" role="group" aria-label="Результат"' + (c.edit ? '' : ' aria-disabled="true"') + '>' + ['OK', 'NOK', 'NA'].map(function (k) { return '<button class="' + k + (shownRes === k ? ' on' : '') + '" data-a="ckSet" data-item="' + it.check_item_id + '" data-res="' + k + '">' + { OK: 'Соответствует', NOK: 'Нарушение', NA: 'Не применимо' }[k] + '</button>'; }).join('') + '</div>';
+    if (needComment || (r && r.comment)) {
+      var com = draft && draft.comment !== undefined ? draft.comment : (r ? r.comment : '');
+      if (c.edit) {
+        h += '<textarea class="inp" rows="2" data-c="ckDraft" oninput="A.ckDraft(this)" data-item="' + it.check_item_id + '" placeholder="' + (shownRes === 'NA' ? 'Почему не применимо' : 'Что именно нарушено, где, сколько') + '">' + esc(com) + '</textarea>';
+        if (shownRes === 'NOK') h += '<div class="row"><label class="small muted">Критичность</label><select class="sel" data-item="' + it.check_item_id + '" id="sev_' + it.check_item_id + '">' + opt(dictOpts(S.lk.dict.severity), (draft && draft.severity) || (r && r.severity) || it.severity) + '</select></div>';
+        h += '<div class="row"><button class="btn sm pri" data-a="ckSave" data-item="' + it.check_item_id + '">Сохранить ответ</button>' + (draft ? '<span class="saving">черновик не отправлен</span>' : '') + '</div>';
+      } else h += '<div class="small">' + esc(com) + (r && r.result === 'NOK' ? ' ' + sevTag(r.severity) : '') + '</div>';
+    }
+    if (photos.length || (c.edit && cur !== 'NA')) {
+      h += '<div class="thumbs">' + photos.map(function (p) { return '<div class="thumb' + (String(p.is_actual) === 'false' ? ' invalid' : '') + '" data-thumb="' + p.document_id + '" data-a="photoOpen" data-id="' + p.document_id + '" title="' + esc(p.file_name) + '">…' + (String(p.is_actual) === 'false' ? '<span class="x">неактуально</span>' : '') + '</div>'; }).join('') +
+        (c.edit ? '<label class="addph">' + ic('camera') + '<span>Фото</span><input type="file" accept="image/*" capture="environment" multiple hidden data-c="ckPhoto" data-item="' + it.check_item_id + '"></label>' : '') + '</div>';
+    }
+    if (r && String(r.photo_waived) === 'true') h += '<div class="small muted">Фото не требуется: ' + esc(r.photo_waiver_reason) + ' (' + esc(empName(r.photo_waived_by)) + ')</div>';
+    else if (d.can.waivePhoto && String(it.photo_required) === 'true' && r && r.result && r.result !== 'NA' && !photos.filter(function (p) { return String(p.is_actual) !== 'false'; }).length) h += '<div><button class="btn sm" data-a="ckWaive" data-item="' + it.check_item_id + '">Оформить исключение по фото</button></div>';
+    if (missText && c.edit) h += '<div class="small" style="color:var(--bad)">' + esc(missText) + '</div>';
+    return h + '</div>';
+  },
+
+  t_photos: function (d) {
+    var items = {}; d.items.forEach(function (i) { items[i.check_item_id] = i.text; });
+    var h = d.can.edit ? '<div class="row" style="margin-bottom:12px"><label class="btn">' + ic('camera') + 'Общее фото объекта<input type="file" accept="image/*" capture="environment" multiple hidden data-c="ckPhoto" data-item=""></label><span class="small muted">Фото к пунктам добавляйте во вкладке «Чек-лист» — так они привязываются к замечанию.</span></div>' : '';
+    if (!d.photos.length) return h + emptyLine('Фото пока нет');
+    return h + '<div class="thumbs">' + d.photos.map(function (p) {
+      return '<div style="width:150px"><div class="thumb' + (String(p.is_actual) === 'false' ? ' invalid' : '') + '" style="width:150px;height:110px" data-thumb="' + p.document_id + '" data-a="photoOpen" data-id="' + p.document_id + '">…</div><div class="small" style="margin-top:4px">' + esc(items[p.check_item_id] || 'Общее фото') + '</div><div class="small muted">' + fDT(p.created_at) + (String(p.is_actual) === 'false' ? '<br><span style="color:var(--bad)">Неактуально: ' + esc(p.invalid_reason) + '</span>' : '') + '</div></div>';
+    }).join('') + '</div>';
+  },
+
+  t_samples: function (d) {
+    var h = d.can.sample ? '<div class="row" style="margin-bottom:12px"><button class="btn pri" data-a="sampleNew">' + ic('plus') + 'Зарегистрировать пробу</button><span class="small muted">Одна проба — одна запись. Результат вносится только по протоколу лаборатории.</span></div>' : '';
+    if (!d.samples.length) return h + emptyLine('Пробы не регистрировались');
+    return h + '<div class="list">' + d.samples.map(function (s) { return Pages.lab.li(s); }).join('') + '</div>';
+  },
+
+  t_report: function (d) {
+    var h = '<div class="row" style="margin-bottom:12px"><button class="btn" data-a="vPreview">Предпросмотр отчёта</button>' + (d.can.submit ? '<button class="btn pri" data-a="vSubmit">' + ic('send') + 'Отправить на проверку</button>' : '') + '</div>';
+    if (!d.reports.length) return h + emptyLine('Отчёт ещё не отправлялся');
+    return h + '<div class="list">' + d.reports.map(function (r) {
+      return '<div class="li" ' + (S.me.role !== 'SPECIALIST' ? link('report', { report_id: r.report_id }) : '') + '><span class="sev ' + (r.status === 'APPROVED' ? 'ok' : r.status === 'RETURNED' ? 'bad' : 'info') + '"></span><div class="txt"><b>Версия ' + r.version + '</b> · ' + esc(r.status_label) +
+        '<div class="t2">Отправлен ' + fDT(r.submitted_at) + (r.reviewed_at ? ' · решение ' + fDT(r.reviewed_at) : '') + '</div>' + (r.review_comment ? '<div class="t2">Комментарий: ' + esc(r.review_comment) + '</div>' : '') + '</div>' +
+        (r.document_id ? '<button class="btn sm" data-a="openFile" data-id="' + r.document_id + '">' + ic('file') + 'PDF</button>' : '') + '</div>';
+    }).join('') + '</div>' + d.documents.filter(function (x) { return x.document_type === 'REPORT_PDF'; }).map(function (x) { return '<div class="small muted" style="margin-top:6px">' + esc(x.title) + ': <span class="mono">' + esc(x.file_name) + '</span> · ' + esc(x.approval_status) + '</div>'; }).join('');
+  },
+
+  t_tasks: function (d) {
+    if (!d.tasks.length) return emptyLine('Задач по выезду нет');
+    return '<div class="list">' + d.tasks.map(taskLi).join('') + '</div>';
+  },
+  t_history: function () { return '<div id="vhist"><div class="skeleton" style="height:80px"></div></div>'; },
+  loadHistory: function (d) {
+    call('audit.list', { q: d.visit.visit_id, limit: 200 }).then(function (r) { $('#vhist').innerHTML = auditTable(r.rows); }, function (e) { $('#vhist').innerHTML = '<div class="alert">' + esc(e.message) + '</div>'; });
+  }
+};
+
+/* ---------- Действия выезда ---------- */
+function refreshVisit(tab) { if (tab) S.params.tab = tab; render(true); }
+A.vStart = function (el) {
+  el.classList.add('busy');
+  call('visits.start', { visit_id: S.data.visit.visit_id }).then(function (r) { toast(r.already ? 'Выезд уже начат' : 'Выезд начат в ' + fT(r.visit.actual_start), 'ok'); refreshVisit('check'); }, function (e) { el.classList.remove('busy'); showErr(e); });
+};
+A.vFinish = function (el) {
+  if (Object.keys(S.dirty).length) return toast('Сохраните ответы с несохранёнными комментариями', 'bad');
+  el.classList.add('busy');
+  call('visits.finish', { visit_id: S.data.visit.visit_id }).then(function (r) { toast('Выезд завершён в ' + fT(r.visit.actual_end), 'ok'); refreshVisit('report'); },
+    function (e) { el.classList.remove('busy'); showErr(e); if (e.code === 'INCOMPLETE') refreshVisit('check'); });
+};
+A.vSubmit = function () {
+  if (Object.keys(S.dirty).length) return toast('Сохраните ответы с несохранёнными комментариями', 'bad');
+  var v = S.data.visit;
+  call('reports.preview', { visit_id: v.visit_id }).then(function (r) {
+    var m = modal({
+      title: 'Отправка отчёта ' + v.visit_id, wide: true, body: (r.missing.length ? '<div class="alert bad">Отчёт не может быть отправлен:<ul>' + r.missing.map(function (x) { return '<li>' + esc(x.text) + '</li>'; }).join('') + '</ul></div>' : '<div class="alert ok">Обязательные данные заполнены. Проверьте объект, дату и результаты.</div>') + snapshotHtml(r.snapshot),
+      actions: r.missing.length ? [['Закрыть', 'close']] : [['Отмена', 'close'], ['Отправить на проверку', 'ok', 'pri']],
+      on: { ok: function (api) { api.busy(true); call('reports.submit', { visit_id: v.visit_id }).then(function (x) { api.close(); toast(x.already ? 'Отчёт уже на проверке' : 'Отчёт v' + x.report.version + ' отправлен на проверку', 'ok'); refreshVisit('report'); }, function (e) { api.busy(false); api.error(e); }); } }
+    });
+  }, showErr);
+};
+A.vPreview = function () {
+  call('reports.preview', { visit_id: S.data.visit.visit_id }).then(function (r) { modal({ title: 'Предпросмотр отчёта', wide: true, body: snapshotHtml(r.snapshot), actions: [['Закрыть', 'close']] }); }, showErr);
+};
+A.vClose = function (el) { el.classList.add('busy'); call('visits.close', { visit_id: S.data.visit.visit_id }).then(function () { toast('Выезд закрыт', 'ok'); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); }); };
+A.vCal = function (el) { el.classList.add('busy'); call('visits.retryCalendar', { visit_id: S.data.visit.visit_id }).then(function (r) { toast(r.visit.calendar_sync === 'OK' ? 'Календарь синхронизирован' : 'Календарь снова недоступен — ошибка записана', r.visit.calendar_sync === 'OK' ? 'ok' : 'bad'); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); }); };
+
+function snapshotHtml(s) {
+  var lab = S.lk.dict.results, sec = null, n = 0;
+  var rows = s.rows.map(function (r) {
+    var h = '';
+    if (r.section !== sec) { sec = r.section; h += '<tr><td colspan="3" class="ck-sec" style="padding:10px 12px 4px">' + esc(sec) + '</td></tr>'; }
+    n++;
+    return h + '<tr><td class="num muted">' + n + '</td><td>' + esc(r.text) + (r.comment ? '<span class="t2">' + esc(r.comment) + '</span>' : '') + (r.photo_ids.length ? '<span class="t2">Фото: ' + r.photo_ids.length + '</span>' : '') + '</td><td>' + (r.result ? pill(lab[r.result], r.result === 'OK' ? 'ok' : r.result === 'NOK' ? 'bad' : 'mute') + (r.result === 'NOK' ? ' ' + sevTag(r.severity) : '') : '<span class="pill bad">нет ответа</span>') + '</td></tr>';
+  }).join('');
+  return '<dl class="kv"><dt>Заказчик</dt><dd>' + esc(s.client.legal_name) + '</dd><dt>Объект</dt><dd>' + esc(s.site.site_name) + ', ' + esc(s.site.address) + '</dd><dt>Услуга</dt><dd>' + esc(s.service.name) + '</dd><dt>Исполнитель</dt><dd>' + esc(s.employee.full_name) + '</dd><dt>Время</dt><dd>' + fDT(s.visit.actual_start) + ' — ' + fDT(s.visit.actual_end) + '</dd><dt>Итог</dt><dd>соответствует ' + s.totals.ok + ', нарушений ' + s.totals.nok + (s.totals.critical ? ' (критических ' + s.totals.critical + ')' : '') + ', не применимо ' + s.totals.na + '</dd></dl>' +
+    '<div class="tbl-wrap"><table class="tbl"><tbody>' + rows + '</tbody></table></div>' +
+    (s.samples.length ? '<b>Пробы</b><div class="list">' + s.samples.map(function (x) { return '<div class="li"><span class="mono">' + x.sample_id + '</span><div class="txt">' + esc(x.sample_type) + ' — ' + esc(x.sample_point) + '<div class="t2">маркировка ' + esc(x.label_code || '—') + '</div></div></div>'; }).join('') + '</div>' : '');
+}
+
+/* ---------- Чек-лист: ответы, черновики, фото ---------- */
+function ckRefresh(itemId) {
+  var d = S.data, it = d.items.filter(function (x) { return x.check_item_id === itemId; })[0];
+  var r = d.results.filter(function (x) { return x.check_item_id === itemId; })[0];
+  var node = $('#ck_' + itemId); if (!node || !it) return;
+  var miss = (d.missing || []).filter(function (m) { return m.item === itemId; })[0];
+  node.outerHTML = Pages.visit.ckItem(d, it, r, miss && miss.text, d.items.indexOf(it) + 1);
+  loadThumbs($('#ck_' + itemId));
+}
+function ckApply(row) {
+  var d = S.data, i;
+  for (i = 0; i < d.results.length; i++) if (d.results[i].check_item_id === row.check_item_id) { d.results[i] = row; break; }
+  if (i === d.results.length) d.results.push(row);
+  d.missing = (d.missing || []).filter(function (m) { return m.item !== row.check_item_id || (m.code === 'NO_PHOTO' && row.result !== 'NA' && !d.photos.some(function (p) { return p.check_item_id === row.check_item_id && String(p.is_actual) !== 'false'; })); });
+  var answered = d.results.filter(function (x) { return x.result; }).length, bar = $('.progress > i');
+  if (bar) bar.style.width = Math.round(answered / Math.max(1, d.items.length) * 100) + '%';
+}
+function ckSaveCall(itemId, result, comment, severity, btn) {
+  var d = S.data, r = d.results.filter(function (x) { return x.check_item_id === itemId; })[0];
+  if (btn) btn.classList.add('busy');
+  return call('results.save', { visit_id: d.visit.visit_id, check_item_id: itemId, result: result, comment: comment, severity: severity, expected_version: r ? r.row_version : '' }).then(function (row) {
+    delete S.dirty[itemId]; try { localStorage.removeItem('sanlab_draft_' + d.visit.visit_id + '_' + itemId); } catch (e) { }
+    ckApply(row); ckRefresh(itemId);
+  }, function (e) { if (btn) btn.classList.remove('busy'); showErr(e); });
+}
+A.ckSet = function (el) {
+  var item = el.getAttribute('data-item'), res = el.getAttribute('data-res'), d = S.data;
+  if (!d.can.edit) return;
+  var r = d.results.filter(function (x) { return x.check_item_id === item; })[0];
+  if (res === 'OK') { $$('#ck_' + item + ' .seg button').forEach(function (b) { b.classList.toggle('on', b === el); }); return ckSaveCall(item, 'OK', r && r.result === 'OK' ? r.comment : '', '', null); }
+  var key = 'draft_' + d.visit.visit_id + '_' + item, dr = lsGet(key) || {};
+  dr.result = res; if (dr.comment === undefined) dr.comment = r && r.result === res ? r.comment : '';
+  lsSet(key, dr); S.dirty[item] = true; ckRefresh(item);
+  var ta = $('#ck_' + item + ' textarea'); if (ta) ta.focus();
+};
+A.ckDraft = function (el) {
+  var item = el.getAttribute('data-item'), d = S.data, key = 'draft_' + d.visit.visit_id + '_' + item, dr = lsGet(key) || {};
+  if (!dr.result) { var r = d.results.filter(function (x) { return x.check_item_id === item; })[0]; dr.result = r ? r.result : 'NOK'; }
+  dr.comment = el.value; lsSet(key, dr); S.dirty[item] = true;
+};
+A.ckSave = function (el) {
+  var item = el.getAttribute('data-item'), d = S.data, dr = lsGet('draft_' + d.visit.visit_id + '_' + item) || {};
+  var r = d.results.filter(function (x) { return x.check_item_id === item; })[0];
+  var ta = $('#ck_' + item + ' textarea'), sev = $('#sev_' + item);
+  var result = dr.result || (r && r.result), comment = ta ? ta.value.trim() : '';
+  if (!result) return toast('Выберите результат', 'bad');
+  if (result !== 'OK' && !comment) return toast(result === 'NA' ? 'Поясните, почему пункт не применим' : 'Опишите нарушение', 'bad');
+  ckSaveCall(item, result, comment, sev ? sev.value : '', el);
+};
+A.ckPhoto = function (el) {
+  var files = Array.prototype.slice.call(el.files || []), item = el.getAttribute('data-item'), d = S.data;
+  if (!files.length) return;
+  var maxMb = S.lk.settings.photoMaxMb || 8;
+  var holder = el.closest('.thumbs') || el.closest('.row'), info = document.createElement('span'); info.className = 'saving'; holder.appendChild(info);
+  var done = 0, failed = 0;
+  var next = function () {
+    if (!files.length) {
+      info.textContent = failed ? 'Не загружено: ' + failed + '. Повторите.' : '';
+      if (done) { toast('Загружено фото: ' + done + '. Файлы сохранены на сервере.', 'ok'); refreshVisit(item ? 'check' : 'photos'); }
+      return;
+    }
+    var f = files.shift();
+    if (f.size > maxMb * 1048576 * 3) { failed++; toast(f.name + ': файл больше допустимого', 'bad'); return next(); }
+    info.textContent = 'Загрузка ' + (done + failed + 1) + '…';
+    uploadFile(f, { entity_type: 'Visits', entity_id: d.visit.visit_id, document_type: 'PHOTO', check_item_id: item }).then(function () { done++; next(); }, function (e) { failed++; showErr(e); next(); });
+  };
+  next();
+};
+A.photoOpen = function (el) {
+  var id = el.getAttribute('data-id'), d = S.data, p = (d && d.photos || []).filter(function (x) { return x.document_id === id; })[0];
+  if (!p || String(p.is_actual) === 'false' || !d.can || !(d.can.edit || S.me.role === 'QC' || S.me.role === 'OWNER')) return A.openFile(el);
+  var m = modal({ title: 'Фото ' + id, wide: true, body: '<div class="skeleton"></div>', actions: [['Пометить неактуальным', 'inv', 'danger'], ['Закрыть', 'close']],
+    on: { inv: function (api) { api.close(); openForm({ title: 'Пометить фото неактуальным', fields: [{ name: 'reason', label: 'Причина', type: 'textarea', required: true, hint: 'Файл не удаляется: он остаётся в истории с пометкой.' }], okTone: 'danger', okText: 'Пометить',
+      submit: function (v) { return call('files.invalidate', { document_id: id, reason: v.reason }); }, done: function () { toast('Фото помечено неактуальным'); render(true); } }); } } });
+  call('files.get', { document_id: id }).then(function (r) { m.body.innerHTML = '<img alt="" style="width:100%;border-radius:8px" src="data:' + r.mime_type + ';base64,' + r.data_base64 + '"><div class="small muted">' + esc(r.file_name) + ' · ' + fDT(r.document.created_at) + '</div>'; }, function (e) { m.body.innerHTML = '<div class="alert bad">' + esc(e.message) + '</div>'; });
+};
+A.ckWaive = function (el) {
+  var item = el.getAttribute('data-item');
+  openForm({ title: 'Исключение: фото не требуется', fields: [{ name: 'reason', label: 'Основание', type: 'textarea', required: true, hint: 'Исключение фиксируется в журнале с вашим именем.' }],
+    submit: function (v) { return call('results.waivePhoto', { visit_id: S.data.visit.visit_id, check_item_id: item, reason: v.reason }); }, done: function () { toast('Исключение оформлено', 'ok'); render(true); } });
+};
+A.sampleNew = function () {
+  var v = S.data.visit;
+  openForm({
+    title: 'Новая проба · ' + v.visit_id, okText: 'Зарегистрировать',
+    fields: [{ name: 'sample_type', label: 'Тип пробы', type: 'select', required: true, options: S.lk.dict.sampleTypes.map(function (t) { return [t, t]; }), empty: 'Выберите' },
+      { name: 'sample_point', label: 'Точка отбора', required: true, placeholder: 'Руки повара, горячий цех' },
+      { name: 'label_code', label: 'Маркировка', placeholder: v.visit_id.replace('VIS-', 'M') + '-1', hint: 'Сверьте с образцом и сопроводительными документами' },
+      { name: 'collected', label: 'Проба уже отобрана (время — сейчас)', type: 'checkbox', value: true }],
+    submit: function (x) { var p = { visit_id: v.visit_id, sample_type: x.sample_type, sample_point: x.sample_point, label_code: x.label_code }; if (x.collected && x.label_code) p.collected_at = new Date().toISOString(); return call('lab.register', p); },
+    done: function (s) { toast('Проба ' + s.sample_id + ' зарегистрирована', 'ok'); refreshVisit('samples'); }
+  });
+};
+</script>

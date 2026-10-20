@@ -1,0 +1,235 @@
+<script>
+/* San.Lab — контроль качества, лаборатория, задачи */
+
+/* ---------- Проверка отчётов ---------- */
+Pages.review = {
+  title: 'Проверка отчётов',
+  load: function (p) { return call('reports.queue', { status: p.tab === 'done' ? 'APPROVED,RETURNED' : 'SUBMITTED' }); },
+  sub: function (d) { return d.length + ' ' + plural(d.length, 'отчёт', 'отчёта', 'отчётов'); },
+  view: function (d, p) {
+    return '<div class="chips" style="align-self:flex-start"><button class="' + (p.tab !== 'done' ? 'on' : '') + '" data-a="vf" data-k="tab" data-v="queue">Ожидают проверки</button><button class="' + (p.tab === 'done' ? 'on' : '') + '" data-a="vf" data-k="tab" data-v="done">Решения</button></div>' +
+      '<section class="card">' + (d.length ? Pages.review.table(d) : emptyLine(p.tab === 'done' ? 'Решений пока нет' : 'Очередь пуста — все отчёты проверены')) + '</section>';
+  },
+  table: function (rows) {
+    return '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Отчёт</th><th>Объект</th><th>Исполнитель</th><th>Итог</th><th>Отправлен</th><th>Статус</th></tr></thead><tbody>' + rows.map(function (r) {
+      return '<tr class="click' + (r.overdue ? ' att' : '') + '" ' + link('report', { report_id: r.report_id }) + '><td><span class="mono">' + r.visit_id + '</span> <span class="muted">v' + r.version + '</span></td><td><b>' + esc(r.site_name) + '</b><span class="t2">' + esc(r.service_name) + '</span></td><td>' + esc(shortName(r.employee_name)) + (r.own ? '<span class="t2">ваш выезд — утверждает другой</span>' : '') + '</td>' +
+        '<td class="num">' + (r.totals.nok ? '<b style="color:var(--bad)">' + r.totals.nok + ' наруш.</b>' + (r.totals.critical ? ' · ' + r.totals.critical + ' крит.' : '') : '<span style="color:var(--ok)">без нарушений</span>') + '</td><td class="num">' + fDT(r.submitted_at) + (r.overdue ? '<span class="t2" style="color:var(--bad)">срок проверки истёк</span>' : '') + '</td><td>' + pill(r.status_label, r.status === 'APPROVED' ? 'ok' : r.status === 'RETURNED' ? 'bad' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+};
+
+Pages.report = {
+  menu: 'review',
+  title: function (p, d) { return d ? 'Отчёт ' + d.report.visit_id + ' · v' + d.report.version : 'Отчёт'; },
+  sub: function (d) { return d.snapshot.site.site_name + ' · ' + d.snapshot.employee.full_name; },
+  load: function (p) { return call('reports.get', { report_id: p.report_id }); },
+  view: function (d) {
+    var r = d.report, s = d.snapshot, lab = S.lk.dict.results, changed = {}; d.changed_items.forEach(function (x) { changed[x] = true; });
+    var sec = null, n = 0;
+    var rows = s.rows.map(function (row) {
+      var h = '';
+      if (row.section !== sec) { sec = row.section; h += '<div class="ck-sec">' + esc(sec) + '</div>'; }
+      n++;
+      return h + '<div class="ck" style="' + (changed[row.check_item_id] ? 'border-color:var(--accent);' : '') + (row.result === 'NOK' ? 'background:var(--bad-soft)' : '') + '"><div class="q"><span class="muted num" style="width:22px">' + n + '</span><b>' + esc(row.text) + '</b>' + (changed[row.check_item_id] ? '<span class="tag">изменено</span>' : '') + pill(lab[row.result] || 'нет ответа', row.result === 'OK' ? 'ok' : row.result === 'NOK' ? 'bad' : 'mute') + (row.result === 'NOK' ? sevTag(row.severity) : '') + '</div>' +
+        (row.comment ? '<div class="small">' + esc(row.comment) + '</div>' : '') + (row.photo_waived ? '<div class="small muted">Фото не требуется: ' + esc(row.photo_waiver_reason) + '</div>' : '') +
+        (row.photo_ids.length ? '<div class="thumbs">' + row.photo_ids.map(function (id) { return '<div class="thumb" data-thumb="' + id + '" data-a="openFile" data-id="' + id + '">…</div>'; }).join('') + '</div>' : '') + '</div>';
+    }).join('');
+    var gen = s.general_photos && s.general_photos.length ? '<div class="ck-sec">Общие фото</div><div class="thumbs">' + s.general_photos.map(function (id) { return '<div class="thumb" data-thumb="' + id + '" data-a="openFile" data-id="' + id + '">…</div>'; }).join('') + '</div>' : '';
+    var acts = d.can_review ? '<button class="btn go" data-a="repApprove">Утвердить</button><button class="btn danger" data-a="repReturn">Вернуть на доработку</button>' : '';
+    var ownNote = r.status === 'SUBMITTED' && !d.can_review && S.me.role !== 'SPECIALIST' ? '<div class="alert warn">Утвердить этот отчёт может другой проверяющий: включена независимая проверка или у вас нет права.</div>' : '';
+    return '<div class="grid g-main"><section class="card"><header><button class="back" data-a="back">' + ic('back') + 'Назад</button><div class="grow"></div>' + pill(r.status_label, r.status === 'APPROVED' ? 'ok' : r.status === 'RETURNED' ? 'bad' : '') + '</header><div class="body stack" style="gap:8px">' +
+      ownNote + (r.review_comment ? '<div class="alert ' + (r.status === 'RETURNED' ? 'bad' : 'ok') + '"><b>' + (r.status === 'RETURNED' ? 'Возвращён' : 'Комментарий проверяющего') + ':</b> ' + esc(r.review_comment) + '</div>' : '') +
+      (d.changed_items.length ? '<div class="alert">Изменено по сравнению с предыдущей версией: ' + d.changed_items.length + ' ' + plural(d.changed_items.length, 'пункт', 'пункта', 'пунктов') + ' (выделены рамкой).</div>' : '') + rows + gen + '</div></section>' +
+      '<div class="stack" style="gap:16px"><section class="card"><header><h2>Проверка</h2></header><div class="body stack">' +
+      '<dl class="kv"><dt>Заказчик</dt><dd>' + esc(s.client.legal_name) + '</dd><dt>Объект</dt><dd>' + esc(s.site.site_name) + '<br><span class="muted small">' + esc(s.site.address) + '</span></dd><dt>Услуга</dt><dd>' + esc(s.service.name) + '</dd><dt>Исполнитель</dt><dd>' + esc(s.employee.full_name) + '</dd>' +
+      '<dt>Факт</dt><dd class="num">' + fDT(s.visit.actual_start) + ' — ' + fT(s.visit.actual_end) + '</dd><dt>Чек-лист</dt><dd>' + esc(s.checklist.name) + ' v' + s.checklist.version + '</dd><dt>Итог</dt><dd>OK ' + s.totals.ok + ' · нарушений ' + s.totals.nok + ' · н/п ' + s.totals.na + '</dd><dt>Проверяющий</dt><dd>' + esc(r.reviewer_name || '—') + '</dd>' +
+      (r.review_due_date && r.status === 'SUBMITTED' ? '<dt>Срок проверки</dt><dd>' + fDT(r.review_due_date) + '</dd>' : '') + '</dl>' +
+      (acts ? '<div class="actionbar">' + acts + '</div>' : '') +
+      '<div class="row"><button class="btn sm" ' + link('visit', { visit_id: r.visit_id }) + '>Карточка выезда</button><button class="btn sm" data-a="repPrint">Печатная форма</button>' + (r.document_id ? '<button class="btn sm" data-a="openFile" data-id="' + r.document_id + '">' + ic('file') + 'PDF</button>' : '') + '</div></div></section>' +
+      (s.samples.length ? '<section class="card"><header><h2>Пробы</h2></header><div class="body list">' + s.samples.map(function (x) { return '<div class="li" ' + link('sample', { sample_id: x.sample_id }) + '><span class="mono">' + x.sample_id + '</span><div class="txt">' + esc(x.sample_type) + ' — ' + esc(x.sample_point) + '</div></div>'; }).join('') + '</div></section>' : '') +
+      '<section class="card"><header><h2>Версии</h2></header><div class="body list">' + d.versions.map(function (v) { return '<div class="li" ' + link('report', { report_id: v.report_id }) + '><span class="sev ' + (v.status === 'APPROVED' ? 'ok' : v.status === 'RETURNED' ? 'bad' : 'info') + '"></span><div class="txt"><b>v' + v.version + '</b> · ' + esc(S.lk.dict.report[v.status]) + '<div class="t2">' + fDT(v.submitted_at) + (v.review_comment ? ' · ' + esc(v.review_comment) : '') + '</div></div></div>'; }).join('') + '</div></section></div></div>';
+  },
+  after: function (d, p, c) { loadThumbs(c); }
+};
+A.repApprove = function () {
+  var r = S.data.report, s = S.data.snapshot;
+  var critNoTask = s.totals.critical ? '<div class="alert warn">В отчёте ' + s.totals.critical + ' критических замечаний. Корректирующие задачи созданы автоматически при отправке — проверьте ответственных и сроки во вкладке «Задачи» выезда.</div>' : '';
+  openForm({ title: 'Утвердить отчёт ' + r.visit_id + ' v' + r.version, okText: 'Утвердить', okTone: 'go', intro: critNoTask + '<div class="alert small">Будет сформирован PDF и запись в «Документах». Утверждённая версия не перезаписывается.</div>',
+    fields: [{ name: 'comment', label: 'Комментарий (необязательно)', type: 'textarea' }],
+    submit: function (v) { return call('reports.approve', { report_id: r.report_id, comment: v.comment }); },
+    done: function (x) { toast('Отчёт утверждён' + (x.document ? ', PDF создан' : ', PDF будет создан фоновой задачей') + (x.visit_closed ? '. Выезд закрыт.' : ''), 'ok'); go('review', {}, { noPush: true }); } });
+};
+A.repReturn = function () {
+  var r = S.data.report;
+  openForm({ title: 'Вернуть отчёт на доработку', okText: 'Вернуть', okTone: 'danger',
+    fields: [{ name: 'comment', label: 'Что именно исправить', type: 'textarea', required: true, rows: 4, placeholder: 'Пункт 5: на фото не читается термометр. Переснимите и укажите температуру.' }, { name: 'due_date', label: 'Срок исправления', type: 'datetime', value: addDaysIso(1) }],
+    submit: function (v) { v.report_id = r.report_id; return call('reports.return', v); },
+    done: function () { toast('Отчёт возвращён, исполнителю создана задача', 'ok'); go('review', {}, { noPush: true }); } });
+};
+A.repPrint = function () { call('reports.html', { report_id: S.data.report.report_id }).then(function (r) { printHtml(r.html); }, showErr); };
+
+/* ---------- Лаборатория ---------- */
+Pages.lab = {
+  title: 'Лаборатория',
+  load: function (p) { return call('lab.list', { status: p.status, overdue: p.overdue, q: p.q }); },
+  sub: function (d) { return d.total + ' ' + plural(d.total, 'проба', 'пробы', 'проб'); },
+  li: function (s) {
+    return '<div class="li" ' + link('sample', { sample_id: s.sample_id }) + '><span class="sev ' + (s.overdue ? 'bad' : s.status === 'RESULT' || s.due_soon ? 'warn' : s.status === 'REVIEWED' ? 'ok' : 'info') + '"></span><div class="txt"><b>' + esc(s.sample_type) + '</b> — ' + esc(s.sample_point) + '<div class="t2"><span class="mono">' + s.sample_id + '</span> · ' + esc(s.site_name) + (s.result_due_at && s.status !== 'REVIEWED' ? ' · результат до ' + fD(s.result_due_at) : '') + (s.decision_label ? ' · ' + esc(s.decision_label) : '') + '</div></div>' + lPill(s.status, s.overdue) + '</div>';
+  },
+  statusStrip: function (by) {
+    return '<div class="row" style="margin-bottom:8px">' + S.lk.dict.labFlow.slice(0, 6).map(function (k) { return '<span class="tag">' + esc(S.lk.dict.lab[k]) + ': <b>' + (by[k] || 0) + '</b></span>'; }).join('') + '</div>';
+  },
+  view: function (d, p) {
+    var st = [['', 'Все активные'], ['COLLECTED,REGISTERED', 'Отобраны'], ['SENT,ACCEPTED,AWAITING', 'В лаборатории'], ['RESULT', 'К рассмотрению'], ['REVIEWED', 'Проверены']];
+    var rows = p.status ? d.rows : d.rows.filter(function (s) { return ['REVIEWED', 'CANCELLED'].indexOf(s.status) < 0; });
+    return '<div class="filters"><div class="chips">' + st.map(function (x) { return '<button class="' + ((p.status || '') === x[0] && !p.overdue ? 'on' : '') + '" data-a="labF" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '<button class="' + (p.overdue ? 'on' : '') + '" data-a="labOver">Просроченные</button></div>' +
+      '<input class="inp" placeholder="ID, протокол, маркировка" value="' + esc(p.q || '') + '" data-enter="labQ"></div>' +
+      '<section class="card"><div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Проба</th><th>Объект</th><th>Отбор</th><th>Лаборатория</th><th>Срок результата</th><th>Статус</th></tr></thead><tbody>' +
+      (rows.length ? rows.map(function (s) {
+        return '<tr class="click' + (s.overdue ? ' att' : '') + '" ' + link('sample', { sample_id: s.sample_id }) + '><td><b>' + esc(s.sample_type) + '</b><span class="t2"><span class="mono">' + s.sample_id + '</span> · ' + esc(s.sample_point) + '</span></td><td>' + esc(s.site_name) + '<span class="t2 mono">' + s.visit_id + '</span></td><td class="num">' + fDT(s.collected_at) + '<span class="t2">' + esc(s.label_code) + '</span></td><td>' + esc(s.lab_name || '—') + '<span class="t2">' + esc(s.lab_order_no) + '</span></td><td class="num">' + (s.result_due_at ? fD(s.result_due_at) : '—') + '</td><td>' + lPill(s.status, s.overdue) + (s.decision_label ? '<span class="t2">' + esc(s.decision_label) + '</span>' : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="empty">Проб по фильтру нет</td></tr>') + '</tbody></table></div></section>';
+  }
+};
+A.labF = function (el) { S.params.status = el.getAttribute('data-v'); S.params.overdue = false; render(true); };
+A.labOver = function () { S.params.overdue = !S.params.overdue; S.params.status = ''; render(true); };
+A.labQ = function (el) { S.params.q = el.value; render(true); };
+
+var LAB_FIELDS = {
+  COLLECTED: [{ name: 'collected_at', label: 'Время отбора', type: 'datetime', required: true }, { name: 'label_code', label: 'Маркировка', required: true }],
+  SENT: [{ name: 'lab_name', label: 'Лаборатория', required: true, value: 'ИЛЦ ФБУЗ «Центр гигиены и эпидемиологии»' }, { name: 'sent_at', label: 'Передана', type: 'datetime', required: true }],
+  ACCEPTED: [{ name: 'accepted_at', label: 'Принята', type: 'datetime', required: true }, { name: 'lab_order_no', label: 'Номер заказа', required: true }],
+  AWAITING: [{ name: 'result_due_at', label: 'Ожидаемый срок результата', type: 'datetime', hint: 'Пусто — по типу пробы из настроек' }, { name: 'responsible_id', label: 'Ответственный', type: 'select', options: [] }],
+  RESULT: [{ name: 'file', label: 'Протокол лаборатории (оригинал)', type: 'file', required: true, accept: 'application/pdf,image/*' }, { name: 'protocol_no', label: 'Номер протокола', required: true }, { name: 'result_date', label: 'Дата результата', type: 'datetime', required: true }, { name: 'result_summary', label: 'Кратко из протокола', type: 'textarea', hint: 'Не переписывайте протокол — только ключевые показатели' }]
+};
+Pages.sample = {
+  menu: 'lab',
+  title: function (p, d) { return d ? d.sample_type + ' · ' + d.sample_id : 'Проба'; },
+  load: function (p) { return call('lab.list', { q: p.sample_id }).then(function (r) { var s = r.rows.filter(function (x) { return x.sample_id === p.sample_id; })[0]; if (!s) throw { message: 'Проба: запись не найдена или нет доступа' }; return s; }); },
+  sub: function (s) { return s.site_name + ' · выезд ' + s.visit_id; },
+  view: function (s) {
+    var flow = S.lk.dict.labFlow, i = flow.indexOf(s.status), role = S.me.role;
+    var steps = '<div class="steps">' + flow.map(function (k, j) { return '<div class="' + (j < i || s.status === 'REVIEWED' ? 'done' : j === i ? 'cur' : '') + '">' + esc(S.lk.dict.lab[k]) + '</div>'; }).join('') + '</div>';
+    var next = s.next_status, acts = '';
+    if (s.status === 'CANCELLED') acts = '';
+    else if (s.status === 'RESULT') { if (['LAB', 'QC', 'OWNER'].indexOf(role) >= 0) acts = '<button class="btn pri" data-a="labReview">Рассмотреть результат</button>'; }
+    else if (next && next !== 'REVIEWED') {
+      var specOk = role === 'SPECIALIST' ? ['COLLECTED', 'SENT'].indexOf(next) >= 0 : ['LAB', 'OWNER'].indexOf(role) >= 0;
+      if (specOk) acts = '<button class="btn pri" data-a="labNext" data-to="' + next + '">→ ' + esc(S.lk.dict.lab[next]) + '</button>' + (s.status === 'SENT' && role !== 'SPECIALIST' ? '<button class="btn" data-a="labNext" data-to="AWAITING">Сразу «Ожидает результат»</button>' : '');
+    }
+    if (['LAB', 'OWNER'].indexOf(role) >= 0 && ['REVIEWED', 'CANCELLED'].indexOf(s.status) < 0) acts += '<button class="btn danger" data-a="labCancel">Отменить пробу</button>';
+    return '<section class="card"><header><button class="back" data-a="back">' + ic('back') + 'Назад</button><div class="grow"></div>' + lPill(s.status, s.overdue) + '</header><div class="body stack" style="gap:16px">' + steps +
+      (s.overdue ? '<div class="alert bad">Срок результата прошёл (' + fD(s.result_due_at) + '). Свяжитесь с лабораторией и зафиксируйте новую дату.</div>' : '') +
+      '<div class="grid g2"><dl class="kv"><dt>Тип</dt><dd>' + esc(s.sample_type) + '</dd><dt>Точка отбора</dt><dd>' + esc(s.sample_point) + '</dd><dt>Маркировка</dt><dd class="mono">' + esc(s.label_code || '—') + '</dd><dt>Отбор</dt><dd>' + fDT(s.collected_at) + (s.collected_by_name ? ', ' + esc(shortName(s.collected_by_name)) : '') + '</dd><dt>Выезд</dt><dd><a href="#" ' + link('visit', { visit_id: s.visit_id }) + ' class="mono">' + s.visit_id + '</a></dd></dl>' +
+      '<dl class="kv"><dt>Лаборатория</dt><dd>' + esc(s.lab_name || '—') + '</dd><dt>Передана</dt><dd>' + fDT(s.sent_at) + '</dd><dt>Заказ</dt><dd>' + esc(s.lab_order_no || '—') + '</dd><dt>Срок результата</dt><dd>' + fDT(s.result_due_at) + '</dd><dt>Ответственный</dt><dd>' + esc(s.responsible_name || '—') + '</dd>' +
+      '<dt>Протокол</dt><dd>' + (s.result_file_id ? '<a href="#" data-a="openFile" data-id="' + s.result_file_id + '">' + esc(s.protocol_no) + '</a> от ' + fD(s.result_date) : '—') + '</dd>' + (s.result_summary ? '<dt>Кратко</dt><dd>' + esc(s.result_summary) + '</dd>' : '') +
+      (s.decision ? '<dt>Решение</dt><dd><b>' + esc(s.decision_label) + '</b>' + (s.decision_comment ? '<br>' + esc(s.decision_comment) : '') + '</dd>' : '') + (s.task_id ? '<dt>Задача</dt><dd><a href="#" ' + link('task', { task_id: s.task_id }) + ' class="mono">' + s.task_id + '</a></dd>' : '') + (s.status_reason ? '<dt>Причина</dt><dd>' + esc(s.status_reason) + '</dd>' : '') + '</dl></div>' +
+      (acts ? '<div class="actionbar">' + acts + '</div>' : '') + '<p class="small muted" style="margin:0">Система ведёт сроки и документы. Санитарная интерпретация результата выполняется компетентным специалистом по утверждённым критериям.</p></div></section>';
+  }
+};
+A.labNext = function (el) {
+  var s = S.data, to = el.getAttribute('data-to');
+  var fields = (LAB_FIELDS[to] || []).map(function (f) { var c = {}; for (var k in f) c[k] = f[k]; if (c.type === 'datetime' && c.name !== 'result_due_at') c.value = new Date().toISOString(); return c; });
+  if (to === 'AWAITING') fields[1].options = S.lk.employees.filter(function (e) { return e.active && ['LAB', 'QC', 'OWNER'].indexOf(e.role) >= 0; }).map(function (e) { return [e.id, e.name]; });
+  if (to === 'COLLECTED') fields[1].value = s.label_code;
+  var go2 = function (p) { p.sample_id = s.sample_id; p.to = to; return call('lab.advance', p); };
+  if (!fields.length) { el.classList.add('busy'); return go2({}).then(function () { render(true); }, function (e) { el.classList.remove('busy'); showErr(e); }); }
+  openForm({ title: S.lk.dict.lab[to] + ' · ' + s.sample_id, fields: fields, okText: 'Сохранить',
+    submit: function (v) {
+      if (to !== 'RESULT') return go2(v);
+      return uploadFile(v.file, { entity_type: 'LabSamples', entity_id: s.sample_id, document_type: 'LAB_PROTOCOL', document_no: v.protocol_no }).then(function (doc) {
+        return go2({ protocol_no: v.protocol_no, result_date: v.result_date, result_summary: v.result_summary, result_file_id: doc.document_id });
+      });
+    }, done: function () { toast('Статус пробы обновлён', 'ok'); render(true); } });
+};
+A.labReview = function () {
+  var s = S.data;
+  openForm({ title: 'Решение по результату ' + s.sample_id, okText: 'Зафиксировать решение',
+    intro: '<div class="alert small">Протокол: ' + esc(s.protocol_no) + (s.result_summary ? ' — ' + esc(s.result_summary) : '') + '. Решение принимает специалист; при отклонении создаётся корректирующая задача с обязательной проверкой.</div>',
+    fields: [{ name: 'decision', label: 'Решение', type: 'select', required: true, options: dictOpts(S.lk.dict.labDecisions), empty: 'Выберите' }, { name: 'decision_comment', label: 'Обоснование и требуемые действия', type: 'textarea' },
+      { name: 'task_responsible_id', label: 'Ответственный за устранение (при отклонении)', type: 'select', options: S.lk.employees.filter(function (e) { return e.active; }).map(function (e) { return [e.id, e.name]; }), empty: 'Исполнитель выезда' },
+      { name: 'priority', label: 'Приоритет задачи', type: 'select', options: dictOpts(S.lk.dict.priority), value: 'HIGH' }],
+    submit: function (v) { v.sample_id = s.sample_id; return call('lab.review', v); },
+    done: function (r) { toast(r.task ? 'Решение сохранено, создана задача ' + r.task.task_id : 'Решение сохранено', 'ok'); render(true); } });
+};
+A.labCancel = function () {
+  openForm({ title: 'Отмена пробы', okTone: 'danger', okText: 'Отменить пробу', fields: [{ name: 'reason', label: 'Причина', type: 'textarea', required: true }],
+    submit: function (v) { return call('lab.cancel', { sample_id: S.data.sample_id, reason: v.reason }); }, done: function () { render(true); } });
+};
+
+/* ---------- Задачи ---------- */
+Pages.tasks = {
+  title: 'Задачи и корректирующие действия',
+  load: function (p) {
+    var f = p.filter || (S.me.role === 'QC' ? 'verify' : 'mine');
+    var q = { q: p.q };
+    if (f === 'mine') { q.mine = true; q.status = 'NEW,IN_PROGRESS,ON_CHECK'; }
+    if (f === 'open') q.status = 'NEW,IN_PROGRESS,ON_CHECK';
+    if (f === 'verify') q.to_verify = true;
+    if (f === 'overdue') q.overdue = true;
+    if (f === 'critical') { q.priority = 'CRITICAL'; q.status = 'NEW,IN_PROGRESS,ON_CHECK'; }
+    if (f === 'closed') q.status = 'CLOSED,CANCELLED';
+    return call('tasks.list', q);
+  },
+  sub: function (d) { return d.total + ' ' + plural(d.total, 'задача', 'задачи', 'задач'); },
+  view: function (d, p) {
+    var f = p.filter || (S.me.role === 'QC' ? 'verify' : 'mine');
+    var fl = [['mine', 'Мои'], ['open', 'Все открытые'], ['verify', 'На проверку мне'], ['overdue', 'Просроченные'], ['critical', 'Критические'], ['closed', 'Закрытые']];
+    var canCreate = ['OWNER', 'COORDINATOR', 'QC', 'LAB', 'FINANCE'].indexOf(S.me.role) >= 0;
+    return '<div class="filters"><div class="chips">' + fl.map(function (x) { return '<button class="' + (f === x[0] ? 'on' : '') + '" data-a="vf" data-k="filter" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div><div style="flex:1"></div>' + (canCreate ? '<button class="btn pri" data-a="taskNew">' + ic('plus') + 'Поручение</button>' : '') + '</div>' +
+      '<section class="card"><div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Задача</th><th>Источник</th><th>Ответственный</th><th>Срок</th><th>Приоритет</th><th>Статус</th></tr></thead><tbody>' +
+      (d.rows.length ? d.rows.map(function (t) {
+        return '<tr class="click' + (t.overdue ? ' att' : '') + '" ' + link('task', { task_id: t.task_id }) + '><td><b>' + esc(t.title) + '</b><span class="t2"><span class="mono">' + t.task_id + '</span>' + (t.site_name ? ' · ' + esc(t.site_name) : '') + '</span></td><td>' + esc(t.source_label) + '<span class="t2 mono">' + esc(t.source_id) + '</span></td><td>' + esc(shortName(t.responsible_name)) + '</td>' +
+          '<td class="num">' + fD(t.due_date) + (t.overdue ? '<span class="t2" style="color:var(--bad)">просрочена</span>' : '') + '</td><td>' + prioTag(t.priority) + (String(t.verification_required) === 'true' ? '<span class="t2">с проверкой</span>' : '') + '</td><td>' + tPill(t.status) + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="empty">Задач нет</td></tr>') + '</tbody></table></div></section>';
+  }
+};
+A.taskNew = function () {
+  openForm({ title: 'Новое поручение', okText: 'Создать',
+    fields: [{ name: 'title', label: 'Конкретное действие', required: true, full: true }, { name: 'description', label: 'Ожидаемый результат', type: 'textarea' },
+      { name: 'responsible_id', label: 'Ответственный', type: 'select', required: true, options: S.lk.employees.filter(function (e) { return e.active; }).map(function (e) { return [e.id, e.name]; }), empty: 'Выберите' },
+      { name: 'due_date', label: 'Срок', type: 'datetime', required: true, value: addDaysIso(3) }, { name: 'priority', label: 'Приоритет', type: 'select', options: dictOpts(S.lk.dict.priority), value: 'NORMAL' },
+      { name: 'source_type', label: 'Источник', type: 'select', options: [['INTERNAL', 'Внутреннее поручение'], ['CLIENT', 'Запрос клиента'], ['DOCUMENT', 'Срок документа']], value: 'INTERNAL' },
+      { name: 'site_id', label: 'Объект (если относится)', type: 'select', options: S.lk.sites.map(function (s) { return [s.id, s.name]; }) },
+      { name: 'verification_required', label: 'Нужна независимая проверка выполнения', type: 'checkbox' }],
+    submit: function (v) { return call('tasks.create', v); }, done: function (t) { toast('Задача ' + t.task_id + ' создана', 'ok'); go('task', { task_id: t.task_id }); } });
+};
+Pages.task = {
+  menu: 'tasks',
+  title: function (p, d) { return d ? d.task_id : 'Задача'; },
+  load: function (p) { return call('tasks.list', { q: p.task_id }).then(function (r) { var t = r.rows.filter(function (x) { return x.task_id === p.task_id; })[0]; if (!t) throw { message: 'Задача: запись не найдена или нет доступа' }; return t; }); },
+  view: function (t) {
+    var me = S.me.employee_id, mine = t.responsible_id === me, acts = '';
+    var verif = String(t.verification_required) === 'true';
+    if (mine && t.status === 'NEW') acts += '<button class="btn" data-a="taskStart">Взять в работу</button>';
+    if (mine && (t.status === 'NEW' || t.status === 'IN_PROGRESS')) acts += '<button class="btn pri" data-a="taskSubmit">' + (verif ? 'Отметить выполнение' : 'Выполнено') + '</button>';
+    var indep = S.lk.settings.independentReview;
+    if (t.status === 'ON_CHECK' && ['OWNER', 'QC', 'COORDINATOR', 'LAB'].indexOf(S.me.role) >= 0 && !(indep && mine)) acts += '<button class="btn go" data-a="taskVerify">Подтвердить и закрыть</button><button class="btn danger" data-a="taskReject">Вернуть в работу</button>';
+    if (['NEW', 'IN_PROGRESS', 'ON_CHECK'].indexOf(t.status) >= 0 && ['OWNER', 'COORDINATOR'].indexOf(S.me.role) >= 0) acts += '<button class="btn danger" data-a="taskCancel">Отменить</button>';
+    var srcLink = t.visit_id ? '<a href="#" class="mono" ' + link('visit', { visit_id: t.visit_id }) + '>' + t.visit_id + '</a>' : '';
+    if (t.source_type === 'LAB') srcLink = '<a href="#" class="mono" ' + link('sample', { sample_id: t.source_id }) + '>' + t.source_id + '</a>';
+    if (t.source_type === 'REPORT_REVIEW' || t.source_type === 'REPORT_RETURN') srcLink = '<a href="#" class="mono" ' + link(S.me.role === 'SPECIALIST' ? 'visit' : 'report', S.me.role === 'SPECIALIST' ? { visit_id: t.visit_id } : { report_id: t.source_id }) + '>' + t.source_id + '</a>';
+    return '<section class="card"><header><button class="back" data-a="back">' + ic('back') + 'Назад</button><div class="grow"></div>' + prioTag(t.priority) + tPill(t.status) + '</header><div class="body stack" style="gap:14px">' +
+      '<h2 style="margin:0;font-size:19px">' + esc(t.title) + '</h2>' + (t.description ? '<div class="alert">' + esc(t.description) + '</div>' : '') +
+      (t.overdue ? '<div class="alert bad">Срок прошёл ' + fD(t.due_date) + (t.escalated_at ? '. Эскалировано руководителю ' + fD(t.escalated_at) + '.' : '') + '</div>' : '') +
+      '<div class="grid g2"><dl class="kv"><dt>Источник</dt><dd>' + esc(t.source_label) + ' ' + srcLink + '</dd><dt>Объект</dt><dd>' + esc(t.site_name || '—') + '</dd><dt>Ответственный</dt><dd>' + esc(t.responsible_name) + '</dd><dt>Срок</dt><dd>' + fDT(t.due_date) + '</dd><dt>Проверка</dt><dd>' + (verif ? 'обязательная независимая' : 'не требуется') + '</dd></dl>' +
+      '<dl class="kv"><dt>Результат</dt><dd>' + esc(t.evidence_comment || '—') + '</dd><dt>Подтверждение</dt><dd>' + (t.evidence_file_id ? '<a href="#" data-a="openFile" data-id="' + t.evidence_file_id + '">' + esc(t.evidence_file_id) + '</a>' : '—') + '</dd>' +
+      (t.verified_by ? '<dt>Проверил</dt><dd>' + esc(t.verified_by_name) + ', ' + fDT(t.verified_at) + '</dd>' : '') + (t.verification_comment ? '<dt>Комментарий проверки</dt><dd>' + esc(t.verification_comment) + '</dd>' : '') + (t.cancel_reason ? '<dt>Причина отмены</dt><dd>' + esc(t.cancel_reason) + '</dd>' : '') + '</dl></div>' +
+      (acts ? '<div class="actionbar">' + acts + '</div>' : '') + '</div></section>';
+  }
+};
+A.taskStart = function (el) { el.classList.add('busy'); call('tasks.start', { task_id: S.data.task_id }).then(function () { render(true); }, function (e) { el.classList.remove('busy'); showErr(e); }); };
+A.taskSubmit = function () {
+  var t = S.data, verif = String(t.verification_required) === 'true';
+  openForm({ title: verif ? 'Отметить выполнение' : 'Закрыть задачу', okText: verif ? 'Передать на проверку' : 'Закрыть',
+    intro: verif ? '<div class="alert small">Задачу закроет проверяющий после подтверждения. ' + (t.priority === 'CRITICAL' ? 'Для критической задачи файл-подтверждение обязателен.' : 'Приложите фото или документ.') + '</div>' : '',
+    fields: [{ name: 'evidence_comment', label: 'Что сделано', type: 'textarea', required: true }, { name: 'file', label: 'Подтверждение (фото, документ)', type: 'file', accept: 'image/*,application/pdf', required: verif && t.priority === 'CRITICAL' }],
+    submit: function (v) {
+      var send = function (fid) { return call('tasks.submit', { task_id: t.task_id, evidence_comment: v.evidence_comment, evidence_file_id: fid || '' }); };
+      if (!v.file) return send('');
+      return uploadFile(v.file, { entity_type: 'Tasks', entity_id: t.task_id, document_type: 'EVIDENCE' }).then(function (d) { return send(d.document_id); });
+    }, done: function (r) { toast(r.task.status === 'ON_CHECK' ? 'Передано на проверку' : 'Задача закрыта', 'ok'); render(true); } });
+};
+A.taskVerify = function () { openForm({ title: 'Подтвердить выполнение', okText: 'Закрыть задачу', okTone: 'go', fields: [{ name: 'comment', label: 'Результат проверки', type: 'textarea', required: true }], submit: function (v) { return call('tasks.verify', { task_id: S.data.task_id, comment: v.comment }); }, done: function () { toast('Задача закрыта', 'ok'); render(true); } }); };
+A.taskReject = function () { openForm({ title: 'Вернуть в работу', okText: 'Вернуть', okTone: 'danger', fields: [{ name: 'comment', label: 'Что не так', type: 'textarea', required: true }], submit: function (v) { return call('tasks.reject', { task_id: S.data.task_id, comment: v.comment }); }, done: function () { render(true); } }); };
+A.taskCancel = function () { openForm({ title: 'Отменить задачу', okText: 'Отменить задачу', okTone: 'danger', fields: [{ name: 'reason', label: 'Причина', type: 'textarea', required: true }], submit: function (v) { return call('tasks.cancel', { task_id: S.data.task_id, reason: v.reason }); }, done: function () { render(true); } }); };
+</script>

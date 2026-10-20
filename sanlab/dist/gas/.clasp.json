@@ -1,0 +1,25 @@
+{
+  "scriptId": "ВСТАВЬТЕ_ID_ПРОЕКТА",
+  "rootDir": ".",
+  "filePushOrder": [
+    "Config.gs",
+    "Validation.gs",
+    "Repository.gs",
+    "AuthService.gs",
+    "ClientService.gs",
+    "VisitService.gs",
+    "ChecklistService.gs",
+    "FileService.gs",
+    "ReportService.gs",
+    "LabService.gs",
+    "TaskService.gs",
+    "FinanceService.gs",
+    "DashboardService.gs",
+    "Api.gs",
+    "Seed.gs",
+    "Code.gs",
+    "SheetsStore.gs",
+    "GoogleIntegrations.gs",
+    "Setup.gs"
+  ]
+}

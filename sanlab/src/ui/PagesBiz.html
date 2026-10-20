@@ -1,0 +1,321 @@
+<script>
+/* San.Lab — клиенты, финансы, документы, аналитика, сотрудники, настройки, аудит */
+
+/* ---------- Клиенты и объекты ---------- */
+var CLIENT_FIELDS = [
+  { name: 'legal_name', label: 'Наименование', required: true, full: true, placeholder: 'ООО «…»' }, { name: 'inn', label: 'ИНН', inputmode: 'numeric' },
+  { name: 'status', label: 'Статус', type: 'select', options: [], value: 'ACTIVE' }, { name: 'contact_person', label: 'Контактное лицо' }, { name: 'contact_phone', label: 'Телефон', type: 'tel' },
+  { name: 'contact_email', label: 'E-mail', type: 'email' }, { name: 'manager_id', label: 'Ответственный менеджер', type: 'select', options: [] },
+  { name: 'legal_address', label: 'Юридический адрес', full: true }, { name: 'notes', label: 'Заметки', type: 'textarea' }];
+function clientFields() {
+  return CLIENT_FIELDS.map(function (f) { var c = {}; for (var k in f) c[k] = f[k]; if (c.name === 'status') c.options = dictOpts(S.lk.dict.client); if (c.name === 'manager_id') c.options = S.lk.employees.filter(function (e) { return e.active && ['OWNER', 'COORDINATOR'].indexOf(e.role) >= 0; }).map(function (e) { return [e.id, e.name]; }); return c; });
+}
+function reloadLookups() { return call('lookups.get').then(function (l) { S.lk = l; }); }
+Pages.clients = {
+  title: 'Клиенты и объекты',
+  load: function (p) { return call('clients.list', { q: p.q, includeArchived: p.arch }); },
+  sub: function (d) { return d.length + ' ' + plural(d.length, 'клиент', 'клиента', 'клиентов'); },
+  view: function (d, p) {
+    var adm = ['OWNER', 'COORDINATOR'].indexOf(S.me.role) >= 0, fin = d.length && d[0].debt !== undefined;
+    return '<div class="filters"><input class="inp" style="min-width:240px" placeholder="Название, ИНН, контакт" value="' + esc(p.q || '') + '" data-enter="clQ"><label class="chips" style="padding:3px 8px"><input type="checkbox" data-c="clArch"' + (p.arch ? ' checked' : '') + '> Показать архив</label><div style="flex:1"></div>' + (adm ? '<button class="btn pri" data-a="clientNew">' + ic('plus') + 'Создать клиента</button>' : '') + '</div>' +
+      '<section class="card"><div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Клиент</th><th>ИНН</th><th>Контакт</th><th class="r">Объекты</th><th>Менеджер</th>' + (fin ? '<th class="r">Долг</th>' : '') + '<th>Статус</th></tr></thead><tbody>' +
+      (d.length ? d.map(function (c) {
+        return '<tr class="click" ' + link('client', { client_id: c.client_id }) + '><td><b>' + esc(c.legal_name) + '</b><span class="t2 mono">' + c.client_id + '</span></td><td class="mono">' + esc(c.inn || '—') + '</td><td>' + esc(c.contact_person || '—') + '<span class="t2">' + esc(c.contact_phone || '') + '</span></td><td class="r">' + c.sites_count + '</td><td>' + esc(shortName(c.manager_name)) + '</td>' +
+          (fin ? '<td class="r num">' + (c.debt ? '<b>' + money(c.debt) + '</b>' : '<span class="muted">—</span>') + '</td>' : '') + '<td>' + pill(S.lk.dict.client[c.status], c.status === 'ACTIVE' ? 'ok' : 'mute') + '</td></tr>';
+      }).join('') : '<tr><td colspan="7" class="empty">Клиентов не найдено</td></tr>') + '</tbody></table></div></section>';
+  }
+};
+A.clQ = function (el) { S.params.q = el.value; render(true); };
+A.clArch = function (el) { S.params.arch = el.checked; render(true); };
+A.clientNew = function (el, ev, cur) {
+  openForm({ title: cur ? 'Клиент ' + cur.client_id : 'Новый клиент', fields: clientFields(), values: cur || { status: 'ACTIVE', manager_id: S.me.employee_id }, wide: true,
+    intro: cur ? '' : '<div class="alert small">Система присвоит ID, проверит дубли по ИНН и названию и создаст папку клиента в Drive.</div>',
+    submit: function (v) { if (cur) { v.client_id = cur.client_id; v.row_version = cur.row_version; } return call('clients.save', v); },
+    done: function (c) { reloadLookups().then(function () { toast('Сохранено: ' + c.client_id, 'ok'); go('client', { client_id: c.client_id }, { noPush: !!cur }); }); } });
+};
+Pages.client = {
+  menu: 'clients',
+  title: function (p, d) { return d ? d.client.legal_name : 'Клиент'; },
+  sub: function (d) { return d.client.client_id + (d.client.inn ? ' · ИНН ' + d.client.inn : ''); },
+  load: function (p) { return call('clients.get', { client_id: p.client_id }); },
+  view: function (d) {
+    var c = d.client, adm = ['OWNER', 'COORDINATOR'].indexOf(S.me.role) >= 0;
+    var sites = '<div class="list">' + (d.sites.length ? d.sites.map(function (s) {
+      return '<div class="li"><span class="sev ' + (String(s.active) === 'false' ? '' : 'ok') + '"></span><div class="txt"><b>' + esc(s.site_name) + '</b> <span class="mono muted small">' + s.site_id + '</span><div class="t2">' + esc(s.address) + '</div><div class="t2">' + esc(s.contact_name || '') + ' ' + esc(s.contact_phone || '') + (s.service_frequency ? ' · ' + esc(s.service_frequency) : '') + (s.drive_folder_id ? ' · папка Drive ✓' : ' · <span style="color:var(--bad)">папка не создана</span>') + '</div></div>' +
+        (adm && String(s.active) !== 'false' ? '<button class="btn sm" data-a="visitFromSite" data-id="' + s.site_id + '">Выезд</button><button class="btn sm" data-a="siteEdit" data-id="' + s.site_id + '">Изменить</button>' : '') + '</div>';
+    }).join('') : emptyLine('Объектов нет')) + '</div>';
+    var contracts = d.contracts.length ? '<div class="list">' + d.contracts.map(function (k) { return '<div class="li"><span class="sev ' + (k.status === 'ACTIVE' ? 'ok' : '') + '"></span><div class="txt"><b>№ ' + esc(k.number) + '</b> · ' + esc(S.lk.dict.contract[k.status]) + '<div class="t2">' + fD(k.start_date) + ' — ' + fD(k.end_date) + (k.amount ? ' · ' + money(k.amount) : '') + '</div><div class="t2">' + esc(k.terms) + '</div></div>' + (adm ? '<button class="btn sm" data-a="contractEdit" data-id="' + k.contract_id + '">Изменить</button>' : '') + '</div>'; }).join('') + '</div>' : emptyLine('Договоров нет');
+    var fin = d.finance ? '<div class="kpis" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + kpi('Начислено', money(d.finance.accrued)) + kpi('Оплачено', money(d.finance.paid)) + kpi('Выставлено счетов', money(d.finance.invoiced)) + kpi('Задолженность', money(d.finance.debt), '', d.finance.debt ? 'warn' : 'good') + '</div>' : '';
+    return '<div class="row"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + (adm ? '<button class="btn" data-a="clientEdit">Изменить</button><button class="btn" data-a="siteNew">' + ic('plus') + 'Объект</button><button class="btn" data-a="contractNew">' + ic('plus') + 'Договор</button>' + (c.status !== 'ARCHIVED' ? '<button class="btn danger" data-a="clientArchive">В архив</button>' : '') : '') + '</div>' +
+      '<div class="grid g-main"><div class="stack" style="gap:16px">' + card('Объекты', sites) + card('Выезды', d.visits.length ? '<div class="list">' + d.visits.slice(0, 15).map(function (v) { return visitLi(v, { day: true }); }).join('') + '</div>' : emptyLine('Выездов не было')) + '</div>' +
+      '<div class="stack" style="gap:16px">' + card('Реквизиты', '<dl class="kv"><dt>Статус</dt><dd>' + pill(S.lk.dict.client[c.status], c.status === 'ACTIVE' ? 'ok' : 'mute') + '</dd><dt>ИНН</dt><dd class="mono">' + esc(c.inn || '—') + '</dd><dt>Контакт</dt><dd>' + esc(c.contact_person || '—') + '<br>' + esc(c.contact_phone || '') + ' ' + esc(c.contact_email || '') + '</dd><dt>Адрес</dt><dd>' + esc(c.legal_address || '—') + '</dd><dt>Папка Drive</dt><dd>' + (c.drive_folder_id ? 'создана' : '—') + '</dd>' + (c.notes ? '<dt>Заметки</dt><dd>' + esc(c.notes) + '</dd>' : '') + '</dl>') +
+      (S.me.role !== 'SPECIALIST' ? card('Договоры', contracts) : '') + (fin ? card('Расчёты', fin) : '') +
+      (d.documents.length ? card('Документы', '<div class="list">' + d.documents.map(docLi).join('') + '</div>') : '') + '</div></div>';
+  }
+};
+A.clientEdit = function () { A.clientNew(null, null, S.data.client); };
+A.clientArchive = function () {
+  openForm({ title: 'Перевести клиента в архив', okTone: 'danger', okText: 'В архив', intro: '<div class="alert small">Запись не удаляется: история выездов, документов и расчётов сохраняется.</div>', fields: [{ name: 'reason', label: 'Причина', type: 'textarea', required: true }],
+    submit: function (v) { return call('clients.archive', { client_id: S.data.client.client_id, reason: v.reason }); }, done: function () { render(true); } });
+};
+function siteFields(clientId) {
+  return [{ name: 'site_name', label: 'Название объекта', required: true }, { name: 'address', label: 'Адрес', required: true }, { name: 'contact_name', label: 'Контакт на объекте' }, { name: 'contact_phone', label: 'Телефон', type: 'tel' },
+    { name: 'service_frequency', label: 'Периодичность обслуживания', placeholder: '2 раза в месяц' }, { name: 'contract_id', label: 'Договор', type: 'select', options: S.lk.contracts.filter(function (k) { return k.client_id === clientId; }).map(function (k) { return [k.id, '№ ' + k.number]; }) },
+    { name: 'service_ids', label: 'Услуги по объекту', type: 'checks', full: true, options: S.lk.services.filter(function (s) { return s.active; }).map(function (s) { return [s.id, s.name]; }) },
+    { name: 'instructions', label: 'Особенности объекта', type: 'textarea', placeholder: 'Пропускной режим, санитарный день, парковка' }];
+}
+A.siteNew = function (el, ev, cur) {
+  var cid = S.data.client.client_id;
+  openForm({ title: cur ? 'Объект ' + cur.site_id : 'Новый объект', wide: true, fields: siteFields(cid), values: cur || {},
+    submit: function (v) { v.client_id = cid; if (cur) { v.site_id = cur.site_id; v.row_version = cur.row_version; v.active = cur.active; } return call('sites.save', v); },
+    done: function (s) { reloadLookups().then(function () { toast('Объект ' + s.site_id + ' сохранён' + (s.drive_folder_id ? ', папка Drive создана' : ''), 'ok'); render(true); }); } });
+};
+A.siteEdit = function (el) { var s = S.data.sites.filter(function (x) { return x.site_id === el.getAttribute('data-id'); })[0]; A.siteNew(el, null, s); };
+A.visitFromSite = function (el) { var s = siteById(el.getAttribute('data-id')); A.visitNew(el, null, { client_id: s.client_id, site_id: s.id }); };
+A.contractNew = function (el, ev, cur) {
+  var cid = S.data.client.client_id;
+  openForm({ title: cur ? 'Договор № ' + cur.number : 'Новый договор', fields: [{ name: 'number', label: 'Номер', required: true }, { name: 'status', label: 'Статус', type: 'select', options: dictOpts(S.lk.dict.contract), value: 'ACTIVE' }, { name: 'start_date', label: 'Начало', type: 'date', required: true }, { name: 'end_date', label: 'Окончание', type: 'date' }, { name: 'amount', label: 'Сумма по договору, ₽', type: 'number' }, { name: 'terms', label: 'Условия', type: 'textarea' }],
+    values: cur || { start_date: new Date().toISOString() },
+    submit: function (v) { v.client_id = cid; if (cur) { v.contract_id = cur.contract_id; v.row_version = cur.row_version; } return call('contracts.save', v); },
+    done: function () { reloadLookups().then(function () { toast('Договор сохранён', 'ok'); render(true); }); } });
+};
+A.contractEdit = function (el) { A.contractNew(el, null, S.data.contracts.filter(function (x) { return x.contract_id === el.getAttribute('data-id'); })[0]); };
+
+/* ---------- Финансы ---------- */
+Pages.finance = {
+  title: 'Финансы',
+  load: function (p) {
+    var tab = p.tab || 'summary';
+    var from = p.from || startOfDayIso(-30), to = p.to || startOfDayIso(1);
+    if (tab === 'summary' || tab === 'unbilled') return call('finance.summary', { from: from, to: to }).then(function (s) { return { tab: tab, s: s }; });
+    var q = { q: p.q };
+    if (tab === 'invoices') q.operation_type = 'INVOICE';
+    if (tab === 'expenses') q.operation_type = 'EXPENSE';
+    return call('finance.list', q).then(function (r) { return { tab: tab, r: r }; });
+  },
+  view: function (d, p) {
+    var tabs = [['summary', 'Сводка'], ['invoices', 'Счета'], ['ops', 'Все операции'], ['expenses', 'Расходы'], ['unbilled', 'Не начислено']];
+    var canEdit = ['OWNER', 'FINANCE'].indexOf(S.me.role) >= 0 || (S.me.menu.indexOf('finance') >= 0 && false);
+    var h = '<div class="filters"><div class="chips">' + tabs.map(function (t) { return '<button class="' + (d.tab === t[0] ? 'on' : '') + '" data-a="vf" data-k="tab" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div><div style="flex:1"></div>' +
+      (canEdit ? ['accrue', 'invoice', 'payment', 'expense', 'adjust'].map(function (k) { return '<button class="btn sm' + (k === 'payment' ? ' pri' : '') + '" data-a="finOp" data-op="' + k + '">' + { accrue: 'Начисление', invoice: 'Счёт', payment: 'Поступление', expense: 'Расход', adjust: 'Корректировка' }[k] + '</button>'; }).join('') : '') + '</div>';
+    if (d.tab === 'summary') return h + Pages.finance.summary(d.s);
+    if (d.tab === 'unbilled') return h + card('Утверждённые выезды без начисления', d.s.unbilled_visits.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Выезд</th><th>Клиент</th><th>Услуга</th><th class="r">Цена</th><th></th></tr></thead><tbody>' + d.s.unbilled_visits.map(function (u) {
+      return '<tr><td><span class="mono">' + u.visit_id + '</span><span class="t2">' + fD(u.date) + '</span></td><td>' + esc(u.client_name) + '<span class="t2">' + esc(u.site_name) + '</span></td><td>' + esc(u.service_name) + '</td><td class="r num">' + money(u.price) + '</td><td>' + (canEdit ? '<button class="btn sm" data-a="finAccrueVisit" data-id="' + u.visit_id + '">Начислить</button>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : emptyLine('Все утверждённые выезды начислены'));
+    var rows = d.r.rows;
+    return h + '<section class="card"><header><input class="inp" placeholder="Клиент, номер счёта, основание" value="' + esc(p.q || '') + '" data-enter="finQ"><div class="grow"></div><span class="small muted">' + rows.length + ' ' + plural(rows.length, 'операция', 'операции', 'операций') + '</span></header><div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Дата</th><th>Операция</th><th>Клиент</th><th>Основание</th><th class="r">Сумма</th>' + (d.tab === 'invoices' ? '<th class="r">Оплачено</th><th class="r">Остаток</th>' : '') + '<th>Статус</th><th></th></tr></thead><tbody>' +
+      (rows.length ? rows.map(function (f) {
+        var neg = f.operation_type === 'EXPENSE' || (f.operation_type === 'ADJUSTMENT' && f.amount < 0);
+        var act = '';
+        if (canEdit && f.operation_type === 'INVOICE' && f.outstanding > 0) act = '<button class="btn sm" data-a="finPay" data-id="' + f.finance_id + '">Оплата</button>';
+        if (S.me.role === 'OWNER' && f.operation_type === 'ADJUSTMENT' && f.payment_status === 'PENDING') act = '<button class="btn sm go" data-a="finAdjOk" data-id="' + f.finance_id + '">Утвердить</button><button class="btn sm danger" data-a="finAdjNo" data-id="' + f.finance_id + '">Отклонить</button>';
+        return '<tr' + (f.overdue ? ' class="att"' : '') + '><td class="num">' + fD(f.operation_date) + '<span class="t2 mono">' + f.finance_id + '</span></td><td>' + esc(f.type_label) + (f.invoice_no ? '<span class="t2">' + esc(f.invoice_no) + '</span>' : '') + '</td><td>' + esc(f.client_name || '—') + '</td><td>' + esc(f.basis || f.category || '') + (f.category ? '<span class="t2">' + esc(f.category) + '</span>' : '') + '</td>' +
+          '<td class="r num"' + (neg ? ' style="color:var(--bad)"' : '') + '>' + (neg && f.operation_type === 'EXPENSE' ? '−' : '') + money(f.amount) + '</td>' + (d.tab === 'invoices' ? '<td class="r num">' + money(f.paid) + '</td><td class="r num"><b>' + money(f.outstanding) + '</b>' + (f.overdue ? '<span class="t2" style="color:var(--bad)">срок ' + fD(f.due_date) + '</span>' : f.due_date ? '<span class="t2">срок ' + fD(f.due_date) + '</span>' : '') + '</td>' : '') +
+          '<td>' + (f.status_label ? pill(f.status_label, { PAID: 'ok', PARTIAL: 'warn', UNPAID: f.overdue ? 'bad' : '', PENDING: 'warn', APPROVED: 'ok', REJECTED: 'mute', POSTED: 'mute' }[f.payment_status]) : '') + '</td><td>' + act + '</td></tr>';
+      }).join('') : '<tr><td colspan="9" class="empty">Операций нет</td></tr>') + '</tbody></table></div></section>';
+  },
+  summary: function (s) {
+    var h = '<div class="kpis">' + kpi('Начислено за 30 дней', money(s.accrued)) + kpi('Поступило', money(s.received), '', 'good') + kpi('Расходы', money(s.expenses)) + kpi('Прибыль (кассовая)', money(s.profit_cash), 'поступления − расходы', s.profit_cash < 0 ? 'bad' : '') +
+      kpi('Дебиторская задолженность', money(s.receivable), 'на ' + fD(s.generated_at), '', 'finance', { tab: 'invoices' }) + kpi('Просрочено', money(s.overdue_total), s.overdue.length + ' ' + plural(s.overdue.length, 'счёт', 'счёта', 'счетов'), s.overdue.length ? 'bad' : 'good', 'finance', { tab: 'invoices' }) + '</div>';
+    var exp = Object.keys(s.expenses_by_category).map(function (k) { return [k, s.expenses_by_category[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+    var maxE = exp.length ? exp[0][1] : 1;
+    var srv = Object.keys(s.by_service).map(function (k) { return [k, s.by_service[k]]; }).sort(function (a, b) { return b[1] - a[1]; }), maxS = srv.length ? srv[0][1] : 1;
+    h += '<div class="grid g-main"><div class="stack" style="gap:16px">' + card('Начислено и поступило, 12 месяцев', barChart(s.series)) +
+      card('По клиентам', '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Клиент</th><th class="r">Начислено</th><th class="r">Поступило</th><th class="r">Долг</th></tr></thead><tbody>' + s.by_client.map(function (c) { return '<tr class="click" ' + link('client', { client_id: c.client_id }) + '><td>' + esc(c.client_name) + '</td><td class="r num">' + money(c.accrued) + '</td><td class="r num">' + money(c.received) + '</td><td class="r num">' + (c.debt ? '<b>' + money(c.debt) + '</b>' : '—') + '</td></tr>'; }).join('') + '</tbody></table></div>') + '</div>' +
+      '<div class="stack" style="gap:16px">' + card('Просроченные счета', s.overdue.length ? '<div class="list">' + s.overdue.map(function (o) { return '<div class="li"><span class="sev bad"></span><div class="txt"><b>' + esc(o.client_name) + '</b><div class="t2">' + esc(o.invoice_no) + ' · срок ' + fD(o.due_date) + ' · ' + o.days + ' дн.</div></div><b class="num">' + money(o.outstanding) + '</b></div>'; }).join('') + '</div>' : emptyLine('Просрочек нет')) +
+      card('Расходы по категориям', exp.length ? exp.map(function (e) { return '<div class="hbar"><span>' + esc(e[0]) + '</span><span class="track"><i style="width:' + Math.round(e[1] / maxE * 100) + '%"></i></span><span class="num" style="text-align:right">' + money(e[1]) + '</span></div>'; }).join('') : emptyLine('Расходов за период нет')) +
+      card('Начислено по услугам', srv.length ? srv.map(function (e) { return '<div class="hbar"><span>' + esc(e[0]) + '</span><span class="track"><i style="width:' + Math.round(e[1] / maxS * 100) + '%;background:var(--s2)"></i></span><span class="num" style="text-align:right">' + money(e[1]) + '</span></div>'; }).join('') : emptyLine('Нет начислений')) +
+      '<p class="small muted" style="margin:0">' + esc(s.rules) + ' Сформировано ' + fDT(s.generated_at) + '. Управленческий учёт: сверяйте с первичными документами и банком.</p></div></div>';
+    return h;
+  },
+  after: function (d, p, c) { bindChart(c); }
+};
+A.finQ = function (el) { S.params.q = el.value; render(true); };
+function clientOpts() { return S.lk.clients.map(function (c) { return [c.id, c.name]; }); }
+A.finOp = function (el, ev, preset) {
+  var op = el.getAttribute('data-op'), today = new Date().toISOString(), F = [];
+  var cl = { name: 'client_id', label: 'Клиент', type: 'select', required: op !== 'expense' && op !== 'payment', options: clientOpts(), empty: 'Выберите клиента' };
+  var con = { name: 'contract_id', label: 'Договор', type: 'select', options: S.lk.contracts.map(function (k) { return [k.id, '№ ' + k.number]; }) };
+  if (op === 'accrue') F = [cl, con, { name: 'service_id', label: 'Услуга', type: 'select', options: S.lk.services.map(function (s) { return [s.id, s.name]; }) }, { name: 'amount', label: 'Сумма, ₽', type: 'number', required: true }, { name: 'operation_date', label: 'Дата', type: 'date', required: true, value: today }, { name: 'basis', label: 'Основание', required: true, full: true }];
+  if (op === 'invoice') F = [cl, con, { name: 'amount', label: 'Сумма, ₽', type: 'number', required: true }, { name: 'invoice_no', label: 'Номер', hint: 'Пусто — присвоится автоматически' }, { name: 'operation_date', label: 'Дата счёта', type: 'date', required: true, value: today }, { name: 'due_date', label: 'Оплатить до', type: 'date', required: true, value: addDaysIso(10) }, { name: 'basis', label: 'Основание', full: true }, { name: 'file', label: 'Файл счёта', type: 'file', accept: 'application/pdf,image/*' }];
+  if (op === 'payment') F = [{ name: 'invoice_id', label: 'Счёт', type: 'select', options: [], empty: 'Без счёта (укажите клиента)' }, cl, { name: 'amount', label: 'Фактически получено, ₽', type: 'number', required: true, hint: 'При частичной оплате — только полученная сумма; остаток посчитается' }, { name: 'operation_date', label: 'Дата поступления', type: 'date', required: true, value: today }, { name: 'basis', label: 'Основание (п/п №)', full: true }];
+  if (op === 'expense') F = [{ name: 'category', label: 'Категория', type: 'select', required: true, options: S.lk.dict.expenseCategories.map(function (c) { return [c, c]; }), empty: 'Выберите' }, { name: 'amount', label: 'Сумма, ₽', type: 'number', required: true }, { name: 'operation_date', label: 'Дата', type: 'date', required: true, value: today }, { name: 'basis', label: 'Основание', required: true }, { name: 'file', label: 'Документ', type: 'file', accept: 'application/pdf,image/*' }];
+  if (op === 'adjust') F = [{ name: 'invoice_id', label: 'Счёт (если корректируется счёт)', type: 'select', options: [] }, cl, { name: 'amount', label: 'Сумма, ₽ (минус уменьшает долг)', type: 'number', required: true }, { name: 'operation_date', label: 'Дата', type: 'date', required: true, value: today }, { name: 'basis', label: 'Основание корректировки', type: 'textarea', required: true }];
+  if (preset && preset.visit_id) F.push({ name: 'visit_id', type: 'hidden' });
+  var titles = { accrue: 'Начисление', invoice: 'Новый счёт', payment: 'Поступление денег', expense: 'Расход', adjust: 'Корректировка (на утверждение руководителю)' };
+  var fill = function (api) {
+    var sel = $('[name=invoice_id]', api.el); if (!sel) return;
+    call('finance.list', { unpaid: op === 'payment', operation_type: 'INVOICE' }).then(function (r) {
+      sel.innerHTML = opt(r.rows.map(function (f) { return [f.finance_id, f.invoice_no + ' · ' + f.client_name + ' · остаток ' + money(f.outstanding)]; }), preset && preset.invoice_id, op === 'payment' ? 'Без счёта (укажите клиента)' : '—');
+    });
+  };
+  openForm({ title: titles[op], fields: F, values: preset || {}, ready: fill, okText: 'Провести',
+    submit: function (v) {
+      var file = v.file; delete v.file;
+      var action = { accrue: 'finance.accrue', invoice: 'finance.invoice', payment: 'finance.payment', expense: 'finance.expense', adjust: 'finance.adjust' }[op];
+      return call(action, v).then(function (r) {
+        var opn = r.operation || r;
+        if (!file) return r;
+        return uploadFile(file, { entity_type: 'Finance', entity_id: opn.finance_id, document_type: op === 'invoice' ? 'INVOICE' : 'OTHER', document_no: opn.invoice_no || '' }).then(function () { return r; });
+      });
+    },
+    done: function (r) { var st = r.invoice_state; toast(st ? 'Поступление проведено. Остаток по счёту: ' + money(st.outstanding) : 'Операция проведена', 'ok'); render(true); } });
+};
+A.finPay = function (el) { A.finOp({ getAttribute: function () { return 'payment'; } }, null, { invoice_id: el.getAttribute('data-id') }); };
+A.finAccrueVisit = function (el) {
+  var u = S.data.s.unbilled_visits.filter(function (x) { return x.visit_id === el.getAttribute('data-id'); })[0];
+  A.finOp({ getAttribute: function () { return 'accrue'; } }, null, { client_id: u.client_id, service_id: u.service_id, amount: u.price, visit_id: u.visit_id, basis: 'Выезд ' + u.visit_id + ', ' + u.service_name });
+};
+A.finAdjOk = function (el) { call('finance.approveAdjustment', { finance_id: el.getAttribute('data-id'), approve: true }).then(function () { toast('Корректировка утверждена', 'ok'); render(true); }, showErr); };
+A.finAdjNo = function (el) { call('finance.approveAdjustment', { finance_id: el.getAttribute('data-id'), approve: false }).then(function () { toast('Корректировка отклонена'); render(true); }, showErr); };
+
+/* ---------- Документы ---------- */
+function docLi(x) {
+  return '<div class="li" data-a="openFile" data-id="' + x.document_id + '"><span class="sev ' + (x.expiring ? 'warn' : x.approval_status === 'APPROVED' ? 'ok' : '') + '"></span><div class="txt"><b>' + esc(x.title || x.type_label) + '</b>' + (x.document_no ? ' № ' + esc(x.document_no) : '') + '<div class="t2"><span class="mono">' + esc(x.file_name) + '</span></div><div class="t2">' + esc(x.type_label) + ' · ' + fD(x.created_at) + (x.valid_until ? ' · до ' + fD(x.valid_until) : '') + (x.status_label ? ' · ' + esc(x.status_label) : '') + '</div></div></div>';
+}
+Pages.documents = {
+  title: 'Документы',
+  load: function (p) { return call('documents.list', { document_type: p.type, q: p.q, include_invalid: p.inv }); },
+  sub: function (d) { return d.total + ' ' + plural(d.total, 'документ', 'документа', 'документов'); },
+  view: function (d, p) {
+    return '<div class="filters"><select class="sel" data-c="vfSel" data-k="type">' + opt(dictOpts(S.lk.dict.docTypes), p.type, 'Все, кроме фото') + '</select><input class="inp" placeholder="ID, имя файла, номер" value="' + esc(p.q || '') + '" data-enter="clQ"><label class="chips" style="padding:3px 8px"><input type="checkbox" data-c="vfChk" data-k="inv"' + (p.inv ? ' checked' : '') + '> С неактуальными</label></div>' +
+      '<section class="card"><div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Документ</th><th>Тип</th><th>Запись</th><th>Версия</th><th>Создан</th><th>Статус</th></tr></thead><tbody>' +
+      (d.rows.length ? d.rows.map(function (x) {
+        return '<tr class="click" data-a="openFile" data-id="' + x.document_id + '"><td><b>' + esc(x.title) + '</b><span class="t2 mono">' + esc(x.file_name) + '</span></td><td>' + esc(x.type_label) + '</td><td class="mono">' + esc(x.entity_id) + '</td><td class="num">v' + esc(x.version) + '</td><td class="num">' + fD(x.created_at) + '<span class="t2">' + esc(shortName(empName(x.created_by))) + '</span></td><td>' + (String(x.is_actual) === 'false' ? pill('Неактуален', 'mute') : x.status_label ? pill(x.status_label, x.approval_status === 'APPROVED' ? 'ok' : x.approval_status === 'ARCHIVED' ? 'mute' : '') : '') + (x.expiring ? '<span class="t2" style="color:var(--warn)">истекает ' + fD(x.valid_until) + '</span>' : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="empty">Документов нет</td></tr>') + '</tbody></table></div></section>';
+  }
+};
+
+/* ---------- Аналитика ---------- */
+Pages.analytics = {
+  title: 'Отчёты и аналитика',
+  load: function (p) { return call('analytics.get', { from: p.from || startOfDayIso(-30), to: p.to || startOfDayIso(1), employee_id: p.employee_id, client_id: p.client_id, service_id: p.service_id }); },
+  sub: function (d) { return 'Период: ' + fD(d.period.from) + ' — ' + fD(d.period.to) + ' · сформировано ' + fDT(d.generated_at); },
+  view: function (d, p) {
+    var per = p.per || '30';
+    var h = '<div class="filters"><div class="chips">' + [['7', '7 дней'], ['30', '30 дней'], ['90', '90 дней']].map(function (x) { return '<button class="' + (per === x[0] ? 'on' : '') + '" data-a="anPer" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      '<select class="sel" data-c="vfSel" data-k="employee_id">' + opt(S.lk.employees.filter(function (e) { return e.role === 'SPECIALIST'; }).map(function (e) { return [e.id, shortName(e.name)]; }), p.employee_id, 'Все сотрудники') + '</select>' +
+      '<select class="sel" data-c="vfSel" data-k="client_id">' + opt(clientOpts(), p.client_id, 'Все клиенты') + '</select><select class="sel" data-c="vfSel" data-k="service_id">' + opt(S.lk.services.map(function (s) { return [s.id, s.name]; }), p.service_id, 'Все услуги') + '</select>' +
+      '<div style="flex:1"></div><button class="btn" data-a="anCsv">Выгрузить CSV</button></div>';
+    var st = Object.keys(d.by_status).map(function (k) { return [k, d.by_status[k]]; }).sort(function (a, b) { return b[1] - a[1]; }), maxSt = st.length ? st[0][1] : 1;
+    h += '<div class="kpis">' + kpi('Выездов за период', d.total) + kpi('Соответствие требованиям', d.compliance === null ? '—' : d.compliance + '%', 'доля пунктов без нарушений', d.compliance !== null && d.compliance < 85 ? 'warn' : 'good') +
+      kpi('Возвратов отчётов', d.by_employee.reduce(function (s, e) { return s + e.returned; }, 0)) + kpi('Опозданий', d.by_employee.reduce(function (s, e) { return s + e.late; }, 0), 'начало позже плана > 15 мин') + '</div>';
+    h += '<div class="grid g-main"><div class="stack" style="gap:16px">' + card('Сводка по сотрудникам', '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Сотрудник</th><th class="r">Выезды</th><th class="r">Выполнено</th><th class="r">Опоздания</th><th class="r">Возвраты</th><th class="r">Ср. длит.</th></tr></thead><tbody>' +
+      d.by_employee.map(function (e) { return '<tr><td>' + esc(shortName(e.full_name)) + '</td><td class="r">' + e.visits + '</td><td class="r">' + e.done + '</td><td class="r">' + e.late + ' <span class="muted">(' + e.late_share + '%)</span></td><td class="r">' + e.returned + ' <span class="muted">(' + e.return_share + '%)</span></td><td class="r">' + (e.avg_minutes ? e.avg_minutes + ' мин' : '—') + '</td></tr>'; }).join('') + '</tbody></table></div>') +
+      card('Частые нарушения', d.top_findings.length ? d.top_findings.map(function (f) { return '<div class="hbar"><span>' + esc(f.text) + (f.critical ? ' <span class="tag crit">крит. ' + f.critical + '</span>' : '') + '</span><span class="track"><i style="width:' + Math.round(f.count / d.top_findings[0].count * 100) + '%;background:var(--bad)"></i></span><span class="num" style="text-align:right">' + f.count + '</span></div>'; }).join('') : emptyLine('Нарушений за период не выявлено')) + '</div>' +
+      '<div class="stack" style="gap:16px">' + card('Выезды по статусам', st.map(function (s) { return '<div class="hbar"><span>' + esc(S.lk.dict.visit[s[0]]) + '</span><span class="track"><i style="width:' + Math.round(s[1] / maxSt * 100) + '%"></i></span><span class="num" style="text-align:right">' + s[1] + '</span></div>'; }).join('') || emptyLine('Нет данных')) +
+      '<p class="small muted" style="margin:0">' + esc(d.rules) + '</p></div></div>';
+    return h;
+  }
+};
+A.anPer = function (el) { var n = Number(el.getAttribute('data-v')); S.params.per = String(n); S.params.from = startOfDayIso(-n); S.params.to = startOfDayIso(1); render(true); };
+A.anCsv = function () {
+  var d = S.data, rows = [['ID', 'План', 'Факт начало', 'Факт конец', 'Статус', 'Клиент', 'Объект', 'Услуга', 'Исполнитель']].concat(d.visits.map(function (v) { return [v.visit_id, fDT(v.planned_start), fDT(v.actual_start), fDT(v.actual_end), v.status_label, v.client_name, v.site_name, v.service_name, v.employee_name]; }));
+  var csv = '﻿' + rows.map(function (r) { return r.map(function (c) { return '"' + String(c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(';'); }).join('\r\n');
+  try { var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'sanlab_visits_' + todayKey() + '.csv'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { }
+  modal({ title: 'CSV выгрузка', body: '<p class="small muted" style="margin:0">Если файл не скачался, скопируйте данные и вставьте в Google Sheets или Excel.</p><textarea class="inp" rows="10" readonly>' + esc(csv.slice(1)) + '</textarea>', actions: [['Скопировать', 'copy', 'pri'], ['Закрыть', 'close']],
+    on: { copy: function (api) { var t = $('textarea', api.el); t.select(); try { navigator.clipboard.writeText(t.value).then(function () { toast('Скопировано', 'ok'); }, function () { document.execCommand('copy'); }); } catch (e) { document.execCommand('copy'); } } } });
+};
+
+/* ---------- Сотрудники ---------- */
+Pages.staff = {
+  title: 'Сотрудники и роли',
+  load: function () { return call('employees.list'); },
+  view: function (d) {
+    return '<div class="row"><div style="flex:1"></div><button class="btn pri" data-a="empNew">' + ic('plus') + 'Сотрудник</button></div><section class="card"><div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Контакты</th><th>Доп. права</th><th class="r">Открытых выездов</th><th>Доступ</th><th></th></tr></thead><tbody>' +
+      d.map(function (e) {
+        return '<tr><td><b>' + esc(e.full_name) + '</b><span class="t2 mono">' + e.employee_id + '</span></td><td>' + esc(e.role_label) + '</td><td>' + esc(e.email || '') + '<span class="t2">' + esc(e.phone || '') + '</span></td><td>' + esc(e.extra_perms || '—') + '</td><td class="r">' + (e.visits_open || 0) + '</td>' +
+          '<td>' + (e.active ? pill('Активен', 'ok') : pill('Отключён ' + fD(e.deactivated_at), 'mute')) + '</td><td class="row" style="flex-wrap:nowrap"><button class="btn sm" data-a="empEdit" data-id="' + e.employee_id + '">Изменить</button>' + (e.employee_id !== S.me.employee_id ? '<button class="btn sm ' + (e.active ? 'danger' : '') + '" data-a="empToggle" data-id="' + e.employee_id + '">' + (e.active ? 'Отключить' : 'Включить') + '</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div></section><p class="small muted">Доступ определяется ролью на сервере. Отключённый сотрудник не может выполнять действия, его история сохраняется. Доп. права: finance — просмотр финансов, finance_edit — операции, approve_reports — проверка отчётов, lab — лаборатория, settings — настройки.</p>';
+  }
+};
+A.empNew = function (el, ev, cur) {
+  openForm({ title: cur ? cur.full_name : 'Новый сотрудник', wide: true,
+    fields: [{ name: 'full_name', label: 'ФИО', required: true, full: true }, { name: 'email', label: 'Рабочий e-mail (Google)', type: 'email', required: true }, { name: 'phone', label: 'Телефон', type: 'tel' },
+      { name: 'role', label: 'Роль', type: 'select', required: true, options: dictOpts(S.lk.dict.roles), empty: 'Выберите' }, { name: 'pin', label: 'PIN-код (для входа по PIN)', inputmode: 'numeric', hint: '4–6 цифр; пусто — не менять' },
+      { name: 'extra_perms', label: 'Дополнительные права', type: 'checks', full: true, options: S.lk.dict.extraPerms.map(function (x) { return [x, x]; }) }],
+    values: cur || {},
+    submit: function (v) { if (cur) { v.employee_id = cur.employee_id; v.row_version = cur.row_version; } return call('employees.save', v); },
+    done: function () { reloadLookups().then(function () { toast('Сохранено', 'ok'); render(true); }); } });
+};
+A.empEdit = function (el) { A.empNew(el, null, S.data.filter(function (e) { return e.employee_id === el.getAttribute('data-id'); })[0]); };
+A.empToggle = function (el) {
+  var e = S.data.filter(function (x) { return x.employee_id === el.getAttribute('data-id'); })[0];
+  if (!e.active) return call('employees.setActive', { employee_id: e.employee_id, active: true }).then(function () { toast('Доступ включён', 'ok'); render(true); }, showErr);
+  openForm({ title: 'Отключить: ' + e.full_name, okTone: 'danger', okText: 'Отключить', intro: '<div class="alert small">Новые действия будут запрещены сразу. Записи и история сохраняются.</div>', fields: [{ name: 'reason', label: 'Причина', type: 'textarea', required: true }],
+    submit: function (v) { return call('employees.setActive', { employee_id: e.employee_id, active: false, reason: v.reason }); },
+    done: function (r) { reloadLookups(); if (r.open_visits_to_reassign.length) modal({ title: 'Переназначьте выезды', body: '<div class="alert warn">У сотрудника остались назначенные выезды: ' + r.open_visits_to_reassign.map(function (id) { return '<a href="#" class="mono" ' + link('visit', { visit_id: id }) + '>' + id + '</a>'; }).join(', ') + '. Перенесите их на другого исполнителя.</div>', actions: [['Понятно', 'close', 'pri']] }); render(true); } });
+};
+
+/* ---------- Настройки ---------- */
+Pages.settings = {
+  title: 'Настройки',
+  load: function (p) { return p.tab === 'errors' ? call('errors.list', {}).then(function (e) { return { errors: e }; }) : call('settings.get'); },
+  view: function (d, p) {
+    var tab = p.tab || 'checklists';
+    var h = '<div class="chips" style="align-self:flex-start">' + [['checklists', 'Чек-листы'], ['services', 'Услуги и цены'], ['general', 'Параметры'], ['errors', 'Ошибки и задания']].map(function (t) { return '<button class="' + (tab === t[0] ? 'on' : '') + '" data-a="vf" data-k="tab" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    if (tab === 'errors') return h + card('Ошибки интеграций', d.errors.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Время</th><th>Функция</th><th>Код</th><th>Сообщение</th><th>Запись</th><th></th></tr></thead><tbody>' + d.errors.map(function (e) { return '<tr><td class="num">' + fDT(e.timestamp) + '</td><td class="mono">' + esc(e.function_name) + '</td><td>' + esc(e.error_code) + '</td><td>' + esc(e.safe_message) + '<span class="t2 mono">' + esc(String(e.details).slice(0, 160)) + '</span></td><td class="mono">' + esc(e.entity_id) + '</td><td><button class="btn sm" data-a="errOk" data-id="' + e.error_id + '">Решено</button></td></tr>'; }).join('') + '</tbody></table></div>' : emptyLine('Открытых ошибок нет'), '<button class="btn sm" data-a="jobRun">Запустить ежедневную проверку</button>');
+    if (tab === 'general') return h + card('Параметры системы', '<form class="stack" id="setForm" onsubmit="return false">' + d.settings.map(function (s) { return '<div class="fld"><label for="s_' + s.key + '">' + esc(s.description) + ' <span class="mono muted">' + s.key + '</span></label><input class="inp" id="s_' + s.key + '" name="' + s.key + '" value="' + esc(s.value) + '"></div>'; }).join('') + '<div><button class="btn pri" data-a="setSave">Сохранить изменения</button></div></form>');
+    if (tab === 'services') return h + card('Услуги и цены', '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Услуга</th><th class="r">Цена</th><th>Чек-лист</th><th>Пробы</th><th></th></tr></thead><tbody>' + d.services.map(function (s) { var c = d.checklists.filter(function (x) { return x.checklist_id === s.checklist_id; })[0]; return '<tr><td><b>' + esc(s.name) + '</b><span class="t2">' + esc(s.description) + '</span></td><td class="r num">' + money(s.price) + ' / ' + esc(s.unit) + '</td><td>' + esc(c ? c.name + ' v' + c.version : '—') + '</td><td>' + (String(s.requires_samples) === 'true' ? 'обязательны' : '—') + '</td><td><button class="btn sm" data-a="srvEdit" data-id="' + s.service_id + '">Изменить</button></td></tr>'; }).join('') + '</tbody></table></div>', '<button class="btn sm pri" data-a="srvEdit">' + ic('plus') + 'Услуга</button>');
+    return h + card('Чек-листы и версии', '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Чек-лист</th><th>Версия</th><th class="r">Пунктов</th><th class="r">С фото</th><th>Услуги</th><th>Основание критериев</th><th></th></tr></thead><tbody>' + d.checklists.map(function (c) {
+      return '<tr><td><b>' + esc(c.name) + '</b><span class="t2 mono">' + c.checklist_id + '</span></td><td>v' + c.version + ' ' + (String(c.active) === 'true' ? pill('действует', 'ok') : pill('архив', 'mute')) + '<span class="t2">с ' + fD(c.valid_from) + '</span></td><td class="r">' + c.items_count + '</td><td class="r">' + c.photo_required_count + '</td><td>' + esc(c.services.join(', ') || '—') + '</td><td class="small">' + esc(c.source || '—') + '</td><td>' + (String(c.active) === 'true' ? '<button class="btn sm" data-a="chkVersion" data-id="' + c.checklist_id + '">Новая версия</button>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div><p class="small muted">Выезд навсегда привязан к версии чек-листа. Новая версия не меняет уже назначенные выезды. Критерии оценки должны иметь источник и утверждающего.</p>', '<button class="btn sm pri" data-a="chkVersion">' + ic('plus') + 'Чек-лист</button>');
+  }
+};
+A.errOk = function (el) { call('errors.resolve', { error_id: el.getAttribute('data-id') }).then(function () { render(true); }, showErr); };
+A.jobRun = function (el) { el.classList.add('busy'); call('jobs.run', { job: 'daily' }).then(function (r) { toast('Проверка выполнена: напоминаний ' + r.reminders + ', просроченных задач ' + r.tasks_overdue + ', лаб. просрочек ' + r.lab_overdue + ', закрыто выездов ' + r.closed, 'ok'); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); }); };
+A.setSave = function (el) {
+  var vals = {}; S.data.settings.forEach(function (s) { var i = $('#s_' + s.key); if (i && i.value !== String(s.value)) vals[s.key] = i.value; });
+  if (!Object.keys(vals).length) return toast('Изменений нет');
+  el.classList.add('busy');
+  call('settings.save', { values: vals }).then(function (r) { toast('Изменено настроек: ' + r.changed.length + '. Записано в журнал.', 'ok'); reloadLookups(); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); });
+};
+A.srvEdit = function (el) {
+  var id = el.getAttribute('data-id'), cur = id ? S.data.services.filter(function (s) { return s.service_id === id; })[0] : null;
+  openForm({ title: cur ? cur.name : 'Новая услуга', fields: [{ name: 'name', label: 'Название', required: true, full: true }, { name: 'price', label: 'Цена, ₽', type: 'number', required: true }, { name: 'unit', label: 'Единица', value: 'выезд' },
+    { name: 'checklist_id', label: 'Чек-лист', type: 'select', options: S.data.checklists.filter(function (c) { return String(c.active) === 'true'; }).map(function (c) { return [c.checklist_id, c.name + ' v' + c.version]; }) }, { name: 'requires_samples', label: 'Обязателен отбор проб', type: 'checkbox' }, { name: 'active', label: 'Услуга активна', type: 'checkbox', value: true }, { name: 'description', label: 'Описание', type: 'textarea' }],
+    values: cur || {}, submit: function (v) { if (cur) v.service_id = cur.service_id; return call('services.save', v); }, done: function () { reloadLookups(); render(true); } });
+};
+A.chkVersion = function (el) {
+  var id = el.getAttribute('data-id');
+  var start = id ? call('checklists.get', { checklist_id: id }) : Promise.resolve({ checklist: { name: '', family_id: '' }, items: [{ section: '', text: '', severity: 'NORMAL', photo_required: false }] });
+  start.then(function (c) {
+    var rowH = function (it) { return '<div class="ck" style="padding:8px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.4fr) 130px auto auto;gap:6px;align-items:center"><input class="inp" placeholder="Раздел" value="' + esc(it.section) + '" data-f="section"><input class="inp" placeholder="Текст пункта" value="' + esc(it.text) + '" data-f="text"><select class="sel" data-f="severity">' + opt(dictOpts(S.lk.dict.severity), it.severity) + '</select><label class="small"><input type="checkbox" data-f="photo"' + (String(it.photo_required) === 'true' ? ' checked' : '') + '> фото</label><button class="btn sm" data-m="del">✕</button></div>'; };
+    modal({ title: id ? 'Новая версия: ' + c.checklist.name + ' (сейчас v' + c.checklist.version + ')' : 'Новый чек-лист', wide: true, sticky: true,
+      body: '<div class="alert small">Сохранение создаст новую версию. Предыдущая уйдёт в архив, но останется привязанной к прошлым выездам; услуги переключатся на новую версию.</div>' + formHtml([{ name: 'name', label: 'Название', required: true, full: true, value: c.checklist.name }, { name: 'source', label: 'Основание критериев и утверждающий', full: true, value: c.checklist.source || '' }]) +
+        '<div id="ckrows" class="stack" style="gap:6px">' + c.items.map(rowH).join('') + '</div><div><button class="btn sm" data-m="add">' + ic('plus') + 'Пункт</button></div>',
+      actions: [['Отмена', 'close'], ['Сохранить версию', 'ok', 'pri']],
+      on: {
+        add: function (api) { $('#ckrows', api.el).insertAdjacentHTML('beforeend', rowH({ section: '', text: '', severity: 'NORMAL' })); },
+        del: function (api, b) { b.closest('.ck').remove(); },
+        ok: function (api) {
+          var items = $$('#ckrows .ck', api.el).map(function (r) { return { section: $('[data-f=section]', r).value, text: $('[data-f=text]', r).value, severity: $('[data-f=severity]', r).value, photo_required: $('[data-f=photo]', r).checked }; }).filter(function (x) { return x.text.trim(); });
+          api.busy(true);
+          call('checklists.saveVersion', { family_id: c.checklist.family_id, name: $('[name=name]', api.el).value, source: $('[name=source]', api.el).value, items: items }).then(function (r) { api.close(); toast('Сохранена версия v' + r.checklist.version, 'ok'); reloadLookups(); render(true); }, function (e) { api.busy(false); api.error(e); });
+        }
+      } });
+  }, showErr);
+};
+
+/* ---------- Журнал аудита ---------- */
+var ACTION_LABELS = { CREATE: 'Создание', UPDATE: 'Изменение', ARCHIVE: 'Архивирование', VISIT_ASSIGN: 'Назначение выезда', VISIT_RESCHEDULE: 'Перенос', VISIT_CANCEL: 'Отмена выезда', VISIT_START: 'Начало выезда', VISIT_FINISH: 'Завершение выезда', VISIT_CLOSE: 'Закрытие выезда', VISIT_STATUS: 'Статус выезда',
+  RESULT_SAVE: 'Ответ чек-листа', RESULT_CHANGE_AFTER_SUBMIT: 'Изменение после отправки', PHOTO_WAIVER: 'Исключение по фото', FILE_UPLOAD: 'Загрузка файла', FILE_INVALIDATE: 'Файл помечен неактуальным', REPORT_SUBMIT: 'Отправка отчёта', REPORT_APPROVE: 'Утверждение отчёта', REPORT_RETURN: 'Возврат отчёта', REPORT_PDF: 'PDF отчёта',
+  TASK_CREATE: 'Создание задачи', TASK_START: 'Задача в работе', TASK_SUBMIT: 'Задача на проверке', TASK_VERIFY: 'Проверка задачи', TASK_REJECT: 'Задача возвращена', TASK_CLOSE: 'Закрытие задачи', TASK_AUTOCLOSE: 'Автозакрытие задачи', TASK_CANCEL: 'Отмена задачи', TASK_ESCALATE: 'Эскалация',
+  ROLE_CHANGE: 'Смена роли', ACCOUNT_DISABLE: 'Отключение пользователя', ACCOUNT_ENABLE: 'Включение пользователя', SETTING_CHANGE: 'Изменение настройки', CALENDAR_CREATE: 'Событие Calendar создано', CALENDAR_UPDATE: 'Событие Calendar обновлено', CALENDAR_CANCEL: 'Событие Calendar удалено',
+  FIN_ACCRUAL: 'Начисление', FIN_INVOICE: 'Счёт', FIN_PAYMENT: 'Поступление', FIN_EXPENSE: 'Расход', FIN_ADJUST_REQUEST: 'Корректировка (запрос)', FIN_ADJUST_APPROVE: 'Корректировка утверждена', FIN_ADJUST_REJECT: 'Корректировка отклонена', INVOICE_STATUS: 'Статус счёта',
+  LAB_REGISTER: 'Регистрация пробы', LAB_REVIEW: 'Решение по пробе', LAB_CANCEL: 'Отмена пробы', CHECKLIST_VERSION: 'Версия чек-листа', CHECKLIST_RETIRE: 'Чек-лист в архив', DOC_APPROVE: 'Документ утверждён', DOC_ARCHIVE: 'Документ в архив', JOB_DAILY: 'Ежедневная проверка', ERROR_RESOLVE: 'Ошибка закрыта', SETUP: 'Установка', BACKUP: 'Резервная копия', RESTORE: 'Восстановление' };
+function actionLabel(a) { if (/^LAB_/.test(a) && !ACTION_LABELS[a]) return 'Проба: ' + (S.lk.dict.lab[a.slice(4)] || a); return ACTION_LABELS[a] || a; }
+function auditTable(rows) {
+  if (!rows.length) return emptyLine('Записей нет');
+  return '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Время</th><th>Кто</th><th>Действие</th><th>Запись</th><th>Изменения</th></tr></thead><tbody>' + rows.map(function (l) {
+    var nv = l.new_value ? String(l.new_value) : '';
+    return '<tr><td class="num">' + fDT(l.timestamp) + '</td><td>' + esc(shortName(empName(l.actor_id)) || l.actor_email) + '<span class="t2">' + esc(l.actor_email) + '</span></td><td>' + esc(actionLabel(l.action)) + '</td><td class="mono">' + esc(l.entity_id) + '<span class="t2">' + esc(l.entity_type) + '</span></td><td class="small mono" style="max-width:420px;overflow-wrap:anywhere">' + (l.old_value && l.old_value !== '{}' ? '<span style="color:var(--bad)">' + esc(String(l.old_value).slice(0, 200)) + '</span><br>' : '') + esc(nv.slice(0, 260)) + '</td></tr>';
+  }).join('') + '</tbody></table></div>';
+}
+Pages.audit = {
+  title: 'Журнал аудита',
+  load: function (p) { return call('audit.list', { q: p.q, limit: 300 }); },
+  sub: function (d) { return 'Показано ' + d.rows.length + ' из ' + d.total; },
+  view: function (d, p) { return '<div class="filters"><input class="inp" style="min-width:260px" placeholder="ID записи, действие, e-mail" value="' + esc(p.q || '') + '" data-enter="clQ"></div><section class="card">' + auditTable(d.rows) + '</section>'; }
+};
+</script>

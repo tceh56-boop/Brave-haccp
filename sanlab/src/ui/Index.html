@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=PT+Serif:wght@700&display=swap">
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <div id="app"><div class="login"><div class="box" style="max-width:360px;align-items:center"><b>San.Lab</b><span class="muted">Загрузка…</span></div></div></div>
+  <?!= include('App'); ?>
+  <?!= include('PagesHome'); ?>
+  <?!= include('PagesVisits'); ?>
+  <?!= include('PagesWork'); ?>
+  <?!= include('PagesBiz'); ?>
+  <script>boot();</script>
+</body>
+</html>
