@@ -110,7 +110,15 @@ function _tsYieldG_(parentType, entity, inputMass, warnings) {
     var y = _tsMassG_(_tsNum_(entity.выход), entity.единица || 'кг', warnings, entity.название || entity.pf_id);
     if (y > 0) return y;
   } else if (_tsNum_(entity.выход) > 0) {
-    return _tsNum_(entity.выход);
+    var v = _tsNum_(entity.выход);
+    // В «Рецептах» выход вводится в порциях (по умолчанию 1), в ТТК — в граммах.
+    // Малое число при большой закладке — это порции, а не граммы.
+    if (v <= 20 && inputMass > v * 20) {
+      var portion = inputMass / v;
+      warnings.push('Выход блюда указан в порциях (' + v + '), а не в граммах — для расчёта принята закладка нетто на порцию (' + _tsRound_(portion, 0) + ' г). Укажите выход в граммах в ТТК.');
+      return portion;
+    }
+    return v;
   }
   warnings.push('Выход не задан — для расчёта принята сумма масс нетто (' + _tsRound_(inputMass, 0) + ' г).');
   return inputMass;
