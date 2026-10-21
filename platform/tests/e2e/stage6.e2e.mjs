@@ -55,7 +55,7 @@ await call(`/orgs/${orgId}/receipts/${rec.id}/complete`, {});
 
 step('блюдо и ТТК: выход, технология, состав');
 await P.goto(`${BASE}${base}`);
-await P.click('text=Блюда и ТТК');
+await P.click('.hamburger'); await P.click('.menu-item:has-text("Блюда и ТТК")');
 await P.click('button:has-text("Новое блюдо или полуфабрикат")');
 await P.fill('#dn', 'Бефстроганов'); await P.fill('#dc', 'Горячее');
 await P.click('button:has-text("Создать")');

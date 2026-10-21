@@ -42,11 +42,11 @@ async function as(login) {
 
 /** Рамки с номерами на элементах и снимок области вокруг них. */
 async function snap(p, name, marks, { above = 150, below = 70, maxH = 1500, top = false } = {}) {
-  await p.addStyleTag({ content: '.bottomnav{display:none!important} .with-bottomnav{padding-bottom:0!important} *{caret-color:transparent!important;transition:none!important}' });
+  await p.addStyleTag({ content: '*{caret-color:transparent!important;transition:none!important}' });
   await p.waitForTimeout(250);
   const boxes = [];
   for (const [i, sel] of marks.entries()) {
-    const loc = p.locator(sel).first();
+    const loc = p.locator(sel).filter({ visible: true }).first();   // закрытое меню разделов не считается
     try { await loc.waitFor({ state: 'visible', timeout: 8000 }); } catch { console.log(`!! не найдено: ${name} [${i + 1}] ${sel}`); missing++; continue; }
     const b = await loc.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height }; });
     boxes.push({ n: i + 1, ...b });
@@ -58,12 +58,13 @@ async function snap(p, name, marks, { above = 150, below = 70, maxH = 1500, top 
       Object.assign(f.style, { position: 'absolute', left: `${b.x - 4}px`, top: `${b.y - 4}px`, width: `${b.w + 8}px`, height: `${b.h + 8}px`, border: '3px solid #F07A1A', borderRadius: '9px', zIndex: 9999, pointerEvents: 'none', boxShadow: '0 0 0 2px rgba(255,255,255,.7)' });
       const n = document.createElement('div');
       n.textContent = String(b.n);
-      Object.assign(n.style, { position: 'absolute', left: '-14px', top: '-14px', width: '24px', height: '24px', borderRadius: '50%', background: '#F07A1A', color: '#fff', font: '700 14px/24px Arial', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.35)' });
+      Object.assign(n.style, { position: 'absolute', left: b.x < 14 ? '6px' : '-14px', top: b.y < 14 ? '4px' : '-14px',   // у края экрана — номер внутри рамки
+        width: '24px', height: '24px', borderRadius: '50%', background: '#F07A1A', color: '#fff', font: '700 14px/24px Arial', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.35)' });
       f.appendChild(n);
       document.body.appendChild(f);
     }
   }, boxes);
-  const H = await p.evaluate(() => document.documentElement.scrollHeight);
+  const H = await p.evaluate(() => Math.max(document.documentElement.scrollHeight, innerHeight));
   const minY = boxes.length ? Math.min(...boxes.map((b) => b.y)) : 0, maxY = boxes.length ? Math.max(...boxes.map((b) => b.y + b.h)) : 800;
   let y = top ? 0 : Math.max(0, minY - above);
   let h = Math.min(Math.max(maxY + below - y, 560), maxH, H - y);
@@ -75,9 +76,15 @@ const go = async (p, url, wait) => { await p.goto(BASE + url); if (wait) await p
 
 // 1. Вход и главное
 { const p = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'ru-RU' })).newPage();
-  await p.goto(`${BASE}/login`); await p.fill('#email', 'povar@demo.test');
+  await p.goto(`${BASE}/login`); await p.fill('#email', 'povar@demo.test'); await p.waitForTimeout(1600);   // логотип доанимирован
   await snap(p, 'login', ['#email', '#password', 'button:has-text("Войти")'], { top: true }); }
-{ const p = await as('vladelec'); await go(p, B, 'text=Журналы J01');
+{ const p = await as('vladelec'); await go(p, `${B}/problems`, 'h1:has-text("Проблемы")');
+  await snap(p, 'topbar', ['.hamburger', '.topbar .logo', '.who'], { top: true, maxH: 600 });
+  await p.setViewportSize({ width: 390, height: 1240 });   // всё меню целиком
+  await p.click('.hamburger'); await p.waitForTimeout(400);
+  await snap(p, 'sidemenu', ['.menu-group:text-is("Оперативное")', '.menu-group:text-is("ХАССП")', '.menu-group:text-is("Меню и продажи")', '.menu-group:text-is("Управление")'], { top: true, maxH: 1700, below: 330 });
+  await p.keyboard.press('Escape'); await p.setViewportSize({ width: 390, height: 844 });
+  await go(p, B, 'text=Журналы J01');
   await snap(p, 'management', ['a:has-text("Журналы J01")', 'a:has-text("План ХАССП")', 'a:has-text("Касса")', 'a:has-text("Готовность к пилоту")', 'a:has-text("Памятки по ролям")'], { top: true, maxH: 1300 }); }
 
 // 2. Смена повара: экран смены, замер, сообщение, задачи

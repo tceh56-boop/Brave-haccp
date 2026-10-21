@@ -46,7 +46,7 @@ await P.fill('#name', `Кафе «Пилот ${stamp}»`); await P.click('button
 const base = new URL(P.url()).pathname;
 
 step('готовность: новая организация не готова, «Запускаем» недоступно');
-await P.click('text=Готовность к пилоту');
+await P.click('.hamburger'); await P.click('.menu-item:has-text("Готовность к пилоту")');
 await P.waitForSelector('text=Запуск невозможен');
 await P.waitForSelector('li:has-text("План ХАССП утверждён") .badge:text("Не готово")');
 await P.waitForSelector('li:has-text("Изоляция организаций") .badge:text("Готово")');

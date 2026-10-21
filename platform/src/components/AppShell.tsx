@@ -7,8 +7,28 @@ import { api } from '@/lib/api';
 
 export interface Me { id: string; email: string; full_name: string; email_verified: boolean }
 
-/** Верхняя панель и проверка сессии: без входа — на страницу входа с возвратом. */
-export function AppShell({ children }: { children: (me: Me) => React.ReactNode }) {
+/**
+ * Шапка как в прежнем ЦЕХ: ☰ (если есть меню разделов), логотип, справа имя и роль.
+ * Нажатие на имя — выход из системы.
+ */
+export function TopBar({ me, roleLabel, onMenu, home = '/app' }: { me?: Me; roleLabel?: string; onMenu?: () => void; home?: string }) {
+  const router = useRouter();
+  return (
+    <header className="topbar">
+      {onMenu && <button className="hamburger" onClick={onMenu} aria-label="Меню разделов">☰</button>}
+      <Link href={home} className="logo" aria-label="ЦЕХ — на главную"><Logo height={30} eyes="var(--brand)" /></Link>
+      {me && (
+        <button className="who" title="Выйти" onClick={async () => { await api('/auth/logout', { body: {} }); router.replace('/login'); }}>
+          <span>{me.full_name}</span>
+          <span className="role">{roleLabel ? `${roleLabel} · выйти` : 'выйти'}</span>
+        </button>
+      )}
+    </header>
+  );
+}
+
+/** Проверка сессии: без входа — на страницу входа с возвратом. bare — шапку рисует вызывающий (меню предприятия). */
+export function AppShell({ children, bare = false }: { children: (me: Me) => React.ReactNode; bare?: boolean }) {
   const router = useRouter();
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   useEffect(() => {
@@ -17,24 +37,12 @@ export function AppShell({ children }: { children: (me: Me) => React.ReactNode }
       else setMe(r.user);
     }).catch(() => setMe(null));
   }, [router]);
+  const status = me === undefined ? <p className="muted">Загрузка…</p> : me === null ? <div className="err">Нет связи с сервером. Обновите страницу.</div> : null;
+  if (bare && me) return <>{children(me)}</>;
   return (
     <>
-      <header className="topbar">
-        <div className="wrap">
-          <Link href="/app" className="logo" aria-label="ЦЕХ — мои предприятия"><Logo height={30} eyes="#3b2a1e" /></Link>
-          {me && (
-            <div className="row">
-              <span className="small" style={{ opacity: .85 }}>{me.full_name}</span>
-              <button className="btn secondary small" onClick={async () => { await api('/auth/logout', { body: {} }); router.replace('/login'); }}>Выйти</button>
-            </div>
-          )}
-        </div>
-      </header>
-      <main className="wrap">
-        {me === undefined && <p className="muted">Загрузка…</p>}
-        {me === null && <div className="err">Нет связи с сервером. Обновите страницу.</div>}
-        {me && children(me)}
-      </main>
+      <TopBar me={me || undefined} />
+      <main className="wrap">{status}{me && children(me)}</main>
     </>
   );
 }
