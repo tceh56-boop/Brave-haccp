@@ -80,6 +80,9 @@ export const PERMISSIONS = {
   'production.read': 'Просмотр производственных заданий',
   'production.plan': 'Планирование и отмена производственных заданий',
   'production.run': 'Выполнение заданий: старт, замеры при выпуске, выпуск партии п/ф',
+  // Этап 12: закупки.
+  'purchase.read': 'Закупки: что заказать, заказы поставщикам, нормы запаса',
+  'purchase.manage': 'Заказы поставщикам и нормы запаса',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -95,17 +98,17 @@ export const ROLES = {
   owner: { label: 'Владелец', summary: 'Настройки организации, экономика, приглашения, утверждение ключевых документов', permissions: ALL },
   enterprise_admin: { label: 'Администратор предприятия', summary: 'Площадки, роли, справочники, журналы, интеграции', permissions: ALL },
   director: { label: 'Директор / управляющий', summary: 'Операционные отчёты, задачи, контроль исполнения',
-    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit', 'pilot.read', 'pilot.confirm'] },
+    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit', 'pilot.read', 'pilot.confirm', 'purchase.read', 'purchase.manage'] },
   chef: { label: 'Шеф / су-шеф', summary: 'ТТК, рецептуры, производственные задания, выходы и списания',
-    permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify', 'ttk.manage', 'ttk.approve', 'menu.price', 'cost.read', 'pos.stop', 'sales.manage', 'production.plan'] },
+    permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify', 'ttk.manage', 'ttk.approve', 'menu.price', 'cost.read', 'pos.stop', 'sales.manage', 'production.plan', 'purchase.read', 'purchase.manage'] },
   technologist: { label: 'Технолог', summary: 'Технологические параметры, расчёты, документы',
     permissions: [...READ_OPS, 'catalog.manage', 'control.manage', 'control.approve', 'task.work', 'incident.report', 'incident.work', 'reg.manage', 'reg.verify', 'haccp.manage', 'capa.manage', 'evidence.add', 'ttk.manage', 'ttk.approve', 'cost.read', 'label.print', 'production.plan'] },
   haccp_lead: { label: 'Ответственный ХАССП', summary: 'Опасности, журналы, CAPA, доказательства',
     permissions: [...STAFF, 'member.read', 'dashboard.read', 'control.manage', 'control.approve', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'trace.read', 'reg.read', 'reg.manage', 'reg.verify', 'journal.sign', 'haccp.read', 'haccp.manage', 'capa.read', 'capa.manage', 'capa.verify', 'pack.export', 'pilot.read'] },
   storekeeper: { label: 'Кладовщик / закупщик', summary: 'Заказы, приёмка, партии, склад, инвентаризация',
-    permissions: [...STAFF, 'catalog.manage', 'dashboard.read', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read'] },
+    permissions: [...STAFF, 'catalog.manage', 'dashboard.read', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'purchase.read', 'purchase.manage'] },
   line_staff: { label: 'Сотрудник цеха', summary: 'Назначенные задания и журналы без изменения утверждённых норм', permissions: STAFF },
-  accountant: { label: 'Бухгалтер / экономист', summary: 'Цены, себестоимость, выручка, отчёты', permissions: ['org.read', 'site.read', 'catalog.read', 'lot.read', 'trace.read', 'menu.read', 'cost.read', 'menu.price', 'sales.manage', 'econ.read'] },
+  accountant: { label: 'Бухгалтер / экономист', summary: 'Цены, себестоимость, выручка, отчёты', permissions: ['org.read', 'site.read', 'catalog.read', 'lot.read', 'trace.read', 'menu.read', 'cost.read', 'menu.price', 'sales.manage', 'econ.read', 'purchase.read'] },
   cashier: { label: 'Кассир / официант', summary: 'Смена кассы, заказы, оплата; чек пробивает ККТ предприятия',
     permissions: ['org.read', 'site.read', 'menu.read', 'pos.sell', 'task.read', 'incident.read', 'incident.report'] },
   hr: { label: 'HR / обучение', summary: 'Сотрудники, тесты, инструктажи и сроки', permissions: ['org.read', 'site.read', 'member.read', 'member.invite', 'member.manage', 'task.read'] },

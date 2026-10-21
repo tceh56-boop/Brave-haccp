@@ -64,7 +64,8 @@ function Catalog() {
   const { org, can } = useOrg();
   const [products, setProducts] = useState<{ id: string; name: string; unit: string; category: string | null; reference_name: string | null; reference_code: string | null; opened_shelf_hours: string | null; opened_shelf_basis: string | null }[]>([]);
   const [rule, setRule] = useState<{ id: string; hours: string; basis: string } | null>(null);
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string; inn: string | null }[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string; inn: string | null; phone: string | null; email: string | null; blocked_reason: string | null }[]>([]);
+  const [sup, setSup] = useState<{ id: string; phone: string; email: string; blockedReason: string } | null>(null);
   const [p, setP] = useState({ name: '', unit: 'кг', category: '' });
   const [s, setS] = useState({ name: '', inn: '' });
   const { busy, error, run } = useSubmit();
@@ -99,7 +100,21 @@ function Catalog() {
       </div>
       <div className="card">
         <h2>Поставщики</h2>
-        <ul className="list">{suppliers.map((x) => <li key={x.id}>{x.name} {x.inn && <span className="small muted">ИНН {x.inn}</span>}</li>)}</ul>
+        <ul className="list">{suppliers.map((x) => <li key={x.id}>{x.name} {x.inn && <span className="small muted">ИНН {x.inn}</span>}
+          {x.blocked_reason && <span className="badge crit">заблокирован</span>}
+          <div className="small">{[x.phone, x.email].filter(Boolean).join(' · ') || <span className="muted">контакты не заданы</span>}{x.blocked_reason ? ` · блок: ${x.blocked_reason}` : ''}
+            {can('catalog.manage') && sup?.id !== x.id && <> · <button className="linkbtn" onClick={() => setSup({ id: x.id, phone: x.phone || '', email: x.email || '', blockedReason: x.blocked_reason || '' })}>изменить</button></>}</div>
+          {sup?.id === x.id && (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/suppliers/${x.id}`, { method: 'PATCH', body: sup }); setSup(null); load(); }); }}>
+              <div className="grid2">
+                <div><label htmlFor={`sph-${x.id}`}>Телефон</label><input id={`sph-${x.id}`} inputMode="tel" value={sup.phone} onChange={(e) => setSup({ ...sup, phone: e.target.value })} /></div>
+                <div><label htmlFor={`sem-${x.id}`}>Email для заказов</label><input id={`sem-${x.id}`} inputMode="email" value={sup.email} onChange={(e) => setSup({ ...sup, email: e.target.value })} /></div>
+              </div>
+              <label htmlFor={`sbl-${x.id}`}>Блокировка для заказов (причина; пусто — не заблокирован)</label>
+              <input id={`sbl-${x.id}`} value={sup.blockedReason} onChange={(e) => setSup({ ...sup, blockedReason: e.target.value })} placeholder="две поставки подряд с нарушением температуры" />
+              <div className="row" style={{ marginTop: 8 }}><button className="btn small" disabled={busy}>Сохранить</button><button type="button" className="btn small secondary" onClick={() => setSup(null)}>Отмена</button></div>
+            </form>)}
+        </li>)}</ul>
         {can('catalog.manage') && (
           <form className="row" style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/suppliers`, { body: { name: s.name, inn: s.inn || null } }); setS({ name: '', inn: '' }); load(); }); }}>
             <input aria-label="Поставщик" required placeholder="ООО «…»" value={s.name} onChange={(e) => setS({ ...s, name: e.target.value })} style={{ flex: 3 }} />

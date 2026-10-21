@@ -3,6 +3,7 @@ import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, optText, getSite, assertSiteAccess, openTask, fmtNum } from './common';
+import { markOrderReceived } from './purchasing';
 import { raiseIncident } from './incidents';
 
 /**
@@ -140,6 +141,7 @@ export async function completeReceipt(userId: string, orgId: string, receiptId: 
     }
     const status = created.rejected === lines.length ? 'rejected' : created.quarantine ? 'quarantine' : 'accepted';
     await tx.query(`update receipts set status = $2, completed_by = $3, completed_at = now() where id = $1`, [r.id, status, userId]);
+    await markOrderReceived(tx, r);                                  // приёмка по заказу поставщику → заказ «принят»
     await audit.record(tx, { organizationId: orgId, siteId: r.site_id, actorUserId: userId, action: 'receipt.complete', entityType: 'receipt', entityId: r.id,
       before: { status: 'draft' }, after: { status, lines: lines.length, ...created } });
     return { status, status_label: RECEIPT_STATUS_LABEL[status], ...created };
@@ -161,6 +163,8 @@ export async function getReceipt(userId: string, orgId: string, receiptId: strin
     assertSiteAccess(m, r.site_id);
     const lines = (await tx.query(`select l.*, p.name as product, o.name as storage_name from receipt_lines l join products p on p.id = l.product_id
       left join control_objects o on o.id = l.storage_object_id where l.receipt_id = $1 order by l.created_at`, [r.id])).rows;
-    return { receipt: { ...r, status_label: RECEIPT_STATUS_LABEL[r.status] }, lines };
+    const order = r.supplier_order_id ? (await tx.query(`select o.id, o.number, (select json_agg(json_build_object('product_id', l.product_id, 'product', p.name, 'quantity', l.quantity, 'unit', l.unit, 'price', l.price) order by p.name)
+      from supplier_order_lines l join products p on p.id = l.product_id where l.order_id = o.id) as lines from supplier_orders o where o.id = $1`, [r.supplier_order_id])).rows[0] : null;
+    return { receipt: { ...r, status_label: RECEIPT_STATUS_LABEL[r.status] }, lines, order };
   });
 }

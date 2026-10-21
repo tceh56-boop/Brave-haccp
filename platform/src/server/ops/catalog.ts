@@ -39,7 +39,7 @@ const SupplierInput = z.object({
 
 export async function listSuppliers(userId: string, orgId: string) {
   return inOrg(userId, orgId, 'catalog.read', async (tx) => (await tx.query(
-    `select id, name, inn from suppliers where organization_id = $1 and status = 'active' order by name`, [orgId])).rows);
+    `select id, name, inn, phone, email, blocked_reason from suppliers where organization_id = $1 and status = 'active' order by name`, [orgId])).rows);
 }
 
 export async function createSupplier(userId: string, orgId: string, input: unknown) {

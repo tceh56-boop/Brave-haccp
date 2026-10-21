@@ -8,8 +8,10 @@ import { api } from '@/lib/api';
 import { d, n } from '@/lib/fmt';
 import { Evidence } from '@/components/Evidence';
 
-interface Line { id: string; product: string; quantity: string; unit: string; lot_no: string | null; expires_at: string | null; expiry_basis: string | null; temperature: string | null; decision: string; decision_reason: string | null; storage_name: string | null; lot_id: string | null }
-interface R { receipt: { id: string; status: string; status_label: string; document_no: string | null; supplier: string | null; site_id: string }; lines: Line[] }
+interface Line { id: string; product_id: string; product: string; quantity: string; unit: string; lot_no: string | null; expires_at: string | null; expiry_basis: string | null; temperature: string | null; decision: string; decision_reason: string | null; storage_name: string | null; lot_id: string | null }
+interface OrderLine { product_id: string; product: string; quantity: string; unit: string; price: string | null }
+interface R { receipt: { id: string; status: string; status_label: string; document_no: string | null; supplier: string | null; site_id: string }; lines: Line[];
+  order: { id: string; number: number; lines: OrderLine[] } | null }
 interface Product { id: string; name: string; unit: string }
 interface Obj { id: string; name: string }
 
@@ -54,6 +56,25 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
       <p className="small"><Link href={`/app/${org.id}/shift`}>← Смена</Link></p>
       <div className="between"><h1 style={{ margin: 0 }}>Приёмка {r.receipt.document_no || ''}</h1><span className="badge">{r.receipt.status_label}</span></div>
       <p className="muted">{r.receipt.supplier || 'Поставщик не указан'}</p>
+
+      {r.order && (
+        <div className="card">
+          <div className="between"><h2 style={{ margin: 0 }}>По заказу № {r.order.number}</h2><Link className="small" href={`/app/${org.id}/purchasing/${r.order.id}`}>заказ</Link></div>
+          <p className="small muted">{draft ? 'Нажмите позицию — товар, количество и цена подставятся в форму. Проверки и срок — по факту, как при обычной приёмке.' : 'Заказано / принято.'}</p>
+          <ul className="list">{r.order.lines.map((ol) => {
+            const got = r.lines.filter((l) => l.product_id === ol.product_id && l.decision !== 'rejected').reduce((s, l) => s + Number(l.quantity), 0);
+            const tone = got === 0 ? '' : Math.abs(got - Number(ol.quantity)) < 1e-9 ? 'ok' : 'warn';
+            return (
+              <li key={ol.product_id}>
+                <div className="between">
+                  {draft ? <button type="button" className="linkbtn" onClick={() => setF({ ...empty, storageObjectId: f.storageObjectId, productId: ol.product_id,
+                    quantity: String(Math.max(0, Number(ol.quantity) - got) || ol.quantity).replace('.', ','), unitPrice: ol.price === null ? '' : String(ol.price).replace('.', ',') })}>{ol.product}</button> : <b>{ol.product}</b>}
+                  <span className={`badge ${tone}`}>{n(got)} / {n(ol.quantity)} {ol.unit}</span>
+                </div>
+              </li>);
+          })}</ul>
+        </div>
+      )}
 
       {r.lines.length > 0 && (
         <div className="card">

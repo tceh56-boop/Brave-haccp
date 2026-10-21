@@ -18,6 +18,7 @@ function useGroups(): [string, Item[]][] {
       { href: `${b}/problems`, label: 'Проблемы', show: can('incident.read'), match: [`${b}/incidents`] },
       { href: `${b}/tasks`, label: 'Задачи', show: can('task.read') },
       { href: `${b}/stock`, label: 'Склад', show: can('lot.read'), match: [`${b}/lots`, `${b}/receipts`] },
+      { href: `${b}/purchasing`, label: 'Закупки', show: can('purchase.read') },
       { href: `${b}/production`, label: 'Производство', show: can('production.read') },
       { href: `${b}/labels`, label: 'Маркировка', show: can('label.print') },
       { href: `${b}/journals`, label: 'Журналы', show: can('journal.read') },

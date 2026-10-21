@@ -3,6 +3,7 @@ import { withSystem, closePool } from '../db/pool';
 import { register, verifyEmail, login, type SessionUser } from '../identity/auth';
 import { createOrganization, inviteMember, acceptInvitation } from '../org/organizations';
 import { createSupplier, createProduct } from '../ops/catalog';
+import { setNorm, createOrder as createSupplierOrder, stepOrder, updateSupplier } from '../ops/purchasing';
 import { importReference, createProductFromReference } from '../ops/reference';
 import { createControlObject, createRule, approveRule } from '../ops/control';
 import { recordMeasurement } from '../ops/measurements';
@@ -126,6 +127,14 @@ export async function seedDemo() {
   await setOpenedShelfLife(store.id, orgId, p.cream, { hours: 72, basis: 'маркировка изготовителя: после вскрытия 72 ч при +2…+6 °C' });
   const opened = await openLot(cook.id, orgId, lots.find((l) => l.lot_no === 'С-552')!.id, { quantity: 1, operationId: `demo-open-${SUFFIX || 'main'}` });
   await logPrint(cook.id, orgId, { labelIds: [opened.label_id], format: '58x40', copies: 1 });
+
+  // Закупки: контакты поставщика, нормы запаса (вручную с основанием и по расходу), отправленный заказ
+  await updateSupplier(store.id, orgId, supplier, { phone: '+7 900 000-00-01', email: 'zakaz@demo-postavshik.example' });
+  await setNorm(store.id, orgId, { siteId, productId: p.beef, mode: 'manual', minQty: 15, basis: 'поставка 2 раза в неделю, запас на 4 дня' });
+  await setNorm(store.id, orgId, { siteId, productId: p.onion, mode: 'manual', minQty: 12, basis: 'поставка раз в неделю' });
+  await setNorm(store.id, orgId, { siteId, productId: p.cream, mode: 'auto', coverDays: 3, safetyPct: 20 });
+  const supOrder = await createSupplierOrder(store.id, orgId, { siteId, supplierId: supplier, expectedAt: inDays(1), lines: [{ productId: p.beef, quantity: 5, price: 890 }, { productId: p.cream, quantity: 4, price: 410 }] });
+  await stepOrder(store.id, orgId, supOrder.id, 'send');
 
   // Смена: замеры, отклонение → действие → подтверждение → CAPA; сообщение сотрудника
   await recordMeasurement(cook.id, orgId, { controlObjectId: objects['Холодильник молочный'], value: 4.1 });
