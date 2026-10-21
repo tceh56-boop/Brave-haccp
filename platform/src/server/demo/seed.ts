@@ -19,6 +19,7 @@ import { confirm } from '../ops/readiness';
 import { listLots } from '../ops/lots';
 import { createLabels, logPrint, openLot, setOpenedShelfLife } from '../ops/labels';
 import { createProduction, startProduction, recordCheck, completeProduction, addReleaseCheck } from '../ops/production';
+import { setProductNutrition, setProductAllergens, saveTechSpecParams } from '../ops/techspec';
 
 /**
  * Демо-организация для показа и инструктажа (этап 8): «Кафе «Демо»» с сотрудниками всех ролей и данными за смену.
@@ -199,6 +200,12 @@ export async function seedDemo() {
   await recordCheck(cook.id, orgId, po.id, { checkId: tcheck.id, value: 82 });
   await completeProduction(cook.id, orgId, po.id, { actualKg: 0.95, operationId: `demo-prod-${SUFFIX || 'main'}` });
   await createProduction(chef.id, orgId, { siteId, dishId: sauce, plannedKg: 2, plannedFor: day, note: 'на вечер' });
+  // ТУ соуса: данные сырья по документам, параметры — расчёт есть, статус «проект» (нет микробиологии и протокола)
+  await setProductNutrition(tech.id, orgId, p.cream, { kcal: 322, protein: 2.5, fat: 33, carbs: 3, basis: 'Демо: маркировка изготовителя' });
+  await setProductNutrition(tech.id, orgId, p.onion, { kcal: 41, protein: 1.4, fat: 0.2, carbs: 8.2, basis: 'Демо: удостоверение качества поставщика' });
+  await setProductAllergens(tech.id, orgId, p.cream, { allergens: ['milk'], basis: 'Демо: состав на маркировке' });
+  await setProductAllergens(tech.id, orgId, p.onion, { allergens: [], basis: 'Демо: спецификация поставщика — не содержит' });
+  await saveTechSpecParams(tech.id, orgId, sauce, { okpd2: '10.85.19', seq: '1' });
 
   // Касса: смена, два оплаченных заказа, один открытый; ручной стоп
   await openShift(cashier.id, orgId, { siteId, cashStart: 3000 });

@@ -21,7 +21,7 @@ async function usableQty(tx: Tx, orgId: string, siteId: string, productId: strin
 }
 
 /** Масса полуфабриката по строке ТТК, г (или null, если не определить). */
-async function semiGrams(tx: Tx, subDishId: string, q: number, unit: string): Promise<number | null> {
+export async function semiGrams(tx: Tx, subDishId: string, q: number, unit: string): Promise<number | null> {
   if (unit === 'г') return q;
   if (unit === 'кг') return q * 1000;
   if (unit === 'порция') {

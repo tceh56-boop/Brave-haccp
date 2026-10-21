@@ -137,3 +137,16 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .lb { border: 0; break-inside: avoid; }
   .f-58x40 .lb, .f-58x30 .lb { break-after: page; }
 }
+
+/* ───── Этап 11: документ ТУ (A4) ───── */
+.tu-doc { background: #fff; color: #111; padding: 16px; border-radius: var(--radius); box-shadow: var(--shadow); font: 10pt/1.45 Arial, sans-serif; }
+.tu-doc h1 { font-size: 15pt; text-align: center; margin: 16px 0 4px; color: #111; }
+.tu-doc h2 { font-size: 11pt; margin: 14px 0 5px; border-bottom: 1px solid #777; }
+.tu-doc table { width: 100%; border-collapse: collapse; margin: 5px 0 10px; font-size: 9pt; }
+.tu-doc th, .tu-doc td { border: 1px solid #888; padding: 3px 5px; vertical-align: top; text-align: left; }
+.tu-doc th { background: #f2f2f2; }
+.tu-right { text-align: right; } .tu-center { text-align: center; }
+.tu-stamp { display: inline-block; border: 2px solid #a00; color: #a00; padding: 1px 8px; font-weight: 700; }
+.tu-warn { border: 1px solid #c80; background: #fff7e6; padding: 6px 10px; margin: 10px 0; }
+.tu-small { font-size: 8pt; color: #555; }
+@media print { .tu-doc { box-shadow: none; padding: 0; border-radius: 0; } @page { size: A4; margin: 15mm; } }

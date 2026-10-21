@@ -253,8 +253,12 @@ async function subGrams(tx: Tx, subId: string, qty: number, unit: string) {
 
 export async function calcVersion(tx: Tx, orgId: string, versionId: string, stack: Set<string>): Promise<Calc> {
   const v = (await tx.query(`select * from ttk_versions where id = $1`, [versionId])).rows[0];
-  const lines = (await tx.query(`select l.*, p.name as product_name, p.unit as product_unit, r.kcal_100, r.protein_100, r.fat_100, r.carbs_100, r.verification_status, sd.name as sub_name
+  // пищевая ценность: по документу (product_nutrition — подтверждено), иначе справочник MON CHEF со своим статусом
+  const lines = (await tx.query(`select l.*, p.name as product_name, p.unit as product_unit,
+      coalesce(pn.kcal_100, r.kcal_100) as kcal_100, coalesce(pn.protein_100, r.protein_100) as protein_100, coalesce(pn.fat_100, r.fat_100) as fat_100,
+      coalesce(pn.carbs_100, r.carbs_100) as carbs_100, case when pn.id is not null then 'VERIFIED' else r.verification_status end as verification_status, sd.name as sub_name
     from ttk_lines l left join products p on p.id = l.product_id left join reference_products r on r.id = p.reference_product_id left join dishes sd on sd.id = l.sub_dish_id
+    left join lateral (select * from product_nutrition x where x.product_id = l.product_id order by x.created_at desc limit 1) pn on true
     where l.version_id = $1 order by l.position`, [versionId])).rows;
   const out: Calc = { cost: { total: 0, complete: true, missing: [] }, lines: [], kbju: { per100: null, complete: true, verified: true, missing: [] }, mass_g: 0 };
   const k = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
