@@ -46,6 +46,7 @@ function useGroups(): [string, Item[]][] {
       { href: `${b}/setup`, label: 'Объекты, товары, поставщики', show: can('control.manage') || can('catalog.manage') },
       { href: `${b}/readiness`, label: 'Готовность к пилоту', show: can('pilot.read') },
       { href: `${b}/staff`, label: 'Персонал', show: can('staff.read') },
+      { href: `${b}/recognition`, label: 'Распознавание документов', show: can('recognition.manage') },
       { href: `${b}/staff/me`, label: 'Мой допуск и инструктажи', show: true },
       { href: `${b}/guide`, label: 'Памятки по ролям', show: true },
       { href: '/app', label: 'Мои предприятия', show: true },

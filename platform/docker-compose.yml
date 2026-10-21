@@ -38,6 +38,11 @@ services:
       BACKUP_DIR: /backups
       DEMO: ${DEMO:-1}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # распознавание документов — Yandex Cloud (см. .env.example)
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
+      YANDEX_GPT_MODEL: ${YANDEX_GPT_MODEL:-yandexgpt/latest}
+      RECOGNITION_LLM_DISABLED: ${RECOGNITION_LLM_DISABLED:-}
     ports: ["${APP_BIND:-127.0.0.1}:3000:3000"]
     volumes: [backups:/backups]
 
