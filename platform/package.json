@@ -18,7 +18,9 @@
     "mail:watch": "tsx src/server/mail/sender.ts --watch",
     "demo:seed": "tsx src/server/demo/seed.ts",
     "manual:shots": "node tools/manual/tour.mjs",
-    "manual:build": "node tools/manual/build.mjs"
+    "manual:build": "node tools/manual/build.mjs",
+    "legal:notices": "node tools/legal/licenses.mjs",
+    "legal:listing": "node tools/legal/listing.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0",
