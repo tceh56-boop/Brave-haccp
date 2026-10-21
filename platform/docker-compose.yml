@@ -1,0 +1,65 @@
+# ЦЕХ одной командой: база, приложение, отправка писем, почтовый ящик стенда (Mailpit).
+#   docker compose up -d --build                      → http://localhost:3000, письма — http://localhost:8025/mail/
+#   docker compose --profile https up -d --build      → сервер с доменом и HTTPS (настройки — в .env, см. .env.example)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ceh
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ceh}
+      POSTGRES_DB: ceh
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ceh -d ceh"]
+      interval: 3s
+      retries: 30
+
+  mail:
+    image: axllent/mailpit:v1.31
+    restart: unless-stopped
+    environment:
+      MP_WEBROOT: /mail/
+      MP_UI_AUTH: ${MAIL_UI_AUTH:-}
+    ports: ["127.0.0.1:8025:8025"]
+
+  app:
+    build: .
+    image: ceh-app
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment: &appenv
+      DATABASE_URL: postgres://ceh:${DB_PASSWORD:-ceh}@db:5432/ceh
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      SMTP_URL: smtp://mail:1025
+      MAIL_FROM: ${MAIL_FROM:-ЦЕХ <no-reply@ceh.local>}
+      DEMO: ${DEMO:-1}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports: ["${APP_BIND:-127.0.0.1}:3000:3000"]
+
+  mailer:
+    image: ceh-app
+    restart: unless-stopped
+    depends_on: [app]
+    environment: *appenv
+    command: ["npm", "run", "-s", "mail:watch"]
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [https]
+    restart: unless-stopped
+    depends_on: [app, mail]
+    environment:
+      DOMAIN: ${DOMAIN:-}
+      MAIL_UI_AUTH: ${MAIL_UI_AUTH:-}
+    # без домена и пароля почтового ящика (там ссылки сброса пароля) сервер в интернет не выставляется
+    command: ["sh", "-c", "[ -n \"$$DOMAIN\" ] && [ -n \"$$MAIL_UI_AUTH\" ] || { echo 'Укажите DOMAIN и MAIL_UI_AUTH в .env'; exit 1; }; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+
+volumes:
+  dbdata:
+  caddy:

@@ -53,7 +53,7 @@ if (typeof require !== 'undefined' && require.main === module) {
   else {
     const watch = process.argv.includes('--watch');
     const tick = async () => { const r = await sendPending(t); if (r.sent || r.failed) console.log(new Date().toISOString(), r); };
-    if (watch) { tick(); setInterval(() => tick().catch((e) => console.error(e.message)), 15_000); }
+    if (watch) { const safe = () => tick().catch((e) => console.error(e.message)); safe(); setInterval(safe, 15_000); }
     else tick().catch((e) => { console.error(e.message); process.exitCode = 1; }).finally(async () => (await import('../db/pool')).closePool());
   }
 }

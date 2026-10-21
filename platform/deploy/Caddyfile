@@ -1,0 +1,10 @@
+# HTTPS с автоматическим сертификатом Let's Encrypt для DOMAIN. /mail/ — почтовый ящик стенда (пароль MAIL_UI_AUTH).
+{$DOMAIN} {
+	encode gzip
+	handle /mail* {
+		reverse_proxy mail:8025
+	}
+	handle {
+		reverse_proxy app:3000
+	}
+}
