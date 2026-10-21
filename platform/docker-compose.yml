@@ -32,11 +32,14 @@ services:
     environment: &appenv
       DATABASE_URL: postgres://ceh:${DB_PASSWORD:-ceh}@db:5432/ceh
       APP_URL: ${APP_URL:-http://localhost:3000}
-      SMTP_URL: smtp://mail:1025
+      # почта: по умолчанию — ящик стенда Mailpit; для работы — SMTP_URL почтового сервиса (см. .env.example)
+      SMTP_URL: ${SMTP_URL:-smtp://mail:1025}
       MAIL_FROM: ${MAIL_FROM:-ЦЕХ <no-reply@ceh.local>}
+      BACKUP_DIR: /backups
       DEMO: ${DEMO:-1}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports: ["${APP_BIND:-127.0.0.1}:3000:3000"]
+    volumes: [backups:/backups]
 
   mailer:
     image: ceh-app
@@ -63,3 +66,4 @@ services:
 volumes:
   dbdata:
   caddy:
+  backups:
