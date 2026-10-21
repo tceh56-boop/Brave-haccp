@@ -1,6 +1,7 @@
 'use client';
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
@@ -19,6 +20,7 @@ const empty = { productId: '', quantity: '', lotNo: '', manufacturedAt: '', expi
 export default function ReceiptPage({ params }: { params: Promise<{ receiptId: string }> }) {
   const { receiptId } = use(params);
   const { org, can } = useOrg();
+  const router = useRouter();
   const [r, setR] = useState<R | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [objects, setObjects] = useState<Obj[]>([]);
@@ -71,6 +73,11 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
             </li>
           ))}</ul>
           {draft && <button className="btn block" disabled={busy} onClick={() => run(async () => { setSummary(await api(`/orgs/${org.id}/receipts/${receiptId}/complete`, { body: {} })); await load(); })}>Завершить приёмку</button>}
+          {!draft && can('label.print') && r.lines.some((l) => l.lot_id) && (
+            <button className="btn block secondary" disabled={busy} onClick={() => run(async () => {
+              const labels = await api<{ id: string }[]>(`/orgs/${org.id}/labels`, { body: { lotIds: r.lines.filter((l) => l.lot_id).map((l) => l.lot_id) } });
+              router.push(`/app/${org.id}/labels/print?ids=${labels.map((x) => x.id).join(',')}`);
+            })}>Этикетки партий ({r.lines.filter((l) => l.lot_id).length})</button>)}
         </div>
       )}
 

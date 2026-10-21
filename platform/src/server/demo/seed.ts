@@ -16,6 +16,8 @@ import { addEvidence } from '../ops/evidence';
 import { importTtkArchive, listArchive, importFromArchive, createDish, getDish, updateVersion, addLine, submitVersion, approveVersion as approveTtk } from '../ops/recipes';
 import { openShift, createOrder, addOrderLine, payOrder, setStop } from '../ops/pos';
 import { confirm } from '../ops/readiness';
+import { listLots } from '../ops/lots';
+import { createLabels, logPrint, openLot, setOpenedShelfLife } from '../ops/labels';
 
 /**
  * Демо-организация для показа и инструктажа (этап 8): «Кафе «Демо»» с сотрудниками всех ролей и данными за смену.
@@ -114,6 +116,14 @@ export async function seedDemo() {
   await line(p.cranberry, 3, 520, 'К-08', inDays(120), objects['Морозильник']);
   await line(p.potato, 20, 32, 'К-221', inDays(14), null, { checks: { ...ok, quality: false }, decision: 'quarantine', decisionReason: 'часть клубней с гнилью — на проверку' });
   await completeReceipt(store.id, orgId, rec.id);
+
+  // Маркировка: этикетки партий приёмки, правило «после вскрытия» для сливок, вскрытая тара с новой этикеткой
+  const lots = await listLots(store.id, orgId, siteId);
+  const labels = await createLabels(store.id, orgId, { lotIds: lots.map((l) => l.id) });
+  await logPrint(store.id, orgId, { labelIds: labels.map((l) => l.id), format: '58x40', copies: 1 });
+  await setOpenedShelfLife(store.id, orgId, p.cream, { hours: 72, basis: 'маркировка изготовителя: после вскрытия 72 ч при +2…+6 °C' });
+  const opened = await openLot(cook.id, orgId, lots.find((l) => l.lot_no === 'С-552')!.id, { quantity: 1, operationId: `demo-open-${SUFFIX || 'main'}` });
+  await logPrint(cook.id, orgId, { labelIds: [opened.label_id], format: '58x40', copies: 1 });
 
   // Смена: замеры, отклонение → действие → подтверждение → CAPA; сообщение сотрудника
   await recordMeasurement(cook.id, orgId, { controlObjectId: objects['Холодильник молочный'], value: 4.1 });

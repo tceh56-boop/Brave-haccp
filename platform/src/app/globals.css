@@ -83,6 +83,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .tbl th { font-size: 12px; color: var(--muted); font-weight: 600; border-top: 0; }
 .scroll { overflow-x: auto; }
 .center { text-align: center; }
+.linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
 
 /* ───── Этап 2: экран сотрудника ───── */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
@@ -112,3 +113,27 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .timeline { list-style: none; padding: 0; margin: 0; border-left: 2px solid var(--line); }
 .timeline li { padding: 4px 0 10px 12px; position: relative; font-size: 14px; }
 .timeline li::before { content: ''; position: absolute; left: -6px; top: 9px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); }
+
+/* ───── Этап 9: этикетки (термоэтикетка 58×40 / 58×30 мм, лист A4 70×37 мм) ───── */
+.lb-sheet { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.lb { background: #fff; color: #000; display: flex; gap: 2mm; padding: 2mm; overflow: hidden; font: 8.5pt/1.2 Arial, sans-serif; border: 1px dashed #bbb; }
+.f-58x40 .lb { width: 58mm; height: 40mm; }
+.f-58x30 .lb { width: 58mm; height: 30mm; font-size: 7.5pt; }
+.f-a4 .lb { width: 70mm; height: 37mm; }
+.lb-left { width: 19mm; flex: none; text-align: center; }
+.f-58x30 .lb-left { width: 16mm; }
+.lb-qr svg { width: 100%; height: auto; display: block; }
+.lb-code { font: bold 6.5pt monospace; margin-top: 1mm; letter-spacing: .4px; }
+.lb-body { min-width: 0; flex: 1; }
+.lb-name { font-weight: 700; font-size: 9.5pt; line-height: 1.1; margin-bottom: 1mm; max-height: 2.25em; overflow: hidden; }
+.lb-exp b { font-size: 9.5pt; }
+.lb-warn { background: #000; color: #fff; font-weight: 700; padding: .8mm 1mm; margin: .8mm 0; font-size: 7.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.lb-small { font-size: 6.5pt; color: #333; }
+@media print {
+  html, body { background: #fff; }
+  .topbar, .sidemenu, .menu-overlay, .noprint { display: none !important; }
+  .wrap { max-width: none; padding: 0; margin: 0; }
+  .lb-sheet { gap: 0; margin: 0; }
+  .lb { border: 0; break-inside: avoid; }
+  .f-58x40 .lb, .f-58x30 .lb { break-after: page; }
+}

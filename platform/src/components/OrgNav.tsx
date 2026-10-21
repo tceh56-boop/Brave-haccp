@@ -18,6 +18,7 @@ function useGroups(): [string, Item[]][] {
       { href: `${b}/problems`, label: 'Проблемы', show: can('incident.read'), match: [`${b}/incidents`] },
       { href: `${b}/tasks`, label: 'Задачи', show: can('task.read') },
       { href: `${b}/stock`, label: 'Склад', show: can('lot.read'), match: [`${b}/lots`, `${b}/receipts`] },
+      { href: `${b}/labels`, label: 'Маркировка', show: can('label.print') },
       { href: `${b}/journals`, label: 'Журналы', show: can('journal.read') },
       { href: `${b}/pos`, label: 'Касса', show: can('pos.sell') },
       { href: `${b}/stop-list`, label: 'Стоп-лист', show: can('menu.read') },
@@ -47,7 +48,7 @@ function useGroups(): [string, Item[]][] {
 
 /** Шапка с ☰ и выдвижное меню разделов (заменяет нижнюю панель, как в прежнем ЦЕХ). */
 export function OrgChrome({ children }: { children: React.ReactNode }) {
-  const { me, org, roleLabel } = useOrg();
+  const { me, org, roleLabel, siteId } = useOrg();
   const groups = useGroups();
   const path = usePathname();
   const [open, setOpen] = useState(false);
@@ -73,7 +74,8 @@ export function OrgChrome({ children }: { children: React.ReactNode }) {
           </div>
         ))}
       </nav>
-      <main className="wrap">{children}</main>
+      {/* смена площадки — экран создаётся заново: запоздавший ответ по прежней площадке не перезапишет данные */}
+      <main className="wrap" key={siteId || 'all'}>{children}</main>
     </>
   );
 }

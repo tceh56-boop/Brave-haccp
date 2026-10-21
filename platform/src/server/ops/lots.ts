@@ -50,15 +50,21 @@ export async function listLots(userId: string, orgId: string, siteId: string, op
 
 export async function getLot(userId: string, orgId: string, lotId: string) {
   return inOrg(userId, orgId, 'lot.read', async (tx, m) => {
-    const l = (await tx.query(`select l.*, p.name as product, o.name as storage_name, s.name as site_name, r.document_no, sp.name as supplier
+    const l = (await tx.query(`select l.*, p.name as product, p.opened_shelf_hours, p.opened_shelf_basis, o.name as storage_name, s.name as site_name, r.document_no, sp.name as supplier
       from lots l join products p on p.id = l.product_id join sites s on s.id = l.site_id left join control_objects o on o.id = l.storage_object_id
       left join receipt_lines rl on rl.id = l.receipt_line_id left join receipts r on r.id = rl.receipt_id left join suppliers sp on sp.id = r.supplier_id
       where l.id = $1 and l.organization_id = $2`, [lotId, orgId])).rows[0];
     if (!l) throw Errors.notFound('Партия не найдена.');
     assertSiteAccess(m, l.site_id);
     const tasks = (await tx.query(`select id, kind, title, status from tasks where entity_id = $1 and status = 'open'`, [lotId])).rows;
+    // вскрытие: из какой партии вскрыта эта и какие вскрытые партии получены из неё; последняя этикетка
+    const openedFrom = (await tx.query(`select k.parent_lot_id as id, pl.lot_no from lot_links k join lots pl on pl.id = k.parent_lot_id where k.child_lot_id = $1 and k.kind = 'opened'`, [lotId])).rows[0] || null;
+    const opened = (await tx.query(`select k.child_lot_id as id, k.quantity, k.unit, cl.opened_at, cl.expires_at, cl.status from lot_links k join lots cl on cl.id = k.child_lot_id
+      where k.parent_lot_id = $1 and k.kind = 'opened' order by cl.opened_at desc`, [lotId])).rows;
+    const label = (await tx.query(`select lb.id, lb.code, lb.created_at, (select coalesce(sum(copies), 0)::int from label_prints p where p.label_id = lb.id) as printed
+      from labels lb where lb.lot_id = $1 order by lb.created_at desc limit 1`, [lotId])).rows[0] || null;
     const st = expiryState(l);
-    return { lot: { ...l, expiry_state: st, expiry_label: EXPIRY_LABEL[st], status_label: LOT_STATUS_LABEL[l.status] }, tasks };
+    return { lot: { ...l, expiry_state: st, expiry_label: EXPIRY_LABEL[st], status_label: LOT_STATUS_LABEL[l.status] }, tasks, opened_from: openedFrom, opened, label };
   });
 }
 

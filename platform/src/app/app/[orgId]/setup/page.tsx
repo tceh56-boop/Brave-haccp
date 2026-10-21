@@ -62,7 +62,8 @@ function Objects() {
 
 function Catalog() {
   const { org, can } = useOrg();
-  const [products, setProducts] = useState<{ id: string; name: string; unit: string; category: string | null; reference_name: string | null; reference_code: string | null }[]>([]);
+  const [products, setProducts] = useState<{ id: string; name: string; unit: string; category: string | null; reference_name: string | null; reference_code: string | null; opened_shelf_hours: string | null; opened_shelf_basis: string | null }[]>([]);
+  const [rule, setRule] = useState<{ id: string; hours: string; basis: string } | null>(null);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; inn: string | null }[]>([]);
   const [p, setP] = useState({ name: '', unit: 'кг', category: '' });
   const [s, setS] = useState({ name: '', inn: '' });
@@ -74,7 +75,20 @@ function Catalog() {
       <div className="card">
         <h2>Товары</h2>
         <p className="small muted">Товары предприятия. Привязка к справочнику MON CHEF даёт справочную пищевую ценность и условия хранения (статус «на проверке» — не утверждённая норма).</p>
-        <ul className="list">{products.map((x) => <li key={x.id}>{x.name} <span className="small muted">({x.unit}{x.category ? `, ${x.category}` : ''})</span>{x.reference_code && <div className="small muted">справочник: {x.reference_code} «{x.reference_name}»</div>}</li>)}</ul>
+        <ul className="list">{products.map((x) => <li key={x.id}>{x.name} <span className="small muted">({x.unit}{x.category ? `, ${x.category}` : ''})</span>{x.reference_code && <div className="small muted">справочник: {x.reference_code} «{x.reference_name}»</div>}
+          <div className="small">{x.opened_shelf_hours ? <>после вскрытия: {Number(x.opened_shelf_hours)} ч — {x.opened_shelf_basis}</> : <span className="muted">срок после вскрытия не задан</span>}
+            {can('catalog.manage') && rule?.id !== x.id && <> · <button className="linkbtn" onClick={() => setRule({ id: x.id, hours: x.opened_shelf_hours ? String(Number(x.opened_shelf_hours)) : '', basis: x.opened_shelf_basis || '' })}>изменить</button></>}</div>
+          {rule?.id === x.id && (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+              await api(`/orgs/${org.id}/products/${x.id}/opened-shelf-life`, { body: { hours: rule.hours ? rule.hours.replace(',', '.') : null, basis: rule.basis || null } }); setRule(null); load();
+            }); }}>
+              <div className="grid2">
+                <div><label htmlFor={`oh-${x.id}`}>После вскрытия, ч (пусто — снять)</label><input id={`oh-${x.id}`} inputMode="decimal" value={rule.hours} onChange={(e) => setRule({ ...rule, hours: e.target.value })} /></div>
+                <div><label htmlFor={`ob-${x.id}`}>Основание</label><input id={`ob-${x.id}`} value={rule.basis} onChange={(e) => setRule({ ...rule, basis: e.target.value })} placeholder="маркировка изготовителя / утверждённое правило" /></div>
+              </div>
+              <div className="row" style={{ marginTop: 8 }}><button className="btn small" disabled={busy}>Сохранить</button><button type="button" className="btn small secondary" onClick={() => setRule(null)}>Отмена</button></div>
+            </form>)}
+        </li>)}</ul>
         {can('catalog.manage') && (
           <form className="row" style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/products`, { body: { ...p, category: p.category || null } }); setP({ name: '', unit: p.unit, category: '' }); load(); }); }}>
             <input aria-label="Название товара" required placeholder="Название" value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} style={{ flex: 3 }} />
