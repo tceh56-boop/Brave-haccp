@@ -15,7 +15,10 @@
     "backup": "tsx src/server/ops/backup.ts",
     "backup:verify": "tsx src/server/ops/backup.ts verify",
     "mail:send": "tsx src/server/mail/sender.ts",
-    "mail:watch": "tsx src/server/mail/sender.ts --watch"
+    "mail:watch": "tsx src/server/mail/sender.ts --watch",
+    "demo:seed": "tsx src/server/demo/seed.ts",
+    "manual:shots": "node tools/manual/tour.mjs",
+    "manual:build": "node tools/manual/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0",
