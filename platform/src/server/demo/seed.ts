@@ -3,6 +3,7 @@ import { withSystem, closePool } from '../db/pool';
 import { register, verifyEmail, login, type SessionUser } from '../identity/auth';
 import { createOrganization, inviteMember, acceptInvitation } from '../org/organizations';
 import { createSupplier, createProduct } from '../ops/catalog';
+import { createEvent, setItem as setEventItem, confirmEvent } from '../ops/planmenu';
 import { setNorm, createOrder as createSupplierOrder, stepOrder, updateSupplier } from '../ops/purchasing';
 import { importReference, createProductFromReference } from '../ops/reference';
 import { createControlObject, createRule, approveRule } from '../ops/control';
@@ -229,6 +230,12 @@ export async function seedDemo() {
   const o3 = await createOrder(cashier.id, orgId, { siteId, tableLabel: '7' });
   await addOrderLine(cashier.id, orgId, o3.order.id, { dishId: mors });
   await setStop(chef.id, orgId, { siteId, dishId: compote, reason: 'закончились сухофрукты' });
+
+  // План-меню: подтверждённый банкет через 3 дня (бефстроганов на гостя, морс итого) — видна потребность и нехватка
+  const banquet = await createEvent(chef.id, orgId, { siteId, title: 'Юбилей — 40 гостей', eventDate: inDays(3), eventTime: '18:00', guests: 40, format: 'банкет', contact: 'Ирина, +7 900 000-00-02' });
+  await setEventItem(chef.id, orgId, banquet.id, { dishId: stroganoff, perGuest: 1, note: 'горячее' });
+  await setEventItem(chef.id, orgId, banquet.id, { dishId: mors, portions: 30 });
+  await confirmEvent(chef.id, orgId, banquet.id);
 
   // Подтверждения пилота: часть есть, часть ждёт — видно на экране готовности
   await confirm(owner.id, orgId, { key: 'paper_fallback', evidence: 'Демо: бланки журналов в папке на кухне, перенос — Игорь ХАССП' });

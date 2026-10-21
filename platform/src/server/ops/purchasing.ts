@@ -104,6 +104,7 @@ async function orderFor(tx: Tx, orgId: string, id: string, lock = false) {
 
 const LineIn = z.object({ productId: z.uuid(), quantity: qty, price: money.nullable().optional(), note: optText(200) });
 const OrderInput = z.object({ siteId: z.uuid(), supplierId: z.uuid({ message: 'Выберите поставщика.' }), expectedAt: z.iso.date().optional().nullable(), note: optText(500),
+  planEventId: z.uuid().optional().nullable(),
   lines: z.array(LineIn).min(1, 'Добавьте хотя бы одну позицию.').max(200) });
 
 async function assertSupplierOpen(tx: Tx, orgId: string, supplierId: string) {
@@ -126,10 +127,12 @@ export async function createOrder(userId: string, orgId: string, input: unknown)
   return inOrg(userId, orgId, 'purchase.manage', async (tx) => {
     await getSite(tx, orgId, d.siteId);
     await assertSupplierOpen(tx, orgId, d.supplierId);
+    if (d.planEventId && !(await tx.query(`select 1 from plan_events where id = $1 and organization_id = $2 and site_id = $3 and status in ('planned', 'confirmed')`, [d.planEventId, orgId, d.siteId])).rowCount)
+      throw Errors.conflict('Мероприятие не найдено на этой площадке или уже проведено.');
     await tx.query(`select pg_advisory_xact_lock(hashtext($1))`, [`supplier_order:${orgId}`]);   // сквозная нумерация без дублей
     const number = Number((await tx.query(`select coalesce(max(number), 0) + 1 as n from supplier_orders where organization_id = $1`, [orgId])).rows[0].n);
-    const o = (await tx.query(`insert into supplier_orders (organization_id, site_id, supplier_id, number, expected_at, note, created_by) values ($1, $2, $3, $4, $5, $6, $7) returning *`,
-      [orgId, d.siteId, d.supplierId, number, d.expectedAt || null, d.note, userId])).rows[0];
+    const o = (await tx.query(`insert into supplier_orders (organization_id, site_id, supplier_id, number, expected_at, note, created_by, plan_event_id) values ($1, $2, $3, $4, $5, $6, $7, $8) returning *`,
+      [orgId, d.siteId, d.supplierId, number, d.expectedAt || null, d.note, userId, d.planEventId || null])).rows[0];
     for (const l of d.lines) await putLine(tx, orgId, o.id, l);
     await audit.record(tx, { organizationId: orgId, siteId: d.siteId, actorUserId: userId, action: 'purchase.order_create', entityType: 'supplier_order', entityId: o.id, after: { number, lines: d.lines.length } });
     return o;

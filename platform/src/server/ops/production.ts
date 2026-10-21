@@ -68,7 +68,7 @@ export async function producibleDishes(userId: string, orgId: string) {
     where d.organization_id = $1 and d.status = 'active' and d.kind = 'semi' order by d.name`, [orgId])).rows);
 }
 
-const CreateInput = z.object({ siteId: z.uuid(), dishId: z.uuid(), plannedKg: qtyKg, plannedFor: day, note: optText(500) });
+const CreateInput = z.object({ siteId: z.uuid(), dishId: z.uuid(), plannedKg: qtyKg, plannedFor: day, note: optText(500), planEventId: z.uuid().optional().nullable() });
 
 export async function createProduction(userId: string, orgId: string, input: unknown) {
   const d = parse(CreateInput, input);
@@ -80,8 +80,10 @@ export async function createProduction(userId: string, orgId: string, input: unk
     const r = await approvedRecipe(tx, orgId, dish.id);
     if (!r) throw Errors.conflict(`У «${dish.name}» нет утверждённой ТТК — ставить в производство нельзя.`);
     if (!r.version.yield_g) throw Errors.conflict('В утверждённой ТТК не указан выход.');
-    const o = (await tx.query(`insert into production_orders (organization_id, site_id, dish_id, ttk_version_id, planned_g, planned_for, note, created_by)
-      values ($1, $2, $3, $4, $5, $6, $7, $8) returning *`, [orgId, d.siteId, dish.id, r.version.id, d.plannedKg * 1000, d.plannedFor, d.note, userId])).rows[0];
+    if (d.planEventId && !(await tx.query(`select 1 from plan_events where id = $1 and organization_id = $2 and site_id = $3 and status in ('planned', 'confirmed')`, [d.planEventId, orgId, d.siteId])).rowCount)
+      throw Errors.conflict('Мероприятие не найдено на этой площадке или уже проведено.');
+    const o = (await tx.query(`insert into production_orders (organization_id, site_id, dish_id, ttk_version_id, planned_g, planned_for, note, created_by, plan_event_id)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`, [orgId, d.siteId, dish.id, r.version.id, d.plannedKg * 1000, d.plannedFor, d.note, userId, d.planEventId || null])).rows[0];
     await audit.record(tx, { organizationId: orgId, siteId: d.siteId, actorUserId: userId, action: 'production.create', entityType: 'production_order', entityId: o.id,
       after: { dish: dish.name, planned_g: o.planned_g, planned_for: d.plannedFor, ttk_version: r.version.version } });
     return o;
