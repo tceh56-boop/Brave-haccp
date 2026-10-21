@@ -3,10 +3,15 @@ import { withTenant, type Tx } from '../db/pool';
 import { requirePermission, type Membership } from '../access/guard';
 import type { Permission } from '../access/roles';
 import { Errors } from '../http/errors';
+import { admissionGate } from '../access/admission';
 
 /** Операция в организации: контекст изоляции + проверка права (и площадки, если она известна заранее). */
 export function inOrg<T>(userId: string, orgId: string, permission: Permission, fn: (tx: Tx, m: Membership) => Promise<T>, siteId?: string | null): Promise<T> {
-  return withTenant({ userId, orgId }, async (tx) => fn(tx, await requirePermission(tx, userId, orgId, permission, siteId)));
+  return withTenant({ userId, orgId }, async (tx) => {
+    const m = await requirePermission(tx, userId, orgId, permission, siteId);
+    await admissionGate(tx, m, permission);                // допуск к работе с продукцией (этап 16)
+    return fn(tx, m);
+  });
 }
 
 /** Площадка внутри области доступа участника (site_ids пусто — все площадки). */

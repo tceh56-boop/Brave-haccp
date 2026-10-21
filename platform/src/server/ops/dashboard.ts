@@ -3,6 +3,7 @@ import { measurementDue, KIND_LABEL, criterionText } from './control';
 import { expiryState, sweepExpiredLots } from './lots';
 import { SEVERITY_LABEL, STATUS_LABEL } from './incidents';
 import { taskHref } from './tasks';
+import { staffProblems } from './staff';
 import { ROLES, roleHas, type Role } from '../access/roles';
 
 /**
@@ -129,6 +130,11 @@ export async function getProblems(userId: string, orgId: string, siteId?: string
       for (const p of sp) cards.push({ key: `san:${p.id}`, priority: 6, tone: 'warn', title: `Просрочена уборка: ${p.area}`, what: p.work, where: siteName.get(p.site_id) || '', at: null,
         risk: 'Санитарный режим не выполняется', responsible: roleLabel(p.responsible_role), due_at: p.next_due, source: null, action: 'Выполнить и отметить', href: `/app/${orgId}/sanitation` });
     }
+
+    // Персонал: медицинский допуск, инструктажи; свои неподтверждённые инструктажи (этап 16).
+    for (const p of await staffProblems(tx, orgId, userId, roleHas(m.role, 'staff.read')))
+      cards.push({ key: p.key, priority: p.priority, tone: p.priority <= 5 ? 'warn' : 'info', title: p.title, what: p.what, where: p.employee, at: null, risk: p.priority <= 5 ? 'Допуск к работе с продукцией' : 'Предупреждение',
+        responsible: null, due_at: null, source: null, action: p.action, href: p.href });
 
     // Нормативный реестр: утверждённая редакция с наступившей датой проверки актуальности (ТЗ v2 §7).
     if (roleHas(m.role, 'reg.read')) {

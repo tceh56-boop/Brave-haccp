@@ -97,6 +97,11 @@ export const PERMISSIONS = {
   'sanitation.record': 'Санитария: отметка выполнения уборки, дезинфекции, мойки',
   'sanitation.verify': 'Санитария: проверка выполнения',
   'sanitation.manage': 'Санитария: дезсредства, режимы, план уборок',
+  // Этап 16: персонал.
+  'staff.read': 'Персонал: готовность к работе (допуск, осмотр, инструктажи)',
+  'staff.medical': 'Медицинский допуск: даты медосмотра и аттестации (персональные данные о здоровье)',
+  'staff.health_check': 'Осмотр сотрудников перед сменой',
+  'staff.brief': 'Инструктажи и обучение: темы, проведение',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -112,13 +117,13 @@ export const ROLES = {
   owner: { label: 'Владелец', summary: 'Настройки организации, экономика, приглашения, утверждение ключевых документов', permissions: ALL },
   enterprise_admin: { label: 'Администратор предприятия', summary: 'Площадки, роли, справочники, журналы, интеграции', permissions: ALL },
   director: { label: 'Директор / управляющий', summary: 'Операционные отчёты, задачи, контроль исполнения',
-    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit', 'pilot.read', 'pilot.confirm', 'purchase.read', 'purchase.manage', 'event.manage', 'equipment.manage', 'sanitation.verify'] },
+    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit', 'pilot.read', 'pilot.confirm', 'purchase.read', 'purchase.manage', 'event.manage', 'equipment.manage', 'sanitation.verify', 'staff.read', 'staff.medical', 'staff.health_check', 'staff.brief'] },
   chef: { label: 'Шеф / су-шеф', summary: 'ТТК, рецептуры, производственные задания, выходы и списания',
-    permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify', 'ttk.manage', 'ttk.approve', 'menu.price', 'cost.read', 'pos.stop', 'sales.manage', 'production.plan', 'purchase.read', 'purchase.manage', 'event.manage', 'lab.read', 'equipment.manage', 'sanitation.verify', 'sanitation.manage'] },
+    permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify', 'ttk.manage', 'ttk.approve', 'menu.price', 'cost.read', 'pos.stop', 'sales.manage', 'production.plan', 'purchase.read', 'purchase.manage', 'event.manage', 'lab.read', 'equipment.manage', 'sanitation.verify', 'sanitation.manage', 'staff.read', 'staff.health_check', 'staff.brief'] },
   technologist: { label: 'Технолог', summary: 'Технологические параметры, расчёты, документы',
-    permissions: [...READ_OPS, 'catalog.manage', 'control.manage', 'control.approve', 'task.work', 'incident.report', 'incident.work', 'reg.manage', 'reg.verify', 'haccp.manage', 'capa.manage', 'evidence.add', 'ttk.manage', 'ttk.approve', 'cost.read', 'label.print', 'production.plan', 'lab.manage', 'equipment.manage', 'sanitation.manage', 'sanitation.verify'] },
+    permissions: [...READ_OPS, 'catalog.manage', 'control.manage', 'control.approve', 'task.work', 'incident.report', 'incident.work', 'reg.manage', 'reg.verify', 'haccp.manage', 'capa.manage', 'evidence.add', 'ttk.manage', 'ttk.approve', 'cost.read', 'label.print', 'production.plan', 'lab.manage', 'equipment.manage', 'sanitation.manage', 'sanitation.verify', 'staff.read', 'staff.brief'] },
   haccp_lead: { label: 'Ответственный ХАССП', summary: 'Опасности, журналы, CAPA, доказательства',
-    permissions: [...STAFF, 'member.read', 'dashboard.read', 'control.manage', 'control.approve', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'trace.read', 'reg.read', 'reg.manage', 'reg.verify', 'journal.sign', 'haccp.read', 'haccp.manage', 'capa.read', 'capa.manage', 'capa.verify', 'pack.export', 'pilot.read', 'lab.read', 'lab.manage', 'equipment.manage', 'sanitation.manage', 'sanitation.verify'] },
+    permissions: [...STAFF, 'member.read', 'dashboard.read', 'control.manage', 'control.approve', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'trace.read', 'reg.read', 'reg.manage', 'reg.verify', 'journal.sign', 'haccp.read', 'haccp.manage', 'capa.read', 'capa.manage', 'capa.verify', 'pack.export', 'pilot.read', 'lab.read', 'lab.manage', 'equipment.manage', 'sanitation.manage', 'sanitation.verify', 'staff.read', 'staff.medical', 'staff.health_check', 'staff.brief'] },
   storekeeper: { label: 'Кладовщик / закупщик', summary: 'Заказы, приёмка, партии, склад, инвентаризация',
     permissions: [...STAFF, 'catalog.manage', 'dashboard.read', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'purchase.read', 'purchase.manage'] },
   line_staff: { label: 'Сотрудник цеха', summary: 'Назначенные задания и журналы без изменения утверждённых норм', permissions: STAFF },

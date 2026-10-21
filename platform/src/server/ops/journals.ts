@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { ROLES, type Role } from '../access/roles';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
@@ -22,13 +23,14 @@ import formsJson from '../../../data/reference/journal_forms.json';
 const FORMS: FormDef[] = (formsJson as { forms: FormDef[] }).forms;
 export const FORM_BY_CODE = new Map(FORMS.map((f) => [f.code, f]));
 
-type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan' | 'repairs' | 'cleaning' | 'washing' | 'concentration';
+type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan' | 'repairs' | 'cleaning' | 'washing' | 'concentration' | 'health' | 'briefing_sanitary' | 'briefing_safety';
 /** Формы, собираемые из событий. Остальные — ручная запись. */
 const AUTO: Record<string, Source> = {
   J01: 'cold', J25: 'cold', J42: 'cold_grid', J04: 'room', J43: 'room_grid',
   J03: 'receipt', J21: 'receipt', J39: 'receipt', J05: 'lots', J29: 'lots', J34: 'incidents',
   J30: 'plans', J31: 'hazards', J32: 'plan',   // реестры из плана ХАССП (не зависят от периода)
   J18: 'repairs', J10: 'cleaning', J09: 'washing', J15: 'concentration', J26: 'concentration',   // оборудование и санитария (этап 15)
+  J07: 'health', J16: 'briefing_sanitary', J17: 'briefing_safety',   // персонал (этап 16)
 };
 /**
  * Для ручных семейств — форма, в которой хранятся данные. Пара форм (J02 ↔ J40) — одни данные, печатный вид
@@ -170,6 +172,28 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       return [fmtD(r.done_at, tz), fmtT(r.done_at, tz), r.disinfectant || '—', norm(r), conc(r), 'по инструкции средства', r.concentration_ok ? 'да' : 'нет',
         r.concentration_ok ? '' : r.recommended_action || 'раствор приготовлен заново', r.author];
     });
+    return { columns: f.columns, rows };
+  }
+  if (src === 'health') {
+    const hs = (await c.tx.query(`select h.*, u.full_name as employee, m.position, m.role, cu.full_name as checker from health_checks h join users u on u.id = h.user_id
+        join users cu on cu.id = h.checked_by left join memberships m on m.organization_id = h.organization_id and m.user_id = h.user_id
+      where h.organization_id = $1 and h.site_id = $2 and h.checked_on between $3::date and $4::date order by h.checked_on, u.full_name`, [c.orgId, c.siteId, c.from, c.to])).rows;
+    const rows = hs.map((h) => [fmtD(h.checked_on, tz), h.employee, h.position || ROLES[h.role as Role]?.label || '', h.admitted ? 'признаков заболеваний нет' : 'выявлены признаки',
+      h.signs || 'нет', h.admitted ? 'допущен' : `не допущен; ${h.action}`, h.checker, fmtT(h.checked_at, tz)]);
+    return { columns: f.columns, rows };
+  }
+  if (src === 'briefing_sanitary' || src === 'briefing_safety') {
+    const bs = (await c.tx.query(`select b.*, t.title, t.material, u.full_name as employee, m.position, m.role, iu.full_name as instructor, a.acknowledged_at
+      from briefings b join briefing_topics t on t.id = b.topic_id join users u on u.id = b.user_id join users iu on iu.id = b.instructor_id
+        left join memberships m on m.organization_id = b.organization_id and m.user_id = b.user_id left join briefing_acks a on a.briefing_id = b.id
+      where b.organization_id = $1 and t.category = any($2::text[]) and b.held_on between $3::date and $4::date order by b.held_on, u.full_name`,
+    [c.orgId, src === 'briefing_sanitary' ? ['sanitary'] : ['safety', 'haccp'], c.from, c.to])).rows;
+    const TYPE: Record<string, string> = { intro: 'вводный', primary: 'первичный', repeat: 'повторный', unscheduled: 'внеплановый', target: 'целевой', training: 'обучение' };
+    const res = (b: { result: string; note: string | null }) => (b.result === 'passed' ? 'сдал' : `не сдал: ${b.note}`);
+    const sign = (b: { acknowledged_at: string | null }) => (b.acknowledged_at ? `подтверждено ${fmtDT(b.acknowledged_at, tz)}` : 'не подтверждено');
+    const rows = bs.map((b) => src === 'briefing_sanitary'
+      ? [fmtD(b.held_on, tz), b.employee, b.position || ROLES[b.role as Role]?.label || '', `${b.title} (${TYPE[b.briefing_type]})`, b.material, res(b), sign(b), b.instructor]
+      : [fmtD(b.held_on, tz), b.employee, b.position || ROLES[b.role as Role]?.label || '', b.title, TYPE[b.briefing_type], res(b), sign(b), b.instructor]);
     return { columns: f.columns, rows };
   }
   if (src === 'lots') {

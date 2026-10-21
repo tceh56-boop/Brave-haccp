@@ -5,6 +5,7 @@ import { createOrganization, inviteMember, acceptInvitation } from '../org/organ
 import { createSupplier, createProduct } from '../ops/catalog';
 import { createEvent, setItem as setEventItem, confirmEvent } from '../ops/planmenu';
 import { createProgram, recordResult } from '../ops/lab';
+import { setMedical, recordHealthCheck, createTopic, recordBriefing, acknowledgeBriefing } from '../ops/staff';
 import { createEquipment, recordEvent as equipmentEvent } from '../ops/equipment';
 import { createDisinfectant, approveDisinfectant, createPlan as createSanitationPlan, recordDone as sanitationDone } from '../ops/sanitation';
 import { setNorm, createOrder as createSupplierOrder, stepOrder, updateSupplier } from '../ops/purchasing';
@@ -262,6 +263,15 @@ export async function seedDemo() {
   await createSanitationPlan(haccp.id, orgId, { siteId, area: 'Горячий цех', work: 'Влажная уборка полов', kind: 'current', periodDays: 1 });
   await createSanitationPlan(haccp.id, orgId, { siteId, area: 'Все цеха', work: 'Генеральная уборка с дезинфекцией', kind: 'general', periodDays: 30, disinfectantId: dis.id, nextDue: inDays(-1) });
   await sanitationDone(cook.id, orgId, tables.id, { concentration: 0.15 });
+
+  // Персонал: ЛМК повара и шефа (у шефа срок истекает), осмотр перед сменой, темы инструктажей, проведённый инструктаж
+  await setMedical(haccp.id, orgId, cook.id, { medBookNo: 'Демо: ЛМК 77-000101', examOn: inDays(-60), examDue: inDays(305), hygieneOn: inDays(-60), hygieneDue: inDays(670) });
+  await setMedical(haccp.id, orgId, chef.id, { medBookNo: 'Демо: ЛМК 77-000102', examOn: inDays(-345), examDue: inDays(20), hygieneOn: inDays(-345), hygieneDue: inDays(385) });
+  await recordHealthCheck(chef.id, orgId, cook.id, { siteId, admitted: true });
+  const ot = await createTopic(chef.id, orgId, { title: 'Охрана труда повара', category: 'safety', material: 'Демо: инструкция по охране труда ИОТ-01', periodMonths: 6, roles: ['line_staff', 'chef'] });
+  await createTopic(haccp.id, orgId, { title: 'Санитарный минимум', category: 'sanitary', material: 'Демо: программа гигиенического обучения', periodMonths: 12 });
+  const br = await recordBriefing(chef.id, orgId, { topicId: ot.id, userIds: [cook.id], briefingType: 'primary', heldOn: inDays(-10) });
+  await acknowledgeBriefing(cook.id, orgId, br.ids[0]);
 
   // Подтверждения пилота: часть есть, часть ждёт — видно на экране готовности
   await confirm(owner.id, orgId, { key: 'paper_fallback', evidence: 'Демо: бланки журналов в папке на кухне, перенос — Игорь ХАССП' });
