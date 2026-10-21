@@ -32,7 +32,7 @@ export default function IncidentPage({ params }: { params: Promise<{ incidentId:
     if (name !== 'take') { setNote(''); setIsolate(false); }
     await load();
   });
-  const objHref = i.entity_type === 'control_object' ? `/app/${org.id}/objects/${i.entity_id}` : i.entity_type === 'lot' ? `/app/${org.id}/lots/${i.entity_id}` : null;
+  const objHref = i.entity_type === 'control_object' ? `/app/${org.id}/objects/${i.entity_id}` : i.entity_type === 'lot' ? `/app/${org.id}/lots/${i.entity_id}` : i.entity_type === 'production_order' ? `/app/${org.id}/production/${i.entity_id}` : null;
   return (
     <>
       <p className="small"><Link href={`/app/${org.id}/problems`}>← Проблемы</Link></p>

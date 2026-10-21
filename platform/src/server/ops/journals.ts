@@ -43,7 +43,7 @@ export function dataFormOf(code: string): string {
 
 const INC_BLOCK: Partial<Record<Source, string[]>> = {
   cold: ['temperature_deviation'], cold_grid: ['temperature_deviation'], room: ['temperature_deviation'], room_grid: ['temperature_deviation'],
-  receipt: ['receipt_problem'], lots: ['expired_lot'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported'],
+  receipt: ['receipt_problem'], lots: ['expired_lot'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check'],
 };
 
 export function listForms() {
@@ -67,7 +67,7 @@ const fmtDT = (ts: Date | string | null, tz: string) => (ts ? `${fmtD(ts, tz)} $
 const yesNo = (v: unknown) => (v === true ? 'да' : v === false ? 'нет' : '—');
 const RESULT_RU: Record<string, string> = { ok: 'да', deviation: 'нет', no_criterion: 'критерий не задан' };
 const DECISION_RU: Record<string, string> = { accepted: 'принять', quarantine: 'карантин', rejected: 'отклонить' };
-const INC_KIND: Record<string, string> = { temperature_deviation: 'Температура вне предела', receipt_problem: 'Приёмка', expired_lot: 'Истёк срок', reported: 'Сообщение сотрудника' };
+const INC_KIND: Record<string, string> = { temperature_deviation: 'Температура вне предела', receipt_problem: 'Приёмка', expired_lot: 'Истёк срок', reported: 'Сообщение сотрудника', release_check: 'Выпуск п/ф (ККТ)' };
 
 /** Границы периода в часовом поясе предприятия. */
 function periodSql(fromIdx: number, toIdx: number, tzIdx: number) {

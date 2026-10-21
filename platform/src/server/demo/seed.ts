@@ -18,6 +18,7 @@ import { openShift, createOrder, addOrderLine, payOrder, setStop } from '../ops/
 import { confirm } from '../ops/readiness';
 import { listLots } from '../ops/lots';
 import { createLabels, logPrint, openLot, setOpenedShelfLife } from '../ops/labels';
+import { createProduction, startProduction, recordCheck, completeProduction, addReleaseCheck } from '../ops/production';
 
 /**
  * Демо-организация для показа и инструктажа (этап 8): «Кафе «Демо»» с сотрудниками всех ролей и данными за смену.
@@ -183,6 +184,22 @@ export async function seedDemo() {
   const holodets = (await listArchive(chef.id, orgId, { q: 'холодец' })).cards.map((c: { id: string }) => c.id);
   if (holodets.length) await importFromArchive(tech.id, orgId, { archiveIds: holodets });
 
+  // Производство п/ф: «Соус сливочный» с ККТ «температура в толще» и сроком партии 24 ч — выпущенная партия и задание в плане
+  const sauce = (await createDish(chef.id, orgId, { name: 'Соус сливочный', kind: 'semi', category: 'Полуфабрикаты' })).id;
+  const sv = (await getDish(chef.id, orgId, sauce)).current!.version.id;
+  await updateVersion(chef.id, orgId, sv, { yieldG: 1000, technology: 'Лук пассеровать, добавить сливки, довести до кипения, уварить на треть.', storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24 });
+  await addLine(chef.id, orgId, sv, { productId: p.cream, unit: 'л', brutto: 1.2, netto: 1.2 });
+  await addLine(chef.id, orgId, sv, { productId: p.onion, unit: 'г', brutto: 120, netto: 100 });
+  await submitVersion(chef.id, orgId, sv);
+  await approveTtk(owner.id, orgId, sv);
+  const tcheck = await addReleaseCheck(haccp.id, orgId, sauce, { name: 'Температура в толще продукта', unit: '°C', min: 75, basis: 'Демо: план ХАССП, ККТ-1 — тепловая обработка' });
+  const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+  const po = await createProduction(chef.id, orgId, { siteId, dishId: sauce, plannedKg: 1, plannedFor: day, note: 'к обеду' });
+  await startProduction(cook.id, orgId, po.id);
+  await recordCheck(cook.id, orgId, po.id, { checkId: tcheck.id, value: 82 });
+  await completeProduction(cook.id, orgId, po.id, { actualKg: 0.95, operationId: `demo-prod-${SUFFIX || 'main'}` });
+  await createProduction(chef.id, orgId, { siteId, dishId: sauce, plannedKg: 2, plannedFor: day, note: 'на вечер' });
+
   // Касса: смена, два оплаченных заказа, один открытый; ручной стоп
   await openShift(cashier.id, orgId, { siteId, cashStart: 3000 });
   const o1 = await createOrder(cashier.id, orgId, { siteId, tableLabel: '3' });
@@ -204,7 +221,7 @@ export async function seedDemo() {
   return { created: true, orgId };
 }
 
-if (typeof require !== 'undefined' && require.main === module) {
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   // Учётные записи с известным паролем — только на стенде: на сервере пилота (HTTPS, production) не запускаем.
   if ((process.env.NODE_ENV === 'production' || process.env.APP_URL?.startsWith('https://')) && process.env.DEMO_FORCE !== '1') {
     console.error('Демо-организация не создаётся на рабочем сервере (NODE_ENV=production или APP_URL https). Для стенда: DEMO_FORCE=1.');

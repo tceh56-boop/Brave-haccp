@@ -44,7 +44,7 @@ export async function migrate(log: (s: string) => void = () => undefined): Promi
   return done;
 }
 
-if (typeof require !== 'undefined' && require.main === module) {
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   migrate((s) => console.log(s))
     .then((d) => console.log(d.length ? `готово: ${d.length}` : 'нет новых миграций'))
     .catch((e) => { console.error(e.message); process.exitCode = 1; })

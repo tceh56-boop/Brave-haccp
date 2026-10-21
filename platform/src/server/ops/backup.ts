@@ -154,7 +154,7 @@ export async function lastVerifiedBackup() {
   return withSystem(async (tx) => (await tx.query(`select id, created_at, verified_at, verify_ok, size_bytes from system_backups order by created_at desc limit 1`)).rows[0] || null);
 }
 
-if (typeof require !== 'undefined' && require.main === module) {
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   const cmd = process.argv[2];
   (cmd === 'verify' ? verifyRestore(process.argv[3]) : backup())
     .then((r) => console.log(JSON.stringify(r, (k, v) => (k === 'manifest' ? undefined : v), 1)))

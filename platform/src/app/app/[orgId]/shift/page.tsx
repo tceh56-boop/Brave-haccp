@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { n, ago } from '@/lib/fmt';
 
 interface Obj { id: string; name: string; kind_label: string; criterion: string | null; last: { value: string; unit: string; measured_at: string; result: string } | null; due: { state: string } }
-interface Shift { site: { name: string }; objects: Obj[]; myTasks: number; openIncidents: number }
+interface Shift { site: { name: string }; objects: Obj[]; myTasks: number; openIncidents: number; production: number }
 
 const DUE: Record<string, [string, string]> = { ok: ['в норме по графику', 'ok'], due: ['пора замерить', 'warn'], missed: ['пропущен замер', 'crit'], no_schedule: ['', ''] };
 
@@ -34,6 +34,7 @@ export default function ShiftPage() {
         <Link className={`tile ${s?.openIncidents ? 'alert' : ''}`} href={`${base}/problems`}>Проблемы<span className="sub">{s ? (s.openIncidents ? `открыто: ${s.openIncidents}` : 'нет открытых') : '…'}</span></Link>
         <Link className="tile" href={`${base}/report`}>Сообщить<span className="sub">о проблеме</span></Link>
         {can('journal.record') && <Link className="tile" href={`${base}/journals`}>Журналы<span className="sub">ручные записи</span></Link>}
+        {can('production.read') && <Link className="tile" href={`${base}/production`}>Производство<span className="sub">{s ? (s.production ? `заданий: ${s.production}` : 'нет заданий') : '…'}</span></Link>}
       </div>
       <div className="card" id="temps">
         <h2>Температура</h2>

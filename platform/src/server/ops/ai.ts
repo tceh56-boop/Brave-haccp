@@ -173,7 +173,7 @@ async function incidentContext(tx: Tx, orgId: string, incidentId: string) {
     if (l) ctx.партия = { товар: l.name, номер: l.lot_no, количество: `${fmtNum(l.quantity)} ${l.unit}`, статус: l.status, годен_до: l.expires_at, основание_срока: l.expiry_basis };
   }
   ctx.ход_работы = (await tx.query(`select event, note, at from incident_events where incident_id = $1 order by id`, [incidentId])).rows.map((e) => ({ событие: e.event, примечание: e.note, время: e.at }));
-  return { ctx, searchText: `${i.title} ${i.what} ${i.kind === 'temperature_deviation' ? 'температура хранение холодильник' : ''} ${i.kind === 'expired_lot' ? 'срок годности хранение' : ''} ${i.kind === 'receipt_problem' ? 'приемка входной контроль' : ''}`, pinned };
+  return { ctx, searchText: `${i.title} ${i.what} ${i.kind === 'temperature_deviation' ? 'температура хранение холодильник' : ''} ${i.kind === 'expired_lot' ? 'срок годности хранение' : ''} ${i.kind === 'receipt_problem' ? 'приемка входной контроль' : ''} ${i.kind === 'release_check' ? 'тепловая обработка температура в толще ККТ' : ''}`, pinned };
 }
 
 async function capaContext(tx: Tx, orgId: string, capaId: string) {

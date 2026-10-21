@@ -47,7 +47,7 @@ export async function mailHealth() {
     from outbox_emails`, [MAX_ATTEMPTS])).rows[0] as { stuck: number; dead: number; sent_week: number });
 }
 
-if (typeof require !== 'undefined' && require.main === module) {
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   const t = smtpTransport();
   if (!t) { console.error('SMTP_URL не задан — отправка невозможна.'); process.exitCode = 1; }
   else {

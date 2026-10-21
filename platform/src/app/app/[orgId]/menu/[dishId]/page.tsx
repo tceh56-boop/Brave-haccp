@@ -10,7 +10,7 @@ import { dt, n } from '@/lib/fmt';
 interface Line { id: string; position: number; name_raw: string; product_id: string | null; sub_dish_id: string | null; product_name: string | null; product_unit: string | null; sub_dish_name: string | null;
   unit: string; brutto: string | null; netto: string | null; note: string | null }
 interface Version { id: string; version: number; status: string; status_label: string; yield_g: string | null; portion_g: string | null; technology: string | null; storage_conditions: string | null;
-  shelf_life: string | null; quality: string | null; allergens: string | null; source: string; change_reason: string | null; return_note: string | null; approved_at: string | null }
+  shelf_life: string | null; shelf_life_hours: string | null; quality: string | null; allergens: string | null; source: string; change_reason: string | null; return_note: string | null; approved_at: string | null }
 interface Cost { total: number | null; known: number; complete: boolean; missing: string[]; per_portion: number | null; per_kg: number | null; food_cost_pct: number | null;
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
 interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[] }
@@ -114,6 +114,9 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           </div>
 
           <Lifecycle data={data} busy={busy} act={act} onNew={() => router.replace(`/app/${org.id}/menu/${dishId}`)} />
+          {data.dish.kind === 'semi' && <ReleaseChecks dishId={dishId} />}
+          {data.dish.kind === 'semi' && data.versions.some((x) => x.status === 'approved') && can('production.plan') && (
+            <Link className="btn block secondary" href={`/app/${org.id}/production?dish=${dishId}`}>Поставить в производство</Link>)}
         </>
       )}
     </>
@@ -134,9 +137,49 @@ function Price({ dish, onDone }: { dish: Data['dish']; onDone: () => void }) {
   );
 }
 
+interface RCheck { id: string; name: string; unit: string; limits: string; basis: string }
+
+/** Контроль при выпуске п/ф (ККТ): параметры с пределами и основанием; выпуск закрыт без замера в пределах. */
+function ReleaseChecks({ dishId }: { dishId: string }) {
+  const { org, can } = useOrg();
+  const [list, setList] = useState<RCheck[]>([]);
+  const [f, setF] = useState({ name: 'Температура в толще продукта', unit: '°C', min: '', max: '', basis: '' });
+  const { busy, error, run } = useSubmit();
+  const load = useCallback(() => api<RCheck[]>(`/orgs/${org.id}/dishes/${dishId}/release-checks`).then(setList).catch(() => setList([])), [org.id, dishId]);
+  useEffect(() => { load(); }, [load]);
+  const manage = can('haccp.manage');
+  const num = (s: string) => (s.trim() ? s.replace(',', '.') : null);
+  return (
+    <div className="card">
+      <h2>Контроль при выпуске (ККТ)</h2>
+      <p className="small muted">Пока последний замер по каждому параметру не в пределах, партию п/ф не выпустить. Замер вне предела — отклонение ответственному ХАССП.</p>
+      {list.length === 0 ? <p className="small">Параметры не заданы — п/ф выпускается без замеров.</p> : (
+        <ul className="list">{list.map((c) => (
+          <li key={c.id} className="between"><div><b>{c.name}</b>: {c.limits}<div className="small muted">{c.basis}</div></div>
+            {manage && <button className="btn small secondary" disabled={busy} onClick={() => { const reason = prompt('Основание снятия параметра (например, новая версия плана ХАССП):'); if (reason) run(async () => { await api(`/orgs/${org.id}/release-checks/${c.id}/archive`, { body: { reason } }); await load(); }); }}>Снять</button>}
+          </li>))}</ul>
+      )}
+      {manage && (
+        <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/dishes/${dishId}/release-checks`, { body: { ...f, min: num(f.min), max: num(f.max) } }); setF({ ...f, min: '', max: '', basis: '' }); await load(); }); }}>
+          <h3 style={{ marginTop: 12 }}>Добавить параметр</h3>
+          <label htmlFor="rcn">Что измеряется</label><input id="rcn" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+          <div className="grid2">
+            <div><label htmlFor="rcmin">Не ниже</label><input id="rcmin" inputMode="decimal" value={f.min} onChange={(e) => setF({ ...f, min: e.target.value })} placeholder="75" /></div>
+            <div><label htmlFor="rcmax">Не выше</label><input id="rcmax" inputMode="decimal" value={f.max} onChange={(e) => setF({ ...f, max: e.target.value })} /></div>
+          </div>
+          <label htmlFor="rcu">Единица</label><input id="rcu" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} />
+          <label htmlFor="rcb">Основание</label><input id="rcb" required value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })} placeholder="План ХАССП: ККТ-1, тепловая обработка" />
+          {error && <div className="err">{error}</div>}
+          <button className="btn block secondary" disabled={busy}>Добавить параметр</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string; editable: boolean; onSave: (b: object) => void; busy: boolean }) {
   const init = () => ({ yieldG: v.yield_g ? String(Number(v.yield_g)) : '', portionG: v.portion_g ? String(Number(v.portion_g)) : '', technology: v.technology || '', storageConditions: v.storage_conditions || '',
-    shelfLife: v.shelf_life || '', quality: v.quality || '', allergens: v.allergens || '' });
+    shelfLife: v.shelf_life || '', quality: v.quality || '', allergens: v.allergens || '', shelfLifeHours: v.shelf_life_hours ? String(Number(v.shelf_life_hours)) : '' });
   const [f, setF] = useState(init);
   useEffect(() => { setF(init()); }, [v.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!editable) {
@@ -146,6 +189,7 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
         <dt>Технология</dt><dd style={{ whiteSpace: 'pre-line' }}>{v.technology || '—'}</dd>
         <dt>Хранение</dt><dd>{v.storage_conditions || '—'}</dd>
         <dt>Срок</dt><dd>{v.shelf_life || '—'}</dd>
+        {kind === 'semi' && <><dt>Срок партии</dt><dd>{v.shelf_life_hours ? `${n(v.shelf_life_hours)} ч от выпуска` : 'не задан — партия п/ф получит «срок не подтверждён»'}</dd></>}
         {v.quality && <><dt>Качество</dt><dd>{v.quality}</dd></>}
         {v.allergens && <><dt>Аллергены</dt><dd>{v.allergens}</dd></>}
       </dl>
@@ -153,7 +197,7 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
   }
   const num = (s: string) => (s ? Number(s.replace(',', '.')) : null);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null, shelfLifeHours: num(f.shelfLifeHours) }); }}>
       <div className="grid2">
         <div><label htmlFor="yg">Выход закладки, г</label><input id="yg" inputMode="decimal" value={f.yieldG} onChange={(e) => setF({ ...f, yieldG: e.target.value })} /></div>
         {kind === 'dish' && <div><label htmlFor="pg">Выход порции, г</label><input id="pg" inputMode="decimal" value={f.portionG} onChange={(e) => setF({ ...f, portionG: e.target.value })} /></div>}
@@ -165,6 +209,7 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
         <div><label htmlFor="sl">Срок годности (реализации)</label><input id="sl" value={f.shelfLife} onChange={(e) => setF({ ...f, shelfLife: e.target.value })} placeholder="по утверждённому основанию" /></div>
         <div><label htmlFor="ql">Показатели качества</label><input id="ql" value={f.quality} onChange={(e) => setF({ ...f, quality: e.target.value })} /></div>
         <div><label htmlFor="al">Аллергены</label><input id="al" value={f.allergens} onChange={(e) => setF({ ...f, allergens: e.target.value })} /></div>
+        {kind === 'semi' && <div><label htmlFor="slh">Срок партии п/ф, ч от выпуска</label><input id="slh" inputMode="decimal" value={f.shelfLifeHours} onChange={(e) => setF({ ...f, shelfLifeHours: e.target.value })} placeholder="по утверждённому основанию" /></div>}
       </div>
       <button className="btn block secondary" disabled={busy}>Сохранить</button>
     </form>

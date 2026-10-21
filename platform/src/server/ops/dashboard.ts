@@ -111,7 +111,8 @@ export async function getShift(userId: string, orgId: string, siteId: string) {
     const myTasks = Number((await tx.query(`select count(*) from tasks where organization_id = $1 and status = 'open' and (site_id is null or site_id = $2)
       and (assignee_user_id = $3 or assignee_role = $4)`, [orgId, siteId, userId, m.role])).rows[0].count);
     const openIncidents = Number((await tx.query(`select count(*) from incidents where organization_id = $1 and site_id = $2 and status <> 'closed'`, [orgId, siteId])).rows[0].count);
-    return { site, objects, myTasks, openIncidents, role: m.role };
+    const production = Number((await tx.query(`select count(*) from production_orders where organization_id = $1 and site_id = $2 and status in ('planned', 'in_progress') and planned_for <= current_date`, [orgId, siteId])).rows[0].count);
+    return { site, objects, myTasks, openIncidents, production, role: m.role };
   }, siteId);
 }
 

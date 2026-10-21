@@ -340,14 +340,15 @@ async function versionBlockers(tx: Tx, orgId: string, v: Record<string, any>, di
 const VersionInput = z.object({
   yieldG: z.coerce.number().positive().nullable().optional(), portionG: z.coerce.number().positive().nullable().optional(),
   technology: optText(10000), storageConditions: optText(1000), shelfLife: optText(300), quality: optText(2000), allergens: optText(1000),
+  shelfLifeHours: z.coerce.number().positive('Срок — больше нуля часов.').max(24 * 365).nullable().optional(),   // срок партии п/ф при выпуске
 });
 
 export async function updateVersion(userId: string, orgId: string, versionId: string, input: unknown) {
   const d = parse(VersionInput, input);
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const v = await draftVersion(tx, orgId, versionId);
-    await tx.query(`update ttk_versions set yield_g = $2, portion_g = $3, technology = $4, storage_conditions = $5, shelf_life = $6, quality = $7, allergens = $8, return_note = null where id = $1`,
-      [versionId, d.yieldG ?? null, d.portionG ?? null, d.technology, d.storageConditions, d.shelfLife, d.quality, d.allergens]);
+    await tx.query(`update ttk_versions set yield_g = $2, portion_g = $3, technology = $4, storage_conditions = $5, shelf_life = $6, quality = $7, allergens = $8, shelf_life_hours = $9, return_note = null where id = $1`,
+      [versionId, d.yieldG ?? null, d.portionG ?? null, d.technology, d.storageConditions, d.shelfLife, d.quality, d.allergens, d.shelfLifeHours ?? null]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.update', entityType: 'ttk_version', entityId: versionId,
       before: { yield_g: v.yield_g, portion_g: v.portion_g, shelf_life: v.shelf_life }, after: d });
     return { ok: true };
@@ -462,9 +463,9 @@ export async function newVersion(userId: string, orgId: string, dishId: string, 
     const src = (await tx.query(`select * from ttk_versions where dish_id = $1 and organization_id = $2 order by (status = 'approved') desc, version desc limit 1`, [dishId, orgId])).rows[0];
     if (!src) throw Errors.notFound('Блюдо не найдено.');
     const max = Number((await tx.query(`select max(version) as m from ttk_versions where dish_id = $1`, [dishId])).rows[0].m);
-    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning *`,
-      [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId])).rows[0];
+    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
+      [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours])).rows[0];
     await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, note)
       select organization_id, $2, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, note from ttk_lines where version_id = $1`, [src.id, v.id]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.new_version', entityType: 'ttk_version', entityId: v.id, after: { version: v.version, from: src.version }, reason: d.changeReason });
@@ -530,7 +531,7 @@ export async function approvedRecipe(tx: Tx, orgId: string, dishId: string) {
 
 export { convert as convertUnits };
 
-if (typeof require !== 'undefined' && require.main === module) {
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   importTtkArchive().then((r) => console.log('архив ТТК:', r)).catch((e) => { console.error(e.message); process.exitCode = 1; })
     .finally(async () => (await import('../db/pool')).closePool());
 }

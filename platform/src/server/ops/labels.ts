@@ -69,6 +69,11 @@ async function makeLabel(tx: Tx, orgId: string, userId: string, l: LotRow) {
   throw Errors.conflict('Не удалось выдать код этикетки — повторите.');
 }
 
+/** Этикетка для партии внутри другой операции (вскрытие, выпуск п/ф). */
+export async function labelForLot(tx: Tx, orgId: string, userId: string, lotId: string) {
+  return makeLabel(tx, orgId, userId, await lotForLabel(tx, orgId, lotId));
+}
+
 const LabelsInput = z.object({ lotIds: z.array(z.uuid()).min(1, 'Выберите партии.').max(100, 'Не больше 100 партий за раз.') });
 
 /** Этикетки для партий: та же этикетка, если данные партии не изменились, иначе — новая с новым кодом. */

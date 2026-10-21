@@ -90,7 +90,7 @@ export async function createProductFromReference(userId: string, orgId: string, 
   });
 }
 
-if (typeof require !== 'undefined' && require.main === module) {
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   importReference().then((r) => console.log('справочник:', r)).catch((e) => { console.error(e.message); process.exitCode = 1; })
     .finally(async () => (await import('../db/pool')).closePool());
 }

@@ -5,7 +5,8 @@ import { Errors } from '../http/errors';
 import { roleHas } from '../access/roles';
 import { inOrg, parse, optText, getSite, openTask, closeTasksFor, fmtNum } from './common';
 import { once, move } from './stock';
-import { approvedRecipe, convertUnits, normName } from './recipes';
+import { normName } from './recipes';
+import { explode, takeFefo, USABLE, type Need } from './bom';
 
 /**
  * Касса и продажи (этап 6 ТЗ v2; механика Pos.gs прежнего ЦЕХ):
@@ -28,62 +29,7 @@ const LOW_PORTIONS = 5;
 const money = z.coerce.number().min(0).max(10_000_000);
 const opId = z.string().trim().min(8, 'Нужен ключ операции.').max(100);
 
-/* ───────────── Развёртка ТТК и FEFO ───────────── */
-
-interface Need { productId: string; name: string; unit: string; qty: number }
-
-/** Сколько каждого товара нужно на qty порций блюда (или граммов полуфабриката) по утверждённым ТТК. */
-async function explode(tx: Tx, orgId: string, dishId: string, amount: { portions?: number; grams?: number }, depth = 0, acc = new Map<string, Need>()): Promise<{ needs: Map<string, Need>; versionId: string }> {
-  if (depth > 5) throw Errors.conflict('Слишком глубокая вложенность полуфабрикатов.');
-  const r = await approvedRecipe(tx, orgId, dishId);
-  if (!r) {
-    const name = (await tx.query(`select name from dishes where id = $1`, [dishId])).rows[0]?.name;
-    throw Object.assign(Errors.conflict(`Нет утверждённой ТТК: ${name}`), { noTtk: true });
-  }
-  const v = r.version;
-  if (!v.yield_g) throw Errors.conflict(`В ТТК «${dishId}» не указан выход.`);
-  const grams = amount.grams ?? (v.portion_g ? amount.portions! * Number(v.portion_g) : null);
-  if (grams === null) throw Errors.conflict('В ТТК не указан выход порции.');
-  const factor = grams / Number(v.yield_g);
-  for (const l of r.lines) {
-    const q = Number(l.brutto ?? l.netto ?? 0) * factor;
-    if (l.product_id) {
-      const inUnit = await convertUnits(tx, l.product_id, q, l.unit, l.product_unit);
-      if (inUnit === null) throw Errors.conflict(`Нет коэффициента «${l.unit} → ${l.product_unit}» для «${l.product_name}».`);
-      const cur = acc.get(l.product_id) || { productId: l.product_id, name: l.product_name, unit: l.product_unit, qty: 0 };
-      cur.qty += inUnit; acc.set(l.product_id, cur);
-    } else if (l.sub_dish_id) {
-      let g: number | null = null;
-      if (l.unit === 'г') g = q; else if (l.unit === 'кг') g = q * 1000;
-      else if (l.unit === 'порция') {
-        const sp = (await tx.query(`select portion_g from ttk_versions where dish_id = $1 and status = 'approved'`, [l.sub_dish_id])).rows[0]?.portion_g;
-        g = sp ? q * Number(sp) : null;
-      }
-      if (g === null) throw Errors.conflict(`Не определить массу полуфабриката «${l.name_raw}».`);
-      await explode(tx, orgId, l.sub_dish_id, { grams: g }, depth + 1, acc);
-    } else throw Errors.conflict(`В ТТК не сопоставлено сырьё «${l.name_raw}».`);
-  }
-  return { needs: acc, versionId: v.id };
-}
-
-const USABLE = `l.status = 'available' and l.expires_at is not null and l.expiry_basis is not null and l.expires_at > now() and l.quantity > 0`;
-
-/** FEFO-расход товара с площадки; стоимость — по ценам партий (null, если у партии нет цены). */
-async function takeFefo(tx: Tx, orgId: string, siteId: string, n: Need, ref: { refType: string; refId: string; reason: string; operationId: string; userId: string | null }) {
-  const lots = (await tx.query(`select l.* from lots l where l.organization_id = $1 and l.site_id = $2 and l.product_id = $3 and ${USABLE} order by l.expires_at, l.received_at for update`,
-    [orgId, siteId, n.productId])).rows;
-  const have = lots.reduce((s, l) => s + Number(l.quantity), 0);
-  if (have + 1e-9 < n.qty) throw Errors.conflict(`Не хватает годного остатка «${n.name}»: есть ${fmtNum(Math.round(have * 1000) / 1000)} ${n.unit}, нужно ${fmtNum(Math.round(n.qty * 1000) / 1000)}.`);
-  let left = n.qty, cost: number | null = 0;
-  for (const l of lots) {
-    if (left <= 1e-9) break;
-    const q = Math.min(Number(l.quantity), left);
-    await move(tx, { orgId, siteId, lotId: l.id, productId: n.productId, kind: 'consume', quantity: -q, unit: n.unit, reason: ref.reason, refType: ref.refType, refId: ref.refId, operationId: ref.operationId, userId: ref.userId });
-    cost = cost === null || l.unit_price === null ? null : cost + q * Number(l.unit_price);
-    left -= q;
-  }
-  return cost;
-}
+/* Развёртка ТТК и FEFO — в bom.ts (общие с производством); готовые п/ф со склада идут в расход первыми. */
 
 /** Списание одной продажи по ТТК. Ошибка не роняет транзакцию оплаты: продажа уходит в очередь. */
 export async function fulfilSale(tx: Tx, orgId: string, saleId: string, userId: string | null): Promise<string> {
@@ -92,7 +38,7 @@ export async function fulfilSale(tx: Tx, orgId: string, saleId: string, userId: 
   if (!s.dish_id) { await tx.query(`update sales set fulfil_status = 'unmatched' where id = $1`, [saleId]); return 'unmatched'; }
   await tx.query('savepoint fulfil');
   try {
-    const { needs, versionId } = await explode(tx, orgId, s.dish_id, { portions: Number(s.qty) });
+    const { needs, versionId } = await explode(tx, orgId, s.dish_id, { portions: Number(s.qty) }, { siteId: s.site_id });
     let cost: number | null = 0;
     for (const n of needs.values()) {
       const c = await takeFefo(tx, orgId, s.site_id, n, { refType: 'sale', refId: s.id, reason: `продажа: ${s.name} × ${fmtNum(s.qty)}`, operationId: `sale:${s.id}`, userId });
@@ -136,7 +82,7 @@ export async function retryQueue(userId: string, orgId: string, input: unknown) 
 /** Порций из годного остатка площадки по утверждённой ТТК; null — посчитать нельзя (нет ТТК) — авто-стоп не ставится. */
 async function portionsLeft(tx: Tx, orgId: string, siteId: string, dishId: string) {
   let needs: Map<string, Need>;
-  try { needs = (await explode(tx, orgId, dishId, { portions: 1 })).needs; } catch { return null; }
+  try { needs = (await explode(tx, orgId, dishId, { portions: 1 }, { siteId })).needs; } catch { return null; }
   let portions = Infinity; let short: { name: string; have: number; need: number; unit: string } | null = null;
   for (const n of needs.values()) {
     if (n.qty <= 0) continue;
