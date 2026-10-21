@@ -13,6 +13,7 @@ export function OrgNav() {
     { href: `${base}/problems`, label: 'Проблемы', show: can('incident.read') },
     { href: `${base}/tasks`, label: 'Задачи', show: can('task.read') },
     { href: `${base}/stock`, label: 'Склад', show: can('lot.read') },
+    { href: `${base}/pos`, label: 'Касса', show: can('pos.sell') && !can('lot.read') },
     { href: base, label: 'Управление', show: true },
   ].filter((i) => i.show);
   return (
