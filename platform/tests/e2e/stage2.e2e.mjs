@@ -137,7 +137,9 @@ step('повар: сроки партий');
 await C.goto(BASE + base + '/lots');
 await C.waitForSelector('text=Карантин');
 // Обе партии лежали в изолированном холодильнике: карантин важнее, чем «срок не подтверждён».
-if (await C.locator('a.objrow:has-text("Карантин")').count() !== 2) throw new Error('ожидались 2 партии в карантине');
+// Ждём сами строки, а не любое слово «Карантин» на странице: на холодном сервере список приходит позже.
+await C.waitForFunction(() => [...document.querySelectorAll('a.objrow')].filter((e) => e.textContent.includes('Карантин')).length === 2, null, { timeout: 15000 })
+  .catch(() => { throw new Error('ожидались 2 партии в карантине'); });
 await shot(C, 'сроки');
 await C.click('a.objrow:has-text("Сливки 33%")');
 await C.waitForSelector('text=Партию использовать нельзя');

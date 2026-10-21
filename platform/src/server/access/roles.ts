@@ -69,6 +69,10 @@ export const PERMISSIONS = {
   // Этап 7: AI-помощник.
   'ai.use': 'AI-помощник: объяснение, поиск требований с цитатой, предложения',
   'ai.audit': 'Журнал AI: входные данные, источники, ответы, решения',
+  // Этап 8: пилот.
+  'pilot.read': 'Готовность к пилоту',
+  'pilot.confirm': 'Подтверждения ответственных для пилота',
+  'pilot.decide': 'Решение Go/No-Go',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -84,13 +88,13 @@ export const ROLES = {
   owner: { label: 'Владелец', summary: 'Настройки организации, экономика, приглашения, утверждение ключевых документов', permissions: ALL },
   enterprise_admin: { label: 'Администратор предприятия', summary: 'Площадки, роли, справочники, журналы, интеграции', permissions: ALL },
   director: { label: 'Директор / управляющий', summary: 'Операционные отчёты, задачи, контроль исполнения',
-    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit'] },
+    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit', 'pilot.read', 'pilot.confirm'] },
   chef: { label: 'Шеф / су-шеф', summary: 'ТТК, рецептуры, производственные задания, выходы и списания',
     permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify', 'ttk.manage', 'ttk.approve', 'menu.price', 'cost.read', 'pos.stop', 'sales.manage'] },
   technologist: { label: 'Технолог', summary: 'Технологические параметры, расчёты, документы',
     permissions: [...READ_OPS, 'catalog.manage', 'control.manage', 'control.approve', 'task.work', 'incident.report', 'incident.work', 'reg.manage', 'reg.verify', 'haccp.manage', 'capa.manage', 'evidence.add', 'ttk.manage', 'ttk.approve', 'cost.read'] },
   haccp_lead: { label: 'Ответственный ХАССП', summary: 'Опасности, журналы, CAPA, доказательства',
-    permissions: [...STAFF, 'member.read', 'dashboard.read', 'control.manage', 'control.approve', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'trace.read', 'reg.read', 'reg.manage', 'reg.verify', 'journal.sign', 'haccp.read', 'haccp.manage', 'capa.read', 'capa.manage', 'capa.verify', 'pack.export'] },
+    permissions: [...STAFF, 'member.read', 'dashboard.read', 'control.manage', 'control.approve', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'trace.read', 'reg.read', 'reg.manage', 'reg.verify', 'journal.sign', 'haccp.read', 'haccp.manage', 'capa.read', 'capa.manage', 'capa.verify', 'pack.export', 'pilot.read'] },
   storekeeper: { label: 'Кладовщик / закупщик', summary: 'Заказы, приёмка, партии, склад, инвентаризация',
     permissions: [...STAFF, 'catalog.manage', 'dashboard.read', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read'] },
   line_staff: { label: 'Сотрудник цеха', summary: 'Назначенные задания и журналы без изменения утверждённых норм', permissions: STAFF },
@@ -98,7 +102,7 @@ export const ROLES = {
   cashier: { label: 'Кассир / официант', summary: 'Смена кассы, заказы, оплата; чек пробивает ККТ предприятия',
     permissions: ['org.read', 'site.read', 'menu.read', 'pos.sell', 'task.read', 'incident.read', 'incident.report'] },
   hr: { label: 'HR / обучение', summary: 'Сотрудники, тесты, инструктажи и сроки', permissions: ['org.read', 'site.read', 'member.read', 'member.invite', 'member.manage', 'task.read'] },
-  auditor: { label: 'Аудитор', summary: 'Чтение назначенных документов и доказательств', permissions: [...READ_OPS, 'audit.read', 'ai.audit'] },
+  auditor: { label: 'Аудитор', summary: 'Чтение назначенных документов и доказательств', permissions: [...READ_OPS, 'audit.read', 'ai.audit', 'pilot.read'] },
 } satisfies Record<string, RoleDef>;
 
 export type Role = keyof typeof ROLES;
