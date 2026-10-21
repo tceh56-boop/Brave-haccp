@@ -54,6 +54,7 @@ const LineInput = z.object({
   decision: z.enum(['accepted', 'quarantine', 'rejected']),
   decisionReason: optText(500),
   storageObjectId: z.uuid().optional().nullable(),
+  unitPrice: num.refine((v) => v >= 0, 'Цена не может быть отрицательной.').optional().nullable(),   // ₽ за единицу товара, как в документе
 }).superRefine((l, ctx) => {
   if (l.expiresAt && !l.expiryBasis) ctx.addIssue({ code: 'custom', message: 'Срок годности указан — укажите основание (например, «маркировка изготовителя»).' });
   if (l.decision === 'accepted') {
@@ -86,10 +87,10 @@ export async function addReceiptLine(userId: string, orgId: string, receiptId: s
       if (past) throw Errors.validation('Срок годности уже истёк — принять нельзя. Отказ или возврат поставщику с причиной.');
     }
     // Срок «до даты» — до конца этих суток по часовому поясу предприятия.
-    const line = (await tx.query(`insert into receipt_lines (organization_id, receipt_id, product_id, quantity, unit, lot_no, manufactured_at, expires_at, expiry_basis, temperature, checks, decision, decision_reason, storage_object_id)
-      values ($1, $2, $3, $4, $5, $6, $7, ($8::date + time '23:59:59') at time zone (select timezone from organizations where id = $1), $9, $10, $11, $12, $13, $14) returning *`,
+    const line = (await tx.query(`insert into receipt_lines (organization_id, receipt_id, product_id, quantity, unit, lot_no, manufactured_at, expires_at, expiry_basis, temperature, checks, decision, decision_reason, storage_object_id, unit_price)
+      values ($1, $2, $3, $4, $5, $6, $7, ($8::date + time '23:59:59') at time zone (select timezone from organizations where id = $1), $9, $10, $11, $12, $13, $14, $15) returning *`,
       [orgId, r.id, p.id, d.quantity, p.unit, d.lotNo, d.manufacturedAt || null, d.expiresAt || null, d.expiryBasis, d.temperature ?? null,
-        JSON.stringify(d.checks), d.decision, d.decisionReason, d.storageObjectId || null])).rows[0];
+        JSON.stringify(d.checks), d.decision, d.decisionReason, d.storageObjectId || null, d.unitPrice ?? null])).rows[0];
     return line;
   });
 }
@@ -112,9 +113,9 @@ export async function completeReceipt(userId: string, orgId: string, receiptId: 
     for (const l of lines) {
       if (l.decision === 'rejected') { created.rejected++; continue; }
       const status = l.decision === 'accepted' ? 'available' : 'quarantine';
-      const lot = (await tx.query(`insert into lots (organization_id, site_id, product_id, receipt_line_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, storage_object_id, status, status_reason)
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
-        [orgId, r.site_id, l.product_id, l.id, l.lot_no, l.quantity, l.unit, l.manufactured_at, l.expires_at, l.expiry_basis, l.storage_object_id, status, l.decision_reason])).rows[0];
+      const lot = (await tx.query(`insert into lots (organization_id, site_id, product_id, receipt_line_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, storage_object_id, status, status_reason, unit_price)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
+        [orgId, r.site_id, l.product_id, l.id, l.lot_no, l.quantity, l.unit, l.manufactured_at, l.expires_at, l.expiry_basis, l.storage_object_id, status, l.decision_reason, l.unit_price])).rows[0];
       await tx.query(`update receipt_lines set lot_id = $2 where id = $1`, [l.id, lot.id]);
       // Приход — первое движение партии в журнале склада.
       await tx.query(`insert into stock_movements (organization_id, site_id, lot_id, product_id, kind, quantity, unit, reason, ref_type, ref_id, created_by)

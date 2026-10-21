@@ -14,7 +14,7 @@ interface Obj { id: string; name: string }
 
 const CHECKS: [string, string][] = [['packaging', 'Упаковка цела'], ['labeling', 'Маркировка есть и читается'], ['documents', 'Документы в порядке'], ['quality', 'Качество (вид, запах)']];
 const DEC: Record<string, [string, string]> = { accepted: ['принято', 'ok'], quarantine: ['карантин', 'warn'], rejected: ['отказ', 'crit'] };
-const empty = { productId: '', quantity: '', lotNo: '', manufacturedAt: '', expiresAt: '', expiryBasis: 'маркировка изготовителя', temperature: '', storageObjectId: '', decisionReason: '' };
+const empty = { productId: '', quantity: '', lotNo: '', manufacturedAt: '', expiresAt: '', expiryBasis: 'маркировка изготовителя', temperature: '', storageObjectId: '', decisionReason: '', unitPrice: '' };
 
 export default function ReceiptPage({ params }: { params: Promise<{ receiptId: string }> }) {
   const { receiptId } = use(params);
@@ -42,6 +42,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
       productId: f.productId, quantity: f.quantity.replace(',', '.'), lotNo: f.lotNo || null, manufacturedAt: f.manufacturedAt || null,
       expiresAt: f.expiresAt || null, expiryBasis: f.expiresAt ? f.expiryBasis : null, temperature: f.temperature ? f.temperature.replace(',', '.') : null,
       checks, decision, decisionReason: decision === 'accepted' ? null : f.decisionReason, storageObjectId: f.storageObjectId || null,
+      unitPrice: f.unitPrice ? f.unitPrice.replace(',', '.') : null,
     } });
     setF({ ...empty, storageObjectId: f.storageObjectId }); setChecks({ packaging: null, labeling: null, documents: null, quality: null }); await load();
   });
@@ -110,6 +111,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
             <div><label htmlFor="t">Температура при приёмке, °C</label><input id="t" inputMode="decimal" value={f.temperature} onChange={(e) => setF({ ...f, temperature: e.target.value })} placeholder="если требуется" /></div>
             <div><label htmlFor="so">Место хранения</label>
               <select id="so" value={f.storageObjectId} onChange={(e) => setF({ ...f, storageObjectId: e.target.value })}><option value="">—</option>{objects.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
+            <div><label htmlFor="up">Цена за {unit || 'единицу'}, ₽</label><input id="up" inputMode="decimal" value={f.unitPrice} onChange={(e) => setF({ ...f, unitPrice: e.target.value })} placeholder="как в накладной" /></div>
           </div>
           <h3 style={{ marginTop: 14 }}>Проверки</h3>
           {CHECKS.map(([k, label]) => (

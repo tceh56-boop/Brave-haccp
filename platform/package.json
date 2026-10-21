@@ -10,7 +10,8 @@
     "migrate": "tsx src/server/db/migrate.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "import:reference": "tsx src/server/ops/reference.ts"
+    "import:reference": "tsx src/server/ops/reference.ts",
+    "import:ttk": "tsx src/server/ops/recipes.ts"
   },
   "dependencies": {
     "next": "16.3.8",

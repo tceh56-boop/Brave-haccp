@@ -172,9 +172,9 @@ export async function transfer(userId: string, orgId: string, input: unknown) {
     assertLotUsable(lot);   // карантинные и просроченные не перемещаются
     const qty = d.quantity ?? Number(lot.quantity);
     if (qty > Number(lot.quantity) + 1e-9) throw Errors.conflict(`В партии ${fmtNum(lot.quantity)} ${lot.unit}.`);
-    const child = (await tx.query(`insert into lots (organization_id, site_id, product_id, receipt_line_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, status, status_reason)
-      values ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, 'available', 'перемещение') returning id`,
-      [orgId, d.toSiteId, lot.product_id, lot.receipt_line_id, lot.lot_no, lot.unit, lot.manufactured_at, lot.expires_at, lot.expiry_basis])).rows[0];
+    const child = (await tx.query(`insert into lots (organization_id, site_id, product_id, receipt_line_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, status, status_reason, unit_price)
+      values ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, 'available', 'перемещение', $10) returning id`,
+      [orgId, d.toSiteId, lot.product_id, lot.receipt_line_id, lot.lot_no, lot.unit, lot.manufactured_at, lot.expires_at, lot.expiry_basis, lot.unit_price])).rows[0];
     await tx.query(`insert into lot_links (organization_id, parent_lot_id, child_lot_id, kind, quantity, unit) values ($1, $2, $3, 'transfer', $4, $5)`, [orgId, lot.id, child.id, qty, lot.unit]);
     await move(tx, { orgId, siteId: lot.site_id, lotId: lot.id, productId: lot.product_id, kind: 'transfer_out', quantity: -qty, unit: lot.unit, refType: 'lot', refId: child.id, operationId: d.operationId, userId });
     await move(tx, { orgId, siteId: d.toSiteId, lotId: child.id, productId: lot.product_id, kind: 'transfer_in', quantity: qty, unit: lot.unit, refType: 'lot', refId: lot.id, operationId: d.operationId, userId });
