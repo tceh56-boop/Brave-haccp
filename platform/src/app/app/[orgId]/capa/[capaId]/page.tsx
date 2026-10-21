@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { Evidence } from '@/components/Evidence';
+import { AiPanel } from '@/components/AiAnswer';
 import { api } from '@/lib/api';
 import { d, dt } from '@/lib/fmt';
 
@@ -95,6 +96,8 @@ export default function CapaPage({ params }: { params: Promise<{ capaId: string 
         </div>
       )}
       {c.status === 'closed' && <div className="okbox">Закрыто: эффективность подтвердил {c.verified_by_name}, {dt(c.verified_at, tz)} — {c.verification_note}</div>}
+
+      {editable && <AiPanel kind="capa" entityId={capaId} />}
 
       <Evidence entityType="capa" entityId={capaId} />
 

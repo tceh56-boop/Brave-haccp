@@ -6,6 +6,7 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
 import { Evidence } from '@/components/Evidence';
+import { AiPanel } from '@/components/AiAnswer';
 
 interface Inc { incident: { id: string; title: string; what: string; status: string; status_label: string; severity: string; severity_label: string; rule_source: string | null; recommended_action: string | null;
   entity_type: string | null; entity_id: string | null; requires_confirmation: boolean; action_note: string | null; action_by: string | null; due_at: string | null; created_at: string };
@@ -96,6 +97,8 @@ export default function IncidentPage({ params }: { params: Promise<{ incidentId:
           })}>Открыть CAPA по этому отклонению</button>
         </div>
       )}
+
+      <AiPanel kind="incidents" entityId={incidentId} />
 
       <Evidence entityType="incident" entityId={incidentId} />
 

@@ -14,6 +14,7 @@
     "import:ttk": "tsx src/server/ops/recipes.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.137.0",
     "next": "16.3.8",
     "pg": "8.23.1",
     "react": "19.3.0",
