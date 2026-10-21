@@ -25,10 +25,12 @@ const ENTITY: Record<string, { table: string; site: string | null }> = {
   haccp_hazard: { table: 'haccp_hazards', site: null },
   reg_version: { table: 'reg_source_versions', site: null },
   lab_result: { table: 'lab_results', site: 'site_id' },
+  equipment: { table: 'equipment', site: 'site_id' },
+  equipment_event: { table: 'equipment_events', site: 'site_id' },
 };
 export const ENTITY_LABEL: Record<string, string> = {
   incident: 'Отклонение', capa: 'CAPA', receipt: 'Приёмка', lot: 'Партия', measurement: 'Замер', journal_entry: 'Запись журнала',
-  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование',
+  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование', equipment: 'Оборудование', equipment_event: 'ТО / поверка / ремонт',
 };
 
 /** Тип по сигнатуре файла. */

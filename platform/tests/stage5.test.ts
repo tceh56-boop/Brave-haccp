@@ -50,7 +50,7 @@ describe('Перечень форм J01–J53 и семейства', () => {
   it('53 формы; автоматические — из событий; пары ручных форм — одни данные; сводные формы — свои записи', async () => {
     const forms = listForms();
     expect(forms).toHaveLength(53);
-    expect(forms.filter((f) => f.mode === 'auto').map((f) => f.code).sort()).toEqual(['J01', 'J03', 'J04', 'J05', 'J21', 'J25', 'J29', 'J30', 'J31', 'J32', 'J34', 'J39', 'J42', 'J43']);
+    expect(forms.filter((f) => f.mode === 'auto').map((f) => f.code).sort()).toEqual(['J01', 'J03', 'J04', 'J05', 'J09', 'J10', 'J15', 'J18', 'J21', 'J25', 'J26', 'J29', 'J30', 'J31', 'J32', 'J34', 'J39', 'J42', 'J43']);
     expect(forms.find((f) => f.code === 'J40')).toMatchObject({ mode: 'manual', data_form: 'J02', shares_with: 'J02' });
     expect(dataFormOf('J02')).toBe('J02');
     expect(dataFormOf('J44')).toBe('J44');   // сводная: J07/J08/J27 — разные журналы, не склеиваются

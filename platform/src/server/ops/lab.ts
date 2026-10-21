@@ -5,6 +5,7 @@ import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, optText, assertSiteAccess, getSite, openTask, fmtNum } from './common';
 import { raiseIncident } from './incidents';
+import { assertInstrument } from './equipment';
 
 /**
  * Суточные пробы и лабораторный контроль (этап 14; перенос MonChef_DailySamples.gs и LabTests.gs прежнего ЦЕХ).
@@ -91,6 +92,7 @@ const TakeInput = z.object({
   container: z.string().trim().min(3, 'Укажите тару: стерильная ёмкость с крышкой, маркировка.').max(200),
   storageObjectId: z.uuid().optional().nullable(), storagePlace: optText(200),
   temperature: decimal.refine((v) => v > -50 && v < 100, 'Проверьте температуру.'),
+  instrumentId: z.uuid().optional().nullable(),
 });
 
 /** Отбор пробы. Масса и температура хранения проверяются по параметрам предприятия; вне пределов — не принимается. */
@@ -127,14 +129,15 @@ export async function takeSample(userId: string, orgId: string, input: unknown) 
       place = o.name;
     }
     if (!place) throw Errors.validation('Укажите место хранения (холодильник для проб).');
+    const instrument = await assertInstrument(tx, orgId, d.siteId, d.instrumentId);
     if (d.temperature < cfg.t_min || d.temperature > cfg.t_max)
       throw Errors.conflict(`Температура хранения проб ${fmtNum(d.temperature)} °C вне ${fmtNum(cfg.t_min)}…${fmtNum(cfg.t_max)} °C — переложите пробу в исправный холодильник и измерьте снова.`);
-    const basis = `не менее ${fmtNum(cfg.min_weight_g)} г, ${fmtNum(cfg.t_min)}…${fmtNum(cfg.t_max)} °C, ${fmtNum(cfg.retention_hours)} ч — ${cfg.basis}`;
+    const basis = `не менее ${fmtNum(cfg.min_weight_g)} г, ${fmtNum(cfg.t_min)}…${fmtNum(cfg.t_max)} °C, ${fmtNum(cfg.retention_hours)} ч — ${cfg.basis}${instrument ? `; прибор: ${instrument}` : ''}`;
     const dup = eventId ? 'по этому блюду мероприятия' : 'по этой партии';
     const s = (await tx.query(`insert into daily_samples (organization_id, site_id, source, plan_event_id, lot_id, dish_id, title, weight_g, whole_portion, container, storage_object_id, storage_place,
-        temperature, basis, taken_by, keep_until) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now() + make_interval(secs => $16 * 3600))
+        temperature, basis, taken_by, keep_until, instrument_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now() + make_interval(secs => $16 * 3600), $17)
       on conflict do nothing returning id, keep_until`,
-    [orgId, d.siteId, d.source, eventId, lotId, dishId, title, d.wholePortion ? null : d.weightG, d.wholePortion, d.container, d.storageObjectId || null, place, d.temperature, basis, userId, cfg.retention_hours])).rows[0];
+    [orgId, d.siteId, d.source, eventId, lotId, dishId, title, d.wholePortion ? null : d.weightG, d.wholePortion, d.container, d.storageObjectId || null, place, d.temperature, basis, userId, cfg.retention_hours, d.instrumentId || null])).rows[0];
     if (!s) throw Errors.conflict(`Проба ${dup} уже отобрана.`);
     await audit.record(tx, { organizationId: orgId, siteId: d.siteId, actorUserId: userId, action: 'sample.take', entityType: 'daily_sample', entityId: s.id,
       after: { title, weight_g: d.wholePortion ? 'порция' : d.weightG, temperature: d.temperature, keep_until: s.keep_until } });

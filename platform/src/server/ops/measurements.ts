@@ -4,6 +4,7 @@ import { Errors } from '../http/errors';
 import { inOrg, parse, optText, assertSiteAccess, fmtNum } from './common';
 import { activeRule, criterionText } from './control';
 import { raiseIncident } from './incidents';
+import { assertInstrument } from './equipment';
 
 /**
  * Замер (ТЗ v2 §3 «Температура», §5, AT-04, AT-05).
@@ -25,6 +26,7 @@ const MeasureInput = z.object({
   measuredAt: z.iso.datetime({ offset: true }).optional(),
   comment: optText(500),
   device: optText(120),
+  instrumentId: z.uuid().optional().nullable(),
 });
 
 export async function recordMeasurement(userId: string, orgId: string, input: unknown) {
@@ -41,6 +43,8 @@ export async function recordMeasurement(userId: string, orgId: string, input: un
     const isLate = now.getTime() - measuredAt.getTime() > LATE_MINUTES * 60e3;
     if (isLate && !d.comment) throw Errors.validation('Замер вносится позже — укажите в комментарии, почему (например, «записано на бумаге в 09:00»).');
 
+    // прибор из реестра: поверка действует; если приборы на площадке есть — выбор обязателен (этап 15)
+    const instrument = await assertInstrument(tx, orgId, o.site_id, d.instrumentId);
     const rule = await activeRule(tx, o.id, parameter);
     if (rule && rule.unit !== d.unit) throw Errors.validation(`Единица замера должна быть ${rule.unit}.`);
     let result: 'ok' | 'deviation' | 'no_criterion' = 'no_criterion';
@@ -50,9 +54,9 @@ export async function recordMeasurement(userId: string, orgId: string, input: un
       result = below || above ? 'deviation' : 'ok';
     }
     const criterion = rule ? `${criterionText(rule)} (правило v${rule.version}; ${rule.source_ref})` : null;
-    const row = (await tx.query(`insert into measurements (organization_id, site_id, control_object_id, rule_id, parameter, value, unit, measured_at, is_late, author_user_id, device, criterion, result, comment)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
-      [orgId, o.site_id, o.id, rule?.id || null, parameter, d.value, d.unit, measuredAt, isLate, userId, d.device, criterion, result, d.comment])).rows[0];
+    const row = (await tx.query(`insert into measurements (organization_id, site_id, control_object_id, rule_id, parameter, value, unit, measured_at, is_late, author_user_id, device, criterion, result, comment, instrument_id)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning *`,
+      [orgId, o.site_id, o.id, rule?.id || null, parameter, d.value, d.unit, measuredAt, isLate, userId, instrument || d.device, criterion, result, d.comment, d.instrumentId || null])).rows[0];
     await audit.record(tx, { organizationId: orgId, siteId: o.site_id, actorUserId: userId, action: 'measurement.record', entityType: 'measurement', entityId: row.id,
       after: { object: o.name, value: d.value, unit: d.unit, measured_at: measuredAt.toISOString(), result, late: isLate } });
 

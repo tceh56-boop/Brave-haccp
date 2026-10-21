@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useOrg } from '@/lib/org';
 import { SitePicker } from '@/components/OrgNav';
+import { InstrumentPicker } from '@/components/InstrumentPicker';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
@@ -32,7 +33,7 @@ function SamplesTab() {
   const [objects, setObjects] = useState<Obj[]>([]);
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
-  const [f, setF] = useState({ source: 'event', key: '', dishId: '', lotId: '', weight: '', whole: false, container: 'стерильная ёмкость с крышкой, маркировка', objectId: '', place: '', temp: '' });
+  const [f, setF] = useState({ source: 'event', key: '', dishId: '', lotId: '', weight: '', whole: false, container: 'стерильная ёмкость с крышкой, маркировка', objectId: '', place: '', temp: '', instrumentId: '' });
   const [cfg, setCfg] = useState<{ minWeightG: string; retentionHours: string; tMin: string; tMax: string; basis: string } | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const { busy, error, run, setError } = useSubmit();
@@ -50,7 +51,7 @@ function SamplesTab() {
   const take = () => run(async () => {
     const [eventId, dishId] = f.key.split(':');
     const body = { siteId, source: f.source, eventId: f.source === 'event' ? eventId : null, dishId: f.source === 'event' ? dishId : f.source === 'dish' ? f.dishId : null, lotId: f.source === 'lot' ? f.lotId : null,
-      weightG: f.whole ? null : num(f.weight), wholePortion: f.whole, container: f.container, storageObjectId: f.objectId || null, storagePlace: f.place || null, temperature: num(f.temp) };
+      weightG: f.whole ? null : num(f.weight), wholePortion: f.whole, container: f.container, storageObjectId: f.objectId || null, storagePlace: f.place || null, temperature: num(f.temp), instrumentId: f.instrumentId || null };
     const r = await api<{ title: string; keep_until: string }>(`/orgs/${org.id}/samples`, { body });
     setOk(`Проба отобрана: ${r.title}. Хранить до ${dt(r.keep_until, org.timezone)}.`);
     setF({ ...f, key: '', dishId: '', lotId: '', weight: '' }); load();
@@ -103,6 +104,7 @@ function SamplesTab() {
           <div><label htmlFor="sw">Масса, г</label><input id="sw" inputMode="decimal" disabled={f.whole} value={f.weight} onChange={(e) => setF({ ...f, weight: e.target.value })} placeholder={`не менее ${n(s.min_weight_g)}`} /></div>
           <div><label htmlFor="st">t в холодильнике, °C</label><input id="st" inputMode="decimal" value={f.temp} onChange={(e) => setF({ ...f, temp: e.target.value })} placeholder={`${n(s.t_min)}…${n(s.t_max)}`} /></div>
         </div>
+        <InstrumentPicker id="si" siteId={siteId} value={f.instrumentId} onChange={(v) => setF((x) => ({ ...x, instrumentId: v }))} />
         <label className="row" style={{ fontWeight: 400, marginTop: 8 }}><input type="checkbox" style={{ width: 22, minHeight: 22 }} checked={f.whole} onChange={(e) => setF({ ...f, whole: e.target.checked })} /> Порция целиком (штучное блюдо)</label>
         <label htmlFor="sc">Тара</label><input id="sc" value={f.container} onChange={(e) => setF({ ...f, container: e.target.value })} />
         <label htmlFor="so">Где хранится</label>

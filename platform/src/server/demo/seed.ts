@@ -5,6 +5,8 @@ import { createOrganization, inviteMember, acceptInvitation } from '../org/organ
 import { createSupplier, createProduct } from '../ops/catalog';
 import { createEvent, setItem as setEventItem, confirmEvent } from '../ops/planmenu';
 import { createProgram, recordResult } from '../ops/lab';
+import { createEquipment, recordEvent as equipmentEvent } from '../ops/equipment';
+import { createDisinfectant, approveDisinfectant, createPlan as createSanitationPlan, recordDone as sanitationDone } from '../ops/sanitation';
 import { setNorm, createOrder as createSupplierOrder, stepOrder, updateSupplier } from '../ops/purchasing';
 import { importReference, createProductFromReference } from '../ops/reference';
 import { createControlObject, createRule, approveRule } from '../ops/control';
@@ -245,6 +247,21 @@ export async function seedDemo() {
     basis: 'Демо: программа производственного контроля, п. 7' });
   await recordResult(haccp.id, orgId, { siteId, programId: micro.id, labName: 'Демо: аккредитованная лаборатория', protocolNo: 'Д-101', sampledOn: inDays(-60), resultOn: inDays(-57),
     params: [{ name: 'КМАФАнМ', norm: 'не более 1×10³ КОЕ/г', fact: '2×10²', unit: 'КОЕ/г', pass: true }, { name: 'БГКП (колиформы)', norm: 'не допускаются в 1,0 г', fact: 'не обнаружены', pass: true }] });
+
+  // Оборудование: камера мяса с ТО, термометр-щуп с действующей поверкой, термометр с истёкшей (виден в «Проблемах»)
+  const meatFridge = await createEquipment(chef.id, orgId, { siteId, name: 'Камера мяса Polair', kind: 'cold', model: 'Демо: КХН-4,4', serialNo: 'P-0421', controlObjectId: objects['Камера мяса'], maintenanceDays: 90 });
+  await equipmentEvent(chef.id, orgId, meatFridge.id, { kind: 'maintenance', description: 'Демо: чистка конденсатора, проверка уплотнителя', performer: 'ООО «Холод-Сервис»', happenedOn: inDays(-20) });
+  await createEquipment(chef.id, orgId, { siteId, name: 'Термометр-щуп ТЦ-1', kind: 'instrument', serialNo: '1101', calibratedOn: inDays(-120), calibrationDue: inDays(245), calibrationDoc: 'Демо: свидетельство о поверке № С-1101' });
+  await createEquipment(chef.id, orgId, { siteId, name: 'Термометр старый', kind: 'instrument', serialNo: '0007', calibrationDue: inDays(-5), calibrationDoc: 'Демо: свидетельство № С-0007' });
+
+  // Санитария: утверждённое дезсредство (режим — демо-значения, в работе — из инструкции производителя), план, выполнение
+  const dis = await createDisinfectant(haccp.id, orgId, { name: 'Демо-Хлор', purpose: 'поверхности, инвентарь', concentrationMin: 0.1, concentrationMax: 0.2, exposure: '30 мин',
+    basis: 'Демо: инструкция производителя — в работе внесите из своей инструкции' });
+  await approveDisinfectant(haccp.id, orgId, dis.id);
+  const tables = await createSanitationPlan(haccp.id, orgId, { siteId, area: 'Горячий цех', work: 'Дезинфекция производственных столов', kind: 'disinfection', periodDays: 1, disinfectantId: dis.id, checkConcentration: true });
+  await createSanitationPlan(haccp.id, orgId, { siteId, area: 'Горячий цех', work: 'Влажная уборка полов', kind: 'current', periodDays: 1 });
+  await createSanitationPlan(haccp.id, orgId, { siteId, area: 'Все цеха', work: 'Генеральная уборка с дезинфекцией', kind: 'general', periodDays: 30, disinfectantId: dis.id, nextDue: inDays(-1) });
+  await sanitationDone(cook.id, orgId, tables.id, { concentration: 0.15 });
 
   // Подтверждения пилота: часть есть, часть ждёт — видно на экране готовности
   await confirm(owner.id, orgId, { key: 'paper_fallback', evidence: 'Демо: бланки журналов в папке на кухне, перенос — Игорь ХАССП' });

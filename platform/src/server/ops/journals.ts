@@ -22,12 +22,13 @@ import formsJson from '../../../data/reference/journal_forms.json';
 const FORMS: FormDef[] = (formsJson as { forms: FormDef[] }).forms;
 export const FORM_BY_CODE = new Map(FORMS.map((f) => [f.code, f]));
 
-type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan';
+type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan' | 'repairs' | 'cleaning' | 'washing' | 'concentration';
 /** Формы, собираемые из событий. Остальные — ручная запись. */
 const AUTO: Record<string, Source> = {
   J01: 'cold', J25: 'cold', J42: 'cold_grid', J04: 'room', J43: 'room_grid',
   J03: 'receipt', J21: 'receipt', J39: 'receipt', J05: 'lots', J29: 'lots', J34: 'incidents',
   J30: 'plans', J31: 'hazards', J32: 'plan',   // реестры из плана ХАССП (не зависят от периода)
+  J18: 'repairs', J10: 'cleaning', J09: 'washing', J15: 'concentration', J26: 'concentration',   // оборудование и санитария (этап 15)
 };
 /**
  * Для ручных семейств — форма, в которой хранятся данные. Пара форм (J02 ↔ J40) — одни данные, печатный вид
@@ -43,7 +44,7 @@ export function dataFormOf(code: string): string {
 
 const INC_BLOCK: Partial<Record<Source, string[]>> = {
   cold: ['temperature_deviation'], cold_grid: ['temperature_deviation'], room: ['temperature_deviation'], room_grid: ['temperature_deviation'],
-  receipt: ['receipt_problem'], lots: ['expired_lot'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail'],
+  receipt: ['receipt_problem'], lots: ['expired_lot'], repairs: ['equipment'], cleaning: ['sanitation'], washing: ['sanitation'], concentration: ['sanitation'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail', 'equipment', 'sanitation'],
 };
 
 export function listForms() {
@@ -67,7 +68,7 @@ const fmtDT = (ts: Date | string | null, tz: string) => (ts ? `${fmtD(ts, tz)} $
 const yesNo = (v: unknown) => (v === true ? 'да' : v === false ? 'нет' : '—');
 const RESULT_RU: Record<string, string> = { ok: 'да', deviation: 'нет', no_criterion: 'критерий не задан' };
 const DECISION_RU: Record<string, string> = { accepted: 'принять', quarantine: 'карантин', rejected: 'отклонить' };
-const INC_KIND: Record<string, string> = { temperature_deviation: 'Температура вне предела', receipt_problem: 'Приёмка', expired_lot: 'Истёк срок', reported: 'Сообщение сотрудника', release_check: 'Выпуск п/ф (ККТ)', lab_fail: 'Лабораторное исследование' };
+const INC_KIND: Record<string, string> = { temperature_deviation: 'Температура вне предела', receipt_problem: 'Приёмка', expired_lot: 'Истёк срок', reported: 'Сообщение сотрудника', release_check: 'Выпуск п/ф (ККТ)', lab_fail: 'Лабораторное исследование', equipment: 'Оборудование', sanitation: 'Санитария' };
 
 /** Границы периода в часовом поясе предприятия. */
 function periodSql(fromIdx: number, toIdx: number, tzIdx: number) {
@@ -136,6 +137,38 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
         DECISION_RU[l.decision], l.decision_reason || '', l.accepted_by];
       return [fmtD(l.completed_at, tz), l.product, exp, l.supplier || '—', doc, `${fmtNum(l.quantity)} ${l.unit}${l.lot_no ? `, партия ${l.lot_no}` : ''}`, temp, yesNo(ch.documents),
         `упаковка: ${yesNo(ch.packaging)}, маркировка: ${yesNo(ch.labeling)}`, l.decision === 'accepted' ? 'П' : 'О', l.decision === 'accepted' ? '' : `${DECISION_RU[l.decision]}: ${l.decision_reason}`, l.accepted_by];
+    });
+    return { columns: f.columns, rows };
+  }
+  if (src === 'repairs') {
+    const bs = (await c.tx.query(`select b.*, e.name as equipment, u.full_name as reporter,
+        (select json_build_object('description', r.description, 'performer', r.performer, 'happened_on', r.happened_on, 'admitted', r.admitted) from equipment_events r
+          where r.breakdown_id = b.id and r.kind = 'repair' order by r.recorded_at desc limit 1) as repair
+      from equipment_events b join equipment e on e.id = b.equipment_id join users u on u.id = b.recorded_by
+      where b.organization_id = $1 and b.site_id = $2 and b.kind = 'breakdown' and b.recorded_at between ${periodSql(3, 4, 5)} order by b.recorded_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+    const rows = bs.map((b) => [fmtDT(b.recorded_at, tz), b.equipment, b.description, b.safety_impact || 'не указано', b.reporter, b.repair?.performer || '', b.repair?.description || '',
+      b.repair ? fmtD(b.repair.happened_on, tz) : '', b.repair ? (b.repair.admitted ? 'допущено' : 'не допущено') : 'ремонт не завершён']);
+    return { columns: f.columns, rows };
+  }
+  if (src === 'cleaning' || src === 'washing' || src === 'concentration') {
+    const rs = (await c.tx.query(`select r.*, p.area, p.work, p.kind, p.period_days, x.name as disinfectant, x.concentration_min, x.concentration_max, u.full_name as author,
+        v.ok as verified_ok, v.note as verify_note, vu.full_name as verifier, i.recommended_action
+      from sanitation_records r join sanitation_plans p on p.id = r.plan_id join users u on u.id = r.done_by left join disinfectants x on x.id = r.disinfectant_id
+      left join sanitation_verifications v on v.record_id = r.id left join users vu on vu.id = v.verified_by left join incidents i on i.id = r.incident_id
+      where r.organization_id = $1 and r.site_id = $2 and r.done_at between ${periodSql(3, 4, 5)}
+        and ${src === 'cleaning' ? `p.kind in ('current', 'general', 'disinfection')` : src === 'washing' ? `p.kind = 'inventory'` : `r.concentration is not null`}
+      order by r.done_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+    const KIND: Record<string, string> = { current: 'текущая', general: 'генеральная', disinfection: 'дезинфекция', inventory: 'мойка инвентаря' };
+    const norm = (r: { concentration_min: string | null; concentration_max: string | null }) => [r.concentration_min !== null ? `от ${fmtNum(r.concentration_min)} %` : '', r.concentration_max !== null ? `до ${fmtNum(r.concentration_max)} %` : ''].filter(Boolean).join(' ') || '—';
+    const check = (r: { verified_ok: boolean | null; verify_note: string | null }) => (r.verified_ok === null ? 'не проверено' : r.verified_ok ? 'принято' : `не принято: ${r.verify_note}`);
+    const conc = (r: { concentration: string | null }) => (r.concentration !== null ? `${fmtNum(r.concentration)} %` : '');
+    const rows = rs.map((r) => {
+      if (src === 'cleaning') return [fmtD(r.done_at, tz), r.area, `${KIND[r.kind]}: ${r.work}`, `раз в ${r.period_days} дн.`, fmtT(r.done_at, tz), [r.disinfectant, conc(r)].filter(Boolean).join(', ') || '—',
+        r.result === 'done' ? 'да' : 'нет — концентрация вне режима', r.author, r.verifier ? `${r.verifier} (${check(r)})` : 'не проверено'];
+      if (src === 'washing') return [fmtD(r.done_at, tz), fmtT(r.done_at, tz), r.area, r.work, [r.disinfectant, conc(r)].filter(Boolean).join(', ') || '—', r.result === 'done' ? 'выполнено' : 'отклонение',
+        check(r), r.author, r.verifier || ''];
+      return [fmtD(r.done_at, tz), fmtT(r.done_at, tz), r.disinfectant || '—', norm(r), conc(r), 'по инструкции средства', r.concentration_ok ? 'да' : 'нет',
+        r.concentration_ok ? '' : r.recommended_action || 'раствор приготовлен заново', r.author];
     });
     return { columns: f.columns, rows };
   }

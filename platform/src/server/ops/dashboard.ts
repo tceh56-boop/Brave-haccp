@@ -109,6 +109,27 @@ export async function getProblems(userId: string, orgId: string, siteId?: string
         where: siteName.get(old.site_id) || '', at: null, risk: 'Предупреждение', responsible: roleLabel('chef'), due_at: null, source: null, action: 'Уничтожить и отметить', href: `/app/${orgId}/lab` });
     }
 
+    // Оборудование: истекла поверка прибора, просрочено ТО; санитария: просрочен пункт плана (этап 15).
+    if (roleHas(m.role, 'equipment.read')) {
+      const eq = (await tx.query(`select e.id, e.site_id, e.name, e.measuring, e.calibration_due::text as calibration_due, e.maintenance_due::text as maintenance_due,
+          (now() at time zone o.timezone)::date::text as today from equipment e join organizations o on o.id = e.organization_id
+        where e.organization_id = $1 and e.site_id = any($2::uuid[]) and e.status = 'active'`, [orgId, siteIds])).rows;
+      for (const e of eq) {
+        if (e.measuring && (!e.calibration_due || e.calibration_due < e.today)) cards.push({ key: `calib:${e.id}`, priority: 5, tone: 'warn', title: `Истекла поверка: ${e.name}`,
+          what: e.calibration_due ? `Срок поверки прошёл ${e.calibration_due.split('-').reverse().join('.')}. Замеры этим прибором не принимаются.` : 'Нет даты следующей поверки — замеры этим прибором не принимаются.',
+          where: siteName.get(e.site_id) || '', at: null, risk: 'Измерения недостоверны', responsible: roleLabel('chef'), due_at: e.calibration_due, source: '102-ФЗ «Об обеспечении единства измерений»',
+          action: 'Сдать в поверку или заменить прибор', href: `/app/${orgId}/equipment/${e.id}` });
+        if (e.maintenance_due && e.maintenance_due < e.today) cards.push({ key: `maint:${e.id}`, priority: 7, tone: 'warn', title: `Просрочено ТО: ${e.name}`, what: 'Срок планового обслуживания прошёл.',
+          where: siteName.get(e.site_id) || '', at: null, risk: 'Предупреждение', responsible: roleLabel('chef'), due_at: e.maintenance_due, source: null, action: 'Провести ТО и отметить', href: `/app/${orgId}/equipment/${e.id}` });
+      }
+    }
+    if (roleHas(m.role, 'sanitation.record')) {
+      const sp = (await tx.query(`select p.id, p.site_id, p.area, p.work, p.next_due::text as next_due, p.responsible_role from sanitation_plans p join organizations o on o.id = p.organization_id
+        where p.organization_id = $1 and p.site_id = any($2::uuid[]) and p.status = 'active' and p.next_due < (now() at time zone o.timezone)::date`, [orgId, siteIds])).rows;
+      for (const p of sp) cards.push({ key: `san:${p.id}`, priority: 6, tone: 'warn', title: `Просрочена уборка: ${p.area}`, what: p.work, where: siteName.get(p.site_id) || '', at: null,
+        risk: 'Санитарный режим не выполняется', responsible: roleLabel(p.responsible_role), due_at: p.next_due, source: null, action: 'Выполнить и отметить', href: `/app/${orgId}/sanitation` });
+    }
+
     // Нормативный реестр: утверждённая редакция с наступившей датой проверки актуальности (ТЗ v2 §7).
     if (roleHas(m.role, 'reg.read')) {
       const due = (await tx.query(`select v.id, v.edition, v.next_check_at, s.id as source_id, s.code, u.full_name as owner from reg_source_versions v join reg_sources s on s.id = v.source_id

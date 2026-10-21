@@ -2,6 +2,7 @@
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useOrg } from '@/lib/org';
+import { InstrumentPicker } from '@/components/InstrumentPicker';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
@@ -9,7 +10,7 @@ import { dt, n } from '@/lib/fmt';
 interface Rule { id: string; criterion: string; frequency_hours: string | null; source_ref: string; reaction: string | null; version: number; status: string; allow_isolation: boolean; created_by_name?: string; approved_by_name?: string }
 interface Hist { id: string; value: string; unit: string; measured_at: string; entered_at: string; is_late: boolean; result: string; author: string; comment: string | null; corrects_id: string | null; correction_reason: string | null }
 interface ObjCard {
-  object: { id: string; name: string; kind_label: string; site_name: string; code: string; location: string | null };
+  object: { id: string; name: string; kind_label: string; site_id: string; site_name: string; code: string; location: string | null };
   rule: Rule | null; due: { state: string; due_at: string | null }; history: Hist[];
   lots: { id: string; product: string; lot_no: string | null; quantity: string; unit: string; status: string }[];
   incident: { id: string; title: string; status: string } | null;
@@ -26,6 +27,7 @@ export default function ObjectPage({ params }: { params: Promise<{ objectId: str
   const [earlier, setEarlier] = useState(false);
   const [measuredAt, setMeasuredAt] = useState('');
   const [comment, setComment] = useState('');
+  const [instrumentId, setInstrumentId] = useState('');
   const [result, setResult] = useState<{ result: string; incidentId: string | null; criterion: string | null } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const { busy, error, run } = useSubmit();
@@ -59,13 +61,14 @@ export default function ObjectPage({ params }: { params: Promise<{ objectId: str
         <div className="card">
           <h2>Замер</h2>
           <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-            const body: Record<string, unknown> = { controlObjectId: objectId, value: value.replace(',', '.'), comment: comment || undefined };
+            const body: Record<string, unknown> = { controlObjectId: objectId, value: value.replace(',', '.'), comment: comment || undefined, instrumentId: instrumentId || null };
             if (earlier && measuredAt) body.measuredAt = new Date(measuredAt).toISOString();
             setResult(await api(`/orgs/${org.id}/measurements`, { body }));
             setValue(''); setComment(''); setEarlier(false); await load();
           }); }}>
             <label htmlFor="v">Показание, °C</label>
             <input id="v" ref={input} className="big-input" inputMode="decimal" required autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder="4,0" />
+            <InstrumentPicker siteId={c.object.site_id} value={instrumentId} onChange={setInstrumentId} />
             <label className="row" style={{ fontWeight: 400 }}>
               <input type="checkbox" style={{ width: 22, minHeight: 22 }} checked={earlier} onChange={(e) => setEarlier(e.target.checked)} /> Замер сделан раньше (вношу позже)
             </label>
