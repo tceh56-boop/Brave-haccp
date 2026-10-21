@@ -21,7 +21,7 @@ export const STATUS_LABEL: Record<string, string> = { new: 'Новая', in_prog
 
 export interface NewIncident {
   orgId: string; siteId?: string | null; severity: 'critical' | 'high' | 'medium' | 'low';
-  kind: 'temperature_deviation' | 'receipt_problem' | 'expired_lot' | 'reported' | 'release_check';
+  kind: 'temperature_deviation' | 'receipt_problem' | 'expired_lot' | 'reported' | 'release_check' | 'lab_fail';
   title: string; what: string; entityType?: string; entityId?: string;
   responsibleRole?: string; dueMinutes?: number; ruleSource?: string | null; recommendedAction?: string | null;
   requiresConfirmation?: boolean; createdBy?: string | null; notify?: string[];

@@ -10,7 +10,8 @@ import { withSystem } from '../db/pool';
 
 /** Записи, которые по ТЗ не переписываются: исправление — новой записью. */
 export const IMMUTABLE = ['labels', 'label_prints', 'production_checks', 'product_nutrition', 'product_allergens', 'tech_spec_versions', 'audit_events', 'measurements', 'stock_movements', 'journal_entries', 'journal_signoffs', 'evidence_files', 'capa_events',
-  'pos_payments', 'ai_jobs', 'ai_decisions', 'pilot_confirmations', 'pilot_decisions'];
+  'pos_payments', 'ai_jobs', 'ai_decisions', 'pilot_confirmations', 'pilot_decisions',
+  'daily_samples', 'daily_sample_destructions', 'lab_results'];
 /** Таблицы без строк организаций (справочники платформы, служебные). */
 const PLATFORM_TABLES = new Set(['users', 'email_tokens', 'sessions', 'login_attempts', 'outbox_emails', 'organizations', 'schema_migrations', 'reference_products', 'ttk_archive', 'system_backups']);
 

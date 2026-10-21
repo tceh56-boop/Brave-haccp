@@ -4,6 +4,7 @@ import { register, verifyEmail, login, type SessionUser } from '../identity/auth
 import { createOrganization, inviteMember, acceptInvitation } from '../org/organizations';
 import { createSupplier, createProduct } from '../ops/catalog';
 import { createEvent, setItem as setEventItem, confirmEvent } from '../ops/planmenu';
+import { createProgram, recordResult } from '../ops/lab';
 import { setNorm, createOrder as createSupplierOrder, stepOrder, updateSupplier } from '../ops/purchasing';
 import { importReference, createProductFromReference } from '../ops/reference';
 import { createControlObject, createRule, approveRule } from '../ops/control';
@@ -236,6 +237,14 @@ export async function seedDemo() {
   await setEventItem(chef.id, orgId, banquet.id, { dishId: stroganoff, perGuest: 1, note: 'горячее' });
   await setEventItem(chef.id, orgId, banquet.id, { dishId: mors, portions: 30 });
   await confirmEvent(chef.id, orgId, banquet.id);
+
+  // Лабораторный контроль: программа ПК — смывы (срок прошёл) и микробиология блюд с результатом «соответствует»
+  await createProgram(haccp.id, orgId, { siteId, testType: 'Смывы на БГКП', target: 'Разделочный инвентарь, руки персонала', periodDays: 30, retestDays: 7, nextDue: inDays(-2),
+    basis: 'Демо: программа производственного контроля, п. 6' });
+  const micro = await createProgram(haccp.id, orgId, { siteId, testType: 'Микробиология готовых блюд', target: 'Горячие блюда', dishId: stroganoff, periodDays: 90, retestDays: 7, nextDue: inDays(30),
+    basis: 'Демо: программа производственного контроля, п. 7' });
+  await recordResult(haccp.id, orgId, { siteId, programId: micro.id, labName: 'Демо: аккредитованная лаборатория', protocolNo: 'Д-101', sampledOn: inDays(-60), resultOn: inDays(-57),
+    params: [{ name: 'КМАФАнМ', norm: 'не более 1×10³ КОЕ/г', fact: '2×10²', unit: 'КОЕ/г', pass: true }, { name: 'БГКП (колиформы)', norm: 'не допускаются в 1,0 г', fact: 'не обнаружены', pass: true }] });
 
   // Подтверждения пилота: часть есть, часть ждёт — видно на экране готовности
   await confirm(owner.id, orgId, { key: 'paper_fallback', evidence: 'Демо: бланки журналов в папке на кухне, перенос — Игорь ХАССП' });

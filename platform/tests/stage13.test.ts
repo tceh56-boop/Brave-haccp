@@ -8,6 +8,7 @@ import { createDish, getDish, updateVersion, addLine, submitVersion, approveVers
 import { createProduction } from '../src/server/ops/production';
 import { createOrder } from '../src/server/ops/purchasing';
 import { createEvent, listEvents, getEvent, updateEvent, setItem, removeItem, confirmEvent, cancelEvent, completeEvent } from '../src/server/ops/planmenu';
+import { takeSample } from '../src/server/ops/lab';
 import { makeUser, lastLinkToken } from './helpers';
 
 afterAll(() => closePool());
@@ -19,6 +20,7 @@ const ALL_OK = { packaging: true, labeling: true, documents: true, quality: true
 const inDays = (n: number) => new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
 const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
 const later = new Date(Date.now() + 2 * 86400e3).toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+const takeProbe = (eventId: string, dishId: string) => takeSample(cook.id, orgId, { siteId, source: 'event', eventId, dishId, weightG: 150, container: 'стерильная банка', storagePlace: 'Холодильник для проб', temperature: 4 });
 const line = (x: Awaited<ReturnType<typeof getEvent>>, productId: string) => x.needs!.lines.find((l) => l.product_id === productId)!;
 
 async function invite(role: string) {
@@ -123,6 +125,7 @@ describe('Этап 13: «Проведено» — списание по ТТК',
     await setItem(chef.id, orgId, e.id, { dishId: stew, portions: 2 });
     await expect(completeEvent(chef.id, orgId, e.id, { operationId: randomUUID() })).rejects.toThrow(/подтвердите/);
     await confirmEvent(chef.id, orgId, e.id);
+    await takeProbe(e.id, stew);
     const op = randomUUID();
     await expect(completeEvent(cook.id, orgId, e.id, { operationId: op })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     // факт 3 порции: говядина 0,6 кг (партия Г-1 по 600 ₽ — раньше истекает), лук 0,3 кг по 40 ₽
@@ -143,6 +146,7 @@ describe('Этап 13: «Проведено» — списание по ТТК',
     const e = await createEvent(chef.id, orgId, { siteId, title: 'Большой фуршет', eventDate: today, guests: 100 });
     await setItem(chef.id, orgId, e.id, { dishId: stew, perGuest: 1 });
     await confirmEvent(chef.id, orgId, e.id);
+    await takeProbe(e.id, stew);
     await expect(completeEvent(chef.id, orgId, e.id, { operationId: randomUUID() })).rejects.toThrow(/Не хватает/);
     expect((await getEvent(chef.id, orgId, e.id)).event.status).toBe('confirmed');
     const audit = (await withSystem((tx) => tx.query(`select action from audit_events where organization_id = $1 and action like 'event.%'`, [orgId]))).rows.map((a) => a.action);

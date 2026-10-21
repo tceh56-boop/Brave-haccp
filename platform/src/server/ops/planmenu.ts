@@ -7,6 +7,7 @@ import { inOrg, parse, optText, assertSiteAccess, getSite, fmtNum } from './comm
 import { once } from './stock';
 import { approvedRecipe } from './recipes';
 import { explode, takeFefo, semiGrams, type Need } from './bom';
+import { dishesWithoutSample } from './lab';
 
 /**
  * План-меню: мероприятия и банкеты (этап 13; перенос PlanMenu.gs и Stage 114 прежнего ЦЕХ, MON CHEF «Банкеты»).
@@ -17,7 +18,8 @@ import { explode, takeFefo, semiGrams, type Need } from './bom';
  *    Остаток — годные партии, срок которых не истекает до дня мероприятия. Блюдо без утверждённой ТТК —
  *    «потребность не рассчитана», а не ноль; подтвердить такое мероприятие нельзя.
  *  - Нехватка → заказ поставщику (связан с мероприятием); п/ф → задание на производство. Только явными действиями.
- *  - «Проведено»: фактические порции, списание по ТТК (FEFO) с источником «мероприятие», себестоимость, выручка.
+ *  - «Проведено»: фактические порции, списание по ТТК (FEFO) с источником «мероприятие», себестоимость, выручка;
+ *    по каждому поданному блюду должна быть отобрана суточная проба (этап 14).
  */
 
 export const EVENT_STATUS: Record<string, string> = { planned: 'План', confirmed: 'Подтверждено', done: 'Проведено', cancelled: 'Отменено' };
@@ -203,7 +205,8 @@ export async function getEvent(userId: string, orgId: string, id: string) {
     assertSiteAccess(m, e.site_id);
     const items = await itemsOf(tx, e.id);
     const cost = roleHas(m.role, 'cost.read'), money = cost || roleHas(m.role, 'menu.price');   // цены и выручка — не всем
-    const priced = items.map((i) => ({ id: i.id, dish_id: i.dish_id, dish: i.dish, per_guest: i.per_guest === null ? null : Number(i.per_guest), portions: Number(i.portions),
+    const sampled = new Set((await tx.query(`select dish_id from daily_samples where plan_event_id = $1`, [e.id])).rows.map((r) => r.dish_id as string));
+    const priced = items.map((i) => ({ sampled: sampled.has(i.dish_id), id: i.id, dish_id: i.dish_id, dish: i.dish, per_guest: i.per_guest === null ? null : Number(i.per_guest), portions: Number(i.portions),
       price: !money ? null : i.price !== null ? Number(i.price) : i.sale_price !== null ? Number(i.sale_price) : null, own_price: i.price !== null, note: i.note, ttk_version: i.ttk_version,
       actual_portions: i.actual_portions === null ? null : Number(i.actual_portions), cost: cost && i.cost !== null ? Number(i.cost) : null }));
     const amount = money && priced.length && priced.every((i) => i.price !== null) ? r2(priced.reduce((s, i) => s + i.price! * i.portions, 0)) : null;
@@ -265,6 +268,9 @@ export async function completeEvent(userId: string, orgId: string, id: string, i
     const date = typeof e.event_date === 'string' ? e.event_date.slice(0, 10) : e.event_date.toLocaleDateString('sv-SE');
     if (date > today) throw Errors.conflict('Мероприятие ещё не наступило: «Проведено» — в день мероприятия или позже.');
     const items = await itemsOf(tx, e.id);
+    const served = items.filter((it) => (d.actual.find((a) => a.dishId === it.dish_id)?.portions ?? Number(it.portions)) > 0).map((it) => it.dish_id);
+    const noSample = await dishesWithoutSample(tx, e.id, served);
+    if (noSample.length) throw Errors.conflict(`Нет суточной пробы: ${noSample.join(', ')}. Отберите пробу по каждому поданному блюду («Лаборатория и пробы»).`);
     let revenue: number | null = 0, total: number | null = 0, written = 0;
     for (const it of items) {
       const fact = d.actual.find((a) => a.dishId === it.dish_id)?.portions ?? Number(it.portions);

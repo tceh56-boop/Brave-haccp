@@ -21,6 +21,7 @@ function useGroups(): [string, Item[]][] {
       { href: `${b}/purchasing`, label: 'Закупки', show: can('purchase.read') },
       { href: `${b}/production`, label: 'Производство', show: can('production.read') },
       { href: `${b}/events`, label: 'План-меню', show: can('event.read') },
+      { href: `${b}/lab`, label: 'Лаборатория и пробы', show: can('sample.record') || can('lab.read') },
       { href: `${b}/labels`, label: 'Маркировка', show: can('label.print') },
       { href: `${b}/journals`, label: 'Журналы', show: can('journal.read') },
       { href: `${b}/pos`, label: 'Касса', show: can('pos.sell') },

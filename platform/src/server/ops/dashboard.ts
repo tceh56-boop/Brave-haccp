@@ -86,6 +86,29 @@ export async function getProblems(userId: string, orgId: string, siteId?: string
         at: t.created_at, risk: 'Просрочено', responsible: roleLabel(t.assignee_role), due_at: t.due_at, source: null, action: 'Выполнить', href: taskHref(orgId, t) });
     }
 
+    // Лабораторный контроль: наступил срок исследования по программе; суточные пробы мероприятий (этап 14).
+    if (roleHas(m.role, 'lab.read')) {
+      const due = (await tx.query(`select p.id, p.site_id, p.test_type, p.target, p.next_due, p.basis, p.responsible_role from lab_programs p join organizations o on o.id = p.organization_id
+        where p.organization_id = $1 and p.site_id = any($2::uuid[]) and p.status = 'active' and p.next_due < (now() at time zone o.timezone)::date`, [orgId, siteIds])).rows;
+      for (const p of due) cards.push({ key: `lab:${p.id}`, priority: 6, tone: 'warn', title: `Просрочено исследование: ${p.test_type}`, what: `${p.target} — срок по программе прошёл.`,
+        where: siteName.get(p.site_id) || '', at: null, risk: 'Программа производственного контроля не выполняется', responsible: roleLabel(p.responsible_role), due_at: p.next_due,
+        source: p.basis, action: 'Отобрать пробу и внести результат', href: `/app/${orgId}/lab?tab=lab` });
+    }
+    if (roleHas(m.role, 'sample.record')) {
+      const miss = (await tx.query(`select e.id, e.site_id, e.number, e.title, string_agg(d.name, ', ' order by d.name) as dishes from plan_events e join plan_event_items i on i.event_id = e.id
+        join dishes d on d.id = i.dish_id join organizations o on o.id = e.organization_id
+        where e.organization_id = $1 and e.site_id = any($2::uuid[]) and e.status in ('confirmed', 'done') and coalesce(i.actual_portions, i.portions) > 0
+          and e.event_date between (now() at time zone o.timezone)::date - 1 and (now() at time zone o.timezone)::date
+          and not exists (select 1 from daily_samples x where x.plan_event_id = e.id and x.dish_id = i.dish_id) group by e.id`, [orgId, siteIds])).rows;
+      for (const e of miss) cards.push({ key: `sample:${e.id}`, priority: 5, tone: 'warn', title: `Нет суточной пробы: мероприятие № ${e.number}`, what: `«${e.title}»: ${e.dishes}.`,
+        where: siteName.get(e.site_id) || '', at: null, risk: 'Без пробы мероприятие не закрыть; при проверке — нарушение', responsible: roleLabel('chef'), due_at: null, source: 'СанПиН 2.3/2.4.3590-20',
+        action: 'Отобрать пробы', href: `/app/${orgId}/lab?event=${e.id}` });
+      const old = (await tx.query(`select count(*)::int as n, min(s.site_id::text) as site_id from daily_samples s where s.organization_id = $1 and s.site_id = any($2::uuid[]) and s.keep_until < now() - interval '1 day'
+        and not exists (select 1 from daily_sample_destructions x where x.sample_id = s.id)`, [orgId, siteIds])).rows[0];
+      if (old.n) cards.push({ key: 'sample:due', priority: 7, tone: 'warn', title: `Пробы не уничтожены по сроку: ${old.n}`, what: 'Срок хранения истёк больше суток назад — уничтожьте и отметьте.',
+        where: siteName.get(old.site_id) || '', at: null, risk: 'Предупреждение', responsible: roleLabel('chef'), due_at: null, source: null, action: 'Уничтожить и отметить', href: `/app/${orgId}/lab` });
+    }
+
     // Нормативный реестр: утверждённая редакция с наступившей датой проверки актуальности (ТЗ v2 §7).
     if (roleHas(m.role, 'reg.read')) {
       const due = (await tx.query(`select v.id, v.edition, v.next_check_at, s.id as source_id, s.code, u.full_name as owner from reg_source_versions v join reg_sources s on s.id = v.source_id

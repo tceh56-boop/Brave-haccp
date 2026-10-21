@@ -13,7 +13,7 @@ import { dt, n } from '@/lib/fmt';
  * п/ф к приготовлению, подтверждение, «Проведено» с фактическими порциями и списанием, лист для кухни.
  */
 
-interface Item { id: string; dish_id: string; dish: string; per_guest: number | null; portions: number; price: number | null; own_price: boolean; note: string | null; ttk_version: number | null; actual_portions: number | null; cost: number | null }
+interface Item { id: string; dish_id: string; dish: string; per_guest: number | null; portions: number; price: number | null; own_price: boolean; note: string | null; ttk_version: number | null; actual_portions: number | null; cost: number | null; sampled: boolean }
 interface NeedLine { product_id: string; name: string; unit: string; semi: boolean; need: number; stock: number; ordered: number; shortage: number; last_supplier_id: string | null; last_price: number | null }
 interface Semi { dish_id: string; name: string; need_kg: number; ready_kg: number; planned_kg: number; to_make_kg: number }
 export interface EventData {
@@ -91,6 +91,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           <li key={i.id}>
             <div className="between" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
               <div><b>{i.dish}</b>{!i.ttk_version && <> <span className="badge crit">нет утверждённой ТТК</span></>}
+                {['confirmed', 'done'].includes(e.status) && <div className="small">{i.sampled ? <span className="badge ok">проба отобрана</span> : <span className="badge warn">нет суточной пробы</span>}</div>}
                 <div className="small">{n(i.portions)} порц.{i.per_guest !== null ? ` (${n(i.per_guest)} на гостя)` : ` (≈ ${n(Math.round(i.portions / e.guests * 100) / 100)} на гостя)`}{i.price !== null ? ` · ${n(i.price)} ₽${i.own_price ? ' (своя цена)' : ''}` : ''}{i.note ? ` · ${i.note}` : ''}</div>
                 {e.status === 'done' && <div className="small muted">факт {n(i.actual_portions)} порц.{i.cost !== null ? ` · себестоимость ${n(i.cost)} ₽` : ''}</div>}
               </div>
@@ -183,6 +184,7 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
       {manage && e.status === 'confirmed' && (
         <div className="card">
           <h2>Проведено</h2>
+          {x.items.some((i) => !i.sampled) && can('sample.record') && <p className="small"><Link href={`/app/${org.id}/lab?event=${id}`}>Отобрать суточные пробы →</Link> По каждому поданному блюду нужна проба.</p>}
           <p className="small muted">Укажите фактические порции, если отличались. Сырьё и п/ф спишутся по ТТК (FEFO) с источником «мероприятие № {e.number}». Если остатка не хватает — ничего не спишется.</p>
           {x.items.map((i) => (
             <div key={i.id} className="between" style={{ flexWrap: 'nowrap', marginBottom: 6 }}>

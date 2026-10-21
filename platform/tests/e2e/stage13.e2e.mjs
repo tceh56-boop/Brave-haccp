@@ -114,6 +114,7 @@ step('мероприятие сегодня: «Проведено» с факт�
 const ev2 = await call('POST', `/orgs/${orgId}/events`, { siteId: site.id, title: 'Обед для группы', eventDate: today, guests: 2 });
 await call('POST', `/orgs/${orgId}/events/${ev2.id}/items`, { dishId: stew.id, portions: 2 });
 await call('POST', `/orgs/${orgId}/events/${ev2.id}/confirm`, {});
+await call('POST', `/orgs/${orgId}/samples`, { siteId: site.id, source: 'event', eventId: ev2.id, dishId: stew.id, weightG: 150, container: 'стерильная банка', storagePlace: 'Холодильник для проб', temperature: 4 });
 await P.goto(`${BASE}${base}/events/${ev2.id}`);
 await P.fill('input[aria-label="Факт: Суп с луком"]', '3');
 await P.click('button:has-text("Проведено — списать по ТТК")');
