@@ -4,6 +4,7 @@ import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import type { Membership } from '../access/guard';
+import { roleHas, type Permission } from '../access/roles';
 import { inOrg, parse, optText, assertSiteAccess } from './common';
 
 /**
@@ -13,8 +14,10 @@ import { inOrg, parse, optText, assertSiteAccess } from './common';
  */
 
 export const MAX_BYTES = 10 * 1024 * 1024;
+export const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-const ENTITY: Record<string, { table: string; site: string | null }> = {
+/** read/add — права вида записи (по умолчанию evidence.read / evidence.add). */
+const ENTITY: Record<string, { table: string; site: string | null; read?: Permission; add?: Permission; docx?: boolean }> = {
   incident: { table: 'incidents', site: 'site_id' },
   capa: { table: 'capas', site: 'site_id' },
   receipt: { table: 'receipts', site: 'site_id' },
@@ -27,10 +30,11 @@ const ENTITY: Record<string, { table: string; site: string | null }> = {
   lab_result: { table: 'lab_results', site: 'site_id' },
   equipment: { table: 'equipment', site: 'site_id' },
   equipment_event: { table: 'equipment_events', site: 'site_id' },
+  contract: { table: 'contracts', site: 'site_id', read: 'contract.read', add: 'contract.manage', docx: true },
 };
 export const ENTITY_LABEL: Record<string, string> = {
   incident: 'Отклонение', capa: 'CAPA', receipt: 'Приёмка', lot: 'Партия', measurement: 'Замер', journal_entry: 'Запись журнала',
-  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование', equipment: 'Оборудование', equipment_event: 'ТО / поверка / ремонт',
+  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование', equipment: 'Оборудование', equipment_event: 'ТО / поверка / ремонт', contract: 'Договор',
 };
 
 /** Тип по сигнатуре файла. */
@@ -39,6 +43,8 @@ export function sniff(b: Buffer): string | null {
   if (b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
   if (b.length >= 12 && b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
   if (b.length >= 5 && b.subarray(0, 5).toString('latin1') === '%PDF-') return 'application/pdf';
+  // DOCX — ZIP с частью word/document.xml (имена частей ZIP хранятся открытым текстом в локальных заголовках)
+  if (b.length >= 30 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04 && b.includes('[Content_Types].xml', 0, 'latin1') && b.includes('word/', 0, 'latin1')) return DOCX;
   if (b.length >= 12 && b.subarray(4, 8).toString('latin1') === 'ftyp' && /^(heic|heix|mif1|msf1)$/.test(b.subarray(8, 12).toString('latin1'))) return 'image/heic';
   return null;
 }
@@ -62,10 +68,12 @@ export async function addEvidence(userId: string, orgId: string, input: unknown,
   const d = parse(AddInput, input);
   if (!bytes.length) throw Errors.validation('Файл пустой.');
   if (bytes.length > MAX_BYTES) throw Errors.validation('Файл больше 10 МБ — уменьшите фото или разделите документ.');
+  const e = ENTITY[d.entityType];
+  if (!e) throw Errors.validation('К этой записи доказательства не прикрепляются.');
   const mime = sniff(bytes);
-  if (!mime) throw Errors.validation('Поддерживаются фото (JPEG, PNG, WebP, HEIC) и PDF.');
+  if (!mime || (mime === DOCX && !e.docx)) throw Errors.validation(e.docx ? 'Поддерживаются PDF, DOCX и фото (JPEG, PNG, WebP, HEIC).' : 'Поддерживаются фото (JPEG, PNG, WebP, HEIC) и PDF.');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  return inOrg(userId, orgId, 'evidence.add', async (tx, m) => {
+  return inOrg(userId, orgId, e.add || 'evidence.add', async (tx, m) => {
     const siteId = await entitySite(tx, orgId, m, d.entityType, d.entityId);
     const dup = (await tx.query(`select id from evidence_files where organization_id = $1 and entity_type = $2 and entity_id = $3 and sha256 = $4`, [orgId, d.entityType, d.entityId, sha256])).rows[0];
     if (dup) return { id: dup.id, sha256, duplicate: true };
@@ -79,7 +87,7 @@ export async function addEvidence(userId: string, orgId: string, input: unknown,
 
 export async function listEvidence(userId: string, orgId: string, entityType: string, entityId: unknown) {
   const id = parse(z.uuid(), entityId);
-  return inOrg(userId, orgId, 'evidence.read', async (tx, m) => {
+  return inOrg(userId, orgId, ENTITY[entityType]?.read || 'evidence.read', async (tx, m) => {
     await entitySite(tx, orgId, m, entityType, id);
     return (await tx.query(`select f.id, f.filename, f.mime, f.size_bytes, f.sha256, f.note, f.uploaded_at, u.full_name as uploaded_by_name
       from evidence_files f join users u on u.id = f.uploaded_by where f.organization_id = $1 and f.entity_type = $2 and f.entity_id = $3 order by f.uploaded_at`, [orgId, entityType, id])).rows;
@@ -88,9 +96,10 @@ export async function listEvidence(userId: string, orgId: string, entityType: st
 
 export async function getEvidenceFile(userId: string, orgId: string, fileId: unknown) {
   const id = parse(z.uuid(), fileId);
-  return inOrg(userId, orgId, 'evidence.read', async (tx, m) => {
+  return inOrg(userId, orgId, 'org.read', async (tx, m) => {
     const f = (await tx.query(`select * from evidence_files where id = $1 and organization_id = $2`, [id, orgId])).rows[0];
     if (!f) throw Errors.notFound('Файл не найден.');
+    if (!roleHas(m.role, ENTITY[f.entity_type]?.read || 'evidence.read')) throw Errors.forbidden('Нет доступа к этому файлу.');
     if (f.site_id) assertSiteAccess(m, f.site_id);
     return f as { id: string; filename: string; mime: string; size_bytes: number; sha256: string; content: Buffer; entity_type: string; entity_id: string };
   });

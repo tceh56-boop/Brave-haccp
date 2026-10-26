@@ -6,6 +6,7 @@ import { measurementDue } from './control';
 import { securityChecks } from './security';
 import { lastVerifiedBackup } from './backup';
 import { mailHealth } from '../mail/sender';
+import { requiredContractsState } from './contracts';
 
 /**
  * Готовность к пилоту и решение Go/No-Go (этап 8 ТЗ v2, раздел 16 «Definition of Done»).
@@ -46,6 +47,11 @@ export async function getReadiness(userId: string, orgId: string, siteIdInput?: 
     const org = (await tx.query(`select legal_form, inn from organizations where id = $1`, [orgId])).rows[0];
     add({ key: 'requisites', group: 'Организация и команда', title: 'Реквизиты организации', status: org.legal_form && org.inn ? 'pass' : 'warn',
       detail: org.legal_form && org.inn ? `${org.legal_form}, ИНН ${org.inn}` : 'Не указаны форма или ИНН — нужны для печатных форм и пакета проверки.', href: base });
+    const contracts = await requiredContractsState(tx, orgId, siteIds);
+    const badC = contracts.filter((c) => !['ok', 'expiring'].includes(c.state));
+    add({ key: 'contracts', group: 'Организация и команда', title: 'Договоры для ППК: дезинсекция и дератизация, лаборатория, вывоз отходов — действуют и загружены файлом',
+      status: badC.length ? 'warn' : contracts.some((c) => c.state === 'expiring') ? 'warn' : 'pass',
+      detail: contracts.map((c) => `${c.label}: ${c.detail}`).join('; '), href: `${base}/contracts` });
     const roles = (await tx.query(`select role, count(*)::int as n from memberships where organization_id = $1 and status = 'active' group by role`, [orgId])).rows;
     const n = (rs: string[]) => roles.filter((r) => rs.includes(r.role)).reduce((s, r) => s + r.n, 0);
     const confirmers = n(['owner', 'enterprise_admin', 'director', 'chef', 'haccp_lead']);
