@@ -7,6 +7,7 @@ import { importTtkArchive, createDish, getDish, updateDish, updateVersion, addLi
 import {
   listMethods, createNorm, approveNorm, archiveNorm, listNorms, normsToday, setNormDefault, setLineSteps, applyNormToDrafts, suggestFromArchive,
 } from '../src/server/ops/processing';
+import { previewCosting, createCosting, getCosting, listCosting } from '../src/server/ops/costing';
 import { chain, factors, inSeason, seasonsOverlap, retention } from '../src/server/recipes/chain';
 import { makeUser, lastLinkToken } from './helpers';
 
@@ -262,5 +263,44 @@ describe('Рецептура как в Шеф Эксперте: подзагол
     await expect(withSystem((tx) => tx.query(`update ttk_versions set card_date = '2020-01-01' where id = $1`, [sv]))).rejects.toThrow(/не изменяется/);
     const nv = await newVersion(tech.id, orgId, steakId, { changeReason: 'Проверка копирования подзаголовков' });
     expect((await getDish(tech.id, orgId, steakId, nv.id)).current!.output.sections!.label).toBe('120/100');
+  });
+});
+
+describe('Калькуляционная карточка ОП-1: снимок цен, неизвестная цена ≠ 0', () => {
+  let saladId: string;
+
+  it('по утверждённой ТТК; нет цены партии — только вручную с основанием', async () => {
+    const d = await createDish(tech.id, orgId, { name: 'Салат из моркови' });
+    saladId = d.id;
+    const sv = (await getDish(tech.id, orgId, saladId)).current!.version.id;
+    await updateVersion(tech.id, orgId, sv, { technology: 'Морковь натереть, заправить, посолить.', storageConditions: 'при +2…+6 °C', shelfLife: 'по СанПиН', yieldG: 200, portionG: 100 });
+    await addLine(tech.id, orgId, sv, { name: 'Морковь', productId: carrot, unit: 'г', brutto: 210, netto: 190 });
+    await addLine(tech.id, orgId, sv, { productId: salt, unit: 'г', brutto: 2, netto: 2, inYield: false });
+    await expect(previewCosting(owner.id, orgId, saladId)).rejects.toThrow(/нет утверждённой ТТК/);
+    await submitVersion(tech.id, orgId, sv); await approveVersion(tech.id, orgId, sv);
+    const p = await previewCosting(owner.id, orgId, saladId);
+    expect(p.lines.map((l: any) => `${l.name}:${l.norm}`)).toEqual(['Морковь свежая:0.105', 'Соль поваренная:0.001']);
+    expect(p.missing).toHaveLength(2);
+    expect(p.cost_1).toBeNull();
+    await expect(createCosting(owner.id, orgId, saladId, { salePrice: 150 })).rejects.toThrow(/нет цены закупки/);
+    await expect(createCosting(owner.id, orgId, saladId, { salePrice: 150, prices: [{ key: `p:${carrot}`, price: 60, basis: '' }] })).rejects.toMatchObject({ code: 'VALIDATION' });
+    await expect(createCosting(cook.id, orgId, saladId, { salePrice: 150 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('утверждена: норма × цена, на 100 блюд, наценка; снимок не меняется; следующая — № 2', async () => {
+    const c = await createCosting(owner.id, orgId, saladId, { salePrice: 150, signers: { chef: 'П. П. Петров' }, prices: [
+      { key: `p:${carrot}`, price: 60, basis: 'Тест: прайс поставщика от 01.10' }, { key: `p:${salt}`, price: 20, basis: 'Тест: счёт № 5' }] });
+    expect(c.seq).toBe(1);
+    const card = await getCosting(owner.id, orgId, c.id);
+    expect(card.lines.map((l: any) => `${l.norm}×${l.price}=${l.sum}`)).toEqual(['0.105×60=6.3', '0.001×20=0.02']);
+    expect(Number(card.cost_1)).toBe(6.32);
+    expect(Number(card.raw_100)).toBe(632);
+    expect(Number(card.markup_pct)).toBe(Math.round((150 - 6.32) / 6.32 * 10000) / 100);
+    expect(card.lines[0].price_source).toMatch(/^вручную: Тест: прайс/);
+    await expect(withSystem((tx) => tx.query(`update costing_cards set cost_1 = 1 where id = $1`, [c.id]))).rejects.toThrow(/не изменяются/);
+    const c2 = await createCosting(owner.id, orgId, saladId, { salePrice: 160, prices: [{ key: `p:${carrot}`, price: 70, basis: 'Тест: новый прайс' }, { key: `p:${salt}`, price: 20, basis: 'Тест: счёт № 5' }] });
+    expect(c2.seq).toBe(2);
+    expect((await listCosting(owner.id, orgId, saladId)).map((x: any) => x.seq)).toEqual([2, 1]);
+    await expect(getCosting(cook.id, orgId, c.id)).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });

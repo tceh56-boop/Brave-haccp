@@ -102,6 +102,28 @@ await shot(P, 'разделы');
 const head = await P.textContent('.card:has(h2:has-text("Состав")) b');
 if (!/Рецептура № \d+ от \d\d\.\d\d\.\d{4}/.test(await P.textContent('.card b'))) throw new Error('нет номера рецептуры: ' + head);
 
+step('калькуляционная карточка ОП-1: цена вручную с основанием, утверждение, печатная форма');
+const salad = await call('POST', `/orgs/${orgId}/dishes`, { name: 'Салат из моркови', kind: 'dish' });
+const sv = (await call('GET', `/orgs/${orgId}/dishes/${salad.id}`)).current.version.id;
+await call('PATCH', `/orgs/${orgId}/ttk/${sv}`, { technology: 'Морковь натереть, заправить, посолить.', storageConditions: 'при +2…+6 °C', shelfLife: 'по СанПиН', yieldG: 200, portionG: 100 });
+await call('POST', `/orgs/${orgId}/ttk/${sv}/lines`, { productId: carrot.id, unit: 'г', brutto: 210, netto: 190 });
+await call('POST', `/orgs/${orgId}/ttk/${sv}/submit`, {}); await call('POST', `/orgs/${orgId}/ttk/${sv}/approve`, {});
+await P.goto(`${BASE}${base}/menu/${salad.id}`);
+await P.click('a:has-text("Калькуляционная карточка (ОП-1)")');
+await P.waitForSelector('h2:has-text("Калькуляция № 1")');
+await P.waitForSelector('.badge.crit:has-text("нет цены")');
+await P.fill('input[aria-label="Цена Морковь свежая"]', '60');
+await P.fill('input[aria-label="Основание цены Морковь свежая"]', 'Тест: прайс поставщика');
+await P.fill('#cs', '150'); await P.fill('#cacc', 'С. С. Сидоров');
+await P.waitForSelector('dd:has-text("7,13 ₽")');   // брутто по обработке по умолчанию: 190 / 0,8 / 2 = 118,75 г
+await shot(P, 'калькуляция');
+await P.click('button:has-text("Утвердить калькуляцию № 1")');
+await P.waitForSelector('text=КАЛЬКУЛЯЦИОННАЯ КАРТОЧКА');
+await P.waitForSelector('td:has-text("0,1188")');
+await P.waitForSelector('td:has-text("713,00")');
+await P.waitForSelector('text=С. С. Сидоров');
+await shot(P, 'оп1');
+
 await browser.close(); await db.end();
 if (errors.length) throw new Error(`ошибки страницы: ${errors.join('; ')}`);
 console.log('✓ этап 18: обработка сырья');

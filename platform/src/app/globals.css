@@ -150,3 +150,5 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .tu-warn { border: 1px solid #c80; background: #fff7e6; padding: 6px 10px; margin: 10px 0; }
 .tu-small { font-size: 8pt; color: #555; }
 @media print { .tu-doc { box-shadow: none; padding: 0; border-radius: 0; } @page { size: A4; margin: 15mm; } }
+.op1-head td { padding: 2px 5px; }
+.op1-code { width: 110px; border: 1px solid #111 !important; text-align: center; }
