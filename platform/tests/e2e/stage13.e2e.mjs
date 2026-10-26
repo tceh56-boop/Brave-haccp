@@ -107,6 +107,16 @@ await P.click('a:has-text("Лист для кухни")');
 await P.waitForSelector('.tu-doc td:has-text("Суп с луком")');
 await shot(P, 'лист_кухни');
 await P.goBack();
+await P.click('a:has-text("План-меню с прибылью")');
+await P.waitForSelector('h1:has-text("План-меню №")');
+await P.waitForSelector('th:has-text("Прибыль")');
+await shot(P, 'план_меню');
+await P.goBack();
+await P.click('a:has-text("Требование в кладовую")');
+await P.waitForSelector('h1:has-text("Требование в кладовую №")');
+await P.waitForSelector('td:has-text("Говядина")');
+await shot(P, 'требование');
+await P.goBack();
 await P.click('button:has-text("Подтвердить мероприятие")');
 await P.waitForSelector('.badge:text-is("Подтверждено")');
 

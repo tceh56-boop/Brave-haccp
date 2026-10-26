@@ -7,7 +7,7 @@ import { createReceipt, addReceiptLine, completeReceipt } from '../src/server/op
 import { createDish, getDish, updateVersion, addLine, submitVersion, approveVersion } from '../src/server/ops/recipes';
 import { createProduction } from '../src/server/ops/production';
 import { createOrder } from '../src/server/ops/purchasing';
-import { createEvent, listEvents, getEvent, updateEvent, setItem, removeItem, confirmEvent, cancelEvent, completeEvent } from '../src/server/ops/planmenu';
+import { createEvent, listEvents, getEvent, updateEvent, setItem, removeItem, confirmEvent, cancelEvent, completeEvent, getRequisition } from '../src/server/ops/planmenu';
 import { takeSample } from '../src/server/ops/lab';
 import { makeUser, lastLinkToken } from './helpers';
 
@@ -99,6 +99,21 @@ describe('Этап 13: мероприятие и меню', () => {
     expect(line(x, onion)).toMatchObject({ need: 2.3, stock: 3, shortage: 0 });
     expect(x.needs!.semis).toEqual([expect.objectContaining({ dish_id: broth, need_kg: 5.75, ready_kg: 0, to_make_kg: 5.75 })]);
     await expect(confirmEvent(chef.id, orgId, ev1)).rejects.toThrow(/Салат сезонный/);
+  });
+
+  it('план-меню: себестоимость порции по ТТК; требование в кладовую — п/ф до сырья, цены — кому положено', async () => {
+    const x = await getEvent(chef.id, orgId, ev1);
+    // говядина: средняя по остатку (2×600 + 3×700) / 5 = 660; бульон 1 кг = 0,8×660 + 0,2×40 = 536 ₽; порция = 250 г бульона + 0,05 кг лука
+    expect(x.items.find((i: any) => i.dish_id === stew)).toMatchObject({ unit_cost: 136, price: 300 });
+    expect(x.items.find((i: any) => i.dish_id === salad)).toMatchObject({ unit_cost: null });
+    const r = await getRequisition(chef.id, orgId, ev1);
+    expect(r.lines.map((l: any) => `${l.name}:${l.qty} ${l.unit}:${l.sum}`)).toEqual(['Говядина на кости:4.6 кг:3036', 'Лук репчатый:2.3 кг:92']);
+    expect(r.total).toBe(3128);
+    expect(r.missing[0].dish).toBe('Салат сезонный');
+    const forCook = await getRequisition(cook.id, orgId, ev1);
+    expect(forCook.see_cost).toBe(false);
+    expect(forCook.lines[0].price).toBeNull();
+    expect((await getEvent(cook.id, orgId, ev1)).items[0].unit_cost).toBeNull();
   });
 
   it('заказ и производство под мероприятие уменьшают нехватку; подтверждение — когда у всех блюд ТТК', async () => {

@@ -5,7 +5,7 @@ import { Errors } from '../http/errors';
 import { roleHas } from '../access/roles';
 import { inOrg, parse, optText, assertSiteAccess, getSite, fmtNum } from './common';
 import { once } from './stock';
-import { approvedRecipe } from './recipes';
+import { approvedRecipe, calcVersion, productPrice } from './recipes';
 import { explode, takeFefo, semiGrams, type Need } from './bom';
 import { dishesWithoutSample } from './lab';
 
@@ -206,7 +206,10 @@ export async function getEvent(userId: string, orgId: string, id: string) {
     const items = await itemsOf(tx, e.id);
     const cost = roleHas(m.role, 'cost.read'), money = cost || roleHas(m.role, 'menu.price');   // цены и выручка — не всем
     const sampled = new Set((await tx.query(`select dish_id from daily_samples where plan_event_id = $1`, [e.id])).rows.map((r) => r.dish_id as string));
-    const priced = items.map((i) => ({ sampled: sampled.has(i.dish_id), id: i.id, dish_id: i.dish_id, dish: i.dish, per_guest: i.per_guest === null ? null : Number(i.per_guest), portions: Number(i.portions),
+    // плановая себестоимость порции по утверждённой ТТК (неполная — null, не ноль)
+    const unitCost = new Map<string, number | null>();
+    if (cost) for (const i of items) unitCost.set(i.dish_id, await portionCost(tx, orgId, i.dish_id));
+    const priced = items.map((i) => ({ unit_cost: cost ? unitCost.get(i.dish_id) ?? null : null, sampled: sampled.has(i.dish_id), id: i.id, dish_id: i.dish_id, dish: i.dish, per_guest: i.per_guest === null ? null : Number(i.per_guest), portions: Number(i.portions),
       price: !money ? null : i.price !== null ? Number(i.price) : i.sale_price !== null ? Number(i.sale_price) : null, own_price: i.price !== null, note: i.note, ttk_version: i.ttk_version,
       actual_portions: i.actual_portions === null ? null : Number(i.actual_portions), cost: cost && i.cost !== null ? Number(i.cost) : null }));
     const amount = money && priced.length && priced.every((i) => i.price !== null) ? r2(priced.reduce((s, i) => s + i.price! * i.portions, 0)) : null;
@@ -216,6 +219,45 @@ export async function getEvent(userId: string, orgId: string, id: string) {
     const { timezone: _tz, ...ev } = e;
     return { event: { ...ev, status_label: EVENT_STATUS[e.status], revenue: !money || e.revenue === null ? null : Number(e.revenue), can_see_money: money, cost: cost && e.cost !== null ? Number(e.cost) : null },
       items: priced, amount, per_guest_amount: amount === null ? null : r2(amount / e.guests), needs, orders, production };
+  });
+}
+
+/** Себестоимость порции по утверждённой ТТК: полная — число, иначе null. */
+async function portionCost(tx: Tx, orgId: string, dishId: string) {
+  const v = (await tx.query(`select id, yield_g, portion_g from ttk_versions where dish_id = $1 and status = 'approved'`, [dishId])).rows[0];
+  if (!v?.yield_g || !v.portion_g) return null;
+  const c = await calcVersion(tx, orgId, v.id, new Set([dishId]));
+  return c.cost.complete ? r2(c.cost.total * Number(v.portion_g) / Number(v.yield_g)) : null;
+}
+
+/**
+ * Требование в кладовую по плану-меню (как в Шеф Эксперте): сырьё по утверждённым ТТК на все порции, полуфабрикаты
+ * раскладываются до сырья (до 5 уровней). Цена — средняя по партиям в остатке, иначе последняя закупка; видят те,
+ * кому положено видеть себестоимость. Нет цены — сумма не считается (не ноль).
+ */
+export async function getRequisition(userId: string, orgId: string, id: string) {
+  return inOrg(userId, orgId, 'event.read', async (tx, m) => {
+    const e = await eventFor(tx, orgId, id);
+    assertSiteAccess(m, e.site_id);
+    const items = await itemsOf(tx, e.id);
+    const seeCost = roleHas(m.role, 'cost.read');
+    const acc = new Map<string, Need>();
+    const missing: { dish: string; reason: string }[] = [];
+    for (const it of items) {
+      try { await explode(tx, orgId, it.dish_id, { portions: Number(it.portions) }, {}, 0, acc); }
+      catch (err) { missing.push({ dish: it.dish, reason: (err as Error).message }); }
+    }
+    const lines = [];
+    for (const n of acc.values()) {
+      const pp = seeCost ? await productPrice(tx, orgId, n.productId) : null;
+      const price = pp && pp.unit === n.unit ? r2(pp.price) : null;
+      lines.push({ product_id: n.productId, name: n.name, unit: n.unit, qty: r3(n.qty), price, sum: price === null ? null : r2(price * n.qty), price_source: price === null ? null : pp!.source });
+    }
+    lines.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    const total = seeCost && lines.length && lines.every((l) => l.sum !== null) ? r2(lines.reduce((s2, l) => s2 + l.sum!, 0)) : null;
+    const org = (await tx.query(`select name, legal_form from organizations where id = $1`, [orgId])).rows[0];
+    return { event: { id: e.id, number: e.number, title: e.title, event_date: e.event_date, site_name: e.site_name, guests: e.guests }, org, lines, total, see_cost: seeCost, missing,
+      no_price: seeCost ? lines.filter((l) => l.price === null).map((l) => l.name) : [] };
   });
 }
 

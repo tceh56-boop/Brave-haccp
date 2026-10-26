@@ -13,7 +13,7 @@ import { dt, n } from '@/lib/fmt';
  * п/ф к приготовлению, подтверждение, «Проведено» с фактическими порциями и списанием, лист для кухни.
  */
 
-interface Item { id: string; dish_id: string; dish: string; per_guest: number | null; portions: number; price: number | null; own_price: boolean; note: string | null; ttk_version: number | null; actual_portions: number | null; cost: number | null; sampled: boolean }
+interface Item { id: string; dish_id: string; dish: string; unit_cost: number | null; per_guest: number | null; portions: number; price: number | null; own_price: boolean; note: string | null; ttk_version: number | null; actual_portions: number | null; cost: number | null; sampled: boolean }
 interface NeedLine { product_id: string; name: string; unit: string; semi: boolean; need: number; stock: number; ordered: number; shortage: number; last_supplier_id: string | null; last_price: number | null }
 interface Semi { dish_id: string; name: string; need_kg: number; ready_kg: number; planned_kg: number; to_make_kg: number }
 export interface EventData {
@@ -81,7 +81,9 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
             <button className="btn secondary small" disabled={busy || guests === String(e.guests)} onClick={() => run(async () => { await api(`/orgs/${org.id}/events/${id}`, { method: 'PATCH', body: { guests: guests } }); await load(); })}>Изменить число гостей</button>
           </div>
         )}
-        <p className="small" style={{ marginTop: 10 }}><Link href={`/app/${org.id}/events/${id}/print`}>Лист для кухни (печать)</Link></p>
+        <p className="small row" style={{ marginTop: 10 }}><Link href={`/app/${org.id}/events/${id}/print`}>Лист для кухни (печать)</Link>
+          {x.event.can_see_money && <Link href={`/app/${org.id}/events/${id}/plan`}>План-меню с прибылью (печать)</Link>}
+          <Link href={`/app/${org.id}/events/${id}/requisition`}>Требование в кладовую (печать)</Link></p>
       </div>
 
       <div className="card">
