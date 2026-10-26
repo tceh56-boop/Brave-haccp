@@ -57,6 +57,36 @@ const CHECKS: Record<string, (c: Ctx) => Promise<CheckResult>> = {
       : { status: 'ok', detail: `Программа лабораторного контроля: ${r.n} исследований, сроки соблюдаются.`, href: `${base}/lab` };
   },
 
+  async haccp_ccp({ tx, orgId, base }) {
+    const plan = (await tx.query(`select id from haccp_plans where organization_id = $1 and status = 'approved' order by version desc limit 1`, [orgId])).rows[0];
+    if (!plan) return { status: 'fail', detail: 'Нет утверждённого плана ХАССП: опасные факторы, ККТ и пределы не определены.', href: `${base}/haccp` };
+    const r = (await tx.query(`select h.code || ' ' || h.description as name, m.critical_limit, m.corrective_action, m.id as mid from haccp_hazards h left join haccp_monitoring m on m.hazard_id = h.id
+      where h.plan_id = $1 and h.class = 'ccp'`, [plan.id])).rows;
+    const hz = Number((await tx.query(`select count(*) from haccp_hazards where plan_id = $1`, [plan.id])).rows[0].count);
+    if (!hz) return { status: 'fail', detail: 'В утверждённом плане нет перечня опасных факторов.', href: `${base}/haccp` };
+    const bad = r.filter((x) => !x.mid || !x.critical_limit?.trim() || !x.corrective_action?.trim());
+    if (!r.length) return { status: 'warn', detail: `Опасных факторов: ${hz}; критических контрольных точек не выделено — проверьте анализ опасностей.`, href: `${base}/haccp` };
+    return bad.length ? { status: 'fail', detail: `ККТ без предела, мониторинга или действий при отклонении: ${bad.length} из ${r.length}.`, items: list(bad), href: `${base}/haccp` }
+      : { status: 'ok', detail: `Опасных факторов: ${hz}; ККТ: ${r.length} — у каждой предел, мониторинг и действия при отклонении.`, href: `${base}/haccp` };
+  },
+
+  async docs_retention() {
+    return { status: 'ok', detail: 'Обеспечено системой: документы и фото приёмки хранятся как неизменяемые файлы с контрольной суммой, не удаляются.' };
+  },
+
+  async storage_expiry({ tx, orgId, siteIds, base }) {
+    const r = (await tx.query(`select p.name || coalesce(' · ' || l.lot_no, '') as name from lots l join products p on p.id = l.product_id
+      where l.organization_id = $1 and l.site_id = any($2::uuid[]) and l.quantity > 0 and l.status in ('available', 'quarantine', 'blocked') and (l.expires_at is null or l.expiry_basis is null) order by p.name`, [orgId, siteIds])).rows;
+    return r.length ? { status: 'fail', detail: `На хранении партии без подтверждённого срока годности: ${r.length}. Подтвердите срок по маркировке изготовителя.`, items: list(r), href: `${base}/lots` }
+      : { status: 'ok', detail: 'У всех партий на хранении срок годности подтверждён по маркировке; этикетка партии содержит срок и место хранения.', href: `${base}/lots` };
+  },
+
+  async microclimate_lab({ tx, orgId, siteIds, base }) {
+    const n = Number((await tx.query(`select count(*) from lab_programs where organization_id = $1 and site_id = any($2::uuid[]) and status = 'active' and period_days <= 366 and (test_type ilike '%микроклим%' or target ilike '%микроклим%')`, [orgId, siteIds])).rows[0].count);
+    return n ? { status: 'ok', detail: 'Контроль микроклимата рабочих мест включён в программу (не реже раза в год).', href: `${base}/lab` }
+      : { status: 'fail', detail: 'В программе лабораторного контроля нет измерения микроклимата рабочих мест не реже раза в год.', href: `${base}/lab` };
+  },
+
   async contract_waste(c) { return contract(c, 'waste'); },
   async contract_pest(c) { return contract(c, 'pest_control'); },
 

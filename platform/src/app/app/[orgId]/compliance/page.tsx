@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 
 type Status = 'fail' | 'warn' | 'onsite' | 'ok';
 interface Item { id: string; doc: string; doc_kind: string; clause: string; title: string; text: string; applies_note: string | null; status: Status; detail: string; href?: string | null; items?: string[] }
-interface Doc { code: string; kind: string; title: string; issued: string; effective_from: string; effective_to: string | null; edition: string }
+interface Doc { code: string; kind: string; title: string; issued: string; effective_from: string | null; effective_to: string | null; edition: string }
 interface C { today: string; profile: { objectTypes: string[]; salesModes: string[]; seats: number | null; features: string[] }; profile_set: boolean; features: Record<string, string>;
   docs: Doc[]; summary: Record<Status | 'na', number>; items: Item[]; not_applicable: Omit<Item, 'status' | 'detail'>[] }
 
@@ -87,7 +87,7 @@ export default function Compliance() {
       )}
 
       <details className="card"><summary>Нормативная база ({c.docs.length})</summary>
-        {c.docs.map((d) => <p key={d.code} className="small"><b>{d.code}</b> «{d.title}» — {d.issued}; действует с {ddmm(d.effective_from)}{d.effective_to ? ` до ${ddmm(d.effective_to)}` : ''}. Текст: {d.edition}.</p>)}
+        {c.docs.map((d) => <p key={d.code} className="small"><b>{d.code}</b> «{d.title}» — {d.issued}; {d.effective_from ? `действует с ${ddmm(d.effective_from)}` : 'действует'}{d.effective_to ? ` до ${ddmm(d.effective_to)}` : ''}. Текст: {d.edition}.</p>)}
         <p className="small muted">Тексты требований — дословно из официальных изданий. Проверка на {ddmm(c.today)}.</p>
       </details>
     </>
