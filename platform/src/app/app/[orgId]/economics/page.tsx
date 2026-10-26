@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useOrg } from '@/lib/org';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
+import { PnlTab, AbcTab, ExpensesTab } from './finance';
 
 interface Econ { revenue: number; refunds: number; orders: number; avg_check: number | null; payments: Record<string, number>; cogs: number; margin_costed: number; food_cost_pct: number | null;
   complete: boolean; uncosted: { lines: number; amount: number }; write_off: { value: number; unpriced: number };
@@ -19,6 +20,7 @@ export default function EconomicsPage() {
   const [p, setP] = useState({ from: `${today.slice(0, 8)}01`, to: today, siteId: '' });
   const [e, setE] = useState<Econ | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState('summary');
   useEffect(() => {
     api<Econ>(`/orgs/${org.id}/economics?from=${p.from}&to=${p.to}${p.siteId ? `&siteId=${p.siteId}` : ''}`).then((r) => { setE(r); setErr(null); }).catch((x) => setErr(x.message));
   }, [org.id, p]);
@@ -33,8 +35,12 @@ export default function EconomicsPage() {
         </div>
         {sites.length > 1 && <select aria-label="Площадка" value={p.siteId} onChange={(x) => setP({ ...p, siteId: x.target.value })} style={{ marginTop: 8 }}><option value="">Все площадки</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
       </div>
-      {err && <div className="err">{err}</div>}
-      {e && (
+      <div className="chips">{[['summary', 'Сводка'], ['pnl', 'P&L'], ['abc', 'ABC / XYZ'], ['expenses', 'Расходы']].map(([k, l]) => <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+      {tab === 'pnl' && <PnlTab q={p} />}
+      {tab === 'abc' && <AbcTab q={p} />}
+      {tab === 'expenses' && <ExpensesTab q={p} />}
+      {tab === 'summary' && err && <div className="err">{err}</div>}
+      {tab === 'summary' && e && (
         <>
           <div className="tiles">
             <div className="tile">{n(e.revenue)} ₽<span className="sub">выручка{e.refunds ? `, возвраты ${n(e.refunds)} ₽` : ''}</span></div>

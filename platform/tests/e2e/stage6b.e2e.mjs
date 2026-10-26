@@ -112,6 +112,21 @@ await P.waitForSelector('.tile:has-text("1350 ₽")');
 await P.waitForSelector('text=Маржа неполная');
 await shot(P, 'экономика');
 
+step('экономика: расход, P&L, ABC/XYZ');
+await P.click('.chips button:has-text("Расходы")');
+await P.waitForSelector('h2:has-text("Новый расход")');
+await P.fill('#xa', '30000'); await P.fill('#xt', 'Аренда помещения'); await P.fill('#xb', 'договор аренды (тест)');
+await P.click('button:has-text("Добавить расход")');
+await P.waitForSelector('li:has-text("Аренда помещения")');
+await P.click('.chips button:has-text("P&L")');
+await P.waitForSelector('h2:has-text("P&L")');
+await P.waitForSelector('dt:has-text("Аренда")');
+await P.waitForSelector('text=Данные неполные');
+await shot(P, 'pnl');
+await P.click('.chips button:has-text("ABC / XYZ")');
+await P.waitForSelector('h2:has-text("ABC / XYZ блюд")');
+await shot(P, 'abc');
+
 if (errors.length) throw new Error('ошибки страницы: ' + errors.join('; '));
 console.log('OK: этап 6 (касса, продажи, стоп-лист, экономика) пройден в браузере');
 await browser.close(); await db.end();
