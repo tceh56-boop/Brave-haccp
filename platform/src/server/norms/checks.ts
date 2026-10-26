@@ -1,5 +1,6 @@
 import type { Tx } from '../db/pool';
 import { requiredContractsState } from '../ops/contracts';
+import { DOCS } from './library';
 
 /**
  * Проверки требований нормативной библиотеки по данным системы. Каждая проверка отвечает на вопрос «выполнено ли
@@ -85,6 +86,15 @@ const CHECKS: Record<string, (c: Ctx) => Promise<CheckResult>> = {
     const n = Number((await tx.query(`select count(*) from lab_programs where organization_id = $1 and site_id = any($2::uuid[]) and status = 'active' and period_days <= 366 and (test_type ilike '%микроклим%' or target ilike '%микроклим%')`, [orgId, siteIds])).rows[0].count);
     return n ? { status: 'ok', detail: 'Контроль микроклимата рабочих мест включён в программу (не реже раза в год).', href: `${base}/lab` }
       : { status: 'fail', detail: 'В программе лабораторного контроля нет измерения микроклимата рабочих мест не реже раза в год.', href: `${base}/lab` };
+  },
+
+  async doc_expiry({ today }) {
+    const soon = Object.values(DOCS).filter((d) => d.effectiveTo && d.effectiveTo > today && (Date.parse(d.effectiveTo) - Date.parse(today)) / 864e5 <= 180)
+      .map((d) => ({ name: `${d.code} — действует до ${d.effectiveTo!.split('-').reverse().join('.')}` }));
+    const gone = Object.values(DOCS).filter((d) => d.effectiveTo && d.effectiveTo <= today).map((d) => ({ name: `${d.code} — утратил силу ${d.effectiveTo!.split('-').reverse().join('.')}` }));
+    if (gone.length) return { status: 'fail', detail: 'В нормативной базе есть документы, срок действия которых истёк: ссылки на них в ППК и инструкциях нужно заменить.', items: list(gone) };
+    return soon.length ? { status: 'warn', detail: 'Срок действия документов истекает в ближайшие полгода: когда выйдет замена, её внесут в базу, а документы предприятия обновятся новой версией.', items: list(soon) }
+      : { status: 'ok', detail: 'Все документы нормативной базы действуют.' };
   },
 
   async contract_waste(c) { return contract(c, 'waste'); },
