@@ -2,13 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closePool, withSystem } from '../src/server/db/pool';
 import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
 import { createProduct } from '../src/server/ops/catalog';
-import { importTtkArchive, createDish, getDish, updateDish, updateVersion, addLine, updateLine, submitVersion, approveVersion, newVersion, addHeading, renameHeading, moveLine,
+import { importTtkArchive, importFromArchive, listArchive, createDish, getDish, updateDish, updateVersion, addLine, updateLine, submitVersion, approveVersion, newVersion, addHeading, renameHeading, moveLine,
   insertFromDish, approvedRecipe } from '../src/server/ops/recipes';
 import {
   listMethods, createNorm, approveNorm, archiveNorm, listNorms, normsToday, setNormDefault, setLineSteps, applyNormToDrafts, suggestFromArchive,
 } from '../src/server/ops/processing';
 import { getTtkDoc } from '../src/server/ops/ttkdoc';
 import { getTi, approveTi, getTiVersion } from '../src/server/ops/techinstr';
+import { createGroup, updateGroup, deleteGroup, getGroup, listGroups, setDishGroup } from '../src/server/ops/dishgroups';
 import { createSto, updateSto, getSto, approveSto, listSto, getStoVersion } from '../src/server/ops/sto';
 import { setSampleSettings, createProgram } from '../src/server/ops/lab';
 import { createPlan } from '../src/server/ops/sanitation';
@@ -467,7 +468,7 @@ describe('СТО на группу блюд: из утверждённых ТТ�
     expect(w).toMatch(/область применения/); expect(w).toMatch(/микробиологические/);
     // ОКПО подхвачен из параметров ТУ/ТИ; НД на сырьё — из ТИ блюда
     expect(g.calc.designation).toMatch(/^СТО 12345678-\d{3}-\d{4}$/);
-    expect(g.calc.raw.find((r: any) => r.name === 'Огурцы грунтовые').doc).toBe('Тест: ГОСТ изготовителя');
+    expect(g.calc.raw.find((r: any) => r.name === 'Огурцы грунтовые')!.doc).toBe('Тест: ГОСТ изготовителя');
     await expect(approveSto(director.id, orgId, stoId, { changeNote: 'Введён впервые' })).rejects.toThrow(/проект/);
   });
 
@@ -491,5 +492,60 @@ describe('СТО на группу блюд: из утверждённых ТТ�
     await expect(withSystem((tx) => tx.query(`update sto_versions set change_note = 'x' where sto_id = $1`, [stoId]))).rejects.toThrow(/не изменяются/);
     expect((await listSto(cook.id, orgId))[0].last).toMatchObject({ version: 1 });
     expect(draftDish).toBeTruthy();
+  });
+});
+
+describe('Дерево папок ТТК: правила папки наследуются, СТО на папку', () => {
+  let root: string, salads: string, carrotSalad: string, cucumberSalad: string;
+
+  it('папки: вложенность, без дублей и циклов', async () => {
+    root = (await createGroup(tech.id, orgId, { name: 'Холодные закуски' })).id;
+    salads = (await createGroup(tech.id, orgId, { name: 'Салаты', parentId: root })).id;
+    await expect(createGroup(tech.id, orgId, { name: 'салаты', parentId: root })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(updateGroup(tech.id, orgId, root, { parentId: salads })).rejects.toThrow(/внутрь самой себя/);
+    await expect(createGroup(cook.id, orgId, { name: 'Супы' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('правила папки наследуются вниз; ближняя папка и само блюдо сильнее', async () => {
+    await updateGroup(tech.id, orgId, root, { rules: { physNormed: { dry: true, salt: true }, dryCoef: 0.9, saltMaxPct: 1, physBasis: 'Тест: МУ 1997, прил. 2',
+      microIndex: 'Тест: ТР ТС 021/2011, п. 1.9', micro: { KMAFANM: 'Тест: 5×10^4' }, organoleptic: { consistency: 'Тест: свойственная продуктам' } } });
+    await updateGroup(tech.id, orgId, salads, { rules: { saltMaxPct: 3 } });
+    const ids = Object.fromEntries((await withSystem((tx) => tx.query(`select id, name from dishes where organization_id = $1 and name in ('Салат из моркови', 'Салат из огурцов')`, [orgId]))).rows.map((r) => [r.name, r.id]));
+    carrotSalad = ids['Салат из моркови']; cucumberSalad = ids['Салат из огурцов'];
+    await setDishGroup(tech.id, orgId, carrotSalad, { groupId: salads });
+    await setDishGroup(tech.id, orgId, cucumberSalad, { groupId: salads });
+    const doc = await getTtkDoc(cook.id, orgId, carrotSalad);
+    expect(doc.params).toMatchObject({ saltMaxPct: 3, dryCoef: 0.9, microIndex: 'Тест: ТР ТС 021/2011, п. 1.9', micro: { KMAFANM: 'Тест: 5×10^4' } });
+    expect(doc.inherited).toMatchObject({ saltMaxPct: 'Салаты', dryCoef: 'Холодные закуски' });
+    expect(doc.version.organoleptic.consistency).toBe('Тест: свойственная продуктам');
+    // у салата из огурцов своя соль (1 %) и своя консистенция — они сильнее папки
+    const own = await getTtkDoc(cook.id, orgId, cucumberSalad);
+    expect(own.params.saltMaxPct).toBe(1);
+    expect(own.version.organoleptic.consistency).toBe('Плотная, хрустящая');
+    const g = await getGroup(cook.id, orgId, salads);
+    expect(g.path.map((x: any) => x.name)).toEqual(['Холодные закуски', 'Салаты']);
+    expect(g.inherited.params.dryCoef).toBe(0.9);
+    expect(g.dishes.map((d: any) => d.name).sort()).toEqual(['Салат из моркови', 'Салат из огурцов']);
+  });
+
+  it('СТО на папку: блюда подпапок входят сами; непустую папку не удалить', async () => {
+    const s = await createSto(tech.id, orgId, { title: 'Холодные закуски', groupId: root });
+    const g = await getSto(cook.id, orgId, s.id);
+    expect(g.calc.group).toBe('Холодные закуски');
+    expect(g.calc.dishes.map((d: any) => d.name).sort()).toEqual(['Салат из моркови', 'Салат из огурцов']);
+    const n = await createDish(tech.id, orgId, { name: 'Салат новый', groupId: salads });
+    expect((await getSto(cook.id, orgId, s.id)).calc.warnings.join(' ')).toMatch(/«Салат новый»: нет утверждённой ТТК/);
+    expect(n.group_id).toBe(salads);
+    await expect(deleteGroup(tech.id, orgId, salads)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect((await listGroups(cook.id, orgId)).find((x: any) => x.id === salads)).toMatchObject({ dishes: 3, children: 0 });
+  });
+
+  it('импорт из архива раскладывает карты по папкам по пути архива', async () => {
+    const a = (await listArchive(tech.id, orgId, { q: 'холодец' })).cards[0];
+    await importFromArchive(tech.id, orgId, { archiveIds: [a.id] });
+    const d = (await withSystem((tx) => tx.query(`select d.group_id, g.name from dishes d join dish_groups g on g.id = d.group_id where d.organization_id = $1 and d.archive_id = $2`, [orgId, a.id]))).rows[0];
+    expect(d.name).toBe(a.category_path[a.category_path.length - 1]);
+    const path = (await getGroup(cook.id, orgId, d.group_id)).path.map((x: any) => x.name);
+    expect(path).toEqual(a.category_path.filter((x: string) => x !== 'ttk'));
   });
 });

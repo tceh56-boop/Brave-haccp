@@ -5,6 +5,7 @@ import { Errors } from '../http/errors';
 import { inOrg, parse, optText, openTask, closeTasksFor } from './common';
 import { buildTtkDoc } from './ttkdoc';
 import { MICRO, type TuParams } from './techspec';
+import { dishesInTree } from './dishgroups';
 
 /**
  * Стандарт организации (СТО) на группу блюд (ГОСТ Р 1.4, ГОСТ Р 1.5). Разделы: область применения, нормативные
@@ -38,7 +39,10 @@ export async function calcSto(tx: Tx, orgId: string, sto: Record<string, any>) {
   const warnings: string[] = [];
   const dishes = [];
   const rawMap = new Map<string, { name: string; doc: string | null; dishes: Set<string> }>();
-  for (const id of sto.dish_ids as string[]) {
+  // СТО на папку: все блюда папки и подпапок (новое блюдо в папке входит в стандарт само)
+  const ids: string[] = sto.group_id ? await dishesInTree(tx, sto.group_id) : sto.dish_ids;
+  const group = sto.group_id ? (await tx.query(`select name from dish_groups where id = $1`, [sto.group_id])).rows[0]?.name || null : null;
+  for (const id of ids) {
     const dish = (await tx.query(`select id, name, card_no from dishes where id = $1 and organization_id = $2`, [id, orgId])).rows[0];
     if (!dish) continue;
     const v = (await tx.query(`select id from ttk_versions where dish_id = $1 and status = 'approved'`, [id])).rows[0];
@@ -73,7 +77,7 @@ export async function calcSto(tx: Tx, orgId: string, sto: Record<string, any>) {
   const org = (await tx.query(`select name, legal_form, inn from organizations where id = $1`, [orgId])).rows[0];
   const year = new Date().getFullYear();
   return {
-    designation: `СТО ${p.okpo || '________'}-${String(sto.seq).padStart(3, '0')}-${year}`, title: sto.title, org, year,
+    designation: `СТО ${p.okpo || '________'}-${String(sto.seq).padStart(3, '0')}-${year}`, title: sto.title, org, year, group,
     status: warnings.length ? 'project' : 'ready', warnings, generated_at: new Date().toISOString(),
     scope: p.scope || null, packaging: p.packaging || null, transport: p.transport || null, control_methods: p.controlMethods || null,
     normative: [...NORMATIVE, ...sanpin.map((s) => ({ code: s.code, title: s.title }))],
@@ -84,20 +88,21 @@ export async function calcSto(tx: Tx, orgId: string, sto: Record<string, any>) {
 
 const UpdateInput = z.object({
   title: z.string().trim().min(3, 'Название стандарта.').max(300).optional(),
-  dishIds: z.array(z.uuid()).max(300).optional(),
+  dishIds: z.array(z.uuid()).max(300).optional(), groupId: z.uuid().nullable().optional(),
   scope: optText(4000), packaging: optText(4000), controlMethods: optText(4000), transport: optText(2000),
   okpo: z.string().trim().regex(/^\d{8,10}$/, 'ОКПО — 8 или 10 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
   rawDocs: z.record(z.uuid(), z.string().trim().max(300)).optional(),
 });
 
 export async function createSto(userId: string, orgId: string, input: unknown) {
-  const d = parse(z.object({ title: z.string('Название стандарта.').trim().min(3, 'Название стандарта.').max(300), dishIds: z.array(z.uuid()).max(300).default([]) }), input);
+  const d = parse(z.object({ title: z.string('Название стандарта.').trim().min(3, 'Название стандарта.').max(300), dishIds: z.array(z.uuid()).max(300).default([]), groupId: z.uuid().nullable().optional() }), input);
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const okpo = (await tx.query(`select params->>'okpo' as okpo from tech_specs where organization_id = $1 and params ? 'okpo' and params->>'okpo' is not null limit 1`, [orgId])).rows[0]?.okpo || null;
     const seq = Number((await tx.query(`select coalesce(max(seq), 0) + 1 as n from sto_standards where organization_id = $1`, [orgId])).rows[0].n);
     const dishIds = await ownDishes(tx, orgId, d.dishIds);
-    const s = (await tx.query(`insert into sto_standards (organization_id, seq, title, dish_ids, params, created_by) values ($1, $2, $3, $4, $5, $6) returning id, seq`,
-      [orgId, seq, d.title, dishIds, JSON.stringify(okpo ? { okpo } : {}), userId])).rows[0];
+    if (d.groupId && !(await tx.query(`select 1 from dish_groups where id = $1 and organization_id = $2`, [d.groupId, orgId])).rowCount) throw Errors.validation('Папка не найдена.');
+    const s = (await tx.query(`insert into sto_standards (organization_id, seq, title, dish_ids, params, created_by, group_id) values ($1, $2, $3, $4, $5, $6, $7) returning id, seq`,
+      [orgId, seq, d.title, dishIds, JSON.stringify(okpo ? { okpo } : {}), userId, d.groupId || null])).rows[0];
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'sto.create', entityType: 'sto', entityId: s.id, after: { title: d.title, dishes: dishIds.length } });
     return s;
   });
@@ -117,14 +122,18 @@ export async function updateSto(userId: string, orgId: string, stoId: string, in
     const dishIds = d.dishIds ? await ownDishes(tx, orgId, d.dishIds) : s.dish_ids;
     const keys = ['scope', 'packaging', 'controlMethods', 'transport', 'okpo', 'rawDocs'] as const;
     const params = { ...s.params, ...Object.fromEntries(keys.filter((k) => given.has(k)).map((k) => [k, d[k] ?? null])) };
-    await tx.query(`update sto_standards set title = coalesce($2, title), dish_ids = $3, params = $4, updated_at = now() where id = $1`, [s.id, d.title || null, dishIds, JSON.stringify(params)]);
+    if (d.groupId && !(await tx.query(`select 1 from dish_groups where id = $1 and organization_id = $2`, [d.groupId, orgId])).rowCount) throw Errors.validation('Папка не найдена.');
+    await tx.query(`update sto_standards set title = coalesce($2, title), dish_ids = $3, params = $4, updated_at = now(), group_id = case when $5::boolean then $6 else group_id end where id = $1`,
+      [s.id, d.title || null, dishIds, JSON.stringify(params), d.groupId !== undefined, d.groupId ?? null]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'sto.update', entityType: 'sto', entityId: s.id, after: { title: d.title, dishes: dishIds.length, keys: [...given] } });
     return { ok: true };
   });
 }
 
 export async function listSto(userId: string, orgId: string) {
-  return inOrg(userId, orgId, 'menu.read', async (tx) => (await tx.query(`select s.id, s.seq, s.title, cardinality(s.dish_ids) as dishes,
+  return inOrg(userId, orgId, 'menu.read', async (tx) => (await tx.query(`select s.id, s.seq, s.title, (select name from dish_groups g where g.id = s.group_id) as group_name,
+      case when s.group_id is null then cardinality(s.dish_ids) else (with recursive down(id) as (select s.group_id union all select g.id from dish_groups g join down on g.parent_id = down.id)
+        select count(*)::int from dishes d where d.group_id in (select id from down) and d.status = 'active') end as dishes,
       (select json_build_object('version', v.version, 'designation', v.designation, 'approved_at', v.approved_at, 'review_due', v.review_due::text) from sto_versions v where v.sto_id = s.id order by v.version desc limit 1) as last
     from sto_standards s where s.organization_id = $1 and s.status = 'active' order by s.seq`, [orgId])).rows);
 }
@@ -137,7 +146,7 @@ export async function getSto(userId: string, orgId: string, stoId: string) {
       from sto_versions v join users u on u.id = v.approved_by where v.sto_id = $1 order by v.version`, [s.id])).rows;
     const today = (await tx.query(`select (now() at time zone timezone)::date::text as d from organizations where id = $1`, [orgId])).rows[0].d;
     const last = versions[versions.length - 1];
-    return { sto: { id: s.id, seq: s.seq, title: s.title, dish_ids: s.dish_ids, params: s.params }, calc, versions, review_overdue: !!last && last.review_due < today };
+    return { sto: { id: s.id, seq: s.seq, title: s.title, dish_ids: s.dish_ids, group_id: s.group_id, params: s.params }, calc, versions, review_overdue: !!last && last.review_due < today };
   });
 }
 

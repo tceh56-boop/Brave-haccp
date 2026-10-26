@@ -19,6 +19,7 @@ export interface TtkDoc {
     sugar: Phys<{ value: number | null; ingredients: string[] }>; salt: Phys<{ value: number | null }>; basis: string | null };
   micro: { code: string; name: string; method: string; norm: string | null }[]; micro_index: string | null; micro_note: string | null;
   missing: { nutrition: string[] };
+  inherited?: Record<string, string>; own_params?: Record<string, any>;
   params: { physNormed: { dry?: boolean; fat?: boolean; sugar?: boolean; salt?: boolean }; gerberPct: number | null; saltMaxPct: number | null; dryCoef: number | null; sugarCoef: number | null;
     physBasis: string | null; microIndex: string | null; microNote: string | null; micro: Record<string, string> };
 }

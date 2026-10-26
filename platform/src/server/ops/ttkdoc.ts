@@ -5,8 +5,9 @@ import { inOrg, parse } from './common';
 import { calcVersion, convertUnits } from './recipes';
 import { semiGrams } from './bom';
 import { versionSteps } from './processing';
-import { nutritionOf, allergenProfile, suggestAllergens, ALLERGENS, MICRO, type TuParams } from './techspec';
+import { nutritionOf, allergenProfile, suggestAllergens, ALLERGENS, MICRO } from './techspec';
 import { stages, retention } from '../recipes/chain';
+import { effectiveParams } from './dishgroups';
 
 /**
  * Технико-технологическая карта по ГОСТ 31987-2012 и обоснование расчётов пищевой ценности и физико-химических
@@ -42,7 +43,8 @@ export async function buildTtkDoc(tx: Tx, orgId: string, dishId: string, version
   const isDish = dish.kind === 'dish';
   const outG = isDish ? Number(v.portion_g || 0) : Number(v.yield_g || 0);
   const scale = isDish && v.portion_g && v.yield_g ? Number(v.portion_g) / Number(v.yield_g) : 1;
-  const params: TuParams = (await tx.query(`select params from tech_specs where dish_id = $1`, [dishId])).rows[0]?.params || {};
+  // правила папки + параметры блюда (заданное у блюда сильнее)
+  const params = await effectiveParams(tx, dishId);
   const org = (await tx.query(`select name, legal_form, inn from organizations where id = $1`, [orgId])).rows[0];
   const sites = (await tx.query(`select name from sites where organization_id = $1 and status = 'active' order by created_at`, [orgId])).rows.map((x) => x.name);
   const rows = (await tx.query(`select l.*, p.name as product_name, d.name as sub_name from ttk_lines l left join products p on p.id = l.product_id left join dishes d on d.id = l.sub_dish_id
@@ -138,12 +140,14 @@ export async function buildTtkDoc(tx: Tx, orgId: string, dishId: string, version
   return {
     org, sites, dish: { id: dish.id, name: dish.name, kind: dish.kind, card_no: dish.card_no, sale_price: dish.sale_price },
     version: { id: v.id, version: v.version, status: v.status, card_date: v.card_date, yield_g: v.yield_g === null ? null : Number(v.yield_g), portion_g: v.portion_g === null ? null : Number(v.portion_g),
-      technology: v.technology, serving: v.serving, storage_conditions: v.storage_conditions, shelf_life: v.shelf_life, organoleptic: v.organoleptic || {}, menu_description: v.menu_description, source: v.source },
+      technology: v.technology, serving: v.serving, storage_conditions: v.storage_conditions, shelf_life: v.shelf_life, organoleptic: { ...Object.fromEntries(Object.entries(params.organolepticDefault || {}).filter(([, x]) => x)), ...Object.fromEntries(Object.entries(v.organoleptic || {}).filter(([, x]) => x)) }, menu_description: v.menu_description, source: v.source },
     out_g: outG, out_label: isDish ? `на 1 порцию (${outG} г)` : `на выход ${outG} г`, sections,
     lines, nutrition, physico, micro, micro_index: params.microIndex || null, micro_note: params.microNote || null,
     missing: { nutrition: [...missing.nutrition] }, products, allergen_list: Object.entries(ALLERGENS).map(([code, a]) => ({ code, label: a.label })),
     params: { physNormed: params.physNormed || {}, gerberPct: params.gerberPct ?? null, saltMaxPct: params.saltMaxPct ?? null, dryCoef: params.dryCoef ?? null, sugarCoef: params.sugarCoef ?? null,
       physBasis: params.physBasis ?? null, microIndex: params.microIndex ?? null, microNote: params.microNote ?? null, micro: params.micro || {} },
+    inherited: params.inherited,
+    own_params: (await tx.query(`select params from tech_specs where dish_id = $1`, [dishId])).rows[0]?.params || {},
   };
 }
 

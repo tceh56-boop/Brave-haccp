@@ -8,6 +8,7 @@ import { roleHas } from '../access/roles';
 import { inOrg, parse, optText, openTask, fmtNum } from './common';
 import { versionSteps, defaultSteps, applyLineSteps } from './processing';
 import { chain, retention, type From } from '../recipes/chain';
+import { groupByPath } from './dishgroups';
 
 /**
  * Блюда, полуфабрикаты и ТТК (ТЗ v1 §9, §12; этап 6 ТЗ v2). Версия ТТК: черновик → на согласовании → утверждена →
@@ -87,8 +88,10 @@ export async function importFromArchive(userId: string, orgId: string, input: un
       if (!c) throw Errors.notFound('Карта архива не найдена.');
       if ((await tx.query(`select 1 from dishes where organization_id = $1 and (archive_id = $2 or (status = 'active' and lower(name) = lower($3)))`, [orgId, id, c.name])).rowCount) { res.skipped++; continue; }
       const kind = /п\s*\/\s*ф|полуфабрикат/i.test(`${c.name} ${(c.category_path || []).join(' ')}`) ? 'semi' : 'dish';
-      const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, archive_id, created_by, card_no) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-        [orgId, c.name, kind, (c.category_path || []).slice(-1)[0] || null, id, userId, await nextCardNo(tx, orgId)])).rows[0];
+      // папка — по пути карты в архиве (01 Холодные закуски / Мясные и из птицы / …)
+      const groupId = await groupByPath(tx, orgId, userId, (c.category_path || []).filter((x: string) => x !== 'ttk'));
+      const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, archive_id, created_by, card_no, group_id) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+        [orgId, c.name, kind, (c.category_path || []).slice(-1)[0] || null, id, userId, await nextCardNo(tx, orgId), groupId])).rows[0];
       const portion = kind === 'dish' && c.basis === '1 порция' && c.yield_g ? c.yield_g : null;
       const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, source, created_by)
         values ($1, $2, 1, $3, $4, $5, $6, $7) returning id`, [orgId, dish.id, c.yield_g, portion, c.technology || null, `Архив ТТК: ${c.source_path}`, userId])).rows[0];
@@ -126,7 +129,7 @@ async function nextCardNo(tx: Tx, orgId: string) {
 }
 
 const DishInput = z.object({
-  cardNo: optText(30),
+  cardNo: optText(30), groupId: z.uuid().nullable().optional(),
   name: z.string().trim().min(2, 'Название блюда.').max(200),
   kind: z.enum(['dish', 'semi']).default('dish'),
   category: optText(100),
@@ -138,8 +141,9 @@ export async function createDish(userId: string, orgId: string, input: unknown) 
   return inOrg(userId, orgId, 'ttk.manage', async (tx, m) => {
     if (d.salePrice != null && !roleHas(m.role, 'menu.price')) throw Errors.forbidden('Цену продажи устанавливает руководитель или шеф.');
     if ((await tx.query(`select 1 from dishes where organization_id = $1 and status = 'active' and lower(name) = lower($2)`, [orgId, d.name])).rowCount) throw Errors.conflict('Блюдо с таким названием уже есть.');
-    const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, sale_price, created_by, card_no) values ($1, $2, $3, $4, $5, $6, $7) returning *`,
-      [orgId, d.name, d.kind, d.category, d.salePrice ?? null, userId, d.cardNo || await nextCardNo(tx, orgId)])).rows[0];
+    if (d.groupId && !(await tx.query(`select 1 from dish_groups where id = $1 and organization_id = $2`, [d.groupId, orgId])).rowCount) throw Errors.validation('Папка не найдена.');
+    const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, sale_price, created_by, card_no, group_id) values ($1, $2, $3, $4, $5, $6, $7, $8) returning *`,
+      [orgId, d.name, d.kind, d.category, d.salePrice ?? null, userId, d.cardNo || await nextCardNo(tx, orgId), d.groupId || null])).rows[0];
     await tx.query(`insert into ttk_versions (organization_id, dish_id, version, created_by) values ($1, $2, 1, $3)`, [orgId, dish.id, userId]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'dish.create', entityType: 'dish', entityId: dish.id, after: d });
     return dish;
@@ -163,7 +167,7 @@ export async function updateDish(userId: string, orgId: string, dishId: string, 
 }
 
 export async function listDishes(userId: string, orgId: string) {
-  return inOrg(userId, orgId, 'menu.read', async (tx, m) => (await tx.query(`select d.id, d.name, d.kind, d.category, d.status, d.archive_id,
+  return inOrg(userId, orgId, 'menu.read', async (tx, m) => (await tx.query(`select d.id, d.name, d.kind, d.category, d.status, d.archive_id, d.group_id, d.card_no,
       ${roleHas(m.role, 'cost.read') || roleHas(m.role, 'menu.price') ? 'd.sale_price' : 'null as sale_price'},
       (select json_build_object('id', v.id, 'version', v.version, 'approved_at', v.approved_at) from ttk_versions v where v.dish_id = d.id and v.status = 'approved') as approved,
       (select json_build_object('id', v.id, 'version', v.version, 'status', v.status) from ttk_versions v where v.dish_id = d.id and v.status in ('draft', 'review')) as open,

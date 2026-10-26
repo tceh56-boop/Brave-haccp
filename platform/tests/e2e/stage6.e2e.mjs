@@ -57,7 +57,7 @@ step('блюдо и ТТК: выход, технология, состав');
 await P.goto(`${BASE}${base}`);
 await P.click('.hamburger'); await P.click('.menu-item:has-text("Блюда и ТТК")');
 await P.click('button:has-text("Новое блюдо или полуфабрикат")');
-await P.fill('#dn', 'Бефстроганов'); await P.fill('#dc', 'Горячее');
+await P.fill('#dn', 'Бефстроганов');   // папка необязательна
 await P.click('button:has-text("Создать")');
 await P.waitForURL(/\/menu\/[0-9a-f-]{36}$/);
 await P.fill('#yg', '150'); await P.fill('#pg', '150');

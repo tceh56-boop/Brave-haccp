@@ -7,6 +7,7 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
 import { chain, type From } from '@/server/recipes/chain';
+import { GroupSelect, type Group } from '@/components/GroupSelect';
 
 interface Line { id: string; position: number; name_raw: string; product_id: string | null; sub_dish_id: string | null; product_name: string | null; product_unit: string | null; sub_dish_name: string | null;
   kind: 'item' | 'heading'; unit: string; brutto: string | null; netto: string | null; ready: string | null; in_yield: boolean; calc_from: From | null; note: string | null; steps: Step[] }
@@ -19,7 +20,7 @@ interface Version { id: string; version: number; status: string; status_label: s
 interface Cost { total: number | null; known: number; complete: boolean; missing: string[]; per_portion: number | null; per_kg: number | null; food_cost_pct: number | null;
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
 interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' }
-interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null; card_no: string | null };
+interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null; card_no: string | null; group_id: string | null };
   versions: { id: string; version: number; status: string; status_label: string; approved_at: string | null; approved_by_name: string | null }[];
   current: { version: Version; lines: Line[]; blockers: string[]; warnings: string[]; cost: Cost | null; kbju: Kbju; output: { netto_g: number | null; ready_g: number | null; sections: { list: { title: string | null; ready_g: number | null }[]; label: string } | null } } | null;
   archive: { source_path: string; issues: string[]; yield_raw: string | null; yield_source: string | null } | null; canSeeCost: boolean }
@@ -310,8 +311,13 @@ function InsertFrom({ dishId, busy, onPick }: { dishId: string; busy: boolean; o
 function CardNo({ dish, onDone }: { dish: Data['dish']; onDone: () => void }) {
   const { org } = useOrg();
   const { busy, error, run } = useSubmit();
+  const [groups, setGroups] = useState<Group[]>([]);
+  useEffect(() => { api<Group[]>(`/orgs/${org.id}/dish-groups`).then(setGroups).catch(() => setGroups([])); }, [org.id]);
   return (
-    <p className="small" style={{ margin: '4px 0' }}>
+    <p className="small row" style={{ margin: '4px 0' }}>
+      <label htmlFor="dgrp" style={{ margin: 0 }}>Папка</label>
+      <span style={{ maxWidth: 260 }}><GroupSelect id="dgrp" groups={groups} value={dish.group_id || ''} onChange={(v) => run(async () => { await api(`/orgs/${org.id}/dishes/${dish.id}/group`, { method: 'PUT', body: { groupId: v || null } }); onDone(); })} /></span>
+      {dish.group_id && <Link href={`/app/${org.id}/menu/groups/${dish.group_id}`}>правила папки ›</Link>}
       <button className="btn small secondary" disabled={busy} onClick={() => { const no = prompt('Номер рецептуры (ТТК № …):', dish.card_no || ''); if (no) run(async () => { await api(`/orgs/${org.id}/dishes/${dish.id}`, { method: 'PATCH', body: { cardNo: no } }); onDone(); }); }}>Изменить номер</button>
       {error && <span className="err">{error}</span>}
     </p>

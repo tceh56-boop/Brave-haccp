@@ -6,8 +6,9 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt } from '@/lib/fmt';
 import type { StoCalc } from '@/lib/sto';
+import { GroupSelect, type Group } from '@/components/GroupSelect';
 
-interface Data { sto: { id: string; seq: number; title: string; dish_ids: string[]; params: Record<string, unknown> & { rawDocs?: Record<string, string> } }; calc: StoCalc;
+interface Data { sto: { id: string; seq: number; title: string; dish_ids: string[]; group_id: string | null; params: Record<string, unknown> & { rawDocs?: Record<string, string> } }; calc: StoCalc;
   versions: { version: number; designation: string; change_note: string; approved_at: string; review_due: string; approved_by_name: string }[]; review_overdue: boolean }
 interface Dish { id: string; name: string; kind: string; category: string | null; approved: { version: number } | null }
 
@@ -17,6 +18,8 @@ export default function StoPage({ params }: { params: Promise<{ stoId: string }>
   const { org, can } = useOrg();
   const [d, setD] = useState<Data | null>(null);
   const [dishes, setDishes] = useState<Dish[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  useEffect(() => { api<Group[]>(`/orgs/${org.id}/dish-groups`).then(setGroups).catch(() => setGroups([])); }, [org.id]);
   const load = useCallback(() => api<Data>(`/orgs/${org.id}/sto/${stoId}`).then(setD), [org.id, stoId]);
   useEffect(() => { load(); api<Dish[]>(`/orgs/${org.id}/dishes`).then(setDishes).catch(() => setDishes([])); }, [load, org.id]);
   if (!d) return <p className="muted">Загрузка…</p>;
@@ -29,7 +32,7 @@ export default function StoPage({ params }: { params: Promise<{ stoId: string }>
         {d.review_overdue && <span className="badge crit">пора актуализировать</span>}</p>
       <Link className="btn block secondary" href={`/app/${org.id}/menu/sto/${stoId}/print`}>Документ СТО (текущий расчёт)</Link>
       {c.warnings.length > 0 && <div className="note"><b>Чтобы утвердить, осталось:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{c.warnings.map((w) => <li key={w} className="small">{w}</li>)}</ul></div>}
-      {can('ttk.manage') && <Edit d={d} dishes={dishes} onDone={load} />}
+      {can('ttk.manage') && <Edit d={d} dishes={dishes} groups={groups} onDone={load} />}
       <Approve d={d} onDone={load} />
       <div className="card">
         <h2>Лист регистрации изменений</h2>
@@ -44,11 +47,11 @@ export default function StoPage({ params }: { params: Promise<{ stoId: string }>
   );
 }
 
-function Edit({ d, dishes, onDone }: { d: Data; dishes: Dish[]; onDone: () => void }) {
+function Edit({ d, dishes, groups, onDone }: { d: Data; dishes: Dish[]; groups: Group[]; onDone: () => void }) {
   const { org } = useOrg();
   const p = d.sto.params;
   const s = (k: string) => (p[k] === null || p[k] === undefined ? '' : String(p[k]));
-  const [f, setF] = useState({ title: d.sto.title, dishIds: d.sto.dish_ids, okpo: s('okpo'), scope: s('scope'), packaging: s('packaging'), transport: s('transport'), controlMethods: s('controlMethods'),
+  const [f, setF] = useState({ title: d.sto.title, dishIds: d.sto.dish_ids, groupId: d.sto.group_id || '', okpo: s('okpo'), scope: s('scope'), packaging: s('packaging'), transport: s('transport'), controlMethods: s('controlMethods'),
     rawDocs: { ...(p.rawDocs || {}) } as Record<string, string> });
   const [saved, setSaved] = useState(false);
   const { busy, error, run } = useSubmit();
@@ -57,7 +60,7 @@ function Edit({ d, dishes, onDone }: { d: Data; dishes: Dish[]; onDone: () => vo
     <><label htmlFor={`sto-${k}`}>{label}</label><textarea id={`sto-${k}`} rows={3} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={ph} /></>);
   return (
     <form className="card" onSubmit={(e) => { e.preventDefault(); run(async () => {
-      await api(`/orgs/${org.id}/sto/${d.sto.id}`, { method: 'PATCH', body: { ...f, okpo: f.okpo || null, scope: f.scope || null, packaging: f.packaging || null, transport: f.transport || null,
+      await api(`/orgs/${org.id}/sto/${d.sto.id}`, { method: 'PATCH', body: { ...f, groupId: f.groupId || null, okpo: f.okpo || null, scope: f.scope || null, packaging: f.packaging || null, transport: f.transport || null,
         controlMethods: f.controlMethods || null, rawDocs: Object.fromEntries(Object.entries(f.rawDocs).filter(([, x]) => x.trim())) } });
       setSaved(true); onDone();
     }); }}>
@@ -67,7 +70,9 @@ function Edit({ d, dishes, onDone }: { d: Data; dishes: Dish[]; onDone: () => vo
         <div><label htmlFor="sto-okpo">ОКПО предприятия</label><input id="sto-okpo" inputMode="numeric" value={f.okpo} onChange={(e) => setF({ ...f, okpo: e.target.value })} /></div>
       </div>
       <h3>Блюда стандарта</h3>
-      <div className="chips">{dishes.map((x) => <button type="button" key={x.id} aria-pressed={f.dishIds.includes(x.id)} onClick={() => toggle(x.id)} title={x.approved ? '' : 'нет утверждённой ТТК'}>{x.name}{x.approved ? '' : ' ⚠'}</button>)}</div>
+      <label htmlFor="sto-group">Папка (в стандарт войдут все блюда папки и вложенных папок)</label>
+      <GroupSelect id="sto-group" groups={groups} value={f.groupId} onChange={(groupId) => setF({ ...f, groupId })} empty="— выбрать блюда вручную —" />
+      {f.groupId ? <p className="small muted">Состав: {d.calc.dishes.map((x) => x.name).join(', ') || '—'}{d.sto.group_id !== f.groupId ? ' (обновится после сохранения)' : ''}</p> : <div className="chips">{dishes.map((x) => <button type="button" key={x.id} aria-pressed={f.dishIds.includes(x.id)} onClick={() => toggle(x.id)} title={x.approved ? '' : 'нет утверждённой ТТК'}>{x.name}{x.approved ? '' : ' ⚠'}</button>)}</div>}
       {ta('scope', 'Область применения', 'на какие блюда распространяется стандарт, где изготавливаются и реализуются')}
       {c(d).raw.length > 0 && <><h3 style={{ marginTop: 10 }}>Нормативные документы на сырьё</h3>
         <p className="small muted">Пусто — берётся из ТИ блюда, если там указано.</p>

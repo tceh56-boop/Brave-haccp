@@ -5,6 +5,7 @@ import { Errors } from '../http/errors';
 import { inOrg, parse, optText } from './common';
 import { convertUnits } from './recipes';
 import { semiGrams } from './bom';
+import { effectiveParams } from './dishgroups';
 
 /**
  * Технические условия (этап 11; перенос TechSpecCore.gs прежнего ЦЕХ, Stage 106; MON CHEF 9–10).
@@ -230,7 +231,7 @@ export async function getTechSpec(userId: string, orgId: string, dishId: string)
   return inOrg(userId, orgId, 'menu.read', async (tx) => {
     const spec = (await tx.query(`select params, updated_at from tech_specs where dish_id = $1 and organization_id = $2`, [dishId, orgId])).rows[0];
     const params: TuParams = spec?.params || {};
-    const calc = await calcTechSpec(tx, orgId, dishId, params);
+    const calc = await calcTechSpec(tx, orgId, dishId, await effectiveParams(tx, dishId));   // правила папки + блюдо
     const versions = (await tx.query(`select v.id, v.version, v.designation, v.lab_protocol, v.approved_at, u.full_name as approved_by_name, t.version as ttk_version
       from tech_spec_versions v join users u on u.id = v.approved_by join ttk_versions t on t.id = v.ttk_version_id where v.dish_id = $1 order by v.version desc`, [dishId])).rows;
     // по каждому сырью — данные пищевой ценности и профиль аллергенов (для ввода по документу)
@@ -255,7 +256,7 @@ const ParamsInput = z.object({
   okpo: z.string().trim().regex(/^\d{8,10}$/, 'ОКПО — 8 или 10 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
   micro: z.record(z.string(), z.string().trim().max(200)).optional(),
   // ТТК: нормируемые физико-химические показатели (Методические указания по лабораторному контролю, 1997)
-  physNormed: z.object({ dry: z.boolean(), fat: z.boolean(), sugar: z.boolean(), salt: z.boolean() }).partial().optional(),
+  physNormed: z.object({ dry: z.boolean(), fat: z.boolean(), sugar: z.boolean(), salt: z.boolean() }).partial().nullable().optional(),   // null — как в папке
   gerberPct: z.coerce.number().min(0).max(100).nullable().optional(), saltMaxPct: z.coerce.number().min(0).max(20).nullable().optional(),
   dryCoef: z.coerce.number().min(0).max(1).nullable().optional(), sugarCoef: z.coerce.number().min(0).max(1).nullable().optional(),
   physBasis: optText(500), microIndex: optText(300), microNote: optText(1000),
@@ -288,7 +289,8 @@ export async function approveTechSpec(userId: string, orgId: string, dishId: str
   const d = parse(ApproveInput, input);
   return inOrg(userId, orgId, 'ttk.approve', async (tx) => {
     const spec = (await tx.query(`select params from tech_specs where dish_id = $1 and organization_id = $2 for update`, [dishId, orgId])).rows[0];
-    const calc = await calcTechSpec(tx, orgId, dishId, spec?.params || {});
+    void spec;
+    const calc = await calcTechSpec(tx, orgId, dishId, await effectiveParams(tx, dishId));
     if (calc.status !== 'ready') throw Errors.conflict(`ТУ — проект, утвердить нельзя: ${calc.warnings.join(' ')}`);
     const n = Number((await tx.query(`select coalesce(max(version), 0) as m from tech_spec_versions where dish_id = $1`, [dishId])).rows[0].m) + 1;
     const row = (await tx.query(`insert into tech_spec_versions (organization_id, dish_id, version, ttk_version_id, designation, snapshot, lab_protocol, approved_by)

@@ -8,6 +8,7 @@ import { versionSteps } from './processing';
 import { PLAN_KIND } from './sanitation';
 import { SAMPLE_DEFAULTS } from './lab';
 import type { TuParams } from './techspec';
+import { effectiveParams } from './dishgroups';
 
 /**
  * Технологическая инструкция (ТИ) на продукцию: титульный лист (организация, код продукции, группа, ОКС, «Утверждаю»,
@@ -96,7 +97,7 @@ export async function calcTi(tx: Tx, orgId: string, dishId: string, params: TuPa
 }
 
 async function params(tx: Tx, dishId: string): Promise<TuParams> {
-  return (await tx.query(`select params from tech_specs where dish_id = $1`, [dishId])).rows[0]?.params || {};
+  return effectiveParams(tx, dishId);
 }
 
 export async function getTi(userId: string, orgId: string, dishId: string) {

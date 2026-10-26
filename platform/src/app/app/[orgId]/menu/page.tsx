@@ -5,26 +5,64 @@ import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { n } from '@/lib/fmt';
+import { GroupSelect, type Group } from '@/components/GroupSelect';
 
-interface Dish { id: string; name: string; kind: string; category: string | null; sale_price: string | null; approved: { version: number } | null; open: { version: number; status: string } | null; unmatched: number }
+interface Dish { id: string; name: string; kind: string; category: string | null; group_id: string | null; sale_price: string | null; approved: { version: number } | null;
+  open: { version: number; status: string } | null; unmatched: number }
 
-/** Блюда и полуфабрикаты с состоянием ТТК: утверждена, черновик, на согласовании; несопоставленное сырьё. */
+/**
+ * Блюда и полуфабрикаты деревом папок (как группы Шеф Эксперта) с состоянием ТТК. Правила папки (физико-химия,
+ * микробиология, органолептика) наследуются блюдами; на папку можно составить СТО.
+ */
 export default function MenuPage() {
   const { org, can } = useOrg();
   const [rows, setRows] = useState<Dish[] | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [q, setQ] = useState('');
-  const [f, setF] = useState<{ name: string; kind: string; category: string } | null>(null);
+  const [f, setF] = useState<{ name: string; kind: string; groupId: string } | null>(null);
   const { busy, error, run } = useSubmit();
-  useEffect(() => { api<Dish[]>(`/orgs/${org.id}/dishes`).then(setRows); }, [org.id]);
+  const load = () => {
+    api<Dish[]>(`/orgs/${org.id}/dishes`).then(setRows);
+    api<Group[]>(`/orgs/${org.id}/dish-groups`).then(setGroups).catch(() => setGroups([]));
+  };
+  useEffect(load, [org.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   const shown = (rows || []).filter((d) => !q || d.name.toLowerCase().includes(q.toLowerCase()));
-  const group = (kind: string) => shown.filter((d) => d.kind === kind);
   const unmatched = (rows || []).reduce((s, d) => s + d.unmatched, 0);
+  const manage = can('ttk.manage');
+  // в папке что-то видно (с учётом поиска)?
+  const count = (gid: string): number => shown.filter((d) => d.group_id === gid).length + groups.filter((g) => g.parent_id === gid).reduce((s, g) => s + count(g.id), 0);
+  const row = (d: Dish) => (
+    <Link key={d.id} className="objrow" href={`/app/${org.id}/menu/${d.id}`}>
+      <div><b>{d.name}</b><div className="small muted">{[d.kind === 'semi' ? 'п/ф' : '', d.sale_price ? `${n(d.sale_price)} ₽` : ''].filter(Boolean).join(' · ')}</div></div>
+      <div className="row" style={{ justifyContent: 'flex-end' }}>
+        {d.approved ? <span className="badge ok">утверждена v{d.approved.version}</span> : <span className="badge warn">нет утверждённой</span>}
+        {d.open && <span className="badge">{d.open.status === 'review' ? 'на согласовании' : 'черновик'} v{d.open.version}</span>}
+        {d.unmatched > 0 && <span className="badge crit">без товара: {d.unmatched}</span>}
+        <span aria-hidden>›</span>
+      </div>
+    </Link>
+  );
+  const folder = (g: Group, depth: number): React.ReactNode => {
+    const c = count(g.id);
+    if (q && !c) return null;
+    return (
+      <details key={g.id} open={!!q || depth === 0} style={{ marginLeft: depth ? 12 : 0, borderLeft: depth ? '2px solid var(--line, #e5ddd0)' : undefined, paddingLeft: depth ? 8 : 0 }}>
+        <summary style={{ cursor: 'pointer', padding: '6px 0' }}>
+          <b>📁 {g.name}</b> <span className="small muted">({c})</span>
+          <Link className="small" href={`/app/${org.id}/menu/groups/${g.id}`} style={{ marginLeft: 8 }} onClick={(e) => e.stopPropagation()}>папка и правила ›</Link>
+        </summary>
+        {groups.filter((x) => x.parent_id === g.id).map((x) => folder(x, depth + 1))}
+        <div style={{ marginLeft: 12 }}>{shown.filter((d) => d.group_id === g.id).map(row)}</div>
+      </details>
+    );
+  };
+  const loose = shown.filter((d) => !d.group_id || !groups.some((g) => g.id === d.group_id));
   return (
     <>
       <p className="small"><Link href={`/app/${org.id}`}>← Управление</Link></p>
       <h1>Блюда и ТТК</h1>
       <p className="small muted">Списание при продаже и производстве — только по утверждённой ТТК. Утверждает человек; изменения — новой версией.</p>
-      {can('ttk.manage') && (
+      {manage && (
         <div className="tiles">
           <Link className="tile" href={`/app/${org.id}/menu/archive`}>Архив ТТК<span className="sub">559 карт — импорт черновиками</span></Link>
           <Link className="tile" href={`/app/${org.id}/menu/processing`}>Обработка сырья<span className="sub">нормы отходов и потерь</span></Link>
@@ -33,37 +71,29 @@ export default function MenuPage() {
         </div>
       )}
       <input aria-label="Поиск блюда" placeholder="Найти блюдо" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
-      {!rows ? <p className="muted">Загрузка…</p> : rows.length === 0 ? <div className="card"><p className="muted">Блюд пока нет. Создайте блюдо или импортируйте карты из архива.</p></div> : (
-        ['dish', 'semi'].map((kind) => group(kind).length > 0 && (
-          <div className="card" key={kind}>
-            <h2>{kind === 'dish' ? 'Блюда' : 'Полуфабрикаты'}</h2>
-            {group(kind).map((d) => (
-              <Link key={d.id} className="objrow" href={`/app/${org.id}/menu/${d.id}`}>
-                <div><b>{d.name}</b><div className="small muted">{[d.category, d.sale_price ? `${n(d.sale_price)} ₽` : ''].filter(Boolean).join(' · ')}</div></div>
-                <div className="row" style={{ justifyContent: 'flex-end' }}>
-                  {d.approved ? <span className="badge ok">утверждена v{d.approved.version}</span> : <span className="badge warn">нет утверждённой</span>}
-                  {d.open && <span className="badge">{d.open.status === 'review' ? 'на согласовании' : 'черновик'} v{d.open.version}</span>}
-                  {d.unmatched > 0 && <span className="badge crit">без товара: {d.unmatched}</span>}
-                  <span aria-hidden>›</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ))
+      {!rows ? <p className="muted">Загрузка…</p> : rows.length === 0 && !groups.length ? <div className="card"><p className="muted">Блюд пока нет. Создайте блюдо или импортируйте карты из архива.</p></div> : (
+        <div className="card">
+          <div className="between"><h2 style={{ margin: 0 }}>Номенклатура</h2>
+            {manage && <button className="btn small secondary" disabled={busy} onClick={() => { const name = prompt('Новая папка (верхний уровень):'); if (name) run(async () => { await api(`/orgs/${org.id}/dish-groups`, { body: { name } }); load(); }); }}>+ папка</button>}</div>
+          {groups.filter((g) => !g.parent_id).map((g) => folder(g, 0))}
+          {loose.length > 0 && <details open><summary style={{ cursor: 'pointer', padding: '6px 0' }}><b>Без папки</b> <span className="small muted">({loose.length})</span></summary>
+            <div style={{ marginLeft: 12 }}>{loose.map(row)}</div></details>}
+        </div>
       )}
-      {can('ttk.manage') && (
+      {manage && (
         <div className="card">
           {error && <div className="err">{error}</div>}
-          {!f ? <button className="btn block secondary" onClick={() => setF({ name: '', kind: 'dish', category: '' })}>Новое блюдо или полуфабрикат</button> : (
+          {!f ? <button className="btn block secondary" onClick={() => setF({ name: '', kind: 'dish', groupId: '' })}>Новое блюдо или полуфабрикат</button> : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-              const d = await api<{ id: string }>(`/orgs/${org.id}/dishes`, { body: { name: f.name, kind: f.kind, category: f.category || null } });
+              const d = await api<{ id: string }>(`/orgs/${org.id}/dishes`, { body: { name: f.name, kind: f.kind, groupId: f.groupId || null, category: groups.find((g) => g.id === f.groupId)?.name || null } });
               location.assign(`/app/${org.id}/menu/${d.id}`);
             }); }}>
               <label htmlFor="dn">Название</label><input id="dn" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
               <div className="grid2">
                 <div><label htmlFor="dk">Вид</label><select id="dk" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="dish">Блюдо</option><option value="semi">Полуфабрикат</option></select></div>
-                <div><label htmlFor="dc">Категория</label><input id="dc" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} /></div>
+                <div><label htmlFor="dg">Папка</label><GroupSelect id="dg" groups={groups} value={f.groupId} onChange={(groupId) => setF({ ...f, groupId })} /></div>
               </div>
+              <p className="small muted">Правила папки (физико-химия, микробиология, органолептика) блюдо получит само.</p>
               <button className="btn block" disabled={busy}>Создать</button>
             </form>
           )}
