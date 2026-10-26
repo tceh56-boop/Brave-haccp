@@ -24,6 +24,16 @@ const ids = {
   openOrder: (await one(`select id from pos_orders where organization_id = $1 and status = 'open'`, [org.id])).id,
   lotSoon: (await one(`select l.id from lots l join products p on p.id = l.product_id where l.organization_id = $1 and p.name = 'Сливки 33%'`, [org.id])).id,
   site: (await one(`select id from sites where organization_id = $1`, [org.id])).id,
+  lotCream: (await one(`select l.id from lots l join products p on p.id = l.product_id where l.organization_id = $1 and p.name = 'Сливки 33%' order by l.created_at limit 1`, [org.id])).id,
+  prodPlanned: (await one(`select id from production_orders where organization_id = $1 and status = 'planned'`, [org.id])).id,
+  event: (await one(`select id from plan_events where organization_id = $1`, [org.id])).id,
+  sto: (await one(`select id from sto_standards where organization_id = $1`, [org.id])).id,
+  card: (await one(`select id from costing_cards where organization_id = $1`, [org.id])).id,
+  act: (await one(`select id from control_acts where organization_id = $1`, [org.id])).id,
+  mors: (await one(`select id from dishes where organization_id = $1 and name = 'Морс клюквенный'`, [org.id])).id,
+  sauce: (await one(`select id from dishes where organization_id = $1 and name = 'Соус сливочный'`, [org.id])).id,
+  contract: (await one(`select id from contracts where organization_id = $1 and kind = 'pest_control'`, [org.id])).id,
+  meatEq: (await one(`select id from equipment where organization_id = $1 and name = 'Камера мяса Polair'`, [org.id])).id,
 };
 
 const browser = await chromium.launch();
@@ -142,7 +152,7 @@ const go = async (p, url, wait) => { await p.goto(BASE + url); if (wait) await p
   await snap(p, 'pack', ['#pf', '#pt', 'a:has-text("Скачать пакет")'], { top: true }); }
 
 // 7. Блюда и ТТК
-{ const p = await as('shef'); await go(p, `${B}/menu`, 'a.objrow');
+{ const p = await as('shef'); await go(p, `${B}/menu`, 'h2:has-text("Номенклатура")'); await p.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
   await snap(p, 'menu', ['a.tile:has-text("Архив ТТК")', 'a.tile:has-text("Сопоставить сырьё")', 'a.objrow:has-text("Бефстроганов")', 'a.objrow:has-text("Холодец домашний")'], { top: true, maxH: 1600 });
   await go(p, `${B}/menu/${ids.dish}`, 'text=Себестоимость');
   await snap(p, 'dish', ['#sp', '.badge:text("Утверждена")', 'h2:has-text("Состав")', 'h2:has-text("Себестоимость")', 'h2:has-text("КБЖУ")', 'button:has-text("Изменить — новая версия")'], { top: true, maxH: 3000 }); }
@@ -170,6 +180,88 @@ const go = async (p, url, wait) => { await p.goto(BASE + url); if (wait) await p
   await snap(p, 'readiness', ['.tiles', '.err, .okbox', 'li:has-text("Сотрудники пилота прошли инструктаж")', 'button:has-text("Подтвердить") >> nth=0'], { top: true, maxH: 2400 }); }
 { const p = await as('povar'); await go(p, `${B}/guide`, 'summary');
   await snap(p, 'guide', ['summary:has-text("Сотрудник цеха")', 'h3:has-text("Каждую смену")'], { top: true, maxH: 1600 }); }
+
+// 10. Маркировка и вскрытие тары
+{ const p = await as('sklad'); await go(p, `${B}/lots/${ids.lotCream}`, 'h2:has-text("Маркировка")');
+  await snap(p, 'lot_label', ['h2:has-text("Маркировка")', 'button:has-text("Этикетка") >> nth=0', 'button:has-text("Вскрыть тару")'], { maxH: 1400 });
+  await p.click('button:has-text("Вскрыть тару")'); await p.locator('#oq').waitFor();
+  await snap(p, 'lot_open', ['#oq', '#oh', 'button:has-text("Вскрыть и напечатать этикетку")'], { maxH: 1300 });
+  await go(p, `${B}/labels`, 'h2:has-text("Журнал печати")');
+  await snap(p, 'labels', ['.chips', 'h2:has-text("Журнал печати")', 'tr:has-text("Молоко")'], { top: true, maxH: 1300 }); }
+
+// 11. Закупки
+{ const p = await as('sklad'); await go(p, `${B}/purchasing`, 'h2:has-text("Остатки и потребность")');
+  await snap(p, 'purchasing', ['button[role=tab]:has-text("Что заказать")', 'button[role=tab]:has-text("Заказы")', 'button[role=tab]:has-text("Нормы")', '.card:has(h2:has-text("Остатки и потребность")) input >> nth=0', '#sup', 'button:has-text("Создать черновик заказа")'], { top: true, maxH: 2000 }); }
+
+// 12. Производство п/ф
+{ const p = await as('shef'); await go(p, `${B}/production`, 'h2:has-text("Новое задание")');
+  await snap(p, 'production', ['#pd', 'h2:has-text("План")', 'h2:has-text("Выпущено")', '#ps', '#pk', 'button:has-text("Создать задание")'], { top: true, maxH: 1800 }); }
+{ const p = await as('povar'); await go(p, `${B}/production/${ids.prodPlanned}`, 'h2:has-text("Потребность по ТТК")');
+  await snap(p, 'production_order', ['button:has-text("Начать")', 'h2:has-text("Потребность по ТТК")', 'h2:has-text("Контроль при выпуске")'], { top: true, maxH: 1500 }); }
+
+// 13. План-меню
+{ const p = await as('shef'); await go(p, `${B}/events/${ids.event}`, 'h2:has-text("Потребность по ТТК")');
+  await snap(p, 'event', ['a:has-text("Лист для кухни")', 'a:has-text("Требование в кладовую")', 'h2:has-text("Меню")', 'button:has-text("Добавить в меню")', 'h2:has-text("Потребность по ТТК")', 'button:has-text("на нехватку")'], { top: true, maxH: 3000 }); }
+
+// 14. Лаборатория и пробы
+{ const p = await as('povar'); await go(p, `${B}/lab`, 'h2:has-text("Отбор пробы")');
+  await snap(p, 'lab_sample', ['h2:has-text("Отбор пробы")', '.seg button:has-text("Мероприятие"), button:has-text("Мероприятие") >> nth=0', '#sw', '#st', '#si', 'button:has-text("Отобрать пробу")'], { maxH: 2000, above: 80 }); }
+{ const p = await as('haccp'); await go(p, `${B}/lab`, 'button[role=tab]:has-text("Лаборатория")'); await p.click('button[role=tab]:has-text("Лаборатория")');
+  await p.locator('h2:has-text("Программа контроля")').waitFor();
+  await snap(p, 'lab_program', ['h2:has-text("Программа контроля")', '.badge.crit >> nth=0', 'a:has-text("Д-101"), a:has-text("Микробиология") >> nth=0'], { top: true, maxH: 2000 }); }
+
+// 15. Оборудование
+{ const p = await as('shef'); await go(p, `${B}/equipment`, 'a.objrow');
+  await snap(p, 'equipment', ['a.objrow:has-text("Камера мяса Polair")', 'a.objrow:has-text("Термометр старый")', '#en', '#ek', 'button:text-is("Добавить")'], { top: true, maxH: 2000 });
+  await go(p, `${B}/equipment/${ids.meatEq}`, 'h2:has-text("Записать событие")');
+  await snap(p, 'equipment_card', ['.kv', 'h2:has-text("Записать событие")'], { top: true, maxH: 1600 }); }
+
+// 16. Санитария
+{ const p = await as('povar'); await go(p, `${B}/sanitation`, 'h2:has-text("Сделать")');
+  await snap(p, 'sanitation', ['button[role=tab] >> nth=0', 'h2:has-text("Сделать")', 'button:has-text("Выполнено") >> nth=0', 'h2:has-text("За 7 дней")'], { top: true, maxH: 1600 }); }
+{ const p = await as('haccp'); await go(p, `${B}/sanitation`, 'h2:has-text("Проверить")');
+  await snap(p, 'sanitation_check', ['h2:has-text("Проверить")', 'button[role=tab]:has-text("План")', 'button[role=tab]:has-text("Дезсредства")'], { top: true, maxH: 1600 }); }
+
+// 17. Персонал
+{ const p = await as('haccp'); await go(p, `${B}/staff`, 'h2:has-text("Осмотр перед сменой")');
+  await snap(p, 'staff', ['h2:has-text("Медицинский допуск — режим")', 'h2:has-text("Осмотр перед сменой")', 'button:has-text("Допущен") >> nth=0', 'h2:has-text("Сотрудники")', 'h2:has-text("Провести инструктаж")'], { top: true, maxH: 3000 }); }
+{ const p = await as('povar'); await go(p, `${B}/staff/me`, 'h2:has-text("Медицинский допуск")');
+  await snap(p, 'staff_me', ['h2:has-text("Медицинский допуск")', 'h2:has-text("Инструктажи по должности")', 'h2:has-text("История инструктажей")'], { top: true, maxH: 1700 }); }
+
+// 18. Документы ТТК
+{ const p = await as('tehnolog'); await go(p, `${B}/menu`, 'h2:has-text("Номенклатура")');
+  await snap(p, 'menu_tiles', ['a.tile:has-text("Обработка сырья")', 'a.tile:has-text("Стандарты организации")', 'a.tile:has-text("Отчёты по меню")', 'button:has-text("+ папка")'], { top: true, maxH: 1000 });
+  await go(p, `${B}/menu/${ids.dish}`, 'text=Себестоимость');
+  await snap(p, 'dish_docs', ['a:has-text("Документы ТТК")', 'a:has-text("Акты контрольной проработки")', 'a:has-text("Калькуляционная карточка")', 'a:has-text("Технические условия")', 'a:has-text("Технологическая инструкция")'], { maxH: 1000, above: 120 });
+  await go(p, `${B}/menu/processing`, '#pp'); await p.locator('#pp option:has-text("Говядина вырезка")').waitFor({ state: 'attached' });
+  await p.selectOption('#pp', { label: 'Говядина вырезка (кг)' }); await p.locator('h2:has-text("Новая норма")').waitFor();
+  await snap(p, 'processing', ['#pp', '.card:has-text("Зачистка") >> nth=0', 'h2:has-text("Новая норма")', '#nm', '#nl', '#nb', 'button:has-text("Внести норму")'], { top: true, maxH: 2600 });
+  await go(p, `${B}/menu/${ids.dish}/ttk-docs`, 'text=Обоснование расчётов');
+  await snap(p, 'ttkdocs', ['a.tile:has-text("Технико-технологическая карта")', 'a.tile:has-text("Обоснование расчётов")', 'h2:has-text("Показатели качества")', 'h2:has-text("Сырьё: данные по документам")'], { top: true, maxH: 2000 });
+  await go(p, `${B}/menu/${ids.dish}/ti`, 'h2:has-text("Что вписывает технолог")');
+  await snap(p, 'ti', ['h2:has-text("Что вписывает технолог")', 'h2:has-text("Утверждение")', 'h2:has-text("Лист регистрации изменений")'], { top: true, maxH: 2600 });
+  await go(p, `${B}/menu/reports`, 'button:has-text("Информационный лист")');
+  await snap(p, 'reports', ['button:has-text("Информационный лист")', 'button:has-text("Лист калорийности")', 'button:has-text("Закладки для поваров")', 'button:has-text("Содержание ингредиента")', 'button:has-text("Печать / сохранить PDF")'], { top: true, maxH: 1300 }); }
+{ const p = await as('shef'); await go(p, `${B}/menu/${ids.dish}/costing`, 'h2:has-text("Утверждённые калькуляции")');
+  await snap(p, 'costing', ['h2:has-text("Утверждённые калькуляции")', 'h2:has-text("Калькуляция №")', 'label:has-text("Цена продажи")', 'button:has-text("Утвердить калькуляцию")'], { top: true, maxH: 2400 });
+  await go(p, `${B}/menu/${ids.mors}/acts/${ids.act}`, 'button:has-text("Утвердить акт")');
+  await snap(p, 'act', ['button:has-text("Сохранить массы")', 'button:has-text("Утвердить акт")', 'button:has-text("Печать")', 'table input >> nth=0'], { top: true, maxH: 2000 }); }
+
+// 19. Договоры
+{ const p = await as('vladelec');
+  await go(p, `${B}/menu/sto/${ids.sto}`, 'h2:has-text("Состав и разделы")');
+  await snap(p, 'sto', ['#sto-group', 'h2:has-text("Состав и разделы")', 'h2:has-text("Утверждение (руководитель)")'], { top: true, maxH: 2600 });
+  await go(p, `${B}/contracts`, 'h2:has-text("Обязательные для ППК")');
+  await snap(p, 'contracts', ['h2:has-text("Обязательные для ППК")', 'button:has-text("Внести") >> nth=0', 'a.objrow >> nth=0', 'h2:has-text("Внести договор")'], { top: true, maxH: 1500 });
+  await go(p, `${B}/contracts/${ids.contract}`, 'h2:has-text("Файлы договора")');
+  await snap(p, 'contract', ['.badge >> nth=0', 'button:has-text("Изменить / продлить")', 'button:has-text("Расторгнуть")', 'a:has-text("договор-дезинсекция.pdf")', 'button:has-text("Добавить PDF, DOCX")'], { top: true, maxH: 1800 }); }
+
+// 20. Экономика: P&L, ABC/XYZ, расходы
+{ const p = await as('buh'); await go(p, `${B}/economics`, '.chips');
+  await p.click('.chips button:has-text("P&L")'); await p.locator('h2:has-text("P&L")').waitFor();
+  await snap(p, 'pnl', ['.chips button:has-text("P&L")', '.chips button:has-text("ABC / XYZ")', '.chips button:has-text("Расходы")', 'h2:has-text("P&L")'], { top: true, maxH: 1800 });
+  await p.click('.chips button:has-text("Расходы")'); await p.locator('h2:has-text("Новый расход")').waitFor();
+  await snap(p, 'expenses', ['h2:has-text("Расходы за период")', '#xc', '#xk', '#xa', 'button:has-text("Добавить расход")'], { top: true, maxH: 2000 }); }
 
 await browser.close(); await db.end();
 console.log(missing ? `Готово, не найдено элементов: ${missing}` : 'Готово, все элементы найдены');

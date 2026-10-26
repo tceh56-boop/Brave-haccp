@@ -692,11 +692,13 @@ DEMO_SUFFIX=2 npm run demo:seed               # ещё одна демо-орг�
 ```
 npm run build && PORT=3200 DATABASE_URL=…/ceh_demo npm start     # сервер на демо-базе
 DATABASE_URL=…/ceh_demo BASE_URL=http://localhost:3200 npm run manual:shots   # снимки с рамками → tools/manual/shots/
+DATABASE_URL=…/ceh_demo BASE_URL=http://localhost:3200 npm run manual:forms   # печатные формы (журналы, ТТК, ТУ, ТИ, СТО…) → tools/manual/forms/
 npm run manual:build                                             # PDF A4, содержание с номерами страниц
 ```
 
 * `tools/manual/tour.mjs` — обход под нужными ролями, оранжевые рамки с номерами на элементах. Номер рамки = номер шага в тексте.
-* `tools/manual/content.mjs` — текст по разделам. Если кнопку переименовали, обход напишет «!! не найдено» — поправьте метку и шаг.
+* `tools/manual/forms.mjs` — печатные формы для приложения «Печатные формы»: страница печати → PDF A4 → PNG.
+* `tools/manual/content.mjs` — введение, текст по разделам, перечень печатных форм. Если кнопку переименовали, обход напишет «!! не найдено» — поправьте метку и шаг.
 * `tools/manual/build.mjs` — вёрстка: длинные снимки режутся на колонки, снимки сжимаются в JPEG.
 * Нужны ImageMagick (`convert`) и poppler (`pdfinfo`, `pdftotext`).
 * Прежняя инструкция (версия на Apps Script) — `docs/архив/ЦЕХ_инструкция_для_персонала_Apps_Script.pdf`.

@@ -30,6 +30,8 @@ import { createCosting } from '../ops/costing';
 import { createAct } from '../ops/controlacts';
 import { addExpense } from '../ops/finance';
 import { createContract } from '../ops/contracts';
+import { createSto } from '../ops/sto';
+import { createNorm, approveNorm } from '../ops/processing';
 
 /**
  * Демо-организация для показа и инструктажа (этап 8): «Кафе «Демо»» с сотрудниками всех ролей и данными за смену.
@@ -280,6 +282,11 @@ export async function seedDemo() {
   // Документы ТТК: калькуляционная карточка бефстроганова (цены — из приёмки) и акт контрольной проработки (черновик)
   await createCosting(chef.id, orgId, stroganoff, { siteId, signers: { chef: 'Анна Шеф', accountant: 'Елена Бухгалтер', director: 'Ольга Владелец' } });
   await createAct(chef.id, orgId, mors, { siteId, commission: [{ position: 'Шеф-повар', name: 'Анна Шеф' }, { position: 'Технолог', name: 'Мария Технолог' }] });
+
+  // Нормы обработки сырья и стандарт организации на горячие блюда (проект)
+  const trim = await createNorm(tech.id, orgId, { productId: p.beef, method: 'trim', lossPct: 20, basis: 'Демо: акт контрольной проработки № 1 (в работе — Сборник рецептур или свой акт)' });
+  await approveNorm(tech.id, orgId, trim.id);
+  await createSto(tech.id, orgId, { title: 'Горячие блюда из мяса', dishIds: [stroganoff] });
 
   // Экономика: ежемесячные расходы для P&L
   const month1 = `${today().slice(0, 8)}01`;

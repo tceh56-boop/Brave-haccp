@@ -5,7 +5,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { SECTIONS, ROLES, PATH, TROUBLE, RULES, MEMO, INTRO } from './content.mjs';
+import { SECTIONS, ROLES, PATH, TROUBLE, RULES, MEMO, INTRO, FORMS } from './content.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATE = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
@@ -65,7 +65,7 @@ function html(tocPages) {
   body.push('<section class="sec"><h1 class="h1s">Путь продукта в системе</h1><p class="intro">Каждый шаг оставляет запись: кто, когда, что измерил. Операция вносится один раз — журналы, себестоимость и пакет для проверки собираются из неё.</p><div class="path">' +
     PATH.map((x, i) => '<div class="pb' + (x[3] ? ' ctl' : '') + '"><div class="pn">' + x[2] + '</div><div class="pt">' + x[0] + '</div><div class="pd">' + x[1] + '</div>' + (i % 4 < 3 ? '<div class="pa">→</div>' : '') + '</div>').join('') + '</div>' +
     '<div class="legend"><span class="lg"></span> действие сотрудника <span class="lg ctl"></span> контроль: без него дальше нельзя <span class="muted">цифра в углу — номер раздела</span></div></section>');
-  const toc = SECTIONS.map((s) => [s.n, s.title, s.toc]).concat([[NT, 'Если что-то пошло не так', 'все'], [NR, 'Правила честных записей', 'все'], ['—', 'Памятка на смену (повесить на кухне)', 'все']]);
+  const toc = SECTIONS.map((s) => [s.n, s.title, s.toc]).concat([[NT, 'Если что-то пошло не так', 'все'], [NR, 'Правила честных записей', 'все'], ['—', 'Памятка на смену (повесить на кухне)', 'все'], ['П', 'Печатные формы', 'все']]);
   body.push('<section class="sec"><h1>Содержание</h1><div class="toc">' + toc.map((r) => '<div class="tr"><span class="tn">' + r[0] + '</span><span class="tt">' + esc(r[1]) + '</span><span class="tw">' + esc(r[2]) + '</span><span class="tpg">' + tp(r[0]) + '</span></div>').join('') + '</div></section>');
   SECTIONS.forEach((s) => body.push(section(s)));
   body.push('<section class="sec" id="s' + NT + '"><h1><span class="sn">' + NT + '.</span> Если что-то пошло не так</h1><table class="t"><tr><th>Что видите</th><th>Что это значит</th><th>Что делать</th></tr>' + TROUBLE.map((r) => '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td>' + fmt(r[2]) + '</td></tr>').join('') + '</table>' +
@@ -74,6 +74,10 @@ function html(tocPages) {
   const box = (t, items) => '<div class="memo"><div class="mt">' + t + '</div>' + items.map((x) => '<div class="mi"><span class="cb"></span><span>' + fmt(x) + '</span></div>').join('') + '</div>';
   body.push('<section class="sec" id="smemo"><h1>Памятка на смену</h1><p class="muted">Распечатайте и повесьте рядом с планшетом.</p><div class="memos">' + MEMO.map(([t, items]) => box(t, items)).join('') + '</div>' +
     block({ call: 'warn', t: 'Система недоступна', x: 'Записывайте на бумажных бланках с реальным временем, затем внесите в систему — запись пометится «внесено позже». Чеки пробивайте на ККТ как обычно.' }) + '</section>');
+  body.push('<section class="sec" id="sforms"><h1><span class="sn">П.</span> Печатные формы</h1><p class="intro">Образцы документов, которые система печатает сама из данных, внесённых в работе. Снимки сделаны в демо-организации; на бумаге — формат A4. Любую форму можно сохранить в PDF: в окне печати выберите «Сохранить как PDF».</p>' +
+    '<table class="t"><tr><th>Форма</th><th>Где печатается</th></tr>' + FORMS.map((f) => '<tr><td><b>' + esc(f[1]) + '</b></td><td>' + fmt(f[2]) + '</td></tr>').join('') + '</table>' +
+    block({ call: 'info', t: 'Программа производственного контроля и пакет ППК + ХАССП', x: 'Сейчас пакет для проверки (раздел 10) выгружает журналы, план ХАССП, отклонения и CAPA с доказательствами. Программа производственного контроля, план ХАССП, приказы, карты ККТ и инструкции единым комплектом будут собираться мастером ППК — он в разработке; образцы этих форм появятся здесь вместе с ним.' }) + '</section>');
+  for (const f of FORMS) for (let i = 1; i <= f[4]; i++) body.push('<section class="formpage">' + (i === 1 ? '<h2>' + esc(f[1]) + '</h2><p class="small">' + fmt(f[3]) + '</p>' : '<h2 class="cont">' + esc(f[1]) + ' — стр. ' + i + '</h2>') + '<div class="formimg"><img src="forms/' + f[0] + '-' + i + '.jpg"></div></section>');
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>ЦЕХ — инструкция для персонала</title><style>' + CSS + '</style></head><body>' + body.join('\n') + '</body></html>';
 }
 
@@ -89,6 +93,7 @@ p{margin:0 0 2.5mm}
 .intro{font-size:11pt}
 .muted{color:#8a7a6a}
 .sec{break-before:page}
+.formpage{break-before:page}.formpage h2{margin:0 0 2mm;font-size:13pt}.formpage h2.cont{color:#7a6a5a;font-size:10pt}.formpage .small{margin:0 0 3mm;font-size:9pt}.formimg{text-align:center}.formimg img{max-width:170mm;max-height:240mm;border:1px solid #bbb;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 .who{background:#F6EEE4;border-left:3px solid #C8A27A;padding:2.2mm 4mm;margin:0 0 4mm;font-size:9.5pt;display:flex;column-gap:8mm;row-gap:1mm;flex-wrap:wrap}
 .who b{color:#8B3A12}
 .chip{display:inline-block;border:1px solid #cdbfae;background:#FBF7F2;border-radius:5px;padding:0 5px;font-weight:600;font-size:9.2pt;line-height:1.45;white-space:nowrap;color:#2a1f18}
@@ -176,6 +181,11 @@ function toJpeg() {
   }
 }
 toJpeg();
+// печатные формы (forms.mjs): PNG страниц → JPEG с серой рамкой
+for (const f of fs.existsSync(path.join(DIR, 'forms')) ? fs.readdirSync(path.join(DIR, 'forms')).filter((x) => x.endsWith('.png')) : []) {
+  const png = path.join(DIR, 'forms', f), jpg = png.replace(/\.png$/, '.jpg');
+  if (!fs.existsSync(jpg) || fs.statSync(jpg).mtimeMs < fs.statSync(png).mtimeMs) execSync(`convert "${png}" -background white -flatten -quality 82 "${jpg}"`);
+}
 const tmp = path.join(DIR, 'pass1.pdf');
 await render(null, tmp);
 const pages = Number(/Pages:\s+(\d+)/.exec(execSync(`pdfinfo "${tmp}"`).toString())[1]);
@@ -186,6 +196,7 @@ const tp = {};
 SECTIONS.forEach((s) => { tp[s.n] = find(s.n, s.title); });
 tp[NT] = find(NT, 'Если что-то пошло не так'); tp[NR] = find(NR, 'Правила честных записей');
 for (let i = tocPage + 1; i <= pages; i++) if (/Памятка на смену/.test(text[i]) && /Начало смены/.test(text[i])) { tp['—'] = i; break; }
+tp['П'] = find('П', 'Печатные формы');
 fs.unlinkSync(tmp);
 await render(tp, OUT);
 const missingToc = Object.entries(tp).filter(([, v]) => !v).map(([k]) => k);
