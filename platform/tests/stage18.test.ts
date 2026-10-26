@@ -3,7 +3,7 @@ import { closePool, withSystem } from '../src/server/db/pool';
 import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
 import { createProduct } from '../src/server/ops/catalog';
 import { importTtkArchive, importFromArchive, listArchive, createDish, getDish, updateDish, updateVersion, addLine, updateLine, submitVersion, approveVersion, newVersion, addHeading, renameHeading, moveLine,
-  insertFromDish, approvedRecipe } from '../src/server/ops/recipes';
+  insertFromDish, approvedRecipe, scaleVersion } from '../src/server/ops/recipes';
 import {
   listMethods, createNorm, approveNorm, archiveNorm, listNorms, normsToday, setNormDefault, setLineSteps, applyNormToDrafts, suggestFromArchive,
 } from '../src/server/ops/processing';
@@ -570,14 +570,14 @@ describe('Отчёты по меню: информационный лист, к�
     expect(info.group).toBe('Холодные закуски');
     // «Салат новый» без утверждённой ТТК — не входит
     expect(info.rows.map((r: any) => r.name).sort()).toEqual(['Салат из моркови', 'Салат из огурцов']);
-    const c = info.rows.find((r: any) => r.name === 'Салат из огурцов')!;
+    const c = info.rows.find((r: any) => r.name === 'Салат из огурцов') as any;
     expect(c.nutrition.total.kcal).toBeGreaterThan(0);
     expect(c.allergens_complete).toBe(false);   // профили аллергенов не внесены — «уточняйте»
-    expect((await menuReport(cook.id, orgId, 'info', root)).rows[0].price).toBeNull();
+    expect(((await menuReport(cook.id, orgId, 'info', root)).rows[0] as any).price).toBeNull();
     const cal = await menuReport(cook.id, orgId, 'calories', null);
     expect(cal.rows.length).toBeGreaterThanOrEqual(3);
     const bm = await menuReport(cook.id, orgId, 'bookmarks', root);
-    expect(bm.rows[0].lines.length).toBeGreaterThan(0);
+    expect((bm.rows[0] as any).lines.length).toBeGreaterThan(0);
   });
 
   it('содержание ингредиента: напрямую и через полуфабрикат', async () => {
@@ -591,5 +591,22 @@ describe('Отчёты по меню: информационный лист, к�
     expect(u.rows.find((r: any) => r.name === 'Морковная заправка')).toMatchObject({ via: null, status: 'draft' });
     expect(u.rows.find((r: any) => r.name === 'Салат с заправкой')).toMatchObject({ via: 'Морковная заправка' });
     expect(u.rows.some((r: any) => r.name === 'Салат из моркови')).toBe(true);
+  });
+});
+
+describe('Пересчёт рецептуры на другой выход', () => {
+  it('массы строк и выход п/ф — пропорционально; только черновик', async () => {
+    const d = await createDish(tech.id, orgId, { name: 'Соус для пересчёта', kind: 'semi' });
+    const v = (await getDish(tech.id, orgId, d.id)).current!.version.id;
+    await updateVersion(tech.id, orgId, v, { yieldG: 1000, semiYieldG: 1200 });
+    await addLine(tech.id, orgId, v, { productId: carrot, unit: 'г', brutto: 500, netto: 400, ready: 380 });
+    await addHeading(tech.id, orgId, v, { title: 'Заправка' });
+    expect(await scaleVersion(tech.id, orgId, v, { yieldG: 2500 })).toMatchObject({ factor: 2.5, lines: 1 });
+    const c = (await getDish(tech.id, orgId, d.id)).current!;
+    expect(c.version).toMatchObject({ yield_g: '2500' });
+    expect(Number(c.version.semi_yield_g)).toBe(3000);
+    const l = c.lines.find((x: any) => x.kind === 'item')!;
+    expect([Number(l.brutto), Number(l.netto), Number(l.ready)]).toEqual([1250, 1000, 950]);
+    await expect(scaleVersion(cook.id, orgId, v, { yieldG: 10 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });

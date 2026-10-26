@@ -113,6 +113,7 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
             {draft && <div className="row" style={{ marginTop: 8 }}>
               <button className="btn small secondary" disabled={busy} onClick={() => { const title = prompt('Подзаголовок (например, «Выход жареного мяса — 120 г»):'); if (title) act(() => api(`/orgs/${org.id}/ttk/${v.id}/headings`, { body: { title } })); }}>+ подзаголовок</button>
               <InsertFrom dishId={dishId} busy={busy} onPick={(id) => act(() => api(`/orgs/${org.id}/ttk/${v.id}/insert`, { body: { dishId: id } }))} />
+              {v.yield_g && <button className="btn small secondary" disabled={busy} onClick={() => { const y = prompt(`Пересчитать рецептуру на другой выход, г (сейчас ${n(v.yield_g)} г):`); if (y) act(() => api(`/orgs/${org.id}/ttk/${v.id}/scale`, { body: { yieldG: y.replace(',', '.') } })); }}>Пересчитать на выход…</button>}
             </div>}
           </div>
 

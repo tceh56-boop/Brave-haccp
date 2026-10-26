@@ -413,6 +413,24 @@ const VersionInput = z.object({
   serving: optText(2000), menuDescription: optText(2000),
 });
 
+/**
+ * Пересчёт рецептуры черновика на другой выход (как в Шеф Эксперте): брутто, нетто и выход строк, выход п/ф —
+ * пропорционально; шаги обработки не меняются. Порция блюда остаётся прежней.
+ */
+export async function scaleVersion(userId: string, orgId: string, versionId: string, input: unknown) {
+  const d = parse(z.object({ yieldG: z.coerce.number('Новый выход, г.').positive('Новый выход больше нуля.').max(10_000_000) }), input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    const v = await draftVersion(tx, orgId, versionId);
+    if (!v.yield_g) throw Errors.validation('Сначала укажите текущий выход закладки.');
+    const k = d.yieldG / Number(v.yield_g);
+    const r = (x: string) => `case when ${x} is null then null else round(${x} * $2::numeric, 4) end`;
+    const n = (await tx.query(`update ttk_lines set brutto = ${r('brutto')}, netto = ${r('netto')}, ready = ${r('ready')} where version_id = $1 and kind = 'item'`, [versionId, k])).rowCount;
+    await tx.query(`update ttk_versions set yield_g = $2, semi_yield_g = case when semi_yield_g is null then null else round(semi_yield_g * $3::numeric, 3) end where id = $1`, [versionId, d.yieldG, k]);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.scale', entityType: 'ttk_version', entityId: versionId, before: { yield_g: v.yield_g }, after: { yield_g: d.yieldG, factor: k, lines: n } });
+    return { factor: Math.round(k * 10000) / 10000, lines: n };
+  });
+}
+
 export async function updateVersion(userId: string, orgId: string, versionId: string, input: unknown) {
   const d = parse(VersionInput, input);
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
