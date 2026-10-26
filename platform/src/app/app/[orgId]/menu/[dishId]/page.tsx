@@ -144,6 +144,7 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/acts`}>Акты контрольной проработки</Link>
           {data.versions.some((x) => x.status === 'approved') && can('cost.read') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/costing`}>Калькуляционная карточка (ОП-1)</Link>}
           {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/tu`}>Технические условия (ТУ)</Link>}
+          {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/ti`}>Технологическая инструкция (ТИ)</Link>}
           {data.dish.kind === 'semi' && <ReleaseChecks dishId={dishId} />}
           {data.dish.kind === 'semi' && data.versions.some((x) => x.status === 'approved') && can('production.plan') && (
             <Link className="btn block secondary" href={`/app/${org.id}/production?dish=${dishId}`}>Поставить в производство</Link>)}

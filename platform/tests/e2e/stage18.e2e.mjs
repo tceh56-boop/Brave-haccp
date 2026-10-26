@@ -168,6 +168,24 @@ await P.waitForSelector('text=Таблица 1. Расчёт пищевой це
 await P.waitForSelector('text=Минимально допустимое содержание сухих веществ');
 await shot(P, 'обоснование');
 
+step('технологическая инструкция: поля технолога, документ с титульным листом');
+await P.goto(`${BASE}${base}/menu/${salad.id}`);
+await P.click('a:has-text("Технологическая инструкция (ТИ)")');
+await P.waitForSelector('h1:has-text("Технологическая инструкция")');
+await P.waitForSelector('text=Чтобы утвердить, осталось');
+await P.fill('#ti-okpd2', '10.85.19'); await P.fill('#ti-okpo', '12345678'); await P.fill('#ti-tiCity', 'Москва');
+await P.fill(`#rd-${carrot.id}`, 'ГОСТ 32284-2013');
+await P.fill('#ti-tiPackaging', 'Реализуется в зале; на вынос — в контейнере с маркировкой.');
+await P.fill('#ti-tiSafety', 'Работа с оборудованием — после инструктажа по охране труда.');
+await P.click('form:has-text("Что вписывает технолог") button:has-text("Сохранить")');
+await P.waitForSelector(`text=ТИ 1085-001-12345678-${String(new Date().getFullYear()).slice(2)}`);
+await shot(P, 'ти');
+await P.click('a:has-text("Документ ТИ")');
+await P.waitForSelector('h1:has-text("ТЕХНОЛОГИЧЕСКАЯ ИНСТРУКЦИЯ")');
+await P.waitForSelector('text=ГОСТ 32284-2013');
+await P.waitForSelector('h2:has-text("Лист регистрации изменений")');
+await shot(P, 'ти_документ');
+
 await browser.close(); await db.end();
 if (errors.length) throw new Error(`ошибки страницы: ${errors.join('; ')}`);
 console.log('✓ этап 18: обработка сырья');

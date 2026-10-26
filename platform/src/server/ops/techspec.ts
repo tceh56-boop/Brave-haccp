@@ -130,6 +130,8 @@ export interface TuParams {
   processing?: 'thermal' | 'raw' | null; tolerance?: number | null; microGroup?: string | null; micro?: Record<string, string>;
   physNormed?: { dry?: boolean; fat?: boolean; sugar?: boolean; salt?: boolean }; gerberPct?: number | null; saltMaxPct?: number | null; dryCoef?: number | null; sugarCoef?: number | null;
   physBasis?: string | null; microIndex?: string | null; microNote?: string | null;
+  tiGroup?: string | null; tiOks?: string | null; tiSeq?: string | null; tiCity?: string | null; tiPackaging?: string | null; tiSafety?: string | null; tiEnvironment?: string | null;
+  tiEquipment?: string | null; rawDocs?: Record<string, string>;
   organoleptic?: string | null; channel?: string | null; okpd2?: string | null; seq?: string | null; okpo?: string | null;
 }
 
@@ -257,6 +259,10 @@ const ParamsInput = z.object({
   gerberPct: z.coerce.number().min(0).max(100).nullable().optional(), saltMaxPct: z.coerce.number().min(0).max(20).nullable().optional(),
   dryCoef: z.coerce.number().min(0).max(1).nullable().optional(), sugarCoef: z.coerce.number().min(0).max(1).nullable().optional(),
   physBasis: optText(500), microIndex: optText(300), microNote: optText(1000),
+  // ТИ: титульный лист и разделы, которые вписывает технолог
+  tiGroup: optText(60), tiOks: optText(60), tiSeq: z.string().trim().regex(/^\d{1,3}$/, 'Порядковый номер ТИ — до 3 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
+  tiCity: optText(100), tiPackaging: optText(4000), tiSafety: optText(4000), tiEnvironment: optText(4000), tiEquipment: optText(4000),
+  rawDocs: z.record(z.uuid(), z.string().trim().max(300)).optional(),   // НД на сырьё: ГОСТ, ТУ, спецификация
 });
 
 export async function saveTechSpecParams(userId: string, orgId: string, dishId: string, input: unknown) {

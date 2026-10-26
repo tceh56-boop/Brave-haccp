@@ -8,6 +8,9 @@ import {
   listMethods, createNorm, approveNorm, archiveNorm, listNorms, normsToday, setNormDefault, setLineSteps, applyNormToDrafts, suggestFromArchive,
 } from '../src/server/ops/processing';
 import { getTtkDoc } from '../src/server/ops/ttkdoc';
+import { getTi, approveTi, getTiVersion } from '../src/server/ops/techinstr';
+import { setSampleSettings, createProgram } from '../src/server/ops/lab';
+import { createPlan } from '../src/server/ops/sanitation';
 import { setProductNutrition, saveTechSpecParams } from '../src/server/ops/techspec';
 import { setUnitConversion } from '../src/server/ops/stock';
 import { createAct, updateAct, approveAct, getAct, listActs } from '../src/server/ops/controlacts';
@@ -21,7 +24,7 @@ afterAll(() => closePool());
 
 type U = Awaited<ReturnType<typeof makeUser>>;
 let owner: U, tech: U, cook: U, stranger: U;
-let orgId: string, carrot: string, salt: string, rice: string, dishId: string, v1: string;
+let orgId: string, siteId: string, carrot: string, salt: string, rice: string, dishId: string, v1: string;
 let autumn: string, winter: string, boil: string;
 
 async function invite(role: string) {
@@ -37,7 +40,7 @@ beforeAll(async () => {
   await importTtkArchive();
   owner = await makeUser({ name: 'Ольга Владелец' });
   const r = await createOrganization(owner, { name: 'Кафе «Обработка»' });
-  orgId = r.organization.id;
+  orgId = r.organization.id; siteId = r.site.id;
   tech = await invite('technologist'); cook = await invite('line_staff');
   stranger = await makeUser();
   await createOrganization(stranger, { name: 'Чужое кафе' });
@@ -398,5 +401,50 @@ describe('ТТК по ГОСТ 31987-2012 и обоснование расчёт
     expect(doc.physico.dry).toMatchObject({ max: null });
     expect((doc.physico.dry as any).missing[0]).toMatch(/Рис круглозёрный/);
     expect(doc.missing.nutrition).toContain('Рис круглозёрный');
+  });
+});
+
+describe('Технологическая инструкция: из утверждённой ТТК и данных системы; утверждение — снимок', () => {
+  let dId: string;
+
+  it('без утверждённой ТТК — нельзя; проект, пока не заполнено то, чего система не знает', async () => {
+    dId = (await withSystem((tx) => tx.query(`select id from dishes where organization_id = $1 and name = 'Салат из огурцов'`, [orgId]))).rows[0].id;
+    await expect(getTi(cook.id, orgId, dId)).rejects.toThrow(/нет утверждённой ТТК/);
+    const v = (await getDish(tech.id, orgId, dId)).current!.version.id;
+    // рис из предыдущего теста — без пищевой ценности, ТТК это не мешает
+    await submitVersion(tech.id, orgId, v); await approveVersion(tech.id, orgId, v);
+    const t = await getTi(cook.id, orgId, dId);
+    expect(t.calc.status).toBe('project');
+    const w = t.calc.warnings.join(' ');
+    expect(w).toMatch(/нормативные документы на сырьё: .*Огурцы грунтовые/);
+    expect(w).toMatch(/ОКПД2/); expect(w).toMatch(/Упаковка и маркировка/); expect(w).toMatch(/программы лабораторного контроля/); expect(w).toMatch(/плана санитарной обработки/);
+    expect(t.calc.recipe.find((r: any) => r.name === 'Огурцы грунтовые')).toMatchObject({ brutto_g: 105, netto_g: 100, per_kg: { netto: Math.round(100 / 110 * 1000 * 10) / 10 }, per_100: { netto_kg: 10 } });
+    await expect(approveTi(tech.id, orgId, dId, { changeNote: 'Введена впервые' })).rejects.toThrow(/проект/);
+  });
+
+  it('заполнено — утверждается; снимок не меняется, версия в листе регистрации изменений', async () => {
+    const t = await getTi(cook.id, orgId, dId);
+    await saveTechSpecParams(tech.id, orgId, dId, { okpd2: '10.85.19', okpo: '12345678', tiSeq: '2', tiCity: 'Москва', tiPackaging: 'Реализуется в зале на тарелке; на вынос — в контейнере с маркировкой.',
+      tiSafety: 'Работа с ножами и оборудованием — после инструктажа по охране труда.', rawDocs: Object.fromEntries(t.calc.raw.map((r: any) => [r.product_id, 'Тест: ГОСТ изготовителя'])) });
+    await setSampleSettings(owner.id, orgId, { minWeightG: 100, retentionHours: 48, tMin: 2, tMax: 6, basis: 'Тест: СанПиН, п. суточные пробы' });
+    await createProgram(owner.id, orgId, { siteId, testType: 'Микробиология готовых блюд', target: 'салаты', periodDays: 90, nextDue: '2026-12-01', basis: 'Тест: программа ПК, п. 5' });
+    await createPlan(owner.id, orgId, { siteId, area: 'Холодный цех', work: 'Мойка столов и инвентаря', kind: 'current', periodDays: 1 });
+    await withSystem(async (tx) => {
+      const s = (await tx.query(`insert into reg_sources (organization_id, code, kind, title, binding) values ($1, 'СанПиН 2.3/2.4.4282-26', 'СанПиН', 'Санитарные требования к организациям общественного питания', 'mandatory') returning id`, [orgId])).rows[0];
+      await tx.query(`insert into reg_source_versions (organization_id, source_id, edition, effective_from, workflow_status, last_checked_at, checked_by, check_evidence, approved_by, owner_user_id, next_check_at)
+        values ($1, $2, 'тест', '2026-01-01', 'approved', now(), $3, 'тест', $3, $3, now() + interval '90 days')`, [orgId, s.id, owner.id]);
+    });
+    const r = await getTi(cook.id, orgId, dId);
+    expect(r.calc.warnings).toEqual([]);
+    expect(r.calc.designation).toBe(`ТИ 1085-002-12345678-${String(new Date().getFullYear()).slice(2)}`);
+    expect(r.calc.control.lab[0]).toMatchObject({ test: 'Микробиология готовых блюд', period: 'раз в 90 дн.' });
+    expect(r.calc.sanitation.plans[0]).toMatchObject({ area: 'Холодный цех', kind: 'Текущая уборка' });
+    await expect(approveTi(cook.id, orgId, dId, { changeNote: 'Введена впервые' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const a = await approveTi(tech.id, orgId, dId, { changeNote: 'Введена впервые' });
+    expect(a.version).toBe(1);
+    const x = await getTiVersion(cook.id, orgId, dId, 1);
+    expect(x.snapshot.designation).toBe(r.calc.designation);
+    expect(x.versions.map((v: any) => v.change_note)).toEqual(['Введена впервые']);
+    await expect(withSystem((tx) => tx.query(`update ti_versions set change_note = 'x' where dish_id = $1`, [dId]))).rejects.toThrow(/не изменяются/);
   });
 });
