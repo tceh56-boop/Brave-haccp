@@ -62,14 +62,18 @@ export async function approveNorm(userId: string, orgId: string, normId: string)
   return inOrg(userId, orgId, 'ttk.approve', async (tx) => {
     const n = (await tx.query(`select * from processing_norms where id = $1 and organization_id = $2 for update`, [parse(z.uuid(), normId), orgId])).rows[0];
     if (!n) throw Errors.notFound('Норма не найдена.');
-    if (n.status !== 'draft') throw Errors.conflict('Утвердить можно только черновик нормы.');
-    const old = (await tx.query(`select * from processing_norms where organization_id = $1 and product_id = $2 and method_code = $3 and status = 'approved' for update`, [orgId, n.product_id, n.method_code])).rows
-      .filter((o) => seasonsOverlap([o.season_from, o.season_to], [n.season_from, n.season_to]));
-    for (const o of old) await tx.query(`update processing_norms set status = 'archived', archived_by = $2, archived_at = now(), archive_reason = $3 where id = $1`, [o.id, userId, 'заменена новой нормой']);
-    await tx.query(`update processing_norms set status = 'approved', approved_by = $2, approved_at = now() where id = $1`, [n.id, userId]);
-    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'processing_norm.approve', entityType: 'processing_norm', entityId: n.id, after: { replaced: old.map((o) => o.id) } });
-    return { ok: true, replaced: old.length };
+    return approveNormTx(tx, orgId, userId, n);
   });
+}
+
+export async function approveNormTx(tx: Tx, orgId: string, userId: string, n: Record<string, any>) {
+  if (n.status !== 'draft') throw Errors.conflict('Утвердить можно только черновик нормы.');
+  const old = (await tx.query(`select * from processing_norms where organization_id = $1 and product_id = $2 and method_code = $3 and status = 'approved' for update`, [orgId, n.product_id, n.method_code])).rows
+    .filter((o) => seasonsOverlap([o.season_from, o.season_to], [n.season_from, n.season_to]));
+  for (const o of old) await tx.query(`update processing_norms set status = 'archived', archived_by = $2, archived_at = now(), archive_reason = $3 where id = $1`, [o.id, userId, 'заменена новой нормой']);
+  await tx.query(`update processing_norms set status = 'approved', approved_by = $2, approved_at = now() where id = $1`, [n.id, userId]);
+  await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'processing_norm.approve', entityType: 'processing_norm', entityId: n.id, after: { replaced: old.map((o) => o.id) } });
+  return { ok: true, replaced: old.length };
 }
 
 export async function archiveNorm(userId: string, orgId: string, normId: string, input: unknown) {

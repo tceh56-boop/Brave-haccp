@@ -71,6 +71,7 @@ export default function ProcessingPage() {
       <h1>Обработка сырья</h1>
       <p className="small muted">Отходы при холодной обработке и потери при тепловой — по каждому товару. По ним в ТТК считаются брутто, нетто и выход.
         Процент берут из Сборника рецептур или из акта контрольной проработки: П = (М1 − М2) / М1 × 100. Система норм не придумывает.</p>
+      <Link className="btn secondary block" href={`/app/${org.id}/menu/processing/sbornik`}>Подобрать нормы из Сборника рецептур ›</Link>
 
       <div className="card">
         <label htmlFor="pp">Товар</label>
