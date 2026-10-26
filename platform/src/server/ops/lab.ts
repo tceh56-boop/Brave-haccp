@@ -25,7 +25,7 @@ import { assertInstrument } from './equipment';
  */
 
 export const SAMPLE_DEFAULTS = { min_weight_g: 100, retention_hours: 48, t_min: 2, t_max: 6,
-  basis: 'по умолчанию системы (СанПиН 2.3/2.4.3590-20, суточная проба) — проверьте по нормативному реестру и утвердите', confirmed: false };
+  basis: 'по умолчанию системы: СанПиН 2.3/2.4.4282-26, п. 56 пп. 4 и п. 59 пп. 10 (не менее 100 г, не менее 48 ч, от +2 до +6 °C) — проверьте и утвердите', confirmed: false };
 const SOURCE_LABEL: Record<string, string> = { event: 'мероприятие', lot: 'партия п/ф', dish: 'блюдо смены' };
 const decimal = z.union([z.number(), z.string().trim().regex(/^-?\d+([.,]\d+)?$/, 'Введите число.').transform((s) => Number(s.replace(',', '.')))]);
 const ddmm = (s: string) => s.slice(0, 10).split('-').reverse().join('.');

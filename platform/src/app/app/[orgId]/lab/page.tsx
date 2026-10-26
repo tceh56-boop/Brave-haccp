@@ -72,7 +72,7 @@ function SamplesTab() {
               <div><label htmlFor="c1">t от, °C</label><input id="c1" inputMode="decimal" value={cfg.tMin} onChange={(e) => setCfg({ ...cfg, tMin: e.target.value })} /></div>
               <div><label htmlFor="c2">t до, °C</label><input id="c2" inputMode="decimal" value={cfg.tMax} onChange={(e) => setCfg({ ...cfg, tMax: e.target.value })} /></div>
             </div>
-            <label htmlFor="cb">Основание (документ, пункт)</label><input id="cb" value={cfg.basis} onChange={(e) => setCfg({ ...cfg, basis: e.target.value })} placeholder="СанПиН 2.3/2.4.3590-20; программа ПК, п. …" />
+            <label htmlFor="cb">Основание (документ, пункт)</label><input id="cb" value={cfg.basis} onChange={(e) => setCfg({ ...cfg, basis: e.target.value })} placeholder="СанПиН 2.3/2.4.4282-26, п. 56 пп. 4; программа ПК, п. …" />
             <div className="row" style={{ marginTop: 8 }}><button className="btn small" disabled={busy}>Утвердить</button><button type="button" className="btn small secondary" onClick={() => setCfg(null)}>Отмена</button></div>
           </form>
         )}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FEATURES } from '../norms/library';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
@@ -45,21 +46,23 @@ export function versionState(v: VersionRow, today = new Date().toISOString().sli
 // ───────── Профиль предприятия ─────────
 
 const arr = (keys: Record<string, string>) => z.array(z.string().refine((x) => x in keys, 'Неизвестное значение.')).max(30);
-const ProfileInput = z.object({ objectTypes: arr(OBJECT_TYPES).default([]), processes: arr(PROCESSES).default([]), productGroups: z.array(z.string().trim().min(2).max(60)).max(50).default([]), salesModes: z.array(z.enum(['hall', 'takeaway', 'delivery', 'catering'])).default([]) });
+const ProfileInput = z.object({ objectTypes: arr(OBJECT_TYPES).default([]), processes: arr(PROCESSES).default([]), productGroups: z.array(z.string().trim().min(2).max(60)).max(50).default([]), salesModes: z.array(z.enum(['hall', 'takeaway', 'delivery', 'catering'])).default([]),
+  seats: z.coerce.number().int().min(0).max(100000).nullable().optional(), features: z.array(z.enum(Object.keys(FEATURES) as [string, ...string[]])).optional() });
 
 export async function getProfile(userId: string, orgId: string) {
   return inOrg(userId, orgId, 'reg.read', async (tx) => (await tx.query(`select * from org_regulatory_profiles where organization_id = $1`, [orgId])).rows[0]
-    || { organization_id: orgId, object_types: [], processes: [], product_groups: [], sales_modes: [] });
+    || { organization_id: orgId, object_types: [], processes: [], product_groups: [], sales_modes: [], seats: null, features: [] });
 }
 
 export async function saveProfile(userId: string, orgId: string, input: unknown) {
   const d = parse(ProfileInput, input);
   return inOrg(userId, orgId, 'reg.manage', async (tx) => {
     const before = (await tx.query(`select * from org_regulatory_profiles where organization_id = $1`, [orgId])).rows[0] || null;
-    const p = (await tx.query(`insert into org_regulatory_profiles (organization_id, object_types, processes, product_groups, sales_modes, updated_by)
-      values ($1, $2, $3, $4, $5, $6) on conflict (organization_id) do update set object_types = excluded.object_types, processes = excluded.processes,
-      product_groups = excluded.product_groups, sales_modes = excluded.sales_modes, updated_by = excluded.updated_by, updated_at = now() returning *`,
-      [orgId, d.objectTypes, d.processes, d.productGroups, d.salesModes, userId])).rows[0];
+    const p = (await tx.query(`insert into org_regulatory_profiles (organization_id, object_types, processes, product_groups, sales_modes, updated_by, seats, features)
+      values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (organization_id) do update set object_types = excluded.object_types, processes = excluded.processes,
+      product_groups = excluded.product_groups, sales_modes = excluded.sales_modes, updated_by = excluded.updated_by, updated_at = now(),
+      seats = case when $9 then excluded.seats else org_regulatory_profiles.seats end, features = case when $10 then excluded.features else org_regulatory_profiles.features end returning *`,
+      [orgId, d.objectTypes, d.processes, d.productGroups, d.salesModes, userId, d.seats ?? null, d.features ?? [], d.seats !== undefined, d.features !== undefined])).rows[0];
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'reg.profile_save', entityType: 'reg_profile', entityId: orgId, before, after: p });
     return p;
   });
@@ -82,7 +85,7 @@ export const START_LIST: StartItem[] = [
   { code: 'СанПиН 2.3/2.4.3590-20', kind: 'СанПиН', title: 'СанПиН 2.3/2.4.3590-20 «Санитарно-эпидемиологические требования к организации общественного питания населения»',
     issuer: 'Главный государственный санитарный врач РФ', jurisdiction: 'РФ', binding: 'mandatory',
     note: 'По ТЗ v2 §8: хранить как исторический/переходный источник по официальным датам; не применять автоматически как текущую основу после вступления новых правил.',
-    version: { edition: 'требует указания редакции' } },
+    version: { edition: 'утв. постановлением от 27.10.2020 № 32 (рег. Минюст 11.11.2020 № 60833); утратил силу — постановление от 02.06.2026 № 18', effective_to: '2026-09-01' } },
   { code: 'ТР ТС 021/2011', kind: 'ТР ТС', title: 'ТР ТС 021/2011 «О безопасности пищевой продукции»', issuer: 'Комиссия Таможенного союза', jurisdiction: 'ЕАЭС', binding: 'mandatory', note: 'Проверить применимость и актуальную редакцию (ТЗ v2 §8).', version: { edition: 'требует указания редакции' } },
   { code: 'ТР ТС 022/2011', kind: 'ТР ТС', title: 'ТР ТС 022/2011 «Пищевая продукция в части её маркировки»', issuer: 'Комиссия Таможенного союза', jurisdiction: 'ЕАЭС', binding: 'mandatory', note: 'Применимость зависит от продукта и способа реализации (ТЗ v1 §18).', version: { edition: 'требует указания редакции' } },
   { code: 'ТР ТС 005/2011', kind: 'ТР ТС', title: 'ТР ТС 005/2011 «О безопасности упаковки»', issuer: 'Комиссия Таможенного союза', jurisdiction: 'ЕАЭС', binding: 'mandatory', note: 'Если применяется упаковка (ТЗ v1 §18).', version: { edition: 'требует указания редакции' } },
