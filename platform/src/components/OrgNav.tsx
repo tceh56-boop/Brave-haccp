@@ -31,6 +31,7 @@ function useGroups(): [string, Item[]][] {
     ]],
     ['ХАССП', [
       { href: `${b}/compliance`, label: 'Готов ли я к проверке', show: can('org.read') && (can('haccp.read') || can('pilot.read')) },
+      { href: `${b}/compliance/ppk`, label: 'Программа производственного контроля', show: can('haccp.read') },
       { href: `${b}/haccp`, label: 'План ХАССП', show: can('haccp.read') },
       { href: `${b}/capa`, label: 'CAPA', show: can('capa.read') },
       { href: `${b}/regulatory`, label: 'Нормативная база', show: can('reg.read') },

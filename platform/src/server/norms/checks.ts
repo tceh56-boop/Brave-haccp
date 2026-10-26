@@ -218,8 +218,13 @@ const CHECKS: Record<string, (c: Ctx) => Promise<CheckResult>> = {
     return { status: 'ok', detail: 'Обеспечено системой: утверждённая ТТК не меняется, изменение рецептуры или технологии оформляется новой версией с датой.' };
   },
 
-  async ppk_update() {
-    return { status: 'warn', detail: 'Программа производственного контроля по СанПиН 2.3/2.4.4282-26 в системе ещё не сформирована — её соберёт мастер ППК.' };
+  async ppk_update({ tx, orgId, base }) {
+    const { ppkState } = await import('../ops/ppk');
+    const st = await ppkState(tx, orgId);
+    const href = `${base}/compliance/ppk`;
+    if (st.state === 'none') return { status: 'fail', detail: 'Программа производственного контроля не утверждена. Мастер ППК соберёт её по данным предприятия и нормативной базе.', href };
+    if (st.state === 'outdated') return { status: 'warn', detail: `Программа (версия ${st.version}, утверждена ${st.approved_at!.split('-').reverse().join('.')}) не совпадает с текущими данными: изменились план ХАССП, объекты контроля, исследования, санитария, договоры или персонал. Пересмотрите и утвердите новую версию.`, href };
+    return { status: 'ok', detail: `Программа производственного контроля утверждена (версия ${st.version}, ${st.approved_at!.split('-').reverse().join('.')}) и соответствует текущим данным.`, href };
   },
 };
 
