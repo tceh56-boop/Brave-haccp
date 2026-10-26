@@ -172,7 +172,7 @@ export async function listDishes(userId: string, orgId: string) {
 }
 
 async function loadVersion(tx: Tx, orgId: string, versionId: string, lock = false) {
-  const v = (await tx.query(`select * from ttk_versions where id = $1 and organization_id = $2 ${lock ? 'for update' : ''}`, [versionId, orgId])).rows[0];
+  const v = (await tx.query(`select *, card_date::text as card_date from ttk_versions where id = $1 and organization_id = $2 ${lock ? 'for update' : ''}`, [versionId, orgId])).rows[0];
   if (!v) throw Errors.notFound('Версия ТТК не найдена.');
   return v;
 }
@@ -405,6 +405,8 @@ const VersionInput = z.object({
   technology: optText(10000), storageConditions: optText(1000), shelfLife: optText(300), quality: optText(2000), allergens: optText(1000),
   shelfLifeHours: z.coerce.number().positive('Срок — больше нуля часов.').max(24 * 365).nullable().optional(),   // срок партии п/ф при выпуске
   cardDate: z.iso.date('Дата рецептуры — ГГГГ-ММ-ДД.').optional(), semiYieldG: z.coerce.number().min(0).nullable().optional(),
+  organoleptic: z.object({ appearance: optText(1000), color: optText(1000), consistency: optText(1000), taste: optText(1000) }).optional(),
+  serving: optText(2000), menuDescription: optText(2000),
 });
 
 export async function updateVersion(userId: string, orgId: string, versionId: string, input: unknown) {
@@ -412,9 +414,11 @@ export async function updateVersion(userId: string, orgId: string, versionId: st
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const v = await draftVersion(tx, orgId, versionId);
     await tx.query(`update ttk_versions set yield_g = $2, portion_g = $3, technology = $4, storage_conditions = $5, shelf_life = $6, quality = $7, allergens = $8, shelf_life_hours = $9, return_note = null,
-        card_date = coalesce($10, card_date), semi_yield_g = case when $11::boolean then $12 else semi_yield_g end where id = $1`,
+        card_date = coalesce($10, card_date), semi_yield_g = case when $11::boolean then $12 else semi_yield_g end, organoleptic = coalesce($13, organoleptic),
+        serving = case when $14::boolean then $15 else serving end, menu_description = case when $16::boolean then $17 else menu_description end where id = $1`,
       [versionId, d.yieldG ?? null, d.portionG ?? null, d.technology, d.storageConditions, d.shelfLife, d.quality, d.allergens, d.shelfLifeHours ?? null,
-        d.cardDate || null, d.semiYieldG !== undefined, d.semiYieldG ?? null]);
+        d.cardDate || null, d.semiYieldG !== undefined, d.semiYieldG ?? null, d.organoleptic ? JSON.stringify(d.organoleptic) : null,
+        d.serving !== undefined, d.serving ?? null, d.menuDescription !== undefined, d.menuDescription ?? null]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.update', entityType: 'ttk_version', entityId: versionId,
       before: { yield_g: v.yield_g, portion_g: v.portion_g, shelf_life: v.shelf_life }, after: d });
     return { ok: true };
@@ -613,9 +617,10 @@ export async function newVersion(userId: string, orgId: string, dishId: string, 
     const src = (await tx.query(`select * from ttk_versions where dish_id = $1 and organization_id = $2 order by (status = 'approved') desc, version desc limit 1`, [dishId, orgId])).rows[0];
     if (!src) throw Errors.notFound('Блюдо не найдено.');
     const max = Number((await tx.query(`select max(version) as m from ttk_versions where dish_id = $1`, [dishId])).rows[0].m);
-    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours, semi_yield_g)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning *`,
-      [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours, src.semi_yield_g])).rows[0];
+    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours, semi_yield_g, organoleptic, serving, menu_description)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) returning *`,
+      [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours, src.semi_yield_g,
+        JSON.stringify(src.organoleptic || {}), src.serving, src.menu_description])).rows[0];
     await copyLines(tx, src.id, v.id, 0);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.new_version', entityType: 'ttk_version', entityId: v.id, after: { version: v.version, from: src.version }, reason: d.changeReason });
     return v;

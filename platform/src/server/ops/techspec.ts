@@ -70,20 +70,23 @@ interface Agg {
 const emptyAgg = (): Agg => ({ input_g: 0, protein: 0, fat: 0, carbs: 0, data_g: 0, verified_g: 0, salt_g: 0, missing: new Set(), unverified: new Set(), allergens: new Map(), noProfile: new Set(), suggest: new Map(), warnings: [] });
 
 /** Данные пищевой ценности товара: по документу (подтверждено) или справочник (статус справочника). */
-async function nutritionOf(tx: Tx, productId: string) {
-  const own = (await tx.query(`select kcal_100, protein_100, fat_100, carbs_100, basis from product_nutrition where product_id = $1 order by created_at desc limit 1`, [productId])).rows[0];
-  if (own) return { protein: Number(own.protein_100), fat: Number(own.fat_100), carbs: Number(own.carbs_100), verified: true, source: own.basis as string };
+export async function nutritionOf(tx: Tx, productId: string) {
+  const own = (await tx.query(`select kcal_100, protein_100, fat_100, carbs_100, basis, dry_matter_100, sucrose_100, fat_mass_100 from product_nutrition where product_id = $1 order by created_at desc limit 1`, [productId])).rows[0];
+  const opt = (x: unknown) => (x === null || x === undefined ? null : Number(x));
+  if (own) return { protein: Number(own.protein_100), fat: Number(own.fat_100), carbs: Number(own.carbs_100), verified: true, source: own.basis as string,
+    dry_matter: opt(own.dry_matter_100), sucrose: opt(own.sucrose_100), fat_mass: opt(own.fat_mass_100) };
   const ref = (await tx.query(`select r.protein_100, r.fat_100, r.carbs_100, r.kcal_100, r.verification_status, r.code from products p join reference_products r on r.id = p.reference_product_id where p.id = $1`, [productId])).rows[0];
-  if (ref && ref.kcal_100 !== null) return { protein: Number(ref.protein_100 || 0), fat: Number(ref.fat_100 || 0), carbs: Number(ref.carbs_100 || 0), verified: ref.verification_status === 'VERIFIED', source: `справочник MON CHEF ${ref.code}` };
+  if (ref && ref.kcal_100 !== null) return { protein: Number(ref.protein_100 || 0), fat: Number(ref.fat_100 || 0), carbs: Number(ref.carbs_100 || 0), verified: ref.verification_status === 'VERIFIED', source: `справочник MON CHEF ${ref.code}`,
+    dry_matter: null, sucrose: null, fat_mass: null };
   return null;
 }
 
-async function allergenProfile(tx: Tx, productId: string): Promise<string[] | null> {
+export async function allergenProfile(tx: Tx, productId: string): Promise<string[] | null> {
   const r = (await tx.query(`select allergens from product_allergens where product_id = $1 order by created_at desc limit 1`, [productId])).rows[0];
   return r ? r.allergens : null;
 }
 
-function suggestAllergens(name: string): string[] {
+export function suggestAllergens(name: string): string[] {
   const n = name.toLowerCase();
   return Object.entries(ALLERGENS).filter(([, a]) => a.stems.some((s) => n.includes(s))).map(([k]) => k);
 }
@@ -125,6 +128,8 @@ async function aggregate(tx: Tx, orgId: string, dishId: string, scale: number, p
 
 export interface TuParams {
   processing?: 'thermal' | 'raw' | null; tolerance?: number | null; microGroup?: string | null; micro?: Record<string, string>;
+  physNormed?: { dry?: boolean; fat?: boolean; sugar?: boolean; salt?: boolean }; gerberPct?: number | null; saltMaxPct?: number | null; dryCoef?: number | null; sugarCoef?: number | null;
+  physBasis?: string | null; microIndex?: string | null; microNote?: string | null;
   organoleptic?: string | null; channel?: string | null; okpd2?: string | null; seq?: string | null; okpo?: string | null;
 }
 
@@ -247,6 +252,11 @@ const ParamsInput = z.object({
   seq: z.string().trim().regex(/^\d{1,3}$/, 'Порядковый номер — до 3 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
   okpo: z.string().trim().regex(/^\d{8,10}$/, 'ОКПО — 8 или 10 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
   micro: z.record(z.string(), z.string().trim().max(200)).optional(),
+  // ТТК: нормируемые физико-химические показатели (Методические указания по лабораторному контролю, 1997)
+  physNormed: z.object({ dry: z.boolean(), fat: z.boolean(), sugar: z.boolean(), salt: z.boolean() }).partial().optional(),
+  gerberPct: z.coerce.number().min(0).max(100).nullable().optional(), saltMaxPct: z.coerce.number().min(0).max(20).nullable().optional(),
+  dryCoef: z.coerce.number().min(0).max(1).nullable().optional(), sugarCoef: z.coerce.number().min(0).max(1).nullable().optional(),
+  physBasis: optText(500), microIndex: optText(300), microNote: optText(1000),
 });
 
 export async function saveTechSpecParams(userId: string, orgId: string, dishId: string, input: unknown) {
@@ -254,7 +264,10 @@ export async function saveTechSpecParams(userId: string, orgId: string, dishId: 
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     if (!(await tx.query(`select 1 from dishes where id = $1 and organization_id = $2`, [dishId, orgId])).rowCount) throw Errors.notFound('Блюдо не найдено.');
     const micro = Object.fromEntries(Object.entries(d.micro || {}).filter(([k, v]) => MICRO.some((m) => m.code === k) && v));
-    const params = { ...d, micro };
+    // параметры ТУ и ТТК хранятся вместе: не переданное сохраняется
+    const old = (await tx.query(`select params from tech_specs where dish_id = $1`, [dishId])).rows[0]?.params || {};
+    const given = new Set(Object.keys((input && typeof input === 'object' ? input : {}) as object));
+    const params = { ...old, ...Object.fromEntries(Object.entries(d).filter(([k]) => given.has(k))), ...(d.micro ? { micro } : {}) };
     await tx.query(`insert into tech_specs (organization_id, dish_id, params, updated_by) values ($1, $2, $3, $4)
       on conflict (dish_id) do update set params = excluded.params, updated_by = excluded.updated_by, updated_at = now()`, [orgId, dishId, JSON.stringify(params), userId]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'tu.params', entityType: 'dish', entityId: dishId, after: params });
@@ -289,7 +302,9 @@ export async function getTechSpecVersion(userId: string, orgId: string, dishId: 
 }
 
 const num = z.union([z.number(), z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Введите число.').transform((s) => Number(s.replace(',', '.')))]).refine((x) => x >= 0 && x <= 1000, 'Значение на 100 г — от 0 до 1000.');
+const pct100 = z.union([z.number(), z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Введите число.').transform((s) => Number(s.replace(',', '.')))]).refine((x) => x >= 0 && x <= 100, 'Значение на 100 г — от 0 до 100.');
 const NutritionInput = z.object({ kcal: num, protein: num, fat: num, carbs: num,
+  dryMatter: pct100.nullable().optional(), sucrose: pct100.nullable().optional(), fatMass: pct100.nullable().optional(),   // сухие вещества, сахароза, массовая доля жира
   basis: z.string().trim().min(5, 'Укажите документ: маркировка изготовителя, удостоверение качества, протокол.').max(300) })
   .refine((x) => x.protein + x.fat + x.carbs <= 100, 'Белки, жиры и углеводы вместе — не больше 100 г на 100 г.');
 
@@ -298,8 +313,8 @@ export async function setProductNutrition(userId: string, orgId: string, product
   const d = parse(NutritionInput, input);
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     if (!(await tx.query(`select 1 from products where id = $1 and organization_id = $2`, [productId, orgId])).rowCount) throw Errors.notFound('Товар не найден.');
-    await tx.query(`insert into product_nutrition (organization_id, product_id, kcal_100, protein_100, fat_100, carbs_100, basis, created_by) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [orgId, productId, d.kcal, d.protein, d.fat, d.carbs, d.basis, userId]);
+    await tx.query(`insert into product_nutrition (organization_id, product_id, kcal_100, protein_100, fat_100, carbs_100, basis, created_by, dry_matter_100, sucrose_100, fat_mass_100)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [orgId, productId, d.kcal, d.protein, d.fat, d.carbs, d.basis, userId, d.dryMatter ?? null, d.sucrose ?? null, d.fatMass ?? null]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'product.nutrition', entityType: 'product', entityId: productId, after: d });
     return { ok: true };
   });

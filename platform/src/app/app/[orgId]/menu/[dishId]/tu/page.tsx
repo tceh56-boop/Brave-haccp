@@ -5,6 +5,7 @@ import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
+import { Ingredients, type Prod } from '@/components/IngredientData';
 
 /**
  * Технические условия блюда/п/ф: расчёт из утверждённой ТТК (КБЖУ с потерями, физико-химия, рецептура на 100 кг,
@@ -25,7 +26,6 @@ export interface TuCalc {
   normative: { code: string; title: string; use: string; state: string }[];
   designation: string; status: string; warnings: string[]; generated_at: string;
 }
-interface Prod { id: string; name: string; nutrition: { protein: number; fat: number; carbs: number; verified: boolean; source: string } | null; allergens: string[] | null; suggest: string[] }
 interface Data { params: Record<string, unknown> & { micro?: Record<string, string> }; calc: TuCalc; products: Prod[];
   versions: { version: number; designation: string; lab_protocol: string; approved_at: string; approved_by_name: string; ttk_version: number }[];
   allergen_list: { code: string; label: string }[] }
@@ -103,51 +103,6 @@ function Approve({ ready, busy, onApprove }: { ready: boolean; busy: boolean; on
       <input id="lp" required value={p} onChange={(e) => setP(e.target.value)} placeholder="Протокол № 15 от 20.10.2026, ИЛЦ «…»" />
       <button className="btn block" disabled={busy}>Утвердить ТУ</button>
     </form>
-  );
-}
-
-/** Сырьё: пищевая ценность и профиль аллергенов по документу (новая запись заменяет прежнюю, история сохраняется). */
-function Ingredients({ products, allergenList, label, manage, onDone }: { products: Prod[]; allergenList: { code: string; label: string }[]; label: (c: string) => string; manage: boolean; onDone: () => void }) {
-  const { org } = useOrg();
-  const [edit, setEdit] = useState<string | null>(null);
-  const [nu, setNu] = useState({ kcal: '', protein: '', fat: '', carbs: '', basis: '' });
-  const [al, setAl] = useState<{ list: string[]; basis: string }>({ list: [], basis: '' });
-  const { busy, error, run } = useSubmit();
-  return (
-    <div className="card">
-      <h2>Сырьё: данные по документам</h2>
-      <ul className="list">{products.map((x) => (
-        <li key={x.id}>
-          <div className="between"><b>{x.name}</b>{manage && edit !== x.id && <button className="linkbtn small" onClick={() => {
-            setEdit(x.id); setNu({ kcal: '', protein: x.nutrition ? String(x.nutrition.protein) : '', fat: x.nutrition ? String(x.nutrition.fat) : '', carbs: x.nutrition ? String(x.nutrition.carbs) : '', basis: '' });
-            setAl({ list: x.allergens ?? x.suggest, basis: '' });
-          }}>внести по документу</button>}</div>
-          <div className="small">{x.nutrition ? <>Б {n(x.nutrition.protein)} · Ж {n(x.nutrition.fat)} · У {n(x.nutrition.carbs)} на 100 г — {x.nutrition.verified ? <span className="badge ok">по документу</span> : <span className="badge warn">не проверено</span>} <span className="muted">{x.nutrition.source}</span></> : <span className="badge crit">нет пищевой ценности</span>}</div>
-          <div className="small">Аллергены: {x.allergens === null ? <span className="badge warn">профиля нет</span> : x.allergens.length ? x.allergens.map(label).join(', ') : 'не содержит'}
-            {x.allergens === null && x.suggest.length > 0 && <span className="muted"> · по названию проверьте: {x.suggest.map(label).join(', ')}</span>}</div>
-          {edit === x.id && (
-            <div style={{ marginTop: 8 }}>
-              <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/products/${x.id}/nutrition`, { body: nu }); onDone(); }); }}>
-                <h3>Пищевая ценность на 100 г</h3>
-                <div className="grid2">
-                  {(['kcal', 'protein', 'fat', 'carbs'] as const).map((k) => <div key={k}><label htmlFor={`${k}-${x.id}`}>{({ kcal: 'ккал', protein: 'Белки, г', fat: 'Жиры, г', carbs: 'Углеводы, г' })[k]}</label>
-                    <input id={`${k}-${x.id}`} inputMode="decimal" required value={nu[k]} onChange={(e) => setNu({ ...nu, [k]: e.target.value })} /></div>)}
-                </div>
-                <label htmlFor={`nb-${x.id}`}>Документ</label><input id={`nb-${x.id}`} required value={nu.basis} onChange={(e) => setNu({ ...nu, basis: e.target.value })} placeholder="маркировка изготовителя, удостоверение качества" />
-                <button className="btn small" style={{ marginTop: 8 }} disabled={busy}>Сохранить пищевую ценность</button>
-              </form>
-              <form style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/products/${x.id}/allergens`, { body: { allergens: al.list, basis: al.basis } }); setEdit(null); onDone(); }); }}>
-                <h3>Аллергены (отметьте, что содержит)</h3>
-                <div className="chips">{allergenList.map((a) => <button type="button" key={a.code} aria-pressed={al.list.includes(a.code)} onClick={() => setAl({ ...al, list: al.list.includes(a.code) ? al.list.filter((c) => c !== a.code) : [...al.list, a.code] })}>{a.label}</button>)}</div>
-                <label htmlFor={`ab-${x.id}`}>Документ</label><input id={`ab-${x.id}`} required value={al.basis} onChange={(e) => setAl({ ...al, basis: e.target.value })} placeholder="состав на маркировке, спецификация поставщика" />
-                <div className="row" style={{ marginTop: 8 }}><button className="btn small" disabled={busy}>Сохранить профиль аллергенов</button><button type="button" className="btn small secondary" onClick={() => setEdit(null)}>Закрыть</button></div>
-                <p className="small muted">Ничего не отмечено — «не содержит ни одного аллергена из перечня» (тоже по документу).</p>
-              </form>
-              {error && <div className="err">{error}</div>}
-            </div>
-          )}
-        </li>))}</ul>
-    </div>
   );
 }
 

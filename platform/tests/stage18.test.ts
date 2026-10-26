@@ -7,6 +7,9 @@ import { importTtkArchive, createDish, getDish, updateDish, updateVersion, addLi
 import {
   listMethods, createNorm, approveNorm, archiveNorm, listNorms, normsToday, setNormDefault, setLineSteps, applyNormToDrafts, suggestFromArchive,
 } from '../src/server/ops/processing';
+import { getTtkDoc } from '../src/server/ops/ttkdoc';
+import { setProductNutrition, saveTechSpecParams } from '../src/server/ops/techspec';
+import { setUnitConversion } from '../src/server/ops/stock';
 import { createAct, updateAct, approveAct, getAct, listActs } from '../src/server/ops/controlacts';
 import { previewCosting, createCosting, getCosting, listCosting } from '../src/server/ops/costing';
 import { chain, factors, inSeason, seasonsOverlap, retention } from '../src/server/recipes/chain';
@@ -214,7 +217,7 @@ describe('Рецептура как в Шеф Эксперте: подзагол
       shelfLife: 'по СанПиН', yieldG: 220, portionG: 220, cardDate: '2026-04-03', semiYieldG: 0 });
     const v = (await getDish(tech.id, orgId, steakId));
     expect(v.dish.card_no).toBe('199');
-    expect(v.current!.version.card_date.toISOString?.() ?? String(v.current!.version.card_date)).toMatch(/2026-04-0[23]/);
+    expect(v.current!.version.card_date).toBe('2026-04-03');
   });
 
   it('подзаголовки делят состав; выход по разделам «120/100»; соль в выход не входит', async () => {
@@ -346,5 +349,54 @@ describe('Акт контрольной проработки: фактическ
     const basis = (await getAct(tech.id, orgId, actId)).basis;
     const n = await createNorm(tech.id, orgId, { productId: carrot, method: 'clean', lossPct: 20, basis });
     expect(n.basis).toBe(basis);
+  });
+});
+
+describe('ТТК по ГОСТ 31987-2012 и обоснование расчётов (методика МУ 1997)', () => {
+  let saladId: string, cucumber: string, oil: string;
+
+  it('пищевая ценность с учётом потерь, только ингредиенты в выходе; физхимия по параметрам блюда', async () => {
+    cucumber = (await createProduct(tech.id, orgId, { name: 'Огурцы грунтовые', unit: 'кг' })).id;
+    oil = (await createProduct(tech.id, orgId, { name: 'Масло оливковое', unit: 'л' })).id;
+    await setUnitConversion(owner.id, orgId, { productId: oil, fromUnit: 'л', toUnit: 'кг', factor: 0.92, source: 'Тест: плотность по спецификации' });
+    // условные данные «по документу»
+    await setProductNutrition(tech.id, orgId, cucumber, { kcal: 14, protein: 0.8, fat: 0.1, carbs: 2.6, dryMatter: 5, basis: 'Тест: справочник химсостава' });
+    await setProductNutrition(tech.id, orgId, oil, { kcal: 828, protein: 0, fat: 92, carbs: 0, dryMatter: 99.9, fatMass: 99.8, basis: 'Тест: маркировка' });
+    const d = await createDish(tech.id, orgId, { name: 'Салат из огурцов' });
+    saladId = d.id;
+    const sv = (await getDish(tech.id, orgId, saladId)).current!.version.id;
+    await updateVersion(tech.id, orgId, sv, { technology: 'Огурцы нарезать, заправить маслом, посолить.', storageConditions: 'при +2…+6 °C', shelfLife: 'по СанПиН', yieldG: 110, portionG: 110,
+      organoleptic: { appearance: 'Огурцы нарезаны ломтиками', color: 'Свойственный', consistency: 'Плотная, хрустящая', taste: 'Свойственный, без порочащих признаков' }, serving: 'На тарелке, t 4–6 °C' });
+    await addLine(tech.id, orgId, sv, { productId: cucumber, unit: 'г', brutto: 105, netto: 100 });
+    await addLine(tech.id, orgId, sv, { productId: oil, unit: 'г', brutto: 10, netto: 10 });
+    await addLine(tech.id, orgId, sv, { productId: salt, unit: 'г', brutto: 1, netto: 1, inYield: false });
+    let doc = await getTtkDoc(cook.id, orgId, saladId);
+    expect(doc.nutrition!.total).toMatchObject({ protein: 0.8, fat: 9.3, carbs: 2.6, kcal: 97.3 });
+    expect(doc.nutrition!.per100.kcal).toBe(Math.round(97.3 / 110 * 100 * 100) / 100);
+    expect(doc.lines.find((l: any) => l.name === 'Соль поваренная')!.in_yield).toBe(false);
+    expect(doc.physico.dry.normed).toBe(false);
+    expect(doc.version.organoleptic.consistency).toBe('Плотная, хрустящая');
+    await saveTechSpecParams(tech.id, orgId, saladId, { physNormed: { dry: true, fat: true, salt: true, sugar: false }, saltMaxPct: 1, physBasis: 'Тест: МУ 1997' });
+    doc = await getTtkDoc(cook.id, orgId, saladId);
+    expect(doc.physico.dry).toMatchObject({ normed: true, max: null, missing: ['не задан коэффициент сухих веществ'] });
+    expect(doc.physico.fat).toMatchObject({ max: null, missing: ['не задан коэффициент Гербера'] });
+    await saveTechSpecParams(tech.id, orgId, saladId, { dryCoef: 0.9, gerberPct: 80 });
+    doc = await getTtkDoc(cook.id, orgId, saladId);
+    const dryPct = (5 + 9.99) / 110 * 100;
+    expect(doc.physico.dry).toMatchObject({ max: Math.round((dryPct + 1) * 100) / 100 });
+    expect((doc.physico.dry as any).min).toBeCloseTo((dryPct + 1) * 0.9, 1);
+    expect(doc.physico.fat).toMatchObject({ max: Math.round(9.98 / 110 * 100 * 100) / 100, ingredients: ['Масло оливковое'] });
+    expect(doc.physico.salt).toMatchObject({ value: 1 });
+    // параметры ТУ сохраняются вместе с параметрами ТТК
+    expect((await withSystem((tx) => tx.query(`select params from tech_specs where dish_id = $1`, [saladId]))).rows[0].params).toMatchObject({ saltMaxPct: 1, dryCoef: 0.9, physBasis: 'Тест: МУ 1997' });
+  });
+
+  it('без данных о сухих веществах — показатель не рассчитан (не ноль)', async () => {
+    const sv = (await getDish(tech.id, orgId, saladId)).current!.version.id;
+    await addLine(tech.id, orgId, sv, { productId: rice, unit: 'г', brutto: 10, netto: 10 });
+    const doc = await getTtkDoc(cook.id, orgId, saladId);
+    expect(doc.physico.dry).toMatchObject({ max: null });
+    expect((doc.physico.dry as any).missing[0]).toMatch(/Рис круглозёрный/);
+    expect(doc.missing.nutrition).toContain('Рис круглозёрный');
   });
 });

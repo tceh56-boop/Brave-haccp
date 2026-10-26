@@ -13,7 +13,8 @@ interface Line { id: string; position: number; name_raw: string; product_id: str
 interface Step { method_code: string; method_name: string; kind: 'cold' | 'thermal'; loss_pct: number; norm_id: string | null; basis: string }
 interface Method { code: string; name: string; kind: 'cold' | 'thermal' }
 interface TodayNorm { id: string; loss_pct: number; basis: string; season: string }
-interface Version { id: string; version: number; status: string; status_label: string; card_date: string | null; semi_yield_g: string | null; yield_g: string | null; portion_g: string | null; technology: string | null; storage_conditions: string | null;
+interface Version { id: string; version: number; status: string; status_label: string; card_date: string | null; semi_yield_g: string | null;
+  organoleptic: { appearance?: string | null; color?: string | null; consistency?: string | null; taste?: string | null } | null; serving: string | null; menu_description: string | null; yield_g: string | null; portion_g: string | null; technology: string | null; storage_conditions: string | null;
   shelf_life: string | null; shelf_life_hours: string | null; quality: string | null; allergens: string | null; source: string; change_reason: string | null; return_note: string | null; approved_at: string | null }
 interface Cost { total: number | null; known: number; complete: boolean; missing: string[]; per_portion: number | null; per_kg: number | null; food_cost_pct: number | null;
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
@@ -139,6 +140,7 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           </div>
 
           <Lifecycle data={data} busy={busy} act={act} onNew={() => router.replace(`/app/${org.id}/menu/${dishId}`)} />
+          <Link className="btn block" href={`/app/${org.id}/menu/${dishId}/ttk-docs?v=${v.id}`}>Документы ТТК: карта по ГОСТ 31987, обоснование расчётов</Link>
           <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/acts`}>Акты контрольной проработки</Link>
           {data.versions.some((x) => x.status === 'approved') && can('cost.read') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/costing`}>Калькуляционная карточка (ОП-1)</Link>}
           {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/tu`}>Технические условия (ТУ)</Link>}
@@ -208,7 +210,9 @@ function ReleaseChecks({ dishId }: { dishId: string }) {
 function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string; editable: boolean; onSave: (b: object) => void; busy: boolean }) {
   const init = () => ({ yieldG: v.yield_g ? String(Number(v.yield_g)) : '', portionG: v.portion_g ? String(Number(v.portion_g)) : '', technology: v.technology || '', storageConditions: v.storage_conditions || '',
     shelfLife: v.shelf_life || '', quality: v.quality || '', allergens: v.allergens || '', shelfLifeHours: v.shelf_life_hours ? String(Number(v.shelf_life_hours)) : '',
-    cardDate: v.card_date ? v.card_date.slice(0, 10) : '', semiYieldG: v.semi_yield_g ? String(Number(v.semi_yield_g)) : '' });
+    cardDate: v.card_date ? v.card_date.slice(0, 10) : '', semiYieldG: v.semi_yield_g ? String(Number(v.semi_yield_g)) : '',
+    appearance: v.organoleptic?.appearance || '', color: v.organoleptic?.color || '', consistency: v.organoleptic?.consistency || '', taste: v.organoleptic?.taste || '',
+    serving: v.serving || '', menuDescription: v.menu_description || '' });
   const [f, setF] = useState(init);
   useEffect(() => { setF(init()); }, [v.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!editable) {
@@ -220,13 +224,16 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
         <dt>Срок</dt><dd>{v.shelf_life || '—'}</dd>
         {kind === 'semi' && <><dt>Срок партии</dt><dd>{v.shelf_life_hours ? `${n(v.shelf_life_hours)} ч от выпуска` : 'не задан — партия п/ф получит «срок не подтверждён»'}</dd></>}
         {v.quality && <><dt>Качество</dt><dd>{v.quality}</dd></>}
+        {v.serving && <><dt>Подача</dt><dd>{v.serving}</dd></>}
+        {v.organoleptic && Object.values(v.organoleptic).some(Boolean) && <><dt>Органолептика</dt><dd>{[['Внешний вид', v.organoleptic.appearance], ['Цвет', v.organoleptic.color], ['Консистенция', v.organoleptic.consistency], ['Вкус и запах', v.organoleptic.taste]].filter(([, x]) => x).map(([k, x]) => `${k}: ${x}`).join('; ')}</dd></>}
         {v.allergens && <><dt>Аллергены</dt><dd>{v.allergens}</dd></>}
       </dl>
     );
   }
   const num = (s: string) => (s ? Number(s.replace(',', '.')) : null);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null, shelfLifeHours: num(f.shelfLifeHours), cardDate: f.cardDate || undefined, semiYieldG: num(f.semiYieldG) }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null, shelfLifeHours: num(f.shelfLifeHours), cardDate: f.cardDate || undefined, semiYieldG: num(f.semiYieldG),
+      organoleptic: { appearance: f.appearance || null, color: f.color || null, consistency: f.consistency || null, taste: f.taste || null }, serving: f.serving || null, menuDescription: f.menuDescription || null }); }}>
       <div className="grid2">
         <div><label htmlFor="cd">Дата рецептуры</label><input id="cd" type="date" value={f.cardDate} onChange={(e) => setF({ ...f, cardDate: e.target.value })} /></div>
         <div><label htmlFor="syg">Выход п/ф, г</label><input id="syg" inputMode="decimal" value={f.semiYieldG} onChange={(e) => setF({ ...f, semiYieldG: e.target.value })} placeholder="0 — без п/ф" /></div>
@@ -242,6 +249,15 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
         <div><label htmlFor="al">Аллергены</label><input id="al" value={f.allergens} onChange={(e) => setF({ ...f, allergens: e.target.value })} /></div>
         {kind === 'semi' && <div><label htmlFor="slh">Срок партии п/ф, ч от выпуска</label><input id="slh" inputMode="decimal" value={f.shelfLifeHours} onChange={(e) => setF({ ...f, shelfLifeHours: e.target.value })} placeholder="по утверждённому основанию" /></div>}
       </div>
+      <label htmlFor="sv">Подача (оформление, температура подачи)</label><textarea id="sv" rows={2} value={f.serving} onChange={(e) => setF({ ...f, serving: e.target.value })} />
+      <h3 style={{ marginTop: 10 }}>Органолептические показатели (для ТТК)</h3>
+      <div className="grid2">
+        <div><label htmlFor="oa">Внешний вид</label><textarea id="oa" rows={2} value={f.appearance} onChange={(e) => setF({ ...f, appearance: e.target.value })} /></div>
+        <div><label htmlFor="oc">Цвет</label><textarea id="oc" rows={2} value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} /></div>
+        <div><label htmlFor="ok">Консистенция</label><textarea id="ok" rows={2} value={f.consistency} onChange={(e) => setF({ ...f, consistency: e.target.value })} /></div>
+        <div><label htmlFor="ot">Вкус и запах</label><textarea id="ot" rows={2} value={f.taste} onChange={(e) => setF({ ...f, taste: e.target.value })} /></div>
+      </div>
+      <label htmlFor="md">Описание для меню (информационный лист)</label><textarea id="md" rows={2} value={f.menuDescription} onChange={(e) => setF({ ...f, menuDescription: e.target.value })} />
       <button className="btn block secondary" disabled={busy}>Сохранить</button>
     </form>
   );

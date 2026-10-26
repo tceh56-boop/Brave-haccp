@@ -142,6 +142,32 @@ await P.waitForSelector('text=Основание для норм обработ�
 await P.waitForSelector('td:has-text("125")');
 await shot(P, 'акт_проработки');
 
+step('документы ТТК: данные сырья по документу, показатели качества, карта по ГОСТ 31987 и обоснование');
+await P.goto(`${BASE}${base}/menu/${salad.id}`);
+await P.click('a:has-text("Документы ТТК")');
+await P.waitForSelector('h1:has-text("Документы ТТК")');
+await P.click('li:has-text("Морковь свежая") button:has-text("внести по документу")');
+const pid = carrot.id;
+await P.fill(`#kcal-${pid}`, '35'); await P.fill(`#protein-${pid}`, '1,3'); await P.fill(`#fat-${pid}`, '0,1'); await P.fill(`#carbs-${pid}`, '6,9');
+await P.fill(`#dryMatter-${pid}`, '12'); await P.fill(`#nb-${pid}`, 'Тест: справочник химического состава');
+await P.click('button:has-text("Сохранить пищевую ценность")');
+await P.waitForSelector('text=сухие в-ва 12');
+await P.check('label:has-text("Массовая доля сухих веществ") input'); await P.check('label:has-text("Массовая доля поваренной соли") input');
+await P.fill('#qs', '1'); await P.fill('#qd', '0,9'); await P.fill('#qmi', 'ТР ТС 021/2011 (тест)');
+await P.click('button:has-text("Сохранить показатели")');
+await P.waitForSelector('li:has-text("Сухие вещества") b');
+await shot(P, 'документы_ттк');
+await P.click('a:has-text("Технико-технологическая карта")');
+await P.waitForSelector('h1:has-text("Технико-технологическая карта №")');
+await P.waitForSelector('text=5.2. Нормируемые физико-химические показатели');
+await P.waitForSelector('text=1 порция (100 грамм) содержит');
+await shot(P, 'ттк_гост');
+await P.goBack(); await P.waitForSelector('h1:has-text("Документы ТТК")');
+await P.click('a:has-text("Обоснование расчётов")');
+await P.waitForSelector('text=Таблица 1. Расчёт пищевой ценности');
+await P.waitForSelector('text=Минимально допустимое содержание сухих веществ');
+await shot(P, 'обоснование');
+
 await browser.close(); await db.end();
 if (errors.length) throw new Error(`ошибки страницы: ${errors.join('; ')}`);
 console.log('✓ этап 18: обработка сырья');
