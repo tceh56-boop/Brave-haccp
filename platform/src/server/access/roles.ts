@@ -58,6 +58,7 @@ export const PERMISSIONS = {
   'menu.read': 'Просмотр блюд и ТТК',
   'ttk.manage': 'Разработка ТТК: состав, технология, сопоставление сырья',
   'ttk.approve': 'Утверждение ТТК',
+  'sto.approve': 'Утверждение стандартов организации (СТО) — руководитель',
   'menu.price': 'Цены продажи блюд',
   'cost.read': 'Себестоимость, цены закупки, фудкост',
   // Этап 6: касса, продажи, экономика.
@@ -119,7 +120,7 @@ export const ROLES = {
   owner: { label: 'Владелец', summary: 'Настройки организации, экономика, приглашения, утверждение ключевых документов', permissions: ALL },
   enterprise_admin: { label: 'Администратор предприятия', summary: 'Площадки, роли, справочники, журналы, интеграции', permissions: ALL },
   director: { label: 'Директор / управляющий', summary: 'Операционные отчёты, задачи, контроль исполнения',
-    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit', 'pilot.read', 'pilot.confirm', 'purchase.read', 'purchase.manage', 'event.manage', 'equipment.manage', 'sanitation.verify', 'staff.read', 'staff.medical', 'staff.health_check', 'staff.brief', 'recognition.manage'] },
+    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'sto.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'ai.audit', 'pilot.read', 'pilot.confirm', 'purchase.read', 'purchase.manage', 'event.manage', 'equipment.manage', 'sanitation.verify', 'staff.read', 'staff.medical', 'staff.health_check', 'staff.brief', 'recognition.manage'] },
   chef: { label: 'Шеф / су-шеф', summary: 'ТТК, рецептуры, производственные задания, выходы и списания',
     permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify', 'ttk.manage', 'ttk.approve', 'menu.price', 'cost.read', 'pos.stop', 'sales.manage', 'production.plan', 'purchase.read', 'purchase.manage', 'event.manage', 'lab.read', 'equipment.manage', 'sanitation.verify', 'sanitation.manage', 'staff.read', 'staff.health_check', 'staff.brief'] },
   technologist: { label: 'Технолог', summary: 'Технологические параметры, расчёты, документы',

@@ -186,6 +186,25 @@ await P.waitForSelector('text=ГОСТ 32284-2013');
 await P.waitForSelector('h2:has-text("Лист регистрации изменений")');
 await shot(P, 'ти_документ');
 
+step('СТО на группу блюд: состав, разделы, документ');
+await P.goto(`${BASE}${base}/menu`);
+await P.click('a:has-text("Стандарты организации")');
+await P.waitForSelector('h1:has-text("Стандарты организации (СТО)")');
+await P.fill('#st', 'Салаты и холодные закуски');
+await P.click('button:has-text("Создать СТО")');
+await P.waitForSelector('h2:has-text("Состав и разделы")');
+await P.click('.chips button:has-text("Салат из моркови")');
+await P.fill('#sto-scope', 'Салаты, изготавливаемые и реализуемые на предприятии.');
+await P.fill('#sto-packaging', 'Реализуется в зале на тарелке.');
+await P.click('form:has-text("Состав и разделы") button:has-text("Сохранить")');
+await P.waitForSelector('h1:has-text("СТО 12345678-001-")');
+await shot(P, 'сто');
+await P.click('a:has-text("Документ СТО")');
+await P.waitForSelector('h1:has-text("СТАНДАРТ ОРГАНИЗАЦИИ")');
+await P.waitForSelector('td:has-text("ГОСТ 32284-2013")');
+await P.waitForSelector('h2:has-text("11. Информационные данные о пищевой и энергетической ценности")');
+await shot(P, 'сто_документ');
+
 await browser.close(); await db.end();
 if (errors.length) throw new Error(`ошибки страницы: ${errors.join('; ')}`);
 console.log('✓ этап 18: обработка сырья');

@@ -9,6 +9,7 @@ import {
 } from '../src/server/ops/processing';
 import { getTtkDoc } from '../src/server/ops/ttkdoc';
 import { getTi, approveTi, getTiVersion } from '../src/server/ops/techinstr';
+import { createSto, updateSto, getSto, approveSto, listSto, getStoVersion } from '../src/server/ops/sto';
 import { setSampleSettings, createProgram } from '../src/server/ops/lab';
 import { createPlan } from '../src/server/ops/sanitation';
 import { setProductNutrition, saveTechSpecParams } from '../src/server/ops/techspec';
@@ -446,5 +447,49 @@ describe('Технологическая инструкция: из утверж
     expect(x.snapshot.designation).toBe(r.calc.designation);
     expect(x.versions.map((v: any) => v.change_note)).toEqual(['Введена впервые']);
     await expect(withSystem((tx) => tx.query(`update ti_versions set change_note = 'x' where dish_id = $1`, [dId]))).rejects.toThrow(/не изменяются/);
+  });
+});
+
+describe('СТО на группу блюд: из утверждённых ТТК, утверждает руководитель, актуализация через год', () => {
+  let stoId: string, dId: string, director: U;
+
+  it('проект: блюда без утверждённой ТТК не входят; не заполнено — перечислено', async () => {
+    director = await invite('director');
+    dId = (await withSystem((tx) => tx.query(`select id from dishes where organization_id = $1 and name = 'Салат из огурцов'`, [orgId]))).rows[0].id;
+    const draftDish = (await createDish(tech.id, orgId, { name: 'Салат без ТТК' })).id;
+    await expect(createSto(cook.id, orgId, { title: 'Салаты' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const s = await createSto(tech.id, orgId, { title: 'Салаты и холодные закуски', dishIds: [dId, draftDish] });
+    stoId = s.id;
+    const g = await getSto(cook.id, orgId, stoId);
+    expect(g.calc.dishes.map((d: any) => d.name)).toEqual(['Салат из огурцов']);
+    const w = g.calc.warnings.join(' ');
+    expect(w).toMatch(/«Салат без ТТК»: нет утверждённой ТТК/);
+    expect(w).toMatch(/область применения/); expect(w).toMatch(/микробиологические/);
+    // ОКПО подхвачен из параметров ТУ/ТИ; НД на сырьё — из ТИ блюда
+    expect(g.calc.designation).toMatch(/^СТО 12345678-\d{3}-\d{4}$/);
+    expect(g.calc.raw.find((r: any) => r.name === 'Огурцы грунтовые').doc).toBe('Тест: ГОСТ изготовителя');
+    await expect(approveSto(director.id, orgId, stoId, { changeNote: 'Введён впервые' })).rejects.toThrow(/проект/);
+  });
+
+  it('руководитель утверждает; технолог — нет; задача актуализации через год; снимок неизменяем', async () => {
+    const draftDish = (await withSystem((tx) => tx.query(`select id from dishes where organization_id = $1 and name = 'Салат без ТТК'`, [orgId]))).rows[0].id;
+    await updateSto(tech.id, orgId, stoId, { dishIds: [dId], scope: 'Салаты, изготавливаемые и реализуемые на предприятии.', packaging: 'Реализуется в зале на тарелке.' });
+    await saveTechSpecParams(tech.id, orgId, dId, { micro: { KMAFANM: 'Тест: 5×10^4', BGKP: 'Тест: 0,1' } });
+    await setProductNutrition(tech.id, orgId, rice, { kcal: 330, protein: 7, fat: 1, carbs: 74, basis: 'Тест: маркировка' });
+    const g = await getSto(cook.id, orgId, stoId);
+    expect(g.calc.warnings).toEqual([]);
+    await expect(approveSto(tech.id, orgId, stoId, { changeNote: 'Введён впервые' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const a = await approveSto(director.id, orgId, stoId, { changeNote: 'Введён впервые' });
+    expect(a.version).toBe(1);
+    const year = Number(a.review_due.slice(0, 4));
+    expect(year).toBe(new Date().getFullYear() + 1);
+    const task = (await withSystem((tx) => tx.query(`select title, assignee_role, due_at from tasks where organization_id = $1 and kind = 'sto_review' and status = 'open'`, [orgId]))).rows[0];
+    expect(task).toMatchObject({ assignee_role: 'technologist' });
+    expect(task.title).toMatch(/Актуализировать СТО 12345678/);
+    const v = await getStoVersion(cook.id, orgId, stoId, 1);
+    expect(v.snapshot.dishes[0].name).toBe('Салат из огурцов');
+    await expect(withSystem((tx) => tx.query(`update sto_versions set change_note = 'x' where sto_id = $1`, [stoId]))).rejects.toThrow(/не изменяются/);
+    expect((await listSto(cook.id, orgId))[0].last).toMatchObject({ version: 1 });
+    expect(draftDish).toBeTruthy();
   });
 });
