@@ -91,6 +91,6 @@ export async function createProductFromReference(userId: string, orgId: string, 
 }
 
 if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
-  importReference().then((r) => console.log('справочник:', r)).catch((e) => { console.error(e.message); process.exitCode = 1; })
+  importReference().then(async (r) => { console.log('справочник:', r); console.log('реестр норм обработки:', await (await import('./registry')).importProcessingRegistry()); }).catch((e) => { console.error(e.message); process.exitCode = 1; })
     .finally(async () => (await import('../db/pool')).closePool());
 }

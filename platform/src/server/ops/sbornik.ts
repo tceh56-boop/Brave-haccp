@@ -17,9 +17,9 @@ import book from '../../../data/reference/sbornik2022.json';
  * основание, а не решение. Основание нормы — издание, страница или номера рецептур.
  */
 
-interface TableRow { id: string; name: string; brutto: number; pct: number; netto: number; page: number; method: string; season: [number, number] | null; note: string | null }
-interface Derived { name: string; method?: string; values: { pct: number; recipes: number[] }[]; n: number }
-const B = book as unknown as { source: Record<string, any>; table: TableRow[]; cold: Derived[]; thermal: Derived[] };
+interface Row { id: string; product: string; method: string; kind: 'cold' | 'thermal'; pct: number; season: [number, number] | null; source: 'table' | 'recipes' | 'pf';
+  recipes: number[]; recipes_total?: number; values: { pct: number; recipes: number[] }[]; note: string | null; basis: string }
+const B = book as unknown as { source: Record<string, any>; norms: Row[] };
 const SRC = `${B.source.short}, ${B.source.edition}, ${B.source.publisher}`;
 
 export interface Candidate {
@@ -52,18 +52,11 @@ const seasonGroup = (name: string) => name.replace(/,?\s*(с|до) 1 .*$/, '').t
 
 function candidates(product: string): Candidate[] {
   const out: (Candidate & { s: number })[] = [];
-  for (const r of B.table) {
-    const s = score(product, r.name); if (!s) continue;
-    out.push({ s: s + 5, key: r.id, kind: 'table', method: r.method, name: r.name, pct: r.pct, season: r.season, group: r.season ? seasonGroup(r.name) : null,
-      basis: `${SRC}, с. ${r.page}, табл. «${B.source.table_title}»: ${r.name} — брутто ${r.brutto} г, отходы ${r.pct} %, нетто ${r.netto} г`, note: r.note });
-  }
-  for (const [list, kind] of [[B.cold, 'cold'], [B.thermal, 'thermal']] as const) for (const d of list) {
-    const s = score(product, d.name); if (!s) continue;
-    const top = d.values[0];
-    out.push({ s, key: `${kind}:${d.method || 'clean'}:${d.name}`, kind, method: d.method || 'clean', name: d.name, pct: top.pct, season: null, group: null,
-      basis: `${SRC}, рецептуры ${recipesRef(top.recipes)}: ${d.name}${kind === 'cold' ? ' — брутто/нетто' : ' — нетто сырья / масса после обработки'}`,
-      note: d.values.length > 1 ? `В рецептурах сборника встречается ${d.values.length} значений; выбрано самое частое (${top.recipes.length} из ${d.n}).` : null,
-      alternatives: d.values.slice(0, 8) });
+  for (const r of B.norms) {
+    const s = score(product, r.product); if (!s) continue;
+    const kind = r.source === 'table' ? 'table' : r.kind;
+    out.push({ s: s + (r.source === 'table' ? 5 : 0), key: r.id, kind, method: r.method, name: r.product, pct: r.pct, season: r.season,
+      group: r.source === 'table' && r.season ? seasonGroup(r.product) : null, basis: r.basis, note: r.note, alternatives: r.values.length > 1 ? r.values.slice(0, 8) : undefined });
   }
   return out.sort((a, b) => b.s - a.s || (a.kind === 'table' ? -1 : 1)).slice(0, 20).map(({ s, ...c }) => c);
 }

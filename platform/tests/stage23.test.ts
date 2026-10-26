@@ -26,14 +26,15 @@ beforeAll(async () => {
 });
 
 describe('Справочник Сборника рецептур', () => {
-  it('таблица с. 669–671 — дословные проценты; расхождения источника помечены', () => {
-    const t = book.table;
+  it('реестр: таблица с. 669–671 — дословные проценты; расхождения источника помечены; тепловые потери по рецептурам', () => {
+    const t = book.norms.filter((r) => r.source === 'table');
     expect(t.length).toBe(80);
-    const potato = t.filter((r) => r.name.startsWith('Картофель') && r.season);
+    const potato = t.filter((r) => r.product.startsWith('Картофель') && r.season);
     expect(potato.map((r) => r.pct)).toEqual([25, 30, 35, 40]);
-    expect(t.find((r) => r.name === 'Лук, репчатый свежий сырой очищенный')!.pct).toBe(16);
-    expect(t.find((r) => r.name.startsWith('Яблоко свежее с удаленным'))!.note).toMatch(/18 %/);
-    expect(book.thermal.some((x) => x.name.startsWith('Говядина') && x.method === 'boil')).toBe(true);
+    expect(t.find((r) => r.product === 'Лук, репчатый свежий сырой очищенный')!.pct).toBe(16);
+    expect(t.find((r) => r.product.startsWith('Яблоко свежее с удаленным'))!.note).toMatch(/18 %/);
+    expect(book.norms.some((x) => x.product.startsWith('Говядина') && x.method === 'boil')).toBe(true);
+    expect(book.norms.find((x) => x.id === 'T02')!.base.map((b) => b.name)).toEqual(['Картофель']);
   });
 
   it('подбор по товарам: картофель — таблица, говядина — холодная и тепловая по рецептурам; ложных совпадений нет', async () => {
