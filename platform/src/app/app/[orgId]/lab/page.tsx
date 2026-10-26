@@ -8,6 +8,7 @@ import { InstrumentPicker } from '@/components/InstrumentPicker';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
+import { WATER_MICRO, WORK_CATEGORIES, microclimate } from '@/lib/hygieneNorms';
 
 /** Суточные пробы (отбор, хранение, уничтожение по сроку) и лабораторный контроль (программа, результаты по протоколам). */
 
@@ -147,6 +148,7 @@ function LabTab() {
   const [pg, setPg] = useState({ testType: '', target: '', periodDays: '90', retestDays: '7', nextDue: today(), basis: '' });
   const [r, setR] = useState({ programId: '', testType: '', target: '', labName: '', protocolNo: '', sampledOn: today(), resultOn: today(), result: '', conclusion: '' });
   const [params, setParams] = useState<Param[]>([]);
+  const [mc, setMc] = useState({ season: 'cold' as 'cold' | 'warm', category: 'IIа' });
   const [done, setDone] = useState<string | null>(null);
   const { busy, error, run, setError } = useSubmit();
   const manage = can('lab.manage');
@@ -202,6 +204,17 @@ function LabTab() {
             <div><label htmlFor="rd">Результат от</label><input id="rd" type="date" value={r.resultOn} onChange={(e) => setR({ ...r, resultOn: e.target.value })} /></div>
           </div>
           <h3 style={{ marginTop: 12 }}>Показатели из протокола</h3>
+          {params.length === 0 && (
+            <div className="card" style={{ padding: 10, marginBottom: 8 }}>
+              <p className="small" style={{ marginTop: 0 }}>Подставить нормы из СанПиН 1.2.3685-21 — останется внести факт по протоколу:</p>
+              <button type="button" className="btn secondary small" onClick={() => setParams(WATER_MICRO.map((w) => ({ name: w.name, norm: `${w.norm} (${w.source})`, fact: '', unit: w.unit, pass: true })))}>Вода питьевая — табл. 3.5</button>
+              <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                <select aria-label="Период года" value={mc.season} onChange={(e) => setMc({ ...mc, season: e.target.value as 'cold' | 'warm' })} style={{ width: 'auto' }}><option value="cold">холодный период</option><option value="warm">тёплый период</option></select>
+                <select aria-label="Категория работ" value={mc.category} onChange={(e) => setMc({ ...mc, category: e.target.value })} style={{ width: 'auto' }}>{WORK_CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                <button type="button" className="btn secondary small" onClick={() => setParams(microclimate(mc.season, mc.category).map((w) => ({ name: w.name, norm: `${w.norm} (${w.source})`, fact: '', unit: w.unit, pass: true })))}>Микроклимат — табл. 5.2</button>
+              </div>
+              <p className="small muted">Категорию работ берут из специальной оценки условий труда (табл. 5.1).</p>
+            </div>)}
           {params.map((p, i) => (
             <div key={i} className="card" style={{ padding: 10, marginBottom: 8 }}>
               <div className="grid2">
