@@ -6,13 +6,16 @@ import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { roleHas } from '../access/roles';
 import { inOrg, parse, optText, openTask, fmtNum } from './common';
+import { versionSteps, defaultSteps, applyLineSteps } from './processing';
+import { chain, retention, type From } from '../recipes/chain';
 
 /**
  * Блюда, полуфабрикаты и ТТК (ТЗ v1 §9, §12; этап 6 ТЗ v2). Версия ТТК: черновик → на согласовании → утверждена →
  * архив. Утверждённая версия не меняется (триггер в базе) — изменения новой версией. Утверждает человек с правом
  * ttk.approve; списание при производстве и продаже — только по утверждённой версии.
  * Себестоимость — по ценам партий из документов поставки; нет цены — себестоимость неполная, а не нулевая.
- * КБЖУ — из справочника MON CHEF по закладке нетто, без учёта потерь при тепловой обработке; пока записи
+ * Обработка сырья: брутто → холодная → нетто → тепловая → выход по нормам организации (processing.ts).
+ * КБЖУ — из справочника MON CHEF по закладке нетто с потерями нутриентов по нормам тепловой обработки (если заданы); пока записи
  * справочника не проверены (Б-5), результат помечается как ориентировочный.
  */
 
@@ -30,7 +33,7 @@ export const normName = (s: string) => s.toLowerCase().replace(/ё/g, 'е').repl
 export const TTK_ARCHIVE_FILE = path.resolve(__dirname, '../../../data/reference/ttk_archive.json');
 
 interface ArchiveCard { source_path: string; category_path?: string[]; name?: string; yield_raw?: string; yield_g?: number | null; yield_source?: string; basis?: string; format?: string;
-  lines: { no?: number; name: string; unit: string; brutto: number | null; netto: number | null; is_portion_ref?: boolean; portion_g?: number | null }[]; technology?: string; issues?: string[] }
+  lines: { no?: number; name: string; unit: string; brutto: number | null; netto: number | null; ready?: number | null; is_portion_ref?: boolean; portion_g?: number | null }[]; technology?: string; issues?: string[] }
 
 /** Загрузка архива ТТК (повторная — обновляет по пути файла, ничего не удаляет). */
 export async function importTtkArchive(file = TTK_ARCHIVE_FILE) {
@@ -94,8 +97,8 @@ export async function importFromArchive(userId: string, orgId: string, input: un
         const unit = cardUnit(l.unit);
         const note = [unit ? '' : `единица в карте: «${l.unit}»`, l.is_portion_ref && l.portion_g ? `порция ${l.portion_g} г` : ''].filter(Boolean).join('; ') || null;
         const m = await aliasFor(tx, orgId, l.name);
-        await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, note) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [orgId, v.id, ++pos, l.name, m?.product_id || null, m?.sub_dish_id || null, unit || 'кг', l.brutto, l.netto, note]);
+        await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, note) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [orgId, v.id, ++pos, l.name, m?.product_id || null, m?.sub_dish_id || null, unit || 'кг', l.brutto, l.netto, l.ready ?? null, note]);
         res.lines++; if (m) res.matched++;
       }
       res.dishes++;
@@ -194,6 +197,8 @@ export async function getDish(userId: string, orgId: string, dishId: string, ver
 async function versionCard(tx: Tx, orgId: string, v: Record<string, any>, dish: Record<string, any>, seeCost: boolean) {
   const lines = (await tx.query(`select l.*, p.name as product_name, p.unit as product_unit, p.reference_product_id, sd.name as sub_dish_name
     from ttk_lines l left join products p on p.id = l.product_id left join dishes sd on sd.id = l.sub_dish_id where l.version_id = $1 order by l.position`, [v.id])).rows;
+  const steps = await versionSteps(tx, v.id);
+  for (const l of lines) l.steps = steps.get(l.id) || [];
   const calc = await calcVersion(tx, orgId, v.id, new Set([dish.id]));
   const blockers = await versionBlockers(tx, orgId, v, dish, lines);
   const perPortion = dish.kind === 'dish' && v.portion_g && v.yield_g ? Number(v.portion_g) / Number(v.yield_g) : null;
@@ -205,14 +210,18 @@ async function versionCard(tx: Tx, orgId: string, v: Record<string, any>, dish: 
     lines: calc.lines,
   } : null;
   const warnings: string[] = [];
-  if (calc.mass_g && v.yield_g && Number(v.yield_g) > calc.mass_g * 1.02) warnings.push(`Выход (${fmtNum(v.yield_g)} г) больше закладки нетто (${fmtNum(Math.round(calc.mass_g))} г) — проверьте единицы или состав.`);
-  return { version: { ...v, status_label: TTK_STATUS[v.status] } as Record<string, any>, lines, blockers, warnings, cost, kbju: calc.kbju };
+  if (calc.ready_complete && calc.ready_g && v.yield_g && Math.abs(Number(v.yield_g) - calc.ready_g) > calc.ready_g * 0.03) {
+    warnings.push(`Выход карты (${fmtNum(v.yield_g)} г) расходится с выходом по обработке сырья (${fmtNum(Math.round(calc.ready_g))} г) — проверьте выход или нормы обработки.`);
+  } else if (!calc.ready_complete && calc.mass_g && v.yield_g && Number(v.yield_g) > calc.mass_g * 1.02) warnings.push(`Выход (${fmtNum(v.yield_g)} г) больше закладки нетто (${fmtNum(Math.round(calc.mass_g))} г) — проверьте единицы или состав.`);
+  return { version: { ...v, status_label: TTK_STATUS[v.status] } as Record<string, any>, lines, blockers, warnings, cost, kbju: calc.kbju,
+    output: { netto_g: calc.mass_g ? Math.round(calc.mass_g) : null, ready_g: calc.ready_complete && calc.ready_g ? Math.round(calc.ready_g) : null } };
 }
 
 /* ───────────── Расчёт: себестоимость и КБЖУ ───────────── */
 
 interface Calc { cost: { total: number; complete: boolean; missing: string[] }; lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[];
-  kbju: { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[] }; mass_g: number }
+  kbju: { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' };
+  mass_g: number; ready_g: number; ready_complete: boolean }
 
 /** Количество line в единице to: масса и объём — стандартно, иначе подтверждённый коэффициент товара. */
 async function convert(tx: Tx, productId: string | null, qty: number, from: string, to: string): Promise<number | null> {
@@ -260,9 +269,10 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
     from ttk_lines l left join products p on p.id = l.product_id left join reference_products r on r.id = p.reference_product_id left join dishes sd on sd.id = l.sub_dish_id
     left join lateral (select * from product_nutrition x where x.product_id = l.product_id order by x.created_at desc limit 1) pn on true
     where l.version_id = $1 order by l.position`, [versionId])).rows;
-  const out: Calc = { cost: { total: 0, complete: true, missing: [] }, lines: [], kbju: { per100: null, complete: true, verified: true, missing: [] }, mass_g: 0 };
+  const out: Calc = { cost: { total: 0, complete: true, missing: [] }, lines: [], kbju: { per100: null, complete: true, verified: true, missing: [], losses: 'none' }, mass_g: 0, ready_g: 0, ready_complete: true };
   const k = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
-  let counted = 0;   // строк, вошедших в КБЖУ: ни одной — значит «не рассчитано», а не ноль
+  const steps = await versionSteps(tx, versionId);
+  let counted = 0, thermal = 0, withLosses = 0;   // строк, вошедших в КБЖУ: ни одной — значит «не рассчитано», а не ноль
   for (const l of lines) {
     const gross = Number(l.brutto ?? l.netto ?? 0), net = Number(l.netto ?? l.brutto ?? 0);
     let lineCost: number | null = null, price: number | null = null, priceUnit: string | null = null, source: string | null = null;
@@ -271,21 +281,36 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
       const qty = pp ? await convert(tx, l.product_id, gross, l.unit, pp.unit) : null;
       if (pp && qty !== null) { lineCost = qty * pp.price; price = pp.price; priceUnit = pp.unit; source = pp.source; }
       else out.cost.missing.push(pp ? `${l.product_name}: нет коэффициента «${l.unit} → ${pp.unit}»` : `${l.product_name}: нет цены закупки`);
-      const g = await convert(tx, l.product_id, net, l.unit, 'г');
+      const g = l.in_yield ? await convert(tx, l.product_id, net, l.unit, 'г') : null;
+      if (!l.in_yield) { out.lines.push({ line_id: l.id, cost: lineCost === null ? null : r2(lineCost), price: price === null ? null : r2(price), price_unit: priceUnit, source }); if (lineCost !== null) out.cost.total += lineCost; continue; }
       if (g !== null) out.mass_g += g;
+      const ls = steps.get(l.id) || [];
+      const rg = l.ready !== null ? await convert(tx, l.product_id, Number(l.ready), l.unit, 'г') : ls.some((s) => s.kind === 'thermal') ? null : g;
+      if (rg !== null) out.ready_g += rg; else out.ready_complete = false;
+      // потери нутриентов при тепловой обработке — по нормам шагов; неизвестны — без потерь (ориентировочно)
+      const hasThermal = ls.some((s) => s.kind === 'thermal'), keep = hasThermal ? retention(ls as any) : null;
+      if (hasThermal) { thermal++; if (keep) withLosses++; }
       if (g !== null && l.kcal_100 !== null) {
-        k.kcal += g * Number(l.kcal_100) / 100; k.protein += g * Number(l.protein_100 || 0) / 100; k.fat += g * Number(l.fat_100 || 0) / 100; k.carbs += g * Number(l.carbs_100 || 0) / 100;
+        const kp = keep || { protein: 1, fat: 1, carbs: 1 };
+        const p0 = g * Number(l.protein_100 || 0) / 100, f0 = g * Number(l.fat_100 || 0) / 100, c0 = g * Number(l.carbs_100 || 0) / 100;
+        const pr = p0 * kp.protein, ft = f0 * kp.fat, cb = c0 * kp.carbs;
+        // энергия: по справочнику минус потерянные нутриенты (4/9/4 ккал, ТР ТС 022/2011)
+        k.kcal += g * Number(l.kcal_100) / 100 - ((p0 - pr) * 4 + (f0 - ft) * 9 + (c0 - cb) * 4); k.protein += pr; k.fat += ft; k.carbs += cb;
         counted++;
         if (l.verification_status !== 'VERIFIED') out.kbju.verified = false;
       } else out.kbju.missing.push(g === null ? `${l.product_name}: нет пересчёта «${l.unit} → г»` : `${l.product_name}: нет данных справочника`);
     } else if (l.sub_dish_id) {
       const sv = (await tx.query(`select id, yield_g from ttk_versions where dish_id = $1 and status = 'approved'`, [l.sub_dish_id])).rows[0];
-      const g = await subGrams(tx, l.sub_dish_id, net, l.unit), gg = await subGrams(tx, l.sub_dish_id, gross, l.unit);
+      const g0 = await subGrams(tx, l.sub_dish_id, net, l.unit), gg = await subGrams(tx, l.sub_dish_id, gross, l.unit);
+      const g = l.in_yield ? g0 : 0;
       if (!sv || !sv.yield_g || g === null || gg === null || stack.has(l.sub_dish_id)) {
         const why = stack.has(l.sub_dish_id) ? 'циклическая ссылка' : !sv ? 'нет утверждённой ТТК' : 'нет массы порции или выхода';
         out.cost.missing.push(`${l.sub_name}: ${why}`); out.kbju.missing.push(`${l.sub_name}: ${why}`);
       } else {
         out.mass_g += g;
+        const ls = steps.get(l.id) || [];
+        const rg = !l.in_yield ? 0 : l.ready !== null ? await subGrams(tx, l.sub_dish_id, Number(l.ready), l.unit) : ls.some((s) => s.kind === 'thermal') ? null : g;
+        if (rg !== null) out.ready_g += rg; else out.ready_complete = false;
         const sub = await calcVersion(tx, orgId, sv.id, new Set([...stack, l.sub_dish_id]));
         if (sub.cost.complete) { lineCost = sub.cost.total * gg / Number(sv.yield_g); source = 'по ТТК полуфабриката'; }
         else out.cost.missing.push(`${l.sub_name}: себестоимость полуфабриката неполная`);
@@ -296,12 +321,14 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
         } else out.kbju.missing.push(`${l.sub_name}: КБЖУ полуфабриката неполное`);
       }
     } else {
-      out.cost.missing.push(`${l.name_raw}: не сопоставлено с товаром`); out.kbju.missing.push(`${l.name_raw}: не сопоставлено`);
+      out.cost.missing.push(`${l.name_raw}: не сопоставлено с товаром`); out.kbju.missing.push(`${l.name_raw}: не сопоставлено`); out.ready_complete = false;
     }
     if (lineCost !== null) out.cost.total += lineCost;
     out.lines.push({ line_id: l.id, cost: lineCost === null ? null : r2(lineCost), price: price === null ? null : r2(price), price_unit: priceUnit, source });
   }
   if (out.cost.missing.length || !lines.length) out.cost.complete = false;
+  if (!lines.length) out.ready_complete = false;
+  out.kbju.losses = !thermal ? 'none' : withLosses === thermal ? 'all' : 'partial';
   out.kbju.complete = !out.kbju.missing.length && lines.length > 0;
   if (v?.yield_g && counted) {
     const f = 100 / Number(v.yield_g);
@@ -322,11 +349,12 @@ async function versionBlockers(tx: Tx, orgId: string, v: Record<string, any>, di
   if (dish.kind === 'dish' && !v.portion_g) out.push('Укажите выход порции.');
   if (v.portion_g && v.yield_g && Number(v.portion_g) > Number(v.yield_g)) out.push('Порция больше выхода закладки.');
   if (!lines.length) out.push('Нет состава.');
+  const stepsOf = await versionSteps(tx, v.id);
   for (const l of lines) {
     const n = `«${l.name_raw}»`;
     if (!l.product_id && !l.sub_dish_id) { out.push(`${n}: не сопоставлено с товаром или полуфабрикатом.`); continue; }
     if (!(Number(l.netto) > 0)) out.push(`${n}: нет нетто.`);
-    if (l.brutto !== null && l.netto !== null && Number(l.netto) > Number(l.brutto) + 1e-9) out.push(`${n}: нетто больше брутто.`);
+    if (l.brutto !== null && l.netto !== null && Number(l.netto) > Number(l.brutto) + 1e-9 && !(stepsOf.get(l.id) || []).some((s) => s.loss_pct < 0)) out.push(`${n}: нетто больше брутто.`);
     if (l.product_id) {
       if (l.unit === 'порция') out.push(`${n}: «порция» — только для полуфабриката.`);
       else if ((await convert(tx, l.product_id, 1, l.unit, l.product_unit)) === null) out.push(`${n}: нет коэффициента «${l.unit} → ${l.product_unit}» — без него не списать со склада.`);
@@ -363,7 +391,8 @@ const qty = z.coerce.number().min(0).nullable().optional();
 const LineInput = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   productId: z.uuid().nullable().optional(), subDishId: z.uuid().nullable().optional(),
-  unit: z.enum(UNITS as [Unit, ...Unit[]]), brutto: qty, netto: qty, note: optText(300),
+  unit: z.enum(UNITS as [Unit, ...Unit[]]), brutto: qty, netto: qty, ready: qty, note: optText(300),
+  inYield: z.boolean().optional(),   // учитывать в выходе готового изделия
 });
 
 async function checkRefs(tx: Tx, orgId: string, productId?: string | null, subDishId?: string | null) {
@@ -382,8 +411,13 @@ export async function addLine(userId: string, orgId: string, versionId: string, 
     if (!name && d.subDishId) name = (await tx.query(`select name from dishes where id = $1`, [d.subDishId])).rows[0].name;
     if (!name) throw Errors.validation('Укажите ингредиент.');
     const pos = Number((await tx.query(`select coalesce(max(position), 0) + 1 as n from ttk_lines where version_id = $1`, [versionId])).rows[0].n);
-    const l = (await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, note)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning *`, [orgId, versionId, pos, name, d.productId || null, d.subDishId || null, d.unit, d.brutto ?? null, d.netto ?? null, d.note])).rows[0];
+    const l = (await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, note)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`, [orgId, versionId, pos, name, d.productId || null, d.subDishId || null, d.unit, d.brutto ?? null, d.netto ?? null, d.ready ?? null, d.note])).rows[0];
+    if (d.inYield === false) await tx.query(`update ttk_lines set in_yield = false where id = $1`, [l.id]);
+    // обработка по умолчанию товара (как в Шеф Эксперте): брутто/нетто/выход считаются от введённой величины
+    const defs = d.productId && d.unit !== 'шт' ? await defaultSteps(tx, orgId, d.productId) : [];
+    const from = (['ready', 'netto', 'brutto'] as From[]).find((f) => Number(d[f]) > 0);
+    if (defs.length && from) Object.assign(l, await applyLineSteps(tx, orgId, userId, l.id, { steps: defs, from, value: Number(d[from]) }));
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.line_add', entityType: 'ttk_version', entityId: versionId, after: { line: l.id, ...d, name } });
     return l;
   });
@@ -396,10 +430,19 @@ export async function updateLine(userId: string, orgId: string, lineId: string, 
     if (!l) throw Errors.notFound('Строка не найдена.');
     await draftVersion(tx, orgId, l.version_id);
     await checkRefs(tx, orgId, d.productId, d.subDishId);
-    await tx.query(`update ttk_lines set name_raw = coalesce($2, name_raw), product_id = $3, sub_dish_id = $4, unit = $5, brutto = $6, netto = $7, note = $8 where id = $1`,
-      [lineId, d.name || null, d.productId === undefined ? l.product_id : d.productId, d.subDishId === undefined ? l.sub_dish_id : d.subDishId, d.unit, d.brutto ?? null, d.netto ?? null, d.note]);
+    let q = { brutto: d.brutto ?? null, netto: d.netto ?? null, ready: d.ready ?? null };
+    // есть шаги обработки — величины считаются цепочкой от той, что изменил человек
+    const ls = (await versionSteps(tx, l.version_id)).get(lineId) || [];
+    if (ls.length) {
+      const changed = (['ready', 'netto', 'brutto'] as From[]).find((f) => q[f] !== null && Number(q[f]) !== Number(l[f])) || (l.calc_from as From) || 'brutto';
+      if (q[changed] === null || !(Number(q[changed]) > 0)) throw Errors.validation('Укажите количество больше нуля.');
+      q = chain(ls as any, changed, Number(q[changed]));
+      await tx.query(`update ttk_lines set calc_from = $2 where id = $1`, [lineId, changed]);
+    }
+    await tx.query(`update ttk_lines set name_raw = coalesce($2, name_raw), product_id = $3, sub_dish_id = $4, unit = $5, brutto = $6, netto = $7, note = $8, ready = $9, in_yield = coalesce($10, in_yield) where id = $1`,
+      [lineId, d.name || null, d.productId === undefined ? l.product_id : d.productId, d.subDishId === undefined ? l.sub_dish_id : d.subDishId, d.unit, q.brutto, q.netto, d.note, q.ready, d.inYield ?? null]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.line_update', entityType: 'ttk_version', entityId: l.version_id,
-      before: { name: l.name_raw, unit: l.unit, brutto: l.brutto, netto: l.netto }, after: d });
+      before: { name: l.name_raw, unit: l.unit, brutto: l.brutto, netto: l.netto, ready: l.ready }, after: { ...d, ...q } });
     return { ok: true };
   });
 }
@@ -470,8 +513,11 @@ export async function newVersion(userId: string, orgId: string, dishId: string, 
     const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours)
       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
       [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours])).rows[0];
-    await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, note)
-      select organization_id, $2, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, note from ttk_lines where version_id = $1`, [src.id, v.id]);
+    await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, calc_from, in_yield, note)
+      select organization_id, $2, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, calc_from, in_yield, note from ttk_lines where version_id = $1`, [src.id, v.id]);
+    await tx.query(`insert into ttk_line_steps (organization_id, version_id, line_id, position, method_code, norm_id, loss_pct, protein_loss_pct, fat_loss_pct, carbs_loss_pct, basis)
+      select s.organization_id, $2, nl.id, s.position, s.method_code, s.norm_id, s.loss_pct, s.protein_loss_pct, s.fat_loss_pct, s.carbs_loss_pct, s.basis
+      from ttk_line_steps s join ttk_lines ol on ol.id = s.line_id join ttk_lines nl on nl.version_id = $2 and nl.position = ol.position where s.version_id = $1`, [src.id, v.id]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.new_version', entityType: 'ttk_version', entityId: v.id, after: { version: v.version, from: src.version }, reason: d.changeReason });
     return v;
   });

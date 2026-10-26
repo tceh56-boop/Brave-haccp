@@ -27,6 +27,7 @@ export default function MenuPage() {
       {can('ttk.manage') && (
         <div className="tiles">
           <Link className="tile" href={`/app/${org.id}/menu/archive`}>Архив ТТК<span className="sub">559 карт — импорт черновиками</span></Link>
+          <Link className="tile" href={`/app/${org.id}/menu/processing`}>Обработка сырья<span className="sub">нормы отходов и потерь</span></Link>
           <Link className={`tile ${unmatched ? 'alert' : ''}`} href={`/app/${org.id}/menu/match`}>Сопоставить сырьё<span className="sub">{unmatched ? `строк без товара: ${unmatched}` : 'всё сопоставлено'}</span></Link>
         </div>
       )}

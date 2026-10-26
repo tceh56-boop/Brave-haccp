@@ -6,17 +6,21 @@ import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
+import { chain, type From } from '@/server/recipes/chain';
 
 interface Line { id: string; position: number; name_raw: string; product_id: string | null; sub_dish_id: string | null; product_name: string | null; product_unit: string | null; sub_dish_name: string | null;
-  unit: string; brutto: string | null; netto: string | null; note: string | null }
+  unit: string; brutto: string | null; netto: string | null; ready: string | null; in_yield: boolean; calc_from: From | null; note: string | null; steps: Step[] }
+interface Step { method_code: string; method_name: string; kind: 'cold' | 'thermal'; loss_pct: number; norm_id: string | null; basis: string }
+interface Method { code: string; name: string; kind: 'cold' | 'thermal' }
+interface TodayNorm { id: string; loss_pct: number; basis: string; season: string }
 interface Version { id: string; version: number; status: string; status_label: string; yield_g: string | null; portion_g: string | null; technology: string | null; storage_conditions: string | null;
   shelf_life: string | null; shelf_life_hours: string | null; quality: string | null; allergens: string | null; source: string; change_reason: string | null; return_note: string | null; approved_at: string | null }
 interface Cost { total: number | null; known: number; complete: boolean; missing: string[]; per_portion: number | null; per_kg: number | null; food_cost_pct: number | null;
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
-interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[] }
+interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' }
 interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null };
   versions: { id: string; version: number; status: string; status_label: string; approved_at: string | null; approved_by_name: string | null }[];
-  current: { version: Version; lines: Line[]; blockers: string[]; warnings: string[]; cost: Cost | null; kbju: Kbju } | null;
+  current: { version: Version; lines: Line[]; blockers: string[]; warnings: string[]; cost: Cost | null; kbju: Kbju; output: { netto_g: number | null; ready_g: number | null } } | null;
   archive: { source_path: string; issues: string[]; yield_raw: string | null; yield_source: string | null } | null; canSeeCost: boolean }
 interface Product { id: string; name: string; unit: string }
 interface Dish { id: string; name: string; kind: string }
@@ -37,6 +41,8 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
   const [data, setData] = useState<Data | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [semis, setSemis] = useState<Dish[]>([]);
+  const [methods, setMethods] = useState<Method[]>([]);
+  const [stepsFor, setStepsFor] = useState<string | null>(null);
   const { busy, error, run, setError } = useSubmit();
   const load = useCallback(() => api<Data>(`/orgs/${org.id}/dishes/${dishId}${versionId ? `?versionId=${versionId}` : ''}`).then(setData).catch((e) => setError(e.message)), [org.id, dishId, versionId, setError]);
   useEffect(() => { load(); }, [load]);
@@ -44,6 +50,7 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
   useEffect(() => {
     if (!manage) return;
     api<Product[]>(`/orgs/${org.id}/products`).then(setProducts).catch(() => setProducts([]));
+    api<Method[]>(`/orgs/${org.id}/processing/methods`).then(setMethods).catch(() => setMethods([]));
     api<Dish[]>(`/orgs/${org.id}/dishes`).then((d) => setSemis(d.filter((x) => x.kind === 'semi' && x.id !== dishId))).catch(() => setSemis([]));
   }, [org.id, manage, dishId]);
   if (!data) return error ? <div className="err">{error}</div> : <p className="muted">Загрузка…</p>;
@@ -77,15 +84,22 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           <div className="card">
             <h2>Состав{v.yield_g ? ` на выход ${n(v.yield_g)} г` : ''}</h2>
             <div className="scroll"><table className="tbl">
-              <thead><tr><th>Сырьё</th><th>Ед.</th><th>Брутто</th><th>Нетто</th>{data.canSeeCost && <th>₽</th>}{draft && <th />}</tr></thead>
+              <thead><tr><th>Сырьё</th><th>Ед.</th><th>Брутто</th><th>Нетто</th><th>Выход</th>{data.canSeeCost && <th>₽</th>}{draft && <th />}</tr></thead>
               <tbody>{cur.lines.map((l) => (
                 <LineRow key={l.id} l={l} cost={lineCost.get(l.id)} seeCost={data.canSeeCost} editable={draft} products={products} semis={semis} busy={busy}
                   onSave={(body) => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}`, { method: 'PATCH', body }))}
+                  stepsOpen={stepsFor === l.id} onToggleSteps={() => setStepsFor(stepsFor === l.id ? null : l.id)}
                   onMatch={(body) => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}/match`, { body: { ...body, remember: true } }))}
                   onRemove={() => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}`, { method: 'DELETE' }))} />
               ))}</tbody>
             </table></div>
+            {draft && stepsFor && cur.lines.some((l) => l.id === stepsFor) && (
+              <StepsEditor key={stepsFor} l={cur.lines.find((l) => l.id === stepsFor)!} methods={methods} busy={busy} onClose={() => setStepsFor(null)}
+                onSave={(body) => act(async () => { await api(`/orgs/${org.id}/ttk-lines/${stepsFor}/steps`, { body }); setStepsFor(null); })} />
+            )}
             {cur.lines.length === 0 && <p className="small muted">Состав не заполнен.</p>}
+            {cur.lines.length > 0 && <p className="small">Сумма нетто: {cur.output.netto_g !== null ? `${n(cur.output.netto_g)} г` : '—'} · выход по обработке сырья: {cur.output.ready_g !== null ? `${n(cur.output.ready_g)} г` : 'не по всем строкам'}</p>}
+            <p className="small muted">Брутто → холодная обработка → нетто → тепловая → выход. Нормы — в разделе <Link href={`/app/${org.id}/menu/processing`}>«Обработка сырья»</Link>; ингредиенты без отметки «в выходе» (соль, специи) в выход и КБЖУ не входят.</p>
             {draft && <AddLine products={products} semis={semis} busy={busy} onAdd={(body) => act(() => api(`/orgs/${org.id}/ttk/${v.id}/lines`, { body }))} />}
           </div>
 
@@ -109,7 +123,7 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           <div className="card">
             <h2>КБЖУ на 100 г</h2>
             {cur.kbju.per100 ? <p><b>{cur.kbju.per100.kcal}</b> ккал · Б {n(cur.kbju.per100.protein)} · Ж {n(cur.kbju.per100.fat)} · У {n(cur.kbju.per100.carbs)}</p> : <p className="muted">Не рассчитано — нет выхода или ни у одного ингредиента нет данных справочника.</p>}
-            {!cur.kbju.verified && <p className="small muted">Ориентировочно: по закладке нетто без потерь при тепловой обработке{cur.kbju.missing.length ? '; учтено не всё сырьё' : ''}; данные справочника не проверены специалистом. Для маркировки не использовать.</p>}
+            {!cur.kbju.verified && <p className="small muted">Ориентировочно: по закладке нетто{cur.kbju.losses === 'all' ? ' с потерями нутриентов по нормам тепловой обработки' : cur.kbju.losses === 'partial' ? '; потери нутриентов при тепловой обработке заданы не для всех строк' : ' без потерь нутриентов при тепловой обработке'}{cur.kbju.missing.length ? '; учтено не всё сырьё' : ''}; данные справочника не проверены специалистом. Для маркировки не использовать.</p>}
             {cur.kbju.missing.length > 0 && <ul style={{ margin: 0, paddingLeft: 18 }}>{cur.kbju.missing.map((m) => <li key={m} className="small">{m}</li>)}</ul>}
           </div>
 
@@ -228,49 +242,125 @@ function Pick({ value, onChange, products, semis, id }: { value: string; onChang
 }
 const refBody = (pick: string) => (pick.startsWith('s:') ? { subDishId: pick.slice(2), productId: null } : { productId: pick.slice(2), subDishId: null });
 
-function LineRow({ l, cost, seeCost, editable, products, semis, busy, onSave, onMatch, onRemove }: { l: Line; cost?: Cost['lines'][number]; seeCost: boolean; editable: boolean; products: Product[]; semis: Dish[]; busy: boolean;
-  onSave: (b: object) => void; onMatch: (b: object) => void; onRemove: () => void }) {
-  const [edit, setEdit] = useState<{ unit: string; brutto: string; netto: string } | null>(null);
+const dec = (v: string | null) => (v === null || v === '' ? '' : String(Number(v)));
+const num = (v: string) => (v.trim() ? Number(v.replace(',', '.')) : null);
+const pctLabel = (s: { kind: string; loss_pct: number }) => (s.loss_pct < 0 ? `+${n(-s.loss_pct)} %` : `−${n(s.loss_pct)} %`);
+
+function LineRow({ l, cost, seeCost, editable, products, semis, busy, stepsOpen, onToggleSteps, onSave, onMatch, onRemove }: { l: Line; cost?: Cost['lines'][number]; seeCost: boolean; editable: boolean; products: Product[]; semis: Dish[];
+  busy: boolean; stepsOpen: boolean; onToggleSteps: () => void; onSave: (b: object) => void; onMatch: (b: object) => void; onRemove: () => void }) {
+  const [edit, setEdit] = useState<{ unit: string; brutto: string; netto: string; ready: string; inYield: boolean } | null>(null);
   const [pick, setPick] = useState('');
   const target = l.product_name ? `${l.product_name}` : l.sub_dish_name ? `п/ф: ${l.sub_dish_name}` : null;
   return (
-    <tr>
-      <td>{l.name_raw}{target && target !== l.name_raw && <div className="small muted">→ {target}</div>}
-        {!target && (editable ? (
-          <div className="row" style={{ marginTop: 4 }}><Pick id={`m-${l.id}`} value={pick} onChange={setPick} products={products} semis={semis} />
-            <button className="btn small" disabled={busy || !pick} onClick={() => onMatch(refBody(pick))}>OK</button></div>
-        ) : <div><span className="badge crit">не сопоставлено</span></div>)}
-        {l.note && <div className="small muted">{l.note}</div>}</td>
-      {edit ? (
-        <>
-          <td><select aria-label="Единица" value={edit.unit} onChange={(e) => setEdit({ ...edit, unit: e.target.value })} style={{ width: 80 }}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></td>
-          <td><input aria-label="Брутто" inputMode="decimal" value={edit.brutto} onChange={(e) => setEdit({ ...edit, brutto: e.target.value })} style={{ width: 80 }} /></td>
-          <td><input aria-label="Нетто" inputMode="decimal" value={edit.netto} onChange={(e) => setEdit({ ...edit, netto: e.target.value })} style={{ width: 80 }} /></td>
-        </>
-      ) : <><td>{l.unit}</td><td>{n(l.brutto)}</td><td>{n(l.netto)}</td></>}
-      {seeCost && <td title={cost?.source || ''}>{cost?.cost != null ? n(cost.cost) : '—'}</td>}
-      {editable && <td style={{ whiteSpace: 'nowrap' }}>{edit ? (
-        <><button className="btn small" disabled={busy} onClick={() => { onSave({ unit: edit.unit, brutto: edit.brutto ? Number(edit.brutto.replace(',', '.')) : null, netto: edit.netto ? Number(edit.netto.replace(',', '.')) : null }); setEdit(null); }}>OK</button>
-          <button className="btn small secondary" onClick={() => setEdit(null)}>×</button></>
-      ) : (
-        <><button className="btn small secondary" onClick={() => setEdit({ unit: l.unit, brutto: l.brutto ? String(Number(l.brutto)) : '', netto: l.netto ? String(Number(l.netto)) : '' })} aria-label={`Изменить ${l.name_raw}`}>✎</button>
-          <button className="btn small secondary" disabled={busy} onClick={() => { if (confirm(`Удалить «${l.name_raw}»?`)) onRemove(); }} aria-label={`Удалить ${l.name_raw}`}>🗑</button></>
-      )}</td>}
-    </tr>
+      <tr>
+        <td>{l.name_raw}{target && target !== l.name_raw && <div className="small muted">→ {target}</div>}
+          {!target && (editable ? (
+            <div className="row" style={{ marginTop: 4 }}><Pick id={`m-${l.id}`} value={pick} onChange={setPick} products={products} semis={semis} />
+              <button className="btn small" disabled={busy || !pick} onClick={() => onMatch(refBody(pick))}>OK</button></div>
+          ) : <div><span className="badge crit">не сопоставлено</span></div>)}
+          {l.steps.length > 0 && <div className="small" title={l.steps.map((s) => `${s.method_name}: ${s.basis}`).join('\n')}>{l.steps.map((s) => `${s.method_name.toLowerCase()} ${pctLabel(s)}`).join(' → ')}</div>}
+          {!l.in_yield && <div className="small muted">не входит в выход</div>}
+          {l.note && <div className="small muted">{l.note}</div>}</td>
+        {edit ? (
+          <>
+            <td><select aria-label="Единица" value={edit.unit} onChange={(e) => setEdit({ ...edit, unit: e.target.value })} style={{ width: 80 }}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></td>
+            <td><input aria-label="Брутто" inputMode="decimal" value={edit.brutto} onChange={(e) => setEdit({ ...edit, brutto: e.target.value })} style={{ width: 80 }} /></td>
+            <td><input aria-label="Нетто" inputMode="decimal" value={edit.netto} onChange={(e) => setEdit({ ...edit, netto: e.target.value })} style={{ width: 80 }} /></td>
+            <td><input aria-label="Выход" inputMode="decimal" value={edit.ready} onChange={(e) => setEdit({ ...edit, ready: e.target.value })} style={{ width: 80 }} />
+              <label className="small row" style={{ margin: '4px 0 0', fontWeight: 400 }}><input type="checkbox" checked={edit.inYield} onChange={(e) => setEdit({ ...edit, inYield: e.target.checked })} style={{ width: 22, minHeight: 22 }} /> <span style={{ flex: 1 }}>в выходе</span></label></td>
+          </>
+        ) : <><td>{l.unit}</td><td>{n(l.brutto)}</td><td>{n(l.netto)}</td><td>{l.in_yield ? n(l.ready) : '—'}</td></>}
+        {seeCost && <td title={cost?.source || ''}>{cost?.cost != null ? n(cost.cost) : '—'}</td>}
+        {editable && <td style={{ whiteSpace: 'nowrap' }}>{edit ? (
+          <><button className="btn small" disabled={busy} onClick={() => { onSave({ unit: edit.unit, brutto: num(edit.brutto), netto: num(edit.netto), ready: num(edit.ready), inYield: edit.inYield }); setEdit(null); }}>OK</button>
+            <button className="btn small secondary" onClick={() => setEdit(null)}>×</button></>
+        ) : (
+          <><button className="btn small secondary" onClick={() => setEdit({ unit: l.unit, brutto: dec(l.brutto), netto: dec(l.netto), ready: dec(l.ready), inYield: l.in_yield })} aria-label={`Изменить ${l.name_raw}`}>✎</button>
+            {(l.product_id || l.sub_dish_id) && !['шт', 'порция'].includes(l.unit) && <button className="btn small secondary" aria-pressed={stepsOpen} onClick={onToggleSteps} aria-label={`Обработка ${l.name_raw}`}>⚙</button>}
+            <button className="btn small secondary" disabled={busy} onClick={() => { if (confirm(`Удалить «${l.name_raw}»?`)) onRemove(); }} aria-label={`Удалить ${l.name_raw}`}>🗑</button></>
+        )}</td>}
+      </tr>
+  );
+}
+
+interface Draft { method: string; manual: boolean; lossPct: string; basis: string }
+
+/** Шаги обработки строки: процент — по утверждённой норме товара (сегодня, по сезону) или вручную с основанием. */
+function StepsEditor({ l, methods, busy, onSave, onClose }: { l: Line; methods: Method[]; busy: boolean; onSave: (b: object) => void; onClose: () => void }) {
+  const { org } = useOrg();
+  const [norms, setNorms] = useState<Record<string, TodayNorm>>({});
+  const [list, setList] = useState<Draft[]>(() => l.steps.map((s) => ({ method: s.method_code, manual: !s.norm_id, lossPct: s.norm_id ? '' : String(s.loss_pct), basis: s.norm_id ? '' : s.basis })));
+  // при смене обработки выход строки сохраняется (как в Шеф Эксперте); выхода нет — считаем от нетто
+  const [from, setFrom] = useState<From>(l.ready !== null && Number(l.ready) > 0 ? 'ready' : l.calc_from || (l.netto !== null ? 'netto' : 'brutto'));
+  const [value, setValue] = useState(() => dec(l[from === 'ready' ? 'ready' : from]));
+  useEffect(() => {
+    if (l.product_id) api<{ norms: Record<string, TodayNorm> }>(`/orgs/${org.id}/processing/today?productId=${l.product_id}`).then((r) => setNorms(r.norms)).catch(() => setNorms({}));
+  }, [org.id, l.product_id]);
+  const kindOf = (code: string) => methods.find((m) => m.code === code)?.kind || 'cold';
+  const pctOf = (d: Draft) => (d.manual || !norms[d.method] ? num(d.lossPct) : norms[d.method].loss_pct);
+  const ready = list.every((d) => d.method && pctOf(d) !== null);
+  const preview = ready && num(value) ? chain(list.map((d) => ({ kind: kindOf(d.method), loss_pct: pctOf(d)! })), from, num(value)!) : null;
+  const set = (i: number, p: Partial<Draft>) => setList(list.map((d, j) => (j === i ? { ...d, ...p } : d)));
+  return (
+    <div className="note" style={{ margin: '4px 0' }}>
+      <b>Обработка: {l.product_name || l.sub_dish_name || l.name_raw}</b>
+      {list.length === 0 && <p className="small muted" style={{ margin: '4px 0' }}>Без обработки — брутто, нетто и выход вводятся вручную.</p>}
+      {list.map((d, i) => {
+        const nm = norms[d.method];
+        return (
+          <div key={i} style={{ borderTop: '1px solid var(--line, #ddd)', paddingTop: 6, marginTop: 6 }}>
+            <div className="row">
+              <select aria-label={`Шаг ${i + 1}`} value={d.method} onChange={(e) => set(i, { method: e.target.value })} style={{ flex: 2 }}>
+                <option value="">— способ —</option>
+                <optgroup label="Холодная">{methods.filter((m) => m.kind === 'cold').map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}</optgroup>
+                <optgroup label="Тепловая">{methods.filter((m) => m.kind === 'thermal').map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}</optgroup>
+              </select>
+              <button type="button" className="btn small secondary" disabled={i === 0} onClick={() => { const x = [...list]; [x[i - 1], x[i]] = [x[i], x[i - 1]]; setList(x); }} aria-label="Выше">↑</button>
+              <button type="button" className="btn small secondary" onClick={() => setList(list.filter((_, j) => j !== i))} aria-label="Убрать шаг">×</button>
+            </div>
+            {d.method && (nm && !d.manual ? (
+              <div className="small">по норме: {nm.loss_pct < 0 ? `привар ${n(-nm.loss_pct)}` : n(nm.loss_pct)} % · {nm.season} · {nm.basis} <button type="button" className="btn small secondary" onClick={() => set(i, { manual: true })}>вручную</button></div>
+            ) : (
+              <div className="grid2">
+                <div><label htmlFor={`sp-${l.id}-${i}`}>{nm ? 'Процент вручную' : 'Нормы нет — процент'}</label><input id={`sp-${l.id}-${i}`} inputMode="decimal" value={d.lossPct} onChange={(e) => set(i, { lossPct: e.target.value })} placeholder="привар — со знаком минус" /></div>
+                <div><label htmlFor={`sb-${l.id}-${i}`}>Основание</label><input id={`sb-${l.id}-${i}`} value={d.basis} onChange={(e) => set(i, { basis: e.target.value })} placeholder="акт контрольной проработки № …" /></div>
+                {nm && <button type="button" className="btn small secondary" onClick={() => set(i, { manual: false })}>по норме</button>}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      <button type="button" className="btn small secondary" style={{ marginTop: 6 }} onClick={() => setList([...list, { method: '', manual: false, lossPct: '', basis: '' }])}>+ шаг обработки</button>
+      <div className="grid2" style={{ marginTop: 8 }}>
+        <div><label htmlFor={`sf-${l.id}`}>Считать от</label>
+          <select id={`sf-${l.id}`} value={from} onChange={(e) => { const f = e.target.value as From; setFrom(f); setValue(dec(l[f])); }}>
+            <option value="brutto">брутто</option><option value="netto">нетто</option><option value="ready">выхода</option>
+          </select></div>
+        <div><label htmlFor={`sv-${l.id}`}>Количество, {l.unit}</label><input id={`sv-${l.id}`} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} /></div>
+      </div>
+      {preview && <p className="small"><b>Брутто {n(preview.brutto)} → нетто {n(preview.netto)} → выход {n(preview.ready)} {l.unit}</b></p>}
+      <div className="row">
+        <button type="button" className="btn small" disabled={busy || !ready || !num(value)} onClick={() => onSave({ steps: list.map((d) => (d.manual || !norms[d.method] ? { method: d.method, lossPct: num(d.lossPct), basis: d.basis || null } : { method: d.method, normId: norms[d.method].id })), from, value: num(value) })}>Пересчитать и сохранить</button>
+        <button type="button" className="btn small secondary" onClick={onClose}>Закрыть</button>
+      </div>
+    </div>
   );
 }
 
 function AddLine({ products, semis, busy, onAdd }: { products: Product[]; semis: Dish[]; busy: boolean; onAdd: (b: object) => void }) {
-  const [f, setF] = useState({ pick: '', unit: 'г', brutto: '', netto: '' });
+  const [f, setF] = useState({ pick: '', unit: 'г', brutto: '', netto: '', ready: '', inYield: true });
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!f.pick) return; onAdd({ ...refBody(f.pick), unit: f.unit, brutto: f.brutto ? Number(f.brutto.replace(',', '.')) : null, netto: f.netto ? Number(f.netto.replace(',', '.')) : null }); setF({ pick: '', unit: f.unit, brutto: '', netto: '' }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (!f.pick) return; onAdd({ ...refBody(f.pick), unit: f.unit, brutto: num(f.brutto), netto: num(f.netto), ready: num(f.ready), inYield: f.inYield }); setF({ ...f, pick: '', brutto: '', netto: '', ready: '', inYield: true }); }}>
       <h3>Добавить строку</h3>
       <Pick id="al-pick" value={f.pick} onChange={(pick) => setF({ ...f, pick })} products={products} semis={semis} />
       <div className="grid2" style={{ marginTop: 6 }}>
         <div><label htmlFor="al-u">Единица</label><select id="al-u" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></div>
         <div><label htmlFor="al-b">Брутто</label><input id="al-b" inputMode="decimal" value={f.brutto} onChange={(e) => setF({ ...f, brutto: e.target.value })} /></div>
         <div><label htmlFor="al-n">Нетто</label><input id="al-n" inputMode="decimal" value={f.netto} onChange={(e) => setF({ ...f, netto: e.target.value })} /></div>
+        <div><label htmlFor="al-r">Выход</label><input id="al-r" inputMode="decimal" value={f.ready} onChange={(e) => setF({ ...f, ready: e.target.value })} /></div>
       </div>
+      <label className="row small" style={{ fontWeight: 400 }}><input type="checkbox" checked={f.inYield} onChange={(e) => setF({ ...f, inYield: e.target.checked })} style={{ width: 22, minHeight: 22 }} /> <span style={{ flex: 1 }}>учитывать в выходе готового изделия (снимите для соли и специй)</span></label>
+      <p className="small muted">Достаточно одной величины: если у товара есть обработка по умолчанию, остальные посчитаются по нормам.</p>
       <button className="btn block secondary" disabled={busy || !f.pick}>Добавить</button>
     </form>
   );
