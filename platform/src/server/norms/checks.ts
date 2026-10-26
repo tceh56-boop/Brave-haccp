@@ -50,6 +50,13 @@ const CHECKS: Record<string, (c: Ctx) => Promise<CheckResult>> = {
       : { status: 'warn', detail: 'В программе лабораторного контроля нет исследования воды — качество воды нечем подтвердить.', href: `${base}/lab` };
   },
 
+  async lab_program({ tx, orgId, siteIds, today, base }) {
+    const r = (await tx.query(`select count(*)::int as n, count(*) filter (where next_due < $3::date)::int as late from lab_programs where organization_id = $1 and site_id = any($2::uuid[]) and status = 'active'`, [orgId, siteIds, today])).rows[0];
+    if (!r.n) return { status: 'fail', detail: 'Нет программы лабораторных исследований с аккредитованной лабораторией.', href: `${base}/lab` };
+    return r.late ? { status: 'fail', detail: `Просрочены исследования по программе: ${r.late} из ${r.n}.`, href: `${base}/lab` }
+      : { status: 'ok', detail: `Программа лабораторного контроля: ${r.n} исследований, сроки соблюдаются.`, href: `${base}/lab` };
+  },
+
   async contract_waste(c) { return contract(c, 'waste'); },
   async contract_pest(c) { return contract(c, 'pest_control'); },
 

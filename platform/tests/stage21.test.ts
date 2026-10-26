@@ -82,6 +82,16 @@ describe('Нормативная библиотека', () => {
     expect(i.items!.join()).toMatch(/Сметана/);
   });
 
+  it('СП 2.1.4284-26 к отдельному кафе не применяется (пп. 1–2), к общепиту в составе гостиницы — применяется', async () => {
+    let c = await getCompliance(owner.id, orgId);
+    expect(c.items.some((i) => i.doc === 'СП 2.1.4284-26')).toBe(false);
+    expect(c.not_applicable.map((i) => i.id)).toContain('sp4284:3');
+    await saveProfile(owner.id, orgId, { objectTypes: ['cafe'], features: ['host_facility'] });
+    c = await getCompliance(owner.id, orgId);
+    expect(c.items.find((i) => i.id === 'sp4284:3')!.status).toBe('fail');   // нет программы лабораторных исследований
+    await saveProfile(owner.id, orgId, { objectTypes: ['cafe'], features: [] });
+  });
+
   it('разъяснение Роспотребнадзора о декларировании — только при доставке, выносе, кейтеринге', async () => {
     expect(await item('rpn:declaration')).toBeUndefined();
     await saveProfile(owner.id, orgId, { objectTypes: ['cafe'], salesModes: ['hall', 'delivery'] });
