@@ -7,6 +7,7 @@ import { importTtkArchive, createDish, getDish, updateDish, updateVersion, addLi
 import {
   listMethods, createNorm, approveNorm, archiveNorm, listNorms, normsToday, setNormDefault, setLineSteps, applyNormToDrafts, suggestFromArchive,
 } from '../src/server/ops/processing';
+import { createAct, updateAct, approveAct, getAct, listActs } from '../src/server/ops/controlacts';
 import { previewCosting, createCosting, getCosting, listCosting } from '../src/server/ops/costing';
 import { chain, factors, inSeason, seasonsOverlap, retention } from '../src/server/recipes/chain';
 import { makeUser, lastLinkToken } from './helpers';
@@ -302,5 +303,48 @@ describe('Калькуляционная карточка ОП-1: снимок �
     expect(c2.seq).toBe(2);
     expect((await listCosting(owner.id, orgId, saladId)).map((x: any) => x.seq)).toEqual([2, 1]);
     await expect(getCosting(cook.id, orgId, c.id)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+});
+
+describe('Акт контрольной проработки: фактические массы, проценты по массам, утверждение', () => {
+  let actId: string;
+
+  it('из ТТК: плановые массы на порцию по стадиям обработки', async () => {
+    const a = await createAct(tech.id, orgId, dishId, { commission: [{ position: 'Шеф-повар', name: 'П. П. Петров' }] });
+    actId = a.id;
+    const x = await getAct(cook.id, orgId, actId);
+    const m = x.lines.find((l: any) => l.name === 'Морковь свежая')!;
+    expect(m.processing).toBe('Очистка, Варка');
+    expect(m.ready).toBe(100);
+    expect(m.cold_pct).toBe(10);
+    expect(m.thermal_pct).toBe(3);
+    expect(m.after_pct).toBe(0);
+    expect(x.basis).toMatch(/^Акт контрольной проработки № \d+ от \d\d\.\d\d\.\d{4}$/);
+    await expect(createAct(cook.id, orgId, dishId, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('фактические массы → проценты; утверждение — только полный акт и комиссия из двух', async () => {
+    const x = await getAct(tech.id, orgId, actId);
+    const lines = x.lines.map((l: any) => ({ brutto: l.brutto, netto: l.netto, thermal: l.thermal, ready: l.ready }));
+    const i = x.lines.findIndex((l: any) => l.name === 'Морковь свежая');
+    lines[i] = { brutto: 120, netto: 96, thermal: 93, ready: 93 };
+    await expect(updateAct(tech.id, orgId, actId, { lines: lines.slice(1) })).rejects.toThrow(/число строк/);
+    await updateAct(tech.id, orgId, actId, { lines, outputG: 100 });
+    const y = await getAct(tech.id, orgId, actId);
+    expect(y.lines[i]).toMatchObject({ cold_pct: 20, thermal_pct: 3.1, after_pct: 0 });
+    await expect(approveAct(tech.id, orgId, actId)).rejects.toThrow(/не менее двух/);
+    await updateAct(tech.id, orgId, actId, { commission: [{ position: 'Шеф-повар', name: 'П. П. Петров' }, { position: 'Технолог', name: 'С. Г. Митрофанов' }] });
+    await expect(approveAct(cook.id, orgId, actId)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await approveAct(tech.id, orgId, actId);
+    await expect(updateAct(tech.id, orgId, actId, { outputG: 90 })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(withSystem((tx) => tx.query(`update control_acts set output_g = 1 where id = $1`, [actId]))).rejects.toThrow(/не изменяется/);
+    await expect(withSystem((tx) => tx.query(`delete from control_acts where id = $1`, [actId]))).rejects.toThrow(/не удаляется/);
+    expect((await listActs(cook.id, orgId, dishId))[0]).toMatchObject({ status: 'approved' });
+  });
+
+  it('утверждённый акт — основание нормы обработки', async () => {
+    const basis = (await getAct(tech.id, orgId, actId)).basis;
+    const n = await createNorm(tech.id, orgId, { productId: carrot, method: 'clean', lossPct: 20, basis });
+    expect(n.basis).toBe(basis);
   });
 });

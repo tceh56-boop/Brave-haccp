@@ -124,6 +124,24 @@ await P.waitForSelector('td:has-text("713,00")');
 await P.waitForSelector('text=С. С. Сидоров');
 await shot(P, 'оп1');
 
+step('акт контрольной проработки: комиссия, фактические массы, проценты, утверждение');
+await P.goto(`${BASE}${base}/menu/${dish.id}`);
+await P.click('a:has-text("Акты контрольной проработки")');
+await P.waitForSelector('h1:has-text("Акты контрольной проработки")');
+await P.fill('#mn1', 'К. В. Трясуха');
+await P.click('button:has-text("Составить акт по ТТК")');
+await P.waitForSelector('text=контрольной проработки кулинарной продукции');
+const bIn = P.locator('input[aria-label="brutto Морковь свежая"]').first();
+await bIn.fill('125'); await P.locator('input[aria-label="netto Морковь свежая"]').first().fill('100');
+await P.locator('input[aria-label="thermal Морковь свежая"]').first().fill('97'); await P.locator('input[aria-label="ready Морковь свежая"]').first().fill('97');
+await P.fill('input[aria-label="Выход готового изделия"]', '105');
+await P.click('button:has-text("Сохранить массы")');
+await P.waitForSelector('td:has-text("20")');
+await P.click('button:has-text("Утвердить акт")');
+await P.waitForSelector('text=Основание для норм обработки');
+await P.waitForSelector('td:has-text("125")');
+await shot(P, 'акт_проработки');
+
 await browser.close(); await db.end();
 if (errors.length) throw new Error(`ошибки страницы: ${errors.join('; ')}`);
 console.log('✓ этап 18: обработка сырья');

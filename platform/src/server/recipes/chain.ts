@@ -57,3 +57,21 @@ export const seasonLabel = (from: number | null, to: number | null) => {
   const f = (x: number) => `${String(x % 100).padStart(2, '0')}.${String(Math.floor(x / 100)).padStart(2, '0')}`;
   return `с ${f(from)} по ${f(to)}`;
 };
+
+/** Массы по стадиям от брутто: нетто (до первой тепловой), после последней тепловой, выход (после всех шагов). */
+export function stages(steps: ChainStep[], brutto: number) {
+  const firstT = steps.findIndex((s) => s.kind === 'thermal');
+  let lastT = -1;
+  steps.forEach((s, i) => { if (s.kind === 'thermal') lastT = i; });
+  let m = brutto, netto = brutto, thermal = brutto;
+  steps.forEach((s, i) => {
+    if (i === firstT) netto = m;
+    m *= 1 - Number(s.loss_pct) / 100;
+    if (i === lastT) thermal = m;
+  });
+  if (firstT === -1) { netto = m; thermal = m; }
+  return { brutto, netto, thermal, ready: m };
+}
+
+/** Процент отходов (потерь) между массами: (М1 − М2) / М1 × 100 (ГОСТ 31988-2012). */
+export const lossPct = (m1: number | null, m2: number | null) => (m1 && m2 !== null && m1 > 0 ? Math.round((m1 - m2) / m1 * 1000) / 10 : null);
