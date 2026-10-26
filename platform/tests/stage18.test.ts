@@ -10,6 +10,7 @@ import {
 import { getTtkDoc } from '../src/server/ops/ttkdoc';
 import { getTi, approveTi, getTiVersion } from '../src/server/ops/techinstr';
 import { createGroup, updateGroup, deleteGroup, getGroup, listGroups, setDishGroup } from '../src/server/ops/dishgroups';
+import { menuReport, ingredientUsage } from '../src/server/ops/menureports';
 import { createSto, updateSto, getSto, approveSto, listSto, getStoVersion } from '../src/server/ops/sto';
 import { setSampleSettings, createProgram } from '../src/server/ops/lab';
 import { createPlan } from '../src/server/ops/sanitation';
@@ -559,5 +560,36 @@ describe('ТУ: потери нутриентов — по нормам обра
     // морковь 103,1 г нетто × 1,3 % × (1 − 10 % по норме варки) + морковь для украшения 8 г без тепловой — на выход 100 г
     expect(t.calc.nutrition.per100!.protein).toBe(1.3);
     expect(t.calc.nutrition.per100!.carbs).toBe(Math.round((103.093 * 0.069 * 0.9 + 8 * 0.069) * 10) / 10);
+  });
+});
+
+describe('Отчёты по меню: информационный лист, калорийность, закладки, содержание ингредиента', () => {
+  it('по утверждённым ТТК с отбором по папке; цены — кому положено', async () => {
+    const root = (await withSystem((tx) => tx.query(`select id from dish_groups where organization_id = $1 and name = 'Холодные закуски' and parent_id is null`, [orgId]))).rows[0].id;
+    const info = await menuReport(owner.id, orgId, 'info', root);
+    expect(info.group).toBe('Холодные закуски');
+    // «Салат новый» без утверждённой ТТК — не входит
+    expect(info.rows.map((r: any) => r.name).sort()).toEqual(['Салат из моркови', 'Салат из огурцов']);
+    const c = info.rows.find((r: any) => r.name === 'Салат из огурцов')!;
+    expect(c.nutrition.total.kcal).toBeGreaterThan(0);
+    expect(c.allergens_complete).toBe(false);   // профили аллергенов не внесены — «уточняйте»
+    expect((await menuReport(cook.id, orgId, 'info', root)).rows[0].price).toBeNull();
+    const cal = await menuReport(cook.id, orgId, 'calories', null);
+    expect(cal.rows.length).toBeGreaterThanOrEqual(3);
+    const bm = await menuReport(cook.id, orgId, 'bookmarks', root);
+    expect(bm.rows[0].lines.length).toBeGreaterThan(0);
+  });
+
+  it('содержание ингредиента: напрямую и через полуфабрикат', async () => {
+    const semi = (await createDish(tech.id, orgId, { name: 'Морковная заправка', kind: 'semi' })).id;
+    const sv = (await getDish(tech.id, orgId, semi)).current!.version.id;
+    await addLine(tech.id, orgId, sv, { productId: carrot, unit: 'г', brutto: 100, netto: 100 });
+    const user = (await createDish(tech.id, orgId, { name: 'Салат с заправкой' })).id;
+    const uv = (await getDish(tech.id, orgId, user)).current!.version.id;
+    await addLine(tech.id, orgId, uv, { subDishId: semi, unit: 'г', brutto: 30, netto: 30 });
+    const u = await ingredientUsage(cook.id, orgId, carrot);
+    expect(u.rows.find((r: any) => r.name === 'Морковная заправка')).toMatchObject({ via: null, status: 'draft' });
+    expect(u.rows.find((r: any) => r.name === 'Салат с заправкой')).toMatchObject({ via: 'Морковная заправка' });
+    expect(u.rows.some((r: any) => r.name === 'Салат из моркови')).toBe(true);
   });
 });

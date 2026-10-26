@@ -231,6 +231,22 @@ await P.goto(`${BASE}${base}/menu`);
 await P.waitForSelector('summary:has-text("Холодные закуски") >> text=(1)');
 await shot(P, 'дерево');
 
+step('отчёты по меню: информационный лист, калорийность, закладки, содержание ингредиента');
+await P.goto(`${BASE}${base}/menu`);
+await P.click('a:has-text("Отчёты по меню")');
+await P.waitForSelector('h1:has-text("Информационный лист")');
+await P.waitForSelector('.tu-doc b:has-text("Салат из моркови")');
+await shot(P, 'инфолист');
+await P.click('.chips button:has-text("Лист калорийности")');
+await P.waitForSelector('th:has-text("ккал на 100 г")');
+await P.click('.chips button:has-text("Закладки для поваров")');
+await P.waitForSelector('.tu-doc th:has-text("Нетто")');
+await shot(P, 'закладки');
+await P.click('.chips button:has-text("Содержание ингредиента")');
+await P.selectOption('#rp', carrot.id);
+await P.waitForSelector('td:has-text("Морковь отварная")');
+await shot(P, 'ингредиент');
+
 await browser.close(); await db.end();
 if (errors.length) throw new Error(`ошибки страницы: ${errors.join('; ')}`);
 console.log('✓ этап 18: обработка сырья');

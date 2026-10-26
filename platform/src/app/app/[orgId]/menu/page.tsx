@@ -67,9 +67,11 @@ export default function MenuPage() {
           <Link className="tile" href={`/app/${org.id}/menu/archive`}>Архив ТТК<span className="sub">559 карт — импорт черновиками</span></Link>
           <Link className="tile" href={`/app/${org.id}/menu/processing`}>Обработка сырья<span className="sub">нормы отходов и потерь</span></Link>
           <Link className="tile" href={`/app/${org.id}/menu/sto`}>Стандарты организации<span className="sub">СТО на группы блюд</span></Link>
+          <Link className="tile" href={`/app/${org.id}/menu/reports`}>Отчёты по меню<span className="sub">инфолист, калорийность, закладки</span></Link>
           <Link className={`tile ${unmatched ? 'alert' : ''}`} href={`/app/${org.id}/menu/match`}>Сопоставить сырьё<span className="sub">{unmatched ? `строк без товара: ${unmatched}` : 'всё сопоставлено'}</span></Link>
         </div>
       )}
+      {!manage && <p><Link className="btn block secondary" href={`/app/${org.id}/menu/reports?kind=bookmarks`}>Закладки для поваров и отчёты по меню</Link></p>}
       <input aria-label="Поиск блюда" placeholder="Найти блюдо" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
       {!rows ? <p className="muted">Загрузка…</p> : rows.length === 0 && !groups.length ? <div className="card"><p className="muted">Блюд пока нет. Создайте блюдо или импортируйте карты из архива.</p></div> : (
         <div className="card">
