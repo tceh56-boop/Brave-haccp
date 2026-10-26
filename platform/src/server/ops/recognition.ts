@@ -4,6 +4,9 @@ import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse } from './common';
 import { yandexStatus, complete } from '../integrations/yandex';
+import { bestVision, pdfPages } from '../recognition/vision';
+import { extractWithModel, auditWithModel, applyAudit, finalize, LIMITS, type Extracted } from '../recognition/extract';
+import { resolver, norm, supplierKey, type Product, type Alias } from '../recognition/match';
 
 /**
  * Распознавание документов — настройка (этап 17). Сами разборы (ТОРГ-12, УПД, QR кассового чека, банкетный бланк)
@@ -83,4 +86,86 @@ export async function checkConnection(userId: string, orgId: string, input: unkn
   await inOrg(userId, orgId, 'recognition.manage', (tx) => recordUsage(tx, { orgId, kind: 'check', pages: 0, tokens, status: ok ? 'ok' : 'failed', error, userId }));
   if (!ok) throw Errors.conflict(`Подключение не работает: ${error || 'пустой ответ модели'}`);
   return { ok: true, tokens };
+}
+
+/* ───────────── Распознавание документа поставщика (часть 2: перенос MON CHEF V10–V12) ───────────── */
+
+/** Доступно ли распознавание вида документа сотруднику (для кнопки на экране приёмки). */
+export async function recognitionAvailable(userId: string, orgId: string) {
+  return inOrg(userId, orgId, 'receipt.record', async (tx) => {
+    const s = await settingsOf(tx, orgId), srv = yandexStatus();
+    const used = (await usedThisMonth(tx, orgId)).reduce((a, u) => a + u.pages, 0);
+    return { enabled: srv.configured && s.enabled, kinds: s.kinds, pages_left: Math.max(0, s.monthly_pages - used) };
+  });
+}
+
+export interface UploadedFile { bytes: Buffer; mimeType: string; name: string }
+const MIME_OK = /^(image\/(jpeg|png)|application\/pdf)$/;
+
+/**
+ * Распознать документ (одно или несколько фото, PDF): черновик строк с кандидатами из номенклатуры.
+ * Ничего не проводит. Перед обращением — лимит; после — учёт страниц и токенов; дубль документа отмечается.
+ */
+export async function recognizeDocument(userId: string, orgId: string, input: unknown, files: UploadedFile[]) {
+  const d = parse(z.object({ siteId: z.uuid(), receiptId: z.uuid().optional().nullable(), kind: z.enum(['torg12', 'upd']).default('torg12') }), input);
+  if (!files.length) throw Errors.validation('Добавьте фото или PDF документа.');
+  if (files.length > 10) throw Errors.validation('Не больше 10 файлов на документ.');
+  for (const f of files) if (!MIME_OK.test(f.mimeType)) throw Errors.validation(`«${f.name}»: нужен JPEG, PNG или PDF.`);
+  const estimate = files.reduce((s, f) => s + (f.mimeType === 'application/pdf' ? Math.max(1, pdfPages(f.bytes)) : 1), 0);
+  const ctx = await inOrg(userId, orgId, 'receipt.record', async (tx) => {
+    if (!(await tx.query(`select 1 from sites where id = $1 and organization_id = $2`, [d.siteId, orgId])).rowCount) throw Errors.notFound('Площадка не найдена.');
+    if (d.receiptId && !(await tx.query(`select 1 from receipts where id = $1 and organization_id = $2 and site_id = $3 and status = 'draft'`, [d.receiptId, orgId, d.siteId])).rowCount)
+      throw Errors.conflict('Приёмка не найдена или уже завершена.');
+    await usageGuard(tx, orgId, d.kind, estimate);
+    const products = (await tx.query(`select id, name, unit from products where organization_id = $1 and status = 'active'`, [orgId])).rows as Product[];
+    const aliases = (await tx.query(`select raw_norm, product_id, nullif(supplier_key, '') as supplier_key from recognition_aliases where organization_id = $1`, [orgId])).rows as Alias[];
+    return { products, aliases };
+  }, d.siteId);
+
+  let billed = 0, tokens = 0;
+  try {
+    const best = await bestVision(files.map((f) => ({ bytes: f.bytes, mimeType: f.mimeType })));
+    billed = best.pagesBilled;
+    const first = await extractWithModel(best.vis);
+    tokens += first.tokens;
+    let ext: Extracted = first.ext;
+    const resolveFor = (e: Extracted) => resolver(ctx.products, ctx.aliases, e.supplier ? String(e.supplier) : null);
+    const pre = finalize(JSON.parse(JSON.stringify(ext)), best.vis, resolveFor(ext));
+    // вторая проверка — только для сомнительных документов (время и лимит), как в MON CHEF V12
+    if (pre.requires_manual_review || pre.recognition_confidence < LIMITS.AUTOPASS_THRESHOLD) {
+      const a = await auditWithModel(best.vis, ext);
+      tokens += a.tokens;
+      ext = applyAudit(ext, a.audit);
+    }
+    const doc = finalize(ext, best.vis, resolveFor(ext));
+    return await inOrg(userId, orgId, 'receipt.record', async (tx) => {
+      await recordUsage(tx, { orgId, kind: d.kind, pages: billed, tokens, status: 'ok', userId });
+      const dup = (await tx.query(`select id, created_at from recognition_documents where organization_id = $1 and doc_key = $2 order by created_at limit 1`, [orgId, doc.doc_key])).rows[0];
+      const row = (await tx.query(`insert into recognition_documents (organization_id, site_id, receipt_id, kind, doc_key, duplicate_of, result, files, pages, created_by)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`, [orgId, d.siteId, d.receiptId || null, d.kind, doc.doc_key, dup?.id || null, JSON.stringify(doc), files.length, billed, userId])).rows[0];
+      await audit.record(tx, { organizationId: orgId, siteId: d.siteId, actorUserId: userId, action: 'recognition.document', entityType: 'recognition_document', entityId: row.id,
+        after: { type: doc.document_type, number: doc.document_number, lines: doc.items.length, pages: billed, duplicate: !!dup } });
+      return { id: row.id as string, duplicate: dup ? { id: dup.id as string, at: dup.created_at as string } : null, document: doc };
+    }, d.siteId);
+  } catch (e) {
+    const msg = (e as Error).message;
+    await inOrg(userId, orgId, 'receipt.record', (tx) => recordUsage(tx, { orgId, kind: d.kind, pages: billed, tokens, status: 'failed', error: msg, userId }));
+    if (e instanceof SyntaxError) throw Errors.conflict('Модель вернула ответ не в том формате — внесите строки вручную или повторите.');
+    throw Errors.conflict(`Распознать не удалось: ${msg}`);
+  }
+}
+
+/** Запомнить соответствие, выбранное или подтверждённое человеком (MON CHEF V11 rememberOcrAlias). */
+export async function rememberAlias(userId: string, orgId: string, input: unknown) {
+  const d = parse(z.object({ rawText: z.string().trim().min(2).max(300), productId: z.uuid(), supplier: z.string().trim().max(300).optional().nullable() }), input);
+  return inOrg(userId, orgId, 'receipt.record', async (tx) => {
+    if (!(await tx.query(`select 1 from products where id = $1 and organization_id = $2`, [d.productId, orgId])).rowCount) throw Errors.notFound('Товар не найден.');
+    const raw = norm(d.rawText);
+    if (!raw) throw Errors.validation('Пустое название.');
+    await tx.query(`insert into recognition_aliases (organization_id, supplier_key, raw_text, raw_norm, product_id, created_by) values ($1, $2, $3, $4, $5, $6)
+      on conflict (organization_id, supplier_key, raw_norm) do update set product_id = excluded.product_id, hits = recognition_aliases.hits + 1, updated_at = now()`,
+    [orgId, d.supplier ? supplierKey(d.supplier) : '', d.rawText, raw, d.productId, userId]);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'recognition.alias', entityType: 'product', entityId: d.productId, after: { raw: d.rawText, supplier: d.supplier || null } });
+    return { ok: true };
+  });
 }

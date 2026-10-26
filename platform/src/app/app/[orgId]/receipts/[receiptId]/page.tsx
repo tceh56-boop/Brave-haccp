@@ -7,6 +7,7 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { d, n } from '@/lib/fmt';
 import { Evidence } from '@/components/Evidence';
+import { RecognizeDocument } from '@/components/RecognizeDocument';
 
 interface Line { id: string; product_id: string; product: string; quantity: string; unit: string; lot_no: string | null; expires_at: string | null; expiry_basis: string | null; temperature: string | null; decision: string; decision_reason: string | null; storage_name: string | null; lot_id: string | null }
 interface OrderLine { product_id: string; product: string; quantity: string; unit: string; price: string | null }
@@ -108,6 +109,10 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
           {Number(summary.unconfirmed) > 0 && <div>Срок не подтверждён у {summary.unconfirmed} — создана задача ответственному.</div>}
         </div>
       )}
+
+      {draft && <RecognizeDocument siteId={r.receipt.site_id} receiptId={receiptId} products={products}
+        onUse={(l) => { setF({ ...empty, storageObjectId: f.storageObjectId, productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, lotNo: l.lotNo, expiresAt: l.expiresAt });
+          document.getElementById('pr')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} />}
 
       {draft && (
         <div className="card">
