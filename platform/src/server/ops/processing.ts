@@ -232,6 +232,7 @@ export async function applyLineSteps(tx: Tx, orgId: string, userId: string, line
       where l.id = $1 and l.organization_id = $2 for update of l`, [parse(z.uuid(), lineId), orgId])).rows[0];
     if (!l) throw Errors.notFound('Строка не найдена.');
     if (l.v_status !== 'draft') throw Errors.conflict('ТТК не в черновике — изменения вносятся новой версией.');
+    if (l.kind === 'heading') throw Errors.validation('Это подзаголовок — у него нет обработки.');
     if (l.unit === 'порция' || l.unit === 'шт') { if (d.steps.length) throw Errors.validation('Обработка считается по массе или объёму — укажите строку в г, кг, мл или л.'); }
     const today = await orgToday(tx, orgId);
     const methods = new Map((await tx.query(`select * from processing_methods`)).rows.map((m) => [m.code, m]));

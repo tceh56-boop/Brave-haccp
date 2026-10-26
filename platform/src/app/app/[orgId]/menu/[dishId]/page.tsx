@@ -9,18 +9,18 @@ import { dt, n } from '@/lib/fmt';
 import { chain, type From } from '@/server/recipes/chain';
 
 interface Line { id: string; position: number; name_raw: string; product_id: string | null; sub_dish_id: string | null; product_name: string | null; product_unit: string | null; sub_dish_name: string | null;
-  unit: string; brutto: string | null; netto: string | null; ready: string | null; in_yield: boolean; calc_from: From | null; note: string | null; steps: Step[] }
+  kind: 'item' | 'heading'; unit: string; brutto: string | null; netto: string | null; ready: string | null; in_yield: boolean; calc_from: From | null; note: string | null; steps: Step[] }
 interface Step { method_code: string; method_name: string; kind: 'cold' | 'thermal'; loss_pct: number; norm_id: string | null; basis: string }
 interface Method { code: string; name: string; kind: 'cold' | 'thermal' }
 interface TodayNorm { id: string; loss_pct: number; basis: string; season: string }
-interface Version { id: string; version: number; status: string; status_label: string; yield_g: string | null; portion_g: string | null; technology: string | null; storage_conditions: string | null;
+interface Version { id: string; version: number; status: string; status_label: string; card_date: string | null; semi_yield_g: string | null; yield_g: string | null; portion_g: string | null; technology: string | null; storage_conditions: string | null;
   shelf_life: string | null; shelf_life_hours: string | null; quality: string | null; allergens: string | null; source: string; change_reason: string | null; return_note: string | null; approved_at: string | null }
 interface Cost { total: number | null; known: number; complete: boolean; missing: string[]; per_portion: number | null; per_kg: number | null; food_cost_pct: number | null;
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
 interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' }
-interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null };
+interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null; card_no: string | null };
   versions: { id: string; version: number; status: string; status_label: string; approved_at: string | null; approved_by_name: string | null }[];
-  current: { version: Version; lines: Line[]; blockers: string[]; warnings: string[]; cost: Cost | null; kbju: Kbju; output: { netto_g: number | null; ready_g: number | null } } | null;
+  current: { version: Version; lines: Line[]; blockers: string[]; warnings: string[]; cost: Cost | null; kbju: Kbju; output: { netto_g: number | null; ready_g: number | null; sections: { list: { title: string | null; ready_g: number | null }[]; label: string } | null } } | null;
   archive: { source_path: string; issues: string[]; yield_raw: string | null; yield_source: string | null } | null; canSeeCost: boolean }
 interface Product { id: string; name: string; unit: string }
 interface Dish { id: string; name: string; kind: string }
@@ -72,7 +72,8 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
       {cur && v && (
         <>
           <div className="card">
-            <div className="between"><b>ТТК, версия {v.version}</b><span className={`badge ${TONE[v.status]}`}>{v.status_label}</span></div>
+            <div className="between"><b>Рецептура № {data.dish.card_no || '—'}{v.card_date ? ` от ${v.card_date.slice(0, 10).split('-').reverse().join('.')}` : ''} · версия {v.version}</b><span className={`badge ${TONE[v.status]}`}>{v.status_label}</span></div>
+            {can('ttk.manage') && <CardNo dish={data.dish} onDone={load} />}
             <p className="small muted">{v.source}{v.change_reason ? ` · причина: ${v.change_reason}` : ''}{v.approved_at ? ` · утверждена ${dt(v.approved_at, org.timezone)}` : ''}</p>
             {v.return_note && <div className="note"><b>Возвращено на доработку:</b> {v.return_note}</div>}
             {data.archive && data.archive.issues.length > 0 && v.status === 'draft' && (
@@ -85,8 +86,13 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
             <h2>Состав{v.yield_g ? ` на выход ${n(v.yield_g)} г` : ''}</h2>
             <div className="scroll"><table className="tbl">
               <thead><tr><th>Сырьё</th><th>Ед.</th><th>Брутто</th><th>Нетто</th><th>Выход</th>{data.canSeeCost && <th>₽</th>}{draft && <th />}</tr></thead>
-              <tbody>{cur.lines.map((l) => (
-                <LineRow key={l.id} l={l} cost={lineCost.get(l.id)} seeCost={data.canSeeCost} editable={draft} products={products} semis={semis} busy={busy}
+              <tbody>{cur.lines.map((l, i) => l.kind === 'heading' ? (
+                <HeadingRow key={l.id} l={l} cols={5 + (data.canSeeCost ? 1 : 0)} editable={draft} busy={busy}
+                  onRename={(title) => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}/heading`, { method: 'PATCH', body: { title } }))}
+                  onMove={(dir) => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}/move`, { body: { dir } }))} first={i === 0} last={i === cur.lines.length - 1}
+                  onRemove={() => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}`, { method: 'DELETE' }))} />
+              ) : (
+                <LineRow first={i === 0} last={i === cur.lines.length - 1} onMove={(dir) => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}/move`, { body: { dir } }))} key={l.id} l={l} cost={lineCost.get(l.id)} seeCost={data.canSeeCost} editable={draft} products={products} semis={semis} busy={busy}
                   onSave={(body) => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}`, { method: 'PATCH', body }))}
                   stepsOpen={stepsFor === l.id} onToggleSteps={() => setStepsFor(stepsFor === l.id ? null : l.id)}
                   onMatch={(body) => act(() => api(`/orgs/${org.id}/ttk-lines/${l.id}/match`, { body: { ...body, remember: true } }))}
@@ -98,9 +104,14 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
                 onSave={(body) => act(async () => { await api(`/orgs/${org.id}/ttk-lines/${stepsFor}/steps`, { body }); setStepsFor(null); })} />
             )}
             {cur.lines.length === 0 && <p className="small muted">Состав не заполнен.</p>}
+            {cur.output.sections && <p><b>Выход по разделам: {cur.output.sections.label} г</b> <span className="small muted">({cur.output.sections.list.map((x) => `${x.title || 'без подзаголовка'} — ${x.ready_g === null ? '?' : x.ready_g}`).join('; ')})</span></p>}
             {cur.lines.length > 0 && <p className="small">Сумма нетто: {cur.output.netto_g !== null ? `${n(cur.output.netto_g)} г` : '—'} · выход по обработке сырья: {cur.output.ready_g !== null ? `${n(cur.output.ready_g)} г` : 'не по всем строкам'}</p>}
             <p className="small muted">Брутто → холодная обработка → нетто → тепловая → выход. Нормы — в разделе <Link href={`/app/${org.id}/menu/processing`}>«Обработка сырья»</Link>; ингредиенты без отметки «в выходе» (соль, специи) в выход и КБЖУ не входят.</p>
             {draft && <AddLine products={products} semis={semis} busy={busy} onAdd={(body) => act(() => api(`/orgs/${org.id}/ttk/${v.id}/lines`, { body }))} />}
+            {draft && <div className="row" style={{ marginTop: 8 }}>
+              <button className="btn small secondary" disabled={busy} onClick={() => { const title = prompt('Подзаголовок (например, «Выход жареного мяса — 120 г»):'); if (title) act(() => api(`/orgs/${org.id}/ttk/${v.id}/headings`, { body: { title } })); }}>+ подзаголовок</button>
+              <InsertFrom dishId={dishId} busy={busy} onPick={(id) => act(() => api(`/orgs/${org.id}/ttk/${v.id}/insert`, { body: { dishId: id } }))} />
+            </div>}
           </div>
 
           {cur.cost && (
@@ -194,13 +205,14 @@ function ReleaseChecks({ dishId }: { dishId: string }) {
 
 function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string; editable: boolean; onSave: (b: object) => void; busy: boolean }) {
   const init = () => ({ yieldG: v.yield_g ? String(Number(v.yield_g)) : '', portionG: v.portion_g ? String(Number(v.portion_g)) : '', technology: v.technology || '', storageConditions: v.storage_conditions || '',
-    shelfLife: v.shelf_life || '', quality: v.quality || '', allergens: v.allergens || '', shelfLifeHours: v.shelf_life_hours ? String(Number(v.shelf_life_hours)) : '' });
+    shelfLife: v.shelf_life || '', quality: v.quality || '', allergens: v.allergens || '', shelfLifeHours: v.shelf_life_hours ? String(Number(v.shelf_life_hours)) : '',
+    cardDate: v.card_date ? v.card_date.slice(0, 10) : '', semiYieldG: v.semi_yield_g ? String(Number(v.semi_yield_g)) : '' });
   const [f, setF] = useState(init);
   useEffect(() => { setF(init()); }, [v.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!editable) {
     return (
       <dl className="kv small">
-        <dt>Выход</dt><dd>{v.yield_g ? `${n(v.yield_g)} г` : '—'}{v.portion_g ? ` · порция ${n(v.portion_g)} г` : ''}</dd>
+        <dt>Выход</dt><dd>{v.yield_g ? `${n(v.yield_g)} г` : '—'}{v.portion_g ? ` · порция ${n(v.portion_g)} г` : ''}{Number(v.semi_yield_g) > 0 ? ` · п/ф ${n(v.semi_yield_g)} г` : ''}</dd>
         <dt>Технология</dt><dd style={{ whiteSpace: 'pre-line' }}>{v.technology || '—'}</dd>
         <dt>Хранение</dt><dd>{v.storage_conditions || '—'}</dd>
         <dt>Срок</dt><dd>{v.shelf_life || '—'}</dd>
@@ -212,8 +224,10 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
   }
   const num = (s: string) => (s ? Number(s.replace(',', '.')) : null);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null, shelfLifeHours: num(f.shelfLifeHours) }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null, shelfLifeHours: num(f.shelfLifeHours), cardDate: f.cardDate || undefined, semiYieldG: num(f.semiYieldG) }); }}>
       <div className="grid2">
+        <div><label htmlFor="cd">Дата рецептуры</label><input id="cd" type="date" value={f.cardDate} onChange={(e) => setF({ ...f, cardDate: e.target.value })} /></div>
+        <div><label htmlFor="syg">Выход п/ф, г</label><input id="syg" inputMode="decimal" value={f.semiYieldG} onChange={(e) => setF({ ...f, semiYieldG: e.target.value })} placeholder="0 — без п/ф" /></div>
         <div><label htmlFor="yg">Выход закладки, г</label><input id="yg" inputMode="decimal" value={f.yieldG} onChange={(e) => setF({ ...f, yieldG: e.target.value })} /></div>
         {kind === 'dish' && <div><label htmlFor="pg">Выход порции, г</label><input id="pg" inputMode="decimal" value={f.portionG} onChange={(e) => setF({ ...f, portionG: e.target.value })} /></div>}
       </div>
@@ -242,12 +256,55 @@ function Pick({ value, onChange, products, semis, id }: { value: string; onChang
 }
 const refBody = (pick: string) => (pick.startsWith('s:') ? { subDishId: pick.slice(2), productId: null } : { productId: pick.slice(2), subDishId: null });
 
+/** Подзаголовок рецептуры: делит состав на разделы, выход каждого — через «/». */
+function HeadingRow({ l, cols, editable, busy, onRename, onMove, onRemove, first, last }: { l: Line; cols: number; editable: boolean; busy: boolean; onRename: (t: string) => void;
+  onMove: (dir: 'up' | 'down') => void; onRemove: () => void; first: boolean; last: boolean }) {
+  return (
+    <tr className="heading">
+      <td colSpan={cols} style={{ background: 'var(--bg2, #f6efe4)' }}><b>{l.name_raw}</b></td>
+      {editable && <td style={{ whiteSpace: 'nowrap', background: 'var(--bg2, #f6efe4)' }}>
+        <button className="btn small secondary" disabled={busy} onClick={() => { const t = prompt('Подзаголовок:', l.name_raw); if (t) onRename(t); }} aria-label={`Переименовать ${l.name_raw}`}>✎</button>
+        <button className="btn small secondary" disabled={busy || first} onClick={() => onMove('up')} aria-label={`Выше ${l.name_raw}`}>↑</button>
+        <button className="btn small secondary" disabled={busy || last} onClick={() => onMove('down')} aria-label={`Ниже ${l.name_raw}`}>↓</button>
+        <button className="btn small secondary" disabled={busy} onClick={() => { if (confirm(`Удалить подзаголовок «${l.name_raw}»?`)) onRemove(); }} aria-label={`Удалить ${l.name_raw}`}>🗑</button>
+      </td>}
+    </tr>
+  );
+}
+
+/** Вставить весь состав другой рецептуры (однотипные блюда: тот же салат с другой заправкой). */
+function InsertFrom({ dishId, busy, onPick }: { dishId: string; busy: boolean; onPick: (id: string) => void }) {
+  const { org } = useOrg();
+  const [list, setList] = useState<Dish[] | null>(null);
+  const [id, setId] = useState('');
+  if (!list) return <button className="btn small secondary" onClick={() => api<Dish[]>(`/orgs/${org.id}/dishes`).then((d) => setList(d.filter((x) => x.id !== dishId))).catch(() => setList([]))}>Вставить из рецептуры…</button>;
+  return (
+    <span className="row">
+      <select aria-label="Рецептура для вставки" value={id} onChange={(e) => setId(e.target.value)} style={{ maxWidth: 240 }}>
+        <option value="">— рецептура —</option>{list.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+      </select>
+      <button className="btn small" disabled={busy || !id} onClick={() => { onPick(id); setList(null); setId(''); }}>Вставить</button>
+    </span>
+  );
+}
+
+function CardNo({ dish, onDone }: { dish: Data['dish']; onDone: () => void }) {
+  const { org } = useOrg();
+  const { busy, error, run } = useSubmit();
+  return (
+    <p className="small" style={{ margin: '4px 0' }}>
+      <button className="btn small secondary" disabled={busy} onClick={() => { const no = prompt('Номер рецептуры (ТТК № …):', dish.card_no || ''); if (no) run(async () => { await api(`/orgs/${org.id}/dishes/${dish.id}`, { method: 'PATCH', body: { cardNo: no } }); onDone(); }); }}>Изменить номер</button>
+      {error && <span className="err">{error}</span>}
+    </p>
+  );
+}
+
 const dec = (v: string | null) => (v === null || v === '' ? '' : String(Number(v)));
 const num = (v: string) => (v.trim() ? Number(v.replace(',', '.')) : null);
 const pctLabel = (s: { kind: string; loss_pct: number }) => (s.loss_pct < 0 ? `+${n(-s.loss_pct)} %` : `−${n(s.loss_pct)} %`);
 
-function LineRow({ l, cost, seeCost, editable, products, semis, busy, stepsOpen, onToggleSteps, onSave, onMatch, onRemove }: { l: Line; cost?: Cost['lines'][number]; seeCost: boolean; editable: boolean; products: Product[]; semis: Dish[];
-  busy: boolean; stepsOpen: boolean; onToggleSteps: () => void; onSave: (b: object) => void; onMatch: (b: object) => void; onRemove: () => void }) {
+function LineRow({ l, cost, seeCost, editable, products, semis, busy, stepsOpen, onToggleSteps, onSave, onMatch, onRemove, onMove, first, last }: { l: Line; cost?: Cost['lines'][number]; seeCost: boolean; editable: boolean; products: Product[]; semis: Dish[];
+  busy: boolean; stepsOpen: boolean; onToggleSteps: () => void; onSave: (b: object) => void; onMatch: (b: object) => void; onRemove: () => void; onMove: (dir: 'up' | 'down') => void; first: boolean; last: boolean }) {
   const [edit, setEdit] = useState<{ unit: string; brutto: string; netto: string; ready: string; inYield: boolean } | null>(null);
   const [pick, setPick] = useState('');
   const target = l.product_name ? `${l.product_name}` : l.sub_dish_name ? `п/ф: ${l.sub_dish_name}` : null;
@@ -273,7 +330,9 @@ function LineRow({ l, cost, seeCost, editable, products, semis, busy, stepsOpen,
         {seeCost && <td title={cost?.source || ''}>{cost?.cost != null ? n(cost.cost) : '—'}</td>}
         {editable && <td style={{ whiteSpace: 'nowrap' }}>{edit ? (
           <><button className="btn small" disabled={busy} onClick={() => { onSave({ unit: edit.unit, brutto: num(edit.brutto), netto: num(edit.netto), ready: num(edit.ready), inYield: edit.inYield }); setEdit(null); }}>OK</button>
-            <button className="btn small secondary" onClick={() => setEdit(null)}>×</button></>
+            <button className="btn small secondary" onClick={() => setEdit(null)}>×</button>
+            <button className="btn small secondary" disabled={busy || first} onClick={() => onMove('up')} aria-label={`Выше ${l.name_raw}`}>↑</button>
+            <button className="btn small secondary" disabled={busy || last} onClick={() => onMove('down')} aria-label={`Ниже ${l.name_raw}`}>↓</button></>
         ) : (
           <><button className="btn small secondary" onClick={() => setEdit({ unit: l.unit, brutto: dec(l.brutto), netto: dec(l.netto), ready: dec(l.ready), inYield: l.in_yield })} aria-label={`Изменить ${l.name_raw}`}>✎</button>
             {(l.product_id || l.sub_dish_id) && !['шт', 'порция'].includes(l.unit) && <button className="btn small secondary" aria-pressed={stepsOpen} onClick={onToggleSteps} aria-label={`Обработка ${l.name_raw}`}>⚙</button>}

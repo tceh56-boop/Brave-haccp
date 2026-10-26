@@ -95,7 +95,7 @@ async function aggregate(tx: Tx, orgId: string, dishId: string, scale: number, p
   if (depth > 5 || stack.has(dishId)) { acc.warnings.push(`${path}: циклическая или слишком глубокая вложенность п/ф.`); return; }
   const v = (await tx.query(`select id, yield_g from ttk_versions where dish_id = $1 and organization_id = $2 and status = 'approved'`, [dishId, orgId])).rows[0];
   if (!v) { acc.warnings.push(`${path}: нет утверждённой ТТК.`); return; }
-  const lines = (await tx.query(`select l.*, p.name as product_name from ttk_lines l left join products p on p.id = l.product_id where l.version_id = $1 order by l.position`, [v.id])).rows;
+  const lines = (await tx.query(`select l.*, p.name as product_name from ttk_lines l left join products p on p.id = l.product_id where l.version_id = $1 and l.kind = 'item' order by l.position`, [v.id])).rows;
   for (const l of lines) {
     const net = Number(l.netto ?? l.brutto ?? 0);
     if (l.product_id) {
@@ -171,7 +171,7 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
   const lossPct = acc.input_g > 0 && yieldG > 0 ? r1((acc.input_g - yieldG) / acc.input_g * 100) : 0;
   if (lossPct < 0) warnings.push(`Выход (${Math.round(yieldG)} г) больше закладки нетто (${Math.round(acc.input_g)} г) — проверьте выход и единицы (ГОСТ 31988-2012).`);
   const top = (await tx.query(`select l.name_raw, l.unit, l.netto, l.brutto, l.product_id, l.sub_dish_id, p.name as product_name, d.name as sub_name
-    from ttk_lines l left join products p on p.id = l.product_id left join dishes d on d.id = l.sub_dish_id where l.version_id = $1 order by l.position`, [v.id])).rows;
+    from ttk_lines l left join products p on p.id = l.product_id left join dishes d on d.id = l.sub_dish_id where l.version_id = $1 and l.kind = 'item' order by l.position`, [v.id])).rows;
   const recipe = [];
   for (const l of top) {
     const net = Number(l.netto ?? l.brutto ?? 0);

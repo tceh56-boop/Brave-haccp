@@ -87,8 +87,8 @@ export async function importFromArchive(userId: string, orgId: string, input: un
       if (!c) throw Errors.notFound('Карта архива не найдена.');
       if ((await tx.query(`select 1 from dishes where organization_id = $1 and (archive_id = $2 or (status = 'active' and lower(name) = lower($3)))`, [orgId, id, c.name])).rowCount) { res.skipped++; continue; }
       const kind = /п\s*\/\s*ф|полуфабрикат/i.test(`${c.name} ${(c.category_path || []).join(' ')}`) ? 'semi' : 'dish';
-      const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, archive_id, created_by) values ($1, $2, $3, $4, $5, $6) returning id`,
-        [orgId, c.name, kind, (c.category_path || []).slice(-1)[0] || null, id, userId])).rows[0];
+      const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, archive_id, created_by, card_no) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        [orgId, c.name, kind, (c.category_path || []).slice(-1)[0] || null, id, userId, await nextCardNo(tx, orgId)])).rows[0];
       const portion = kind === 'dish' && c.basis === '1 порция' && c.yield_g ? c.yield_g : null;
       const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, source, created_by)
         values ($1, $2, 1, $3, $4, $5, $6, $7) returning id`, [orgId, dish.id, c.yield_g, portion, c.technology || null, `Архив ТТК: ${c.source_path}`, userId])).rows[0];
@@ -120,7 +120,13 @@ async function aliasFor(tx: Tx, orgId: string, name: string): Promise<{ product_
 
 /* ───────────── Блюда и версии ───────────── */
 
+/** Следующий номер рецептуры по порядку (номера, введённые вручную не числом, не мешают). */
+async function nextCardNo(tx: Tx, orgId: string) {
+  return String(Number((await tx.query(`select coalesce(max(card_no::int) filter (where card_no ~ '^[0-9]{1,9}$'), 0) + 1 as n from dishes where organization_id = $1`, [orgId])).rows[0].n));
+}
+
 const DishInput = z.object({
+  cardNo: optText(30),
   name: z.string().trim().min(2, 'Название блюда.').max(200),
   kind: z.enum(['dish', 'semi']).default('dish'),
   category: optText(100),
@@ -132,8 +138,8 @@ export async function createDish(userId: string, orgId: string, input: unknown) 
   return inOrg(userId, orgId, 'ttk.manage', async (tx, m) => {
     if (d.salePrice != null && !roleHas(m.role, 'menu.price')) throw Errors.forbidden('Цену продажи устанавливает руководитель или шеф.');
     if ((await tx.query(`select 1 from dishes where organization_id = $1 and status = 'active' and lower(name) = lower($2)`, [orgId, d.name])).rowCount) throw Errors.conflict('Блюдо с таким названием уже есть.');
-    const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, sale_price, created_by) values ($1, $2, $3, $4, $5, $6) returning *`,
-      [orgId, d.name, d.kind, d.category, d.salePrice ?? null, userId])).rows[0];
+    const dish = (await tx.query(`insert into dishes (organization_id, name, kind, category, sale_price, created_by, card_no) values ($1, $2, $3, $4, $5, $6, $7) returning *`,
+      [orgId, d.name, d.kind, d.category, d.salePrice ?? null, userId, d.cardNo || await nextCardNo(tx, orgId)])).rows[0];
     await tx.query(`insert into ttk_versions (organization_id, dish_id, version, created_by) values ($1, $2, 1, $3)`, [orgId, dish.id, userId]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'dish.create', entityType: 'dish', entityId: dish.id, after: d });
     return dish;
@@ -142,14 +148,14 @@ export async function createDish(userId: string, orgId: string, input: unknown) 
 
 export async function updateDish(userId: string, orgId: string, dishId: string, input: unknown) {
   const d = parse(z.object({ name: z.string().trim().min(2).max(200).optional(), category: optText(100), salePrice: z.coerce.number().min(0).nullable().optional(),
-    status: z.enum(['active', 'archived']).optional() }), input);
+    status: z.enum(['active', 'archived']).optional(), cardNo: z.string().trim().min(1, 'Номер рецептуры.').max(30).optional() }), input);
   return inOrg(userId, orgId, d.salePrice !== undefined && Object.keys(d).length === 1 ? 'menu.price' : 'ttk.manage', async (tx, m) => {
     const dish = (await tx.query(`select * from dishes where id = $1 and organization_id = $2 for update`, [dishId, orgId])).rows[0];
     if (!dish) throw Errors.notFound('Блюдо не найдено.');
     if (d.salePrice !== undefined && !roleHas(m.role, 'menu.price')) throw Errors.forbidden('Цену продажи устанавливает руководитель или шеф.');
     await tx.query(`update dishes set name = coalesce($2, name), category = case when $3::boolean then $4 else category end,
-        sale_price = case when $5::boolean then $6 else sale_price end, status = coalesce($7, status) where id = $1`,
-      [dishId, d.name || null, d.category !== undefined, d.category ?? null, d.salePrice !== undefined, d.salePrice ?? null, d.status || null]);
+        sale_price = case when $5::boolean then $6 else sale_price end, status = coalesce($7, status), card_no = coalesce($8, card_no) where id = $1`,
+      [dishId, d.name || null, d.category !== undefined, d.category ?? null, d.salePrice !== undefined, d.salePrice ?? null, d.status || null, d.cardNo || null]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'dish.update', entityType: 'dish', entityId: dishId,
       before: { name: dish.name, sale_price: dish.sale_price, status: dish.status }, after: d });
     return { ok: true };
@@ -161,7 +167,7 @@ export async function listDishes(userId: string, orgId: string) {
       ${roleHas(m.role, 'cost.read') || roleHas(m.role, 'menu.price') ? 'd.sale_price' : 'null as sale_price'},
       (select json_build_object('id', v.id, 'version', v.version, 'approved_at', v.approved_at) from ttk_versions v where v.dish_id = d.id and v.status = 'approved') as approved,
       (select json_build_object('id', v.id, 'version', v.version, 'status', v.status) from ttk_versions v where v.dish_id = d.id and v.status in ('draft', 'review')) as open,
-      (select count(*)::int from ttk_lines l join ttk_versions v on v.id = l.version_id where v.dish_id = d.id and v.status in ('draft', 'review') and l.product_id is null and l.sub_dish_id is null) as unmatched
+      (select count(*)::int from ttk_lines l join ttk_versions v on v.id = l.version_id where v.dish_id = d.id and v.status in ('draft', 'review') and l.kind = 'item' and l.product_id is null and l.sub_dish_id is null) as unmatched
     from dishes d where d.organization_id = $1 and d.status = 'active' order by d.kind, d.category nulls last, d.name`, [orgId])).rows);
 }
 
@@ -214,12 +220,33 @@ async function versionCard(tx: Tx, orgId: string, v: Record<string, any>, dish: 
     warnings.push(`Выход карты (${fmtNum(v.yield_g)} г) расходится с выходом по обработке сырья (${fmtNum(Math.round(calc.ready_g))} г) — проверьте выход или нормы обработки.`);
   } else if (!calc.ready_complete && calc.mass_g && v.yield_g && Number(v.yield_g) > calc.mass_g * 1.02) warnings.push(`Выход (${fmtNum(v.yield_g)} г) больше закладки нетто (${fmtNum(Math.round(calc.mass_g))} г) — проверьте единицы или состав.`);
   return { version: { ...v, status_label: TTK_STATUS[v.status] } as Record<string, any>, lines, blockers, warnings, cost, kbju: calc.kbju,
-    output: { netto_g: calc.mass_g ? Math.round(calc.mass_g) : null, ready_g: calc.ready_complete && calc.ready_g ? Math.round(calc.ready_g) : null } };
+    output: { netto_g: calc.mass_g ? Math.round(calc.mass_g) : null, ready_g: calc.ready_complete && calc.ready_g ? Math.round(calc.ready_g) : null, sections: sections(lines, calc) } };
+}
+
+/**
+ * Выход по разделам рецептуры (подзаголовкам): «120/110/95», как в Шеф Эксперте. Строки до первого подзаголовка —
+ * отдельный раздел. Раздел, где выход хотя бы одной строки не определён, — «?» (не ноль).
+ */
+function sections(lines: Record<string, any>[], calc: Calc) {
+  if (!lines.some((l) => l.kind === 'heading')) return null;
+  const ready = new Map(calc.lines.map((x) => [x.line_id, x.ready_g ?? null]));
+  const out: { title: string | null; ready_g: number | null }[] = [];
+  let cur: { title: string | null; ready_g: number | null; n: number } | null = null;
+  for (const l of lines) {
+    if (l.kind === 'heading') { if (cur && cur.n) out.push({ title: cur.title, ready_g: cur.ready_g }); cur = { title: l.name_raw, ready_g: 0, n: 0 }; continue; }
+    cur = cur || { title: null, ready_g: 0, n: 0 };
+    cur.n++;
+    const g = ready.get(l.id);
+    cur.ready_g = g === null || g === undefined || cur.ready_g === null ? null : cur.ready_g + g;
+  }
+  if (cur && cur.n) out.push({ title: cur.title, ready_g: cur.ready_g });
+  const list = out.map((x) => ({ ...x, ready_g: x.ready_g === null ? null : Math.round(x.ready_g) }));
+  return { list, label: list.map((x) => (x.ready_g === null ? '?' : String(x.ready_g))).join('/') };
 }
 
 /* ───────────── Расчёт: себестоимость и КБЖУ ───────────── */
 
-interface Calc { cost: { total: number; complete: boolean; missing: string[] }; lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[];
+interface Calc { cost: { total: number; complete: boolean; missing: string[] }; lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null; ready_g?: number | null }[];
   kbju: { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' };
   mass_g: number; ready_g: number; ready_complete: boolean }
 
@@ -268,13 +295,14 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
       coalesce(pn.carbs_100, r.carbs_100) as carbs_100, case when pn.id is not null then 'VERIFIED' else r.verification_status end as verification_status, sd.name as sub_name
     from ttk_lines l left join products p on p.id = l.product_id left join reference_products r on r.id = p.reference_product_id left join dishes sd on sd.id = l.sub_dish_id
     left join lateral (select * from product_nutrition x where x.product_id = l.product_id order by x.created_at desc limit 1) pn on true
-    where l.version_id = $1 order by l.position`, [versionId])).rows;
+    where l.version_id = $1 and l.kind = 'item' order by l.position`, [versionId])).rows;
   const out: Calc = { cost: { total: 0, complete: true, missing: [] }, lines: [], kbju: { per100: null, complete: true, verified: true, missing: [], losses: 'none' }, mass_g: 0, ready_g: 0, ready_complete: true };
   const k = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
   const steps = await versionSteps(tx, versionId);
   let counted = 0, thermal = 0, withLosses = 0;   // строк, вошедших в КБЖУ: ни одной — значит «не рассчитано», а не ноль
   for (const l of lines) {
     const gross = Number(l.brutto ?? l.netto ?? 0), net = Number(l.netto ?? l.brutto ?? 0);
+    let lineReady: number | null = null;
     let lineCost: number | null = null, price: number | null = null, priceUnit: string | null = null, source: string | null = null;
     if (l.product_id) {
       const pp = await productPrice(tx, orgId, l.product_id);
@@ -282,11 +310,12 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
       if (pp && qty !== null) { lineCost = qty * pp.price; price = pp.price; priceUnit = pp.unit; source = pp.source; }
       else out.cost.missing.push(pp ? `${l.product_name}: нет коэффициента «${l.unit} → ${pp.unit}»` : `${l.product_name}: нет цены закупки`);
       const g = l.in_yield ? await convert(tx, l.product_id, net, l.unit, 'г') : null;
-      if (!l.in_yield) { out.lines.push({ line_id: l.id, cost: lineCost === null ? null : r2(lineCost), price: price === null ? null : r2(price), price_unit: priceUnit, source }); if (lineCost !== null) out.cost.total += lineCost; continue; }
+      if (!l.in_yield) { out.lines.push({ line_id: l.id, cost: lineCost === null ? null : r2(lineCost), price: price === null ? null : r2(price), price_unit: priceUnit, source, ready_g: 0 }); if (lineCost !== null) out.cost.total += lineCost; continue; }
       if (g !== null) out.mass_g += g;
       const ls = steps.get(l.id) || [];
       const rg = l.ready !== null ? await convert(tx, l.product_id, Number(l.ready), l.unit, 'г') : ls.some((s) => s.kind === 'thermal') ? null : g;
       if (rg !== null) out.ready_g += rg; else out.ready_complete = false;
+      lineReady = rg;
       // потери нутриентов при тепловой обработке — по нормам шагов; неизвестны — без потерь (ориентировочно)
       const hasThermal = ls.some((s) => s.kind === 'thermal'), keep = hasThermal ? retention(ls as any) : null;
       if (hasThermal) { thermal++; if (keep) withLosses++; }
@@ -311,6 +340,7 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
         const ls = steps.get(l.id) || [];
         const rg = !l.in_yield ? 0 : l.ready !== null ? await subGrams(tx, l.sub_dish_id, Number(l.ready), l.unit) : ls.some((s) => s.kind === 'thermal') ? null : g;
         if (rg !== null) out.ready_g += rg; else out.ready_complete = false;
+        lineReady = rg;
         const sub = await calcVersion(tx, orgId, sv.id, new Set([...stack, l.sub_dish_id]));
         if (sub.cost.complete) { lineCost = sub.cost.total * gg / Number(sv.yield_g); source = 'по ТТК полуфабриката'; }
         else out.cost.missing.push(`${l.sub_name}: себестоимость полуфабриката неполная`);
@@ -324,7 +354,7 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
       out.cost.missing.push(`${l.name_raw}: не сопоставлено с товаром`); out.kbju.missing.push(`${l.name_raw}: не сопоставлено`); out.ready_complete = false;
     }
     if (lineCost !== null) out.cost.total += lineCost;
-    out.lines.push({ line_id: l.id, cost: lineCost === null ? null : r2(lineCost), price: price === null ? null : r2(price), price_unit: priceUnit, source });
+    out.lines.push({ line_id: l.id, cost: lineCost === null ? null : r2(lineCost), price: price === null ? null : r2(price), price_unit: priceUnit, source, ready_g: lineReady });
   }
   if (out.cost.missing.length || !lines.length) out.cost.complete = false;
   if (!lines.length) out.ready_complete = false;
@@ -348,9 +378,10 @@ async function versionBlockers(tx: Tx, orgId: string, v: Record<string, any>, di
   if (!v.yield_g) out.push('Укажите выход.');
   if (dish.kind === 'dish' && !v.portion_g) out.push('Укажите выход порции.');
   if (v.portion_g && v.yield_g && Number(v.portion_g) > Number(v.yield_g)) out.push('Порция больше выхода закладки.');
-  if (!lines.length) out.push('Нет состава.');
+  if (!lines.some((l) => l.kind !== 'heading')) out.push('Нет состава.');
   const stepsOf = await versionSteps(tx, v.id);
   for (const l of lines) {
+    if (l.kind === 'heading') continue;
     const n = `«${l.name_raw}»`;
     if (!l.product_id && !l.sub_dish_id) { out.push(`${n}: не сопоставлено с товаром или полуфабрикатом.`); continue; }
     if (!(Number(l.netto) > 0)) out.push(`${n}: нет нетто.`);
@@ -373,14 +404,17 @@ const VersionInput = z.object({
   yieldG: z.coerce.number().positive().nullable().optional(), portionG: z.coerce.number().positive().nullable().optional(),
   technology: optText(10000), storageConditions: optText(1000), shelfLife: optText(300), quality: optText(2000), allergens: optText(1000),
   shelfLifeHours: z.coerce.number().positive('Срок — больше нуля часов.').max(24 * 365).nullable().optional(),   // срок партии п/ф при выпуске
+  cardDate: z.iso.date('Дата рецептуры — ГГГГ-ММ-ДД.').optional(), semiYieldG: z.coerce.number().min(0).nullable().optional(),
 });
 
 export async function updateVersion(userId: string, orgId: string, versionId: string, input: unknown) {
   const d = parse(VersionInput, input);
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const v = await draftVersion(tx, orgId, versionId);
-    await tx.query(`update ttk_versions set yield_g = $2, portion_g = $3, technology = $4, storage_conditions = $5, shelf_life = $6, quality = $7, allergens = $8, shelf_life_hours = $9, return_note = null where id = $1`,
-      [versionId, d.yieldG ?? null, d.portionG ?? null, d.technology, d.storageConditions, d.shelfLife, d.quality, d.allergens, d.shelfLifeHours ?? null]);
+    await tx.query(`update ttk_versions set yield_g = $2, portion_g = $3, technology = $4, storage_conditions = $5, shelf_life = $6, quality = $7, allergens = $8, shelf_life_hours = $9, return_note = null,
+        card_date = coalesce($10, card_date), semi_yield_g = case when $11::boolean then $12 else semi_yield_g end where id = $1`,
+      [versionId, d.yieldG ?? null, d.portionG ?? null, d.technology, d.storageConditions, d.shelfLife, d.quality, d.allergens, d.shelfLifeHours ?? null,
+        d.cardDate || null, d.semiYieldG !== undefined, d.semiYieldG ?? null]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.update', entityType: 'ttk_version', entityId: versionId,
       before: { yield_g: v.yield_g, portion_g: v.portion_g, shelf_life: v.shelf_life }, after: d });
     return { ok: true };
@@ -428,6 +462,7 @@ export async function updateLine(userId: string, orgId: string, lineId: string, 
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const l = (await tx.query(`select * from ttk_lines where id = $1 and organization_id = $2`, [lineId, orgId])).rows[0];
     if (!l) throw Errors.notFound('Строка не найдена.');
+    if (l.kind === 'heading') throw Errors.validation('Это подзаголовок — у него нет сырья и количества.');
     await draftVersion(tx, orgId, l.version_id);
     await checkRefs(tx, orgId, d.productId, d.subDishId);
     let q = { brutto: d.brutto ?? null, netto: d.netto ?? null, ready: d.ready ?? null };
@@ -444,6 +479,73 @@ export async function updateLine(userId: string, orgId: string, lineId: string, 
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.line_update', entityType: 'ttk_version', entityId: l.version_id,
       before: { name: l.name_raw, unit: l.unit, brutto: l.brutto, netto: l.netto, ready: l.ready }, after: { ...d, ...q } });
     return { ok: true };
+  });
+}
+
+/** Копия строк (с подзаголовками и шагами обработки) в черновик, позиции — после shift. */
+async function copyLines(tx: Tx, fromVersion: string, toVersion: string, shift: number) {
+  await tx.query(`insert into ttk_lines (organization_id, version_id, position, kind, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, calc_from, in_yield, note)
+    select organization_id, $2, position + $3, kind, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, calc_from, in_yield, note from ttk_lines where version_id = $1`, [fromVersion, toVersion, shift]);
+  await tx.query(`insert into ttk_line_steps (organization_id, version_id, line_id, position, method_code, norm_id, loss_pct, protein_loss_pct, fat_loss_pct, carbs_loss_pct, basis)
+    select s.organization_id, $2, nl.id, s.position, s.method_code, s.norm_id, s.loss_pct, s.protein_loss_pct, s.fat_loss_pct, s.carbs_loss_pct, s.basis
+    from ttk_line_steps s join ttk_lines ol on ol.id = s.line_id join ttk_lines nl on nl.version_id = $2 and nl.position = ol.position + $3 where s.version_id = $1`, [fromVersion, toVersion, shift]);
+}
+
+/** Подзаголовок рецептуры: делит состав на разделы с отдельным выходом (выход блюда через «/»). */
+export async function addHeading(userId: string, orgId: string, versionId: string, input: unknown) {
+  const d = parse(z.object({ title: z.string('Текст подзаголовка.').trim().min(1, 'Текст подзаголовка.').max(200) }), input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    await draftVersion(tx, orgId, versionId);
+    const pos = Number((await tx.query(`select coalesce(max(position), 0) + 1 as n from ttk_lines where version_id = $1`, [versionId])).rows[0].n);
+    const l = (await tx.query(`insert into ttk_lines (organization_id, version_id, position, kind, name_raw) values ($1, $2, $3, 'heading', $4) returning *`, [orgId, versionId, pos, d.title])).rows[0];
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.heading_add', entityType: 'ttk_version', entityId: versionId, after: { line: l.id, title: d.title } });
+    return l;
+  });
+}
+
+export async function renameHeading(userId: string, orgId: string, lineId: string, input: unknown) {
+  const d = parse(z.object({ title: z.string('Текст подзаголовка.').trim().min(1, 'Текст подзаголовка.').max(200) }), input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    const l = (await tx.query(`select * from ttk_lines where id = $1 and organization_id = $2 and kind = 'heading'`, [parse(z.uuid(), lineId), orgId])).rows[0];
+    if (!l) throw Errors.notFound('Подзаголовок не найден.');
+    await draftVersion(tx, orgId, l.version_id);
+    await tx.query(`update ttk_lines set name_raw = $2 where id = $1`, [l.id, d.title]);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.heading_rename', entityType: 'ttk_version', entityId: l.version_id, before: { title: l.name_raw }, after: d });
+    return { ok: true };
+  });
+}
+
+/** Строку вверх / вниз (обмен позициями с соседней). */
+export async function moveLine(userId: string, orgId: string, lineId: string, input: unknown) {
+  const d = parse(z.object({ dir: z.enum(['up', 'down']) }), input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    const l = (await tx.query(`select * from ttk_lines where id = $1 and organization_id = $2`, [parse(z.uuid(), lineId), orgId])).rows[0];
+    if (!l) throw Errors.notFound('Строка не найдена.');
+    await draftVersion(tx, orgId, l.version_id);
+    const n = (await tx.query(`select * from ttk_lines where version_id = $1 and position ${d.dir === 'up' ? '<' : '>'} $2 order by position ${d.dir === 'up' ? 'desc' : 'asc'} limit 1`,
+      [l.version_id, l.position])).rows[0];
+    if (!n) return { ok: true };
+    await tx.query(`update ttk_lines set position = $2 where id = $1`, [l.id, n.position]);
+    await tx.query(`update ttk_lines set position = $2 where id = $1`, [n.id, l.position]);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.line_move', entityType: 'ttk_version', entityId: l.version_id, after: { line: l.id, dir: d.dir } });
+    return { ok: true };
+  });
+}
+
+/** Вставить в черновик весь состав другой рецептуры (утверждённой, иначе последней версии) — для однотипных блюд. */
+export async function insertFromDish(userId: string, orgId: string, versionId: string, input: unknown) {
+  const d = parse(z.object({ dishId: z.uuid('Выберите рецептуру.') }), input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    const v = await draftVersion(tx, orgId, versionId);
+    if (v.dish_id === d.dishId) throw Errors.validation('Выберите другую рецептуру.');
+    const src = (await tx.query(`select v.id, d.name from ttk_versions v join dishes d on d.id = v.dish_id where v.dish_id = $1 and v.organization_id = $2
+      order by (v.status = 'approved') desc, v.version desc limit 1`, [d.dishId, orgId])).rows[0];
+    if (!src) throw Errors.notFound('Рецептура не найдена.');
+    const shift = Number((await tx.query(`select coalesce(max(position), 0) as n from ttk_lines where version_id = $1`, [versionId])).rows[0].n);
+    await copyLines(tx, src.id, versionId, shift);
+    const n = Number((await tx.query(`select count(*)::int as n from ttk_lines where version_id = $1 and position > $2`, [versionId, shift])).rows[0].n);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.insert_from', entityType: 'ttk_version', entityId: versionId, after: { from: src.name, lines: n } });
+    return { lines: n };
   });
 }
 
@@ -465,6 +567,7 @@ export async function matchLine(userId: string, orgId: string, lineId: string, i
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const l = (await tx.query(`select * from ttk_lines where id = $1 and organization_id = $2`, [lineId, orgId])).rows[0];
     if (!l) throw Errors.notFound('Строка не найдена.');
+    if (l.kind === 'heading') throw Errors.validation('Это подзаголовок — у него нет сырья и количества.');
     await draftVersion(tx, orgId, l.version_id);
     await checkRefs(tx, orgId, d.productId, d.subDishId);
     await tx.query(`update ttk_lines set product_id = $2, sub_dish_id = $3 where id = $1`, [lineId, d.productId || null, d.subDishId || null]);
@@ -475,7 +578,7 @@ export async function matchLine(userId: string, orgId: string, lineId: string, i
         on conflict (organization_id, name_norm) do update set product_id = excluded.product_id, sub_dish_id = excluded.sub_dish_id, created_by = excluded.created_by, created_at = now()`,
         [orgId, n, d.productId || null, d.subDishId || null, userId]);
       const others = (await tx.query(`select l.id, l.name_raw from ttk_lines l join ttk_versions v on v.id = l.version_id
-        where l.organization_id = $1 and v.status = 'draft' and l.product_id is null and l.sub_dish_id is null and l.id <> $2`, [orgId, lineId])).rows.filter((o) => normName(o.name_raw) === n);
+        where l.organization_id = $1 and v.status = 'draft' and l.kind = 'item' and l.product_id is null and l.sub_dish_id is null and l.id <> $2`, [orgId, lineId])).rows.filter((o) => normName(o.name_raw) === n);
       for (const o of others) await tx.query(`update ttk_lines set product_id = $2, sub_dish_id = $3 where id = $1`, [o.id, d.productId || null, d.subDishId || null]);
       applied += others.length;
     }
@@ -489,7 +592,7 @@ export async function matchLine(userId: string, orgId: string, lineId: string, i
 export async function unmatchedNames(userId: string, orgId: string) {
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const rows = (await tx.query(`select l.id, l.name_raw, l.unit, d.name as dish from ttk_lines l join ttk_versions v on v.id = l.version_id join dishes d on d.id = v.dish_id
-      where l.organization_id = $1 and v.status = 'draft' and l.product_id is null and l.sub_dish_id is null order by l.name_raw`, [orgId])).rows;
+      where l.organization_id = $1 and v.status = 'draft' and l.kind = 'item' and l.product_id is null and l.sub_dish_id is null order by l.name_raw`, [orgId])).rows;
     const by = new Map<string, { name: string; line_id: string; units: Set<string>; dishes: Set<string>; count: number }>();
     for (const r of rows) {
       const n = normName(r.name_raw);
@@ -510,14 +613,10 @@ export async function newVersion(userId: string, orgId: string, dishId: string, 
     const src = (await tx.query(`select * from ttk_versions where dish_id = $1 and organization_id = $2 order by (status = 'approved') desc, version desc limit 1`, [dishId, orgId])).rows[0];
     if (!src) throw Errors.notFound('Блюдо не найдено.');
     const max = Number((await tx.query(`select max(version) as m from ttk_versions where dish_id = $1`, [dishId])).rows[0].m);
-    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
-      [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours])).rows[0];
-    await tx.query(`insert into ttk_lines (organization_id, version_id, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, calc_from, in_yield, note)
-      select organization_id, $2, position, name_raw, product_id, sub_dish_id, unit, brutto, netto, ready, calc_from, in_yield, note from ttk_lines where version_id = $1`, [src.id, v.id]);
-    await tx.query(`insert into ttk_line_steps (organization_id, version_id, line_id, position, method_code, norm_id, loss_pct, protein_loss_pct, fat_loss_pct, carbs_loss_pct, basis)
-      select s.organization_id, $2, nl.id, s.position, s.method_code, s.norm_id, s.loss_pct, s.protein_loss_pct, s.fat_loss_pct, s.carbs_loss_pct, s.basis
-      from ttk_line_steps s join ttk_lines ol on ol.id = s.line_id join ttk_lines nl on nl.version_id = $2 and nl.position = ol.position where s.version_id = $1`, [src.id, v.id]);
+    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours, semi_yield_g)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning *`,
+      [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours, src.semi_yield_g])).rows[0];
+    await copyLines(tx, src.id, v.id, 0);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.new_version', entityType: 'ttk_version', entityId: v.id, after: { version: v.version, from: src.version }, reason: d.changeReason });
     return v;
   });
@@ -575,7 +674,7 @@ export async function approveVersion(userId: string, orgId: string, versionId: s
 export async function approvedRecipe(tx: Tx, orgId: string, dishId: string) {
   const v = (await tx.query(`select * from ttk_versions where dish_id = $1 and organization_id = $2 and status = 'approved'`, [dishId, orgId])).rows[0];
   if (!v) return null;
-  const lines = (await tx.query(`select l.*, p.name as product_name, p.unit as product_unit from ttk_lines l left join products p on p.id = l.product_id where l.version_id = $1 order by l.position`, [v.id])).rows;
+  const lines = (await tx.query(`select l.*, p.name as product_name, p.unit as product_unit from ttk_lines l left join products p on p.id = l.product_id where l.version_id = $1 and l.kind = 'item' order by l.position`, [v.id])).rows;
   return { version: v, lines };
 }
 

@@ -92,6 +92,16 @@ await P.waitForFunction(() => document.querySelectorAll('td:first-child').length
 const v2 = await call('GET', `/orgs/${orgId}/dishes/${dish.id}`);
 if (Number(v2.current.lines[1].brutto) !== 10 || v2.current.lines[1].steps[0]?.method_code !== 'clean') throw new Error('по умолчанию: ' + JSON.stringify(v2.current.lines[1]));
 
+step('подзаголовок: выход по разделам через «/»');
+P.once('dialog', (d) => d.accept('Украшение'));
+await P.click('button:has-text("+ подзаголовок")');
+await P.waitForSelector('tr.heading:has-text("Украшение")');
+await P.click('button[aria-label="Выше Украшение"]');
+await P.waitForSelector('text=Выход по разделам: 100/8 г');
+await shot(P, 'разделы');
+const head = await P.textContent('.card:has(h2:has-text("Состав")) b');
+if (!/Рецептура № \d+ от \d\d\.\d\d\.\d{4}/.test(await P.textContent('.card b'))) throw new Error('нет номера рецептуры: ' + head);
+
 await browser.close(); await db.end();
 if (errors.length) throw new Error(`ошибки страницы: ${errors.join('; ')}`);
 console.log('✓ этап 18: обработка сырья');

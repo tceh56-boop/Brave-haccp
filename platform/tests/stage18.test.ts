@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closePool, withSystem } from '../src/server/db/pool';
 import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
 import { createProduct } from '../src/server/ops/catalog';
-import { importTtkArchive, createDish, getDish, updateVersion, addLine, updateLine, submitVersion, approveVersion, newVersion } from '../src/server/ops/recipes';
+import { importTtkArchive, createDish, getDish, updateDish, updateVersion, addLine, updateLine, submitVersion, approveVersion, newVersion, addHeading, renameHeading, moveLine,
+  insertFromDish, approvedRecipe } from '../src/server/ops/recipes';
 import {
   listMethods, createNorm, approveNorm, archiveNorm, listNorms, normsToday, setNormDefault, setLineSteps, applyNormToDrafts, suggestFromArchive,
 } from '../src/server/ops/processing';
@@ -194,5 +195,72 @@ describe('Строка ТТК: шаги обработки, брутто/нет�
   it('КБЖУ учитывает потери нутриентов по норме варки', async () => {
     const k = (await getDish(tech.id, orgId, dishId)).current!.kbju;
     expect(k.losses).toBe('all');
+  });
+});
+
+describe('Рецептура как в Шеф Эксперте: подзаголовки, выход через «/», номер и дата, вставка состава', () => {
+  let steakId: string, sv: string;
+
+  it('номер рецептуры — по порядку; дату и выход п/ф задаёт технолог', async () => {
+    const a = await createDish(tech.id, orgId, { name: 'Стейк из свинины с крокетами', category: 'Горячее' });
+    steakId = a.id;
+    const d = await getDish(tech.id, orgId, steakId);
+    sv = d.current!.version.id;
+    expect(Number(d.dish.card_no)).toBeGreaterThan(1);
+    await updateDish(tech.id, orgId, steakId, { cardNo: '199' });
+    await updateVersion(tech.id, orgId, sv, { technology: 'Стейк обжарить, довести в пароконвектомате; картофель обжарить во фритюре.', storageConditions: 'на раздаче при +65 °C',
+      shelfLife: 'по СанПиН', yieldG: 220, portionG: 220, cardDate: '2026-04-03', semiYieldG: 0 });
+    const v = (await getDish(tech.id, orgId, steakId));
+    expect(v.dish.card_no).toBe('199');
+    expect(v.current!.version.card_date.toISOString?.() ?? String(v.current!.version.card_date)).toMatch(/2026-04-0[23]/);
+  });
+
+  it('подзаголовки делят состав; выход по разделам «120/100»; соль в выход не входит', async () => {
+    await addLine(tech.id, orgId, sv, { name: 'Свинина корейка', productId: carrot, unit: 'г', brutto: 176, netto: 176, ready: 120 });
+    await addLine(tech.id, orgId, sv, { productId: salt, unit: 'г', brutto: 2, netto: 2, inYield: false });
+    await addHeading(tech.id, orgId, sv, { title: 'Гарнир' });
+    await addLine(tech.id, orgId, sv, { name: 'Картофель фри', productId: rice, unit: 'г', brutto: 333, netto: 250, ready: 100 });
+    const c = (await getDish(tech.id, orgId, steakId)).current!;
+    expect(c.output.sections).toMatchObject({ label: '120/100', list: [{ title: null, ready_g: 120 }, { title: 'Гарнир', ready_g: 100 }] });
+    const h = c.lines.find((l: any) => l.kind === 'heading')!;
+    await expect(updateLine(tech.id, orgId, h.id, { unit: 'г', brutto: 1, netto: 1 })).rejects.toThrow(/подзаголовок/);
+    await expect(setLineSteps(tech.id, orgId, h.id, { steps: [], from: 'brutto', value: 1 })).rejects.toThrow(/подзаголовок/);
+    await renameHeading(tech.id, orgId, h.id, { title: 'Выход гарнира' });
+    // подзаголовок не мешает утверждению и не попадает в рецептуру для списания
+    expect((await getDish(tech.id, orgId, steakId)).current!.blockers).toEqual([]);
+  });
+
+  it('строку вверх/вниз: подзаголовок поднят — разделы пересчитаны', async () => {
+    const c = (await getDish(tech.id, orgId, steakId)).current!;
+    const h = c.lines.find((l: any) => l.kind === 'heading')!;
+    await moveLine(tech.id, orgId, h.id, { dir: 'up' });   // соль уходит во второй раздел (в выход не входит)
+    await moveLine(tech.id, orgId, h.id, { dir: 'up' });   // свинина тоже
+    const x = (await getDish(tech.id, orgId, steakId)).current!;
+    expect(x.lines[0].kind).toBe('heading');
+    expect(x.output.sections!.label).toBe('220');
+    await moveLine(tech.id, orgId, h.id, { dir: 'down' }); await moveLine(tech.id, orgId, h.id, { dir: 'down' });
+    expect((await getDish(tech.id, orgId, steakId)).current!.output.sections!.label).toBe('120/100');
+  });
+
+  it('вставка состава из другой рецептуры — со строками, подзаголовками и обработкой', async () => {
+    const b = await createDish(tech.id, orgId, { name: 'Стейк из свинины с овощами' });
+    const bv = (await getDish(tech.id, orgId, b.id)).current!.version.id;
+    await expect(insertFromDish(tech.id, orgId, bv, { dishId: b.id })).rejects.toMatchObject({ code: 'VALIDATION' });
+    expect((await insertFromDish(tech.id, orgId, bv, { dishId: steakId })).lines).toBe(4);
+    const x = (await getDish(tech.id, orgId, b.id)).current!;
+    expect(x.lines.map((l: any) => l.kind === 'heading' ? `# ${l.name_raw}` : l.name_raw)).toEqual(['Свинина корейка', 'Соль поваренная', '# Выход гарнира', 'Картофель фри']);
+    // и из карты с шагами обработки: шаги копируются
+    await insertFromDish(tech.id, orgId, bv, { dishId });
+    expect((await getDish(tech.id, orgId, b.id)).current!.lines.filter((l: any) => l.steps.length).length).toBeGreaterThan(0);
+  });
+
+  it('после утверждения подзаголовок не попадает в состав для списания и производства', async () => {
+    await submitVersion(tech.id, orgId, sv);
+    await approveVersion(tech.id, orgId, sv);
+    const r = await withSystem((tx) => approvedRecipe(tx, orgId, steakId));
+    expect(r!.lines.map((l: any) => l.name_raw)).toEqual(['Свинина корейка', 'Соль поваренная', 'Картофель фри']);
+    await expect(withSystem((tx) => tx.query(`update ttk_versions set card_date = '2020-01-01' where id = $1`, [sv]))).rejects.toThrow(/не изменяется/);
+    const nv = await newVersion(tech.id, orgId, steakId, { changeReason: 'Проверка копирования подзаголовков' });
+    expect((await getDish(tech.id, orgId, steakId, nv.id)).current!.output.sections!.label).toBe('120/100');
   });
 });
