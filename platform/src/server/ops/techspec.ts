@@ -6,6 +6,8 @@ import { inOrg, parse, optText } from './common';
 import { convertUnits } from './recipes';
 import { semiGrams } from './bom';
 import { effectiveParams } from './dishgroups';
+import { versionSteps } from './processing';
+import { retention, stages } from '../recipes/chain';
 
 /**
  * Технические условия (этап 11; перенос TechSpecCore.gs прежнего ЦЕХ, Stage 106; MON CHEF 9–10).
@@ -66,9 +68,11 @@ const r1 = (n: number) => Math.round(n * 10) / 10, r2 = (n: number) => Math.roun
 
 interface Agg {
   input_g: number; protein: number; fat: number; carbs: number; data_g: number; verified_g: number; salt_g: number;
+  lp: number; lf: number; lc: number;                       // Б/Ж/У с потерями (по нормам обработки или по режиму)
+  byNorms_g: number; fallback: Set<string>;                 // масса, посчитанная по нормам; строки, где потерь нутриентов нет в норме
   missing: Set<string>; unverified: Set<string>; allergens: Map<string, Set<string>>; noProfile: Set<string>; suggest: Map<string, Set<string>>; warnings: string[];
 }
-const emptyAgg = (): Agg => ({ input_g: 0, protein: 0, fat: 0, carbs: 0, data_g: 0, verified_g: 0, salt_g: 0, missing: new Set(), unverified: new Set(), allergens: new Map(), noProfile: new Set(), suggest: new Map(), warnings: [] });
+const emptyAgg = (): Agg => ({ input_g: 0, protein: 0, fat: 0, carbs: 0, data_g: 0, verified_g: 0, salt_g: 0, lp: 0, lf: 0, lc: 0, byNorms_g: 0, fallback: new Set(), missing: new Set(), unverified: new Set(), allergens: new Map(), noProfile: new Set(), suggest: new Map(), warnings: [] });
 
 /** Данные пищевой ценности товара: по документу (подтверждено) или справочник (статус справочника). */
 export async function nutritionOf(tx: Tx, productId: string) {
@@ -95,11 +99,18 @@ export function suggestAllergens(name: string): string[] {
 const merge = (into: Map<string, Set<string>>, code: string, src: string) => { if (!into.has(code)) into.set(code, new Set()); into.get(code)!.add(src); };
 
 /** Раскладка утверждённой ТТК до сырья с учётом п/ф: массы, нутриенты, покрытие данными, соль, аллергены. */
-async function aggregate(tx: Tx, orgId: string, dishId: string, scale: number, path: string, depth: number, acc: Agg, stack: Set<string>) {
+/**
+ * Потери нутриентов: если в карте есть шаги обработки — по каждой строке по нормам (потери Б/Ж/У тепловых шагов,
+ * отходы после тепловой обработки); тепловой шаг без потерь нутриентов в норме — типовые 6/12/9 % (отмечается);
+ * строка без шагов в такой карте — без потерь. Карта без шагов — по режиму (тепловая — 6/12/9 %, иначе без потерь).
+ */
+async function aggregate(tx: Tx, orgId: string, dishId: string, scale: number, path: string, depth: number, acc: Agg, stack: Set<string>, mode: { protein: number; fat: number; carbs: number }) {
   if (depth > 5 || stack.has(dishId)) { acc.warnings.push(`${path}: циклическая или слишком глубокая вложенность п/ф.`); return; }
   const v = (await tx.query(`select id, yield_g from ttk_versions where dish_id = $1 and organization_id = $2 and status = 'approved'`, [dishId, orgId])).rows[0];
   if (!v) { acc.warnings.push(`${path}: нет утверждённой ТТК.`); return; }
   const lines = (await tx.query(`select l.*, p.name as product_name from ttk_lines l left join products p on p.id = l.product_id where l.version_id = $1 and l.kind = 'item' order by l.position`, [v.id])).rows;
+  const steps = await versionSteps(tx, v.id);
+  const withSteps = steps.size > 0;
   for (const l of lines) {
     const net = Number(l.netto ?? l.brutto ?? 0);
     if (l.product_id) {
@@ -110,6 +121,16 @@ async function aggregate(tx: Tx, orgId: string, dishId: string, scale: number, p
       const nu = await nutritionOf(tx, l.product_id);
       if (nu) {
         acc.protein += sg * nu.protein / 100; acc.fat += sg * nu.fat / 100; acc.carbs += sg * nu.carbs / 100; acc.data_g += sg;
+        let keep = { protein: 1 - mode.protein, fat: 1 - mode.fat, carbs: 1 - mode.carbs }, after = 1;
+        if (withSteps) {
+          const ls = steps.get(l.id) || [];
+          const thermal = ls.some((x) => x.kind === 'thermal');
+          const r = thermal ? retention(ls as any) : { protein: 1, fat: 1, carbs: 1 };
+          if (r) keep = r; else { keep = { protein: 1 - LOSSES.thermal.protein, fat: 1 - LOSSES.thermal.fat, carbs: 1 - LOSSES.thermal.carbs }; acc.fallback.add(l.product_name); }
+          if (ls.length) { const st = stages(ls as any, 100); after = st.thermal > 0 ? st.ready / st.thermal : 1; }
+          acc.byNorms_g += sg;
+        }
+        acc.lp += sg * nu.protein / 100 * keep.protein * after; acc.lf += sg * nu.fat / 100 * keep.fat * after; acc.lc += sg * nu.carbs / 100 * keep.carbs * after;
         if (nu.verified) acc.verified_g += sg; else acc.unverified.add(l.product_name);
       } else acc.missing.add(l.product_name);
       if (/(^|[^а-яё])соль([^а-яё]|$)/i.test(l.product_name)) acc.salt_g += sg;
@@ -122,7 +143,7 @@ async function aggregate(tx: Tx, orgId: string, dishId: string, scale: number, p
       const sub = (await tx.query(`select d.name, v.yield_g from dishes d left join ttk_versions v on v.dish_id = d.id and v.status = 'approved' where d.id = $1`, [l.sub_dish_id])).rows[0];
       const g = await semiGrams(tx, l.sub_dish_id, net, l.unit);
       if (g === null || !sub?.yield_g) { acc.warnings.push(`${sub?.name || l.name_raw}: не определить массу п/ф — строка не учтена.`); continue; }
-      await aggregate(tx, orgId, l.sub_dish_id, scale * g / Number(sub.yield_g), sub.name, depth + 1, acc, new Set([...stack, dishId]));
+      await aggregate(tx, orgId, l.sub_dish_id, scale * g / Number(sub.yield_g), sub.name, depth + 1, acc, new Set([...stack, dishId]), mode);
     } else acc.warnings.push(`${l.name_raw}: не сопоставлено с товаром — строка не учтена.`);
   }
 }
@@ -142,19 +163,20 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
   if (!dish) throw Errors.notFound('Блюдо не найдено.');
   const v = (await tx.query(`select * from ttk_versions where dish_id = $1 and organization_id = $2 and status = 'approved'`, [dishId, orgId])).rows[0];
   if (!v) throw Errors.conflict(`У «${dish.name}» нет утверждённой ТТК — ТУ рассчитываются по утверждённой карте.`);
-  const acc = emptyAgg();
-  await aggregate(tx, orgId, dishId, 1, '', 0, acc, new Set());
-  const warnings = [...acc.warnings];
-  const yieldG = Number(v.yield_g || 0);
-  if (!yieldG) warnings.push('В ТТК не указан выход — расчёт невозможен.');
-
   const auto = THERMAL.test(v.technology || '') ? 'thermal' : 'raw';
   const processing = params.processing || auto;
   const loss = LOSSES[processing];
+  const acc = emptyAgg();
+  await aggregate(tx, orgId, dishId, 1, '', 0, acc, new Set(), loss);
+  const warnings = [...acc.warnings];
+  const yieldG = Number(v.yield_g || 0);
+  if (!yieldG) warnings.push('В ТТК не указан выход — расчёт невозможен.');
+  if (acc.fallback.size) warnings.push(`Потери нутриентов при тепловой обработке не заданы в нормах: ${[...acc.fallback].join(', ')} — приняты типовые 6/12/9 %.`);
+
   const k = yieldG > 0 ? 100 / yieldG : 0;
   // без данных пищевой ценности ни по одному сырью — «не рассчитано», а не ноль
   const has = acc.data_g > 0 && yieldG > 0;
-  const per100 = has ? { protein: r1(acc.protein * (1 - loss.protein) * k), fat: r1(acc.fat * (1 - loss.fat) * k), carbs: r1(acc.carbs * (1 - loss.carbs) * k), kcal: 0, kj: 0 } : null;
+  const per100 = has ? { protein: r1(acc.lp * k), fat: r1(acc.lf * k), carbs: r1(acc.lc * k), kcal: 0, kj: 0 } : null;
   if (per100) {
     per100.kcal = Math.round(per100.protein * ENERGY.protein + per100.fat * ENERGY.fat + per100.carbs * ENERGY.carbs);
     per100.kj = Math.round(per100.protein * ENERGY_KJ.protein + per100.fat * ENERGY_KJ.fat + per100.carbs * ENERGY_KJ.carbs);
@@ -214,7 +236,8 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
   const complete = !!per100 && coverage === 100 && verified === 100 && !acc.noProfile.size && !!storage.shelf_life && micro.every((m) => m.norm) && sanpin.length > 0 && yieldG > 0;
   return {
     object: { dish_id: dish.id, name: dish.name, kind: dish.kind, ttk_version_id: v.id, ttk_version: v.version, yield_g: yieldG, portion_g: portionG, input_mass_g: r1(acc.input_g), production_loss_pct: lossPct },
-    processing: { mode: processing, auto, reason: auto === 'thermal' ? 'в технологии есть тепловая обработка' : 'в технологии нет тепловой обработки', losses: loss },
+    processing: { mode: processing, auto, reason: auto === 'thermal' ? 'в технологии есть тепловая обработка' : 'в технологии нет тепловой обработки', losses: loss,
+      by_norms_pct: acc.data_g > 0 ? Math.round(acc.byNorms_g / acc.data_g * 100) : 0, fallback: [...acc.fallback] },
     nutrition: { per100, per_portion: perPortion, coverage_pct: coverage, verified_pct: verified },
     physico, tolerance: tol, recipe,
     allergens: { contains: allergens, suggest, no_profile: [...acc.noProfile], complete: !acc.noProfile.size },

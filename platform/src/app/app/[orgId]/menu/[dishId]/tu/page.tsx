@@ -15,7 +15,7 @@ import { Ingredients, type Prod } from '@/components/IngredientData';
 type Per = { protein: number; fat: number; carbs: number; kcal: number; kj: number };
 export interface TuCalc {
   object: { name: string; kind: string; ttk_version: number; yield_g: number; portion_g: number | null; input_mass_g: number; production_loss_pct: number };
-  processing: { mode: string; auto: string; reason: string };
+  processing: { mode: string; auto: string; reason: string; by_norms_pct?: number; fallback?: string[] };
   nutrition: { per100: Per | null; per_portion: Per | null; coverage_pct: number; verified_pct: number };
   physico: { indicator: string; calc: number; norm: number | string; method: string }[]; tolerance: number;
   recipe: { name: string; kind: string; netto_g: number | null; per_1kg_g: number | null; per_100kg_kg: number | null }[];
@@ -54,7 +54,7 @@ export default function TuPage({ params }: { params: Promise<{ dishId: string }>
         {!p ? <p className="muted">Не рассчитано — нет данных пищевой ценности ни по одному сырью.</p> : <div className="scroll"><table className="tbl"><thead><tr><th /><th>Белки, г</th><th>Жиры, г</th><th>Углеводы, г</th><th>ккал / кДж</th></tr></thead>
           <tbody><tr><td>на 100 г</td><td>{n(p.protein)}</td><td>{n(p.fat)}</td><td>{n(p.carbs)}</td><td><b>{p.kcal}</b> / {p.kj}</td></tr>
             {c.nutrition.per_portion && <tr><td>порция {c.object.portion_g} г</td><td>{n(c.nutrition.per_portion.protein)}</td><td>{n(c.nutrition.per_portion.fat)}</td><td>{n(c.nutrition.per_portion.carbs)}</td><td>{c.nutrition.per_portion.kcal} / {c.nutrition.per_portion.kj}</td></tr>}</tbody></table></div>}
-        <p className="small muted">Обработка: {c.processing.mode === 'thermal' ? 'тепловая — потери Б/Ж/У 6/12/9 %' : 'без тепловой обработки'} ({c.processing.mode === c.processing.auto ? c.processing.reason : 'задано вручную'}).
+        <p className="small muted">{c.processing.by_norms_pct ? `Потери нутриентов — по нормам обработки сырья (${c.processing.by_norms_pct} % массы с данными).` : <>Обработка: {c.processing.mode === 'thermal' ? 'тепловая — типовые потери Б/Ж/У 6/12/9 %' : 'без тепловой обработки'} ({c.processing.mode === c.processing.auto ? c.processing.reason : 'задано вручную'}).</>}
           Данными покрыто {c.nutrition.coverage_pct} % массы сырья, подтверждено документами {c.nutrition.verified_pct} %. Коэффициенты энергии — ТР ТС 022/2011, прил. 4.</p>
       </div>
 

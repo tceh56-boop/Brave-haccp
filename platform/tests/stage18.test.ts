@@ -13,7 +13,7 @@ import { createGroup, updateGroup, deleteGroup, getGroup, listGroups, setDishGro
 import { createSto, updateSto, getSto, approveSto, listSto, getStoVersion } from '../src/server/ops/sto';
 import { setSampleSettings, createProgram } from '../src/server/ops/lab';
 import { createPlan } from '../src/server/ops/sanitation';
-import { setProductNutrition, saveTechSpecParams } from '../src/server/ops/techspec';
+import { setProductNutrition, saveTechSpecParams, getTechSpec } from '../src/server/ops/techspec';
 import { setUnitConversion } from '../src/server/ops/stock';
 import { createAct, updateAct, approveAct, getAct, listActs } from '../src/server/ops/controlacts';
 import { previewCosting, createCosting, getCosting, listCosting } from '../src/server/ops/costing';
@@ -547,5 +547,17 @@ describe('Дерево папок ТТК: правила папки наслед
     expect(d.name).toBe(a.category_path[a.category_path.length - 1]);
     const path = (await getGroup(cook.id, orgId, d.group_id)).path.map((x: any) => x.name);
     expect(path).toEqual(a.category_path.filter((x: string) => x !== 'ttk'));
+  });
+});
+
+describe('ТУ: потери нутриентов — по нормам обработки сырья', () => {
+  it('карта со шагами: Б/Ж/У с потерями по норме варки, а не типовые 6/12/9 %', async () => {
+    await setProductNutrition(tech.id, orgId, carrot, { kcal: 35, protein: 1.3, fat: 0.1, carbs: 6.9, basis: 'Тест: справочник химсостава' });
+    const t = await getTechSpec(tech.id, orgId, dishId);
+    expect(t.calc.processing.by_norms_pct).toBe(100);
+    expect(t.calc.processing.fallback).toEqual([]);
+    // морковь 103,1 г нетто × 1,3 % × (1 − 10 % по норме варки) + морковь для украшения 8 г без тепловой — на выход 100 г
+    expect(t.calc.nutrition.per100!.protein).toBe(1.3);
+    expect(t.calc.nutrition.per100!.carbs).toBe(Math.round((103.093 * 0.069 * 0.9 + 8 * 0.069) * 10) / 10);
   });
 });
