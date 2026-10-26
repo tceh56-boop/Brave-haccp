@@ -5,7 +5,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { SECTIONS, ROLES, PATH, TROUBLE, RULES, MEMO } from './content.mjs';
+import { SECTIONS, ROLES, PATH, TROUBLE, RULES, MEMO, INTRO } from './content.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATE = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
@@ -26,6 +26,7 @@ function block(b) {
   if (b.h) return '<h3>' + fmt(b.h) + '</h3>';
   if (b.p) return '<p>' + fmt(b.p) + '</p>';
   if (b.call) return '<div class="call ' + b.call + '"><div class="ct">' + fmt(b.t) + '</div>' + (b.x ? '<div>' + fmt(b.x) + '</div>' : '') + (b.list ? '<ul>' + b.list.map((x) => '<li>' + fmt(x) + '</li>').join('') + '</ul>' : '') + '</div>';
+  if (b.tbl) return '<table class="t"><tr>' + b.tbl[0].map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>' + b.tbl.slice(1).map((r) => '<tr><td><b>' + fmt(r[0]) + '</b></td>' + r.slice(1).map((c) => '<td>' + fmt(c) + '</td>').join('') + '</tr>').join('') + '</table>';
   if (b.list) return '<ul class="list">' + b.list.map((x) => '<li>' + fmt(x) + '</li>').join('') + '</ul>';
   if (b.shot) {
     // снимки телефона (390 px × 2). Невысокие — рядом с шагами; длинные режутся на 2–3 колонки (pieces()).
@@ -55,6 +56,7 @@ function html(tocPages) {
   const body = [];
   body.push('<section class="cover"><div class="cv">' + LOGO + '<div class="rule"></div><h1 class="ct1">Инструкция для персонала</h1><div class="sub">Кухня · склад · ХАССП · касса · руководство<br>Новая версия системы</div><div class="line"></div>' +
     '<div class="meta">Версия от ' + DATE + '<br>Снимки экранов сделаны в демо-организации «Кафе «Демо»»: сотрудники, продукты и цифры — условные.<br>Правообладатель системы — Слепцов Денис Владимирович</div></div></section>');
+  body.push('<section class="sec" id="sintro"><h1>Введение. Что такое ЦЕХ и зачем он нужен</h1>' + INTRO.map(block).join('') + '</section>');
   body.push('<section class="sec"><h1>Как пользоваться инструкцией</h1><p class="intro">Найдите свою роль в таблице и прочитайте отмеченные для неё разделы. Раздел 1 и разделы ' + NT + '–' + NR + ' обязательны для всех.</p>' +
     '<table class="t"><tr><th>Роль</th><th>Главное в работе</th><th>Разделы</th></tr>' + ROLES.map((r) => '<tr><td><b>' + r[0] + '</b></td><td>' + r[1] + '</td><td>' + r[2] + '</td></tr>').join('') + '</table>' +
     '<h3>Как читать снимки</h3><p>Оранжевая рамка и номер <span class="num inl">1</span> на снимке — то же, что шаг <span class="num inl">1</span> в тексте рядом. Кнопки в тексте выглядят так: <span class="chip">Подтвердить</span>, главная кнопка — <span class="chip main">Принять</span>. Путь к экрану записан через стрелку: <b>Склад <span class="arr">→</span> Расход</b>.</p>' +

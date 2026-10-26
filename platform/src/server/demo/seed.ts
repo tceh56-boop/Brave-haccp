@@ -26,6 +26,10 @@ import { listLots } from '../ops/lots';
 import { createLabels, logPrint, openLot, setOpenedShelfLife } from '../ops/labels';
 import { createProduction, startProduction, recordCheck, completeProduction, addReleaseCheck } from '../ops/production';
 import { setProductNutrition, setProductAllergens, saveTechSpecParams } from '../ops/techspec';
+import { createCosting } from '../ops/costing';
+import { createAct } from '../ops/controlacts';
+import { addExpense } from '../ops/finance';
+import { createContract } from '../ops/contracts';
 
 /**
  * Демо-организация для показа и инструктажа (этап 8): «Кафе «Демо»» с сотрудниками всех ролей и данными за смену.
@@ -272,6 +276,21 @@ export async function seedDemo() {
   await createTopic(haccp.id, orgId, { title: 'Санитарный минимум', category: 'sanitary', material: 'Демо: программа гигиенического обучения', periodMonths: 12 });
   const br = await recordBriefing(chef.id, orgId, { topicId: ot.id, userIds: [cook.id], briefingType: 'primary', heldOn: inDays(-10) });
   await acknowledgeBriefing(cook.id, orgId, br.ids[0]);
+
+  // Документы ТТК: калькуляционная карточка бефстроганова (цены — из приёмки) и акт контрольной проработки (черновик)
+  await createCosting(chef.id, orgId, stroganoff, { siteId, signers: { chef: 'Анна Шеф', accountant: 'Елена Бухгалтер', director: 'Ольга Владелец' } });
+  await createAct(chef.id, orgId, mors, { siteId, commission: [{ position: 'Шеф-повар', name: 'Анна Шеф' }, { position: 'Технолог', name: 'Мария Технолог' }] });
+
+  // Экономика: ежемесячные расходы для P&L
+  const month1 = `${today().slice(0, 8)}01`;
+  await addExpense(owner.id, orgId, { category: 'rent', kind: 'monthly', date: month1, amount: 120000, title: 'Аренда помещения', basis: 'Демо: договор аренды' });
+  await addExpense(owner.id, orgId, { category: 'payroll', kind: 'monthly', date: month1, amount: 380000, title: 'ФОТ', basis: 'Демо: ведомость' });
+
+  // Договоры для ППК: дезинсекция (с файлом), вывоз отходов (без файла — «не засчитан»), лаборатории нет
+  const pest = await createContract(owner.id, orgId, { kind: 'pest_control', siteId, counterparty: 'Демо: ООО «Дезконтроль»', number: 'Д-15', validFrom: inDays(-60), validTo: inDays(305),
+    subject: 'Демо: дератизация ежемесячно, дезинсекция по заявке' });
+  await addEvidence(owner.id, orgId, { entityType: 'contract', entityId: pest.id, filename: 'договор-дезинсекция.pdf', note: 'договор' }, Buffer.from('%PDF-1.4\n% Демо: договор\n'));
+  await createContract(owner.id, orgId, { kind: 'waste', siteId, counterparty: 'Демо: региональный оператор ТКО', validTo: inDays(25) });
 
   // Подтверждения пилота: часть есть, часть ждёт — видно на экране готовности
   await confirm(owner.id, orgId, { key: 'paper_fallback', evidence: 'Демо: бланки журналов в папке на кухне, перенос — Игорь ХАССП' });
