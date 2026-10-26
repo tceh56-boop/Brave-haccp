@@ -74,10 +74,10 @@ function Params({ d, dishId, onDone }: { d: Data; dishId: string; onDone: () => 
         <div key={r.product_id}><label htmlFor={`rd-${r.product_id}`}>{r.name}</label>
           <input id={`rd-${r.product_id}`} value={f.rawDocs[r.product_id] || ''} onChange={(e) => setF({ ...f, rawDocs: { ...f.rawDocs, [r.product_id]: e.target.value } })} placeholder="ГОСТ, ТУ изготовителя, спецификация" /></div>))}
       <h3 style={{ marginTop: 10 }}>Разделы</h3>
-      {t('tiEquipment', 'Оборудование и инвентарь (раздел 4)', 'плита, пароконвектомат, весы…', 2)}
-      {t('tiPackaging', '5. Упаковка и маркировка', 'тара, упаковочные материалы; сведения на этикетке по ТР ТС 022/2011', 3)}
-      {t('tiSafety', '9. Требования безопасности', 'охрана труда, работа с оборудованием, инструктажи', 3)}
-      {t('tiEnvironment', '9. Охрана окружающей среды', 'сбор и вывоз отходов, утилизация', 2)}
+      {t('tiEquipment', 'Оборудование и инвентарь (раздел 5)', 'плита, пароконвектомат, весы…', 2)}
+      {t('tiPackaging', '6. Упаковка и маркировка', 'тара, упаковочные материалы; сведения на этикетке по ТР ТС 022/2011', 3)}
+      {t('tiSafety', 'Приложение А. Требования безопасности', 'охрана труда, работа с оборудованием, инструктажи', 3)}
+      {t('tiEnvironment', 'Приложение А. Охрана окружающей среды', 'сбор и вывоз отходов, утилизация', 2)}
       {error && <div className="err">{error}</div>}
       {saved && !error && <div className="okbox">Сохранено.</div>}
       <button className="btn block secondary" disabled={busy}>Сохранить</button>

@@ -6,7 +6,7 @@ import { useOrg } from '@/lib/org';
 import { api } from '@/lib/api';
 import { dmy, fx, orgTitle, type TtkDoc } from '@/lib/ttkdoc';
 
-/** Технико-технологическая карта по ГОСТ 31987-2012 (разделы 1–6, как в Шеф Эксперте). Проект — с отметкой «ПРОЕКТ». */
+/** Технико-технологическая карта по ГОСТ 31987-2012: 7 разделов по п. 5.3.2, образец — приложение В. Проект — с отметкой «ПРОЕКТ». */
 export default function TtkPrintPage({ params }: { params: Promise<{ dishId: string }> }) {
   return <Suspense fallback={<p className="muted">Загрузка…</p>}><Doc params={params} /></Suspense>;
 }
@@ -69,16 +69,18 @@ function Doc({ params }: { params: Promise<{ dishId: string }> }) {
         <p style={{ textAlign: 'right' }}><b>Выход готового изделия, г: {yieldText}</b></p>
         {Math.abs(total - d.out_g) > d.out_g * 0.03 && total > 0 && <p className="tu-warn noprint">Сумма выходов ингредиентов ({fx(total, 0)} г) расходится с выходом ({fx(d.out_g, 0)} г) — проверьте рецептуру.</p>}
 
-        <h2 className="tu-center" style={{ border: 0 }}>4. Технологический процесс, требования к оформлению, реализации и хранению</h2>
+        <h2 className="tu-center" style={{ border: 0 }}>4. Технологический процесс</h2>
         <p style={{ whiteSpace: 'pre-line' }}>{ver.technology || '—'}</p>
-        {ver.serving && <p style={{ whiteSpace: 'pre-line' }}>Подача: {ver.serving}</p>}
+
+        <h2 className="tu-center" style={{ border: 0 }}>5. Требования к оформлению, подаче, реализации и хранению</h2>
+        {ver.serving && <p style={{ whiteSpace: 'pre-line' }}>{ver.serving}</p>}
         <p>Условия хранения: {ver.storage_conditions || '—'}. Срок годности (реализации): {ver.shelf_life || '—'}.</p>
 
-        <h2 className="tu-center" style={{ border: 0 }}>5. Показатели качества и безопасности</h2>
-        <h3 className="tu-center">5.1. Органолептические показатели</h3>
+        <h2 className="tu-center" style={{ border: 0 }}>6. Показатели качества и безопасности</h2>
+        <h3 className="tu-center">6.1. Органолептические показатели</h3>
         <table><thead><tr><th>Внешний вид</th><th>Цвет</th><th>Консистенция</th><th>Вкус и запах</th></tr></thead>
           <tbody><tr><td>{o.appearance || '—'}</td><td>{o.color || '—'}</td><td>{o.consistency || '—'}</td><td>{o.taste || '—'}</td></tr></tbody></table>
-        <h3 className="tu-center">5.2. Нормируемые физико-химические показатели</h3>
+        <h3 className="tu-center">6.2. Нормируемые физико-химические показатели</h3>
         <table>
           <thead><tr><th colSpan={6} className="tu-center">Массовая доля, %</th></tr>
             <tr><th colSpan={2} className="tu-center">Сухих веществ</th><th colSpan={2} className="tu-center">Жира</th><th rowSpan={2} className="tu-center">Сахара</th><th rowSpan={2} className="tu-center">Поваренной соли</th></tr>
@@ -89,12 +91,13 @@ function Doc({ params }: { params: Promise<{ dishId: string }> }) {
             <td>{val(ph.sugar, fx((ph.sugar as { value: number }).value))}</td><td>{val(ph.salt, fx((ph.salt as { value: number }).value))}</td></tr></tbody>
         </table>
         {ph.fat.normed && <p className="tu-small">Для определения минимального содержания жира использован метод Гербера.{ph.basis ? ` Основание: ${ph.basis}.` : ''}</p>}
-        <h3 className="tu-center">5.3. Микробиологические показатели{d.micro_index ? ` (${d.micro_index})` : ''}</h3>
-        <table><thead><tr><th>Показатель</th><th>Норматив</th></tr></thead>
-          <tbody>{d.micro.map((m) => <tr key={m.code}><td>{m.name}</td><td>{m.norm || 'не заполнено'}</td></tr>)}</tbody></table>
+        <h3 className="tu-center">6.3. Микробиологические показатели{d.micro_index ? ` (${d.micro_index})` : ''}</h3>
+        <p>Микробиологические показатели {isDish ? 'блюда (изделия)' : 'полуфабриката'} должны соответствовать требованиям ТР ТС 021/2011 «О безопасности пищевой продукции» или гигиеническим нормативам, установленным в соответствии с нормативными правовыми актами или нормативными документами, действующими на территории государства, принявшего стандарт.</p>
+        {d.micro.some((m) => m.norm) && <table><thead><tr><th>Показатель</th><th>Норматив</th></tr></thead>
+          <tbody>{d.micro.filter((m) => m.norm).map((m) => <tr key={m.code}><td>{m.name}</td><td>{m.norm}</td></tr>)}</tbody></table>}
         {d.micro_note && <p>{d.micro_note}</p>}
 
-        <h2 className="tu-center" style={{ border: 0 }}>6. Пищевая и энергетическая ценность</h2>
+        <h2 className="tu-center" style={{ border: 0 }}>7. Пищевая и энергетическая ценность</h2>
         {d.nutrition ? (
           <table className="tu-center">
             <thead><tr><th>Белки, г</th><th>Жиры, г</th><th>Углеводы, г</th><th>Калорийность, ккал (кДж)</th></tr></thead>

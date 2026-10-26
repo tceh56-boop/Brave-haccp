@@ -39,8 +39,9 @@ function View({ params }: { params: Promise<{ dishId: string }> }) {
       <h1>Документы ТТК</h1>
       <p className="small muted">Рецептура № {d.dish.card_no || '—'}, версия {d.version.version} ({d.version.status === 'approved' ? 'утверждена' : d.version.status === 'archived' ? 'архив' : 'проект'}). Расчёт {d.out_label}.</p>
       <div className="tiles">
-        <Link className="tile" href={`/app/${org.id}/menu/${dishId}/ttk-docs/print${q}`}>Технико-технологическая карта<span className="sub">ГОСТ 31987-2012</span></Link>
+        <Link className="tile" href={`/app/${org.id}/menu/${dishId}/ttk-docs/print${q}`}>Технико-технологическая карта<span className="sub">ГОСТ 31987, прил. В — новая продукция</span></Link>
         <Link className="tile" href={`/app/${org.id}/menu/${dishId}/ttk-docs/basis${q}`}>Обоснование расчётов<span className="sub">пищевая ценность и физхимия</span></Link>
+        <Link className="tile" href={`/app/${org.id}/menu/${dishId}/tk/print${q}`}>Технологическая карта<span className="sub">ГОСТ 31987, прил. А — по сборнику рецептур</span></Link>
       </div>
       <div className="card">
         <h2>Расчёт</h2>

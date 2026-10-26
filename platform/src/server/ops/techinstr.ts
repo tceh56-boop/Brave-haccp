@@ -9,12 +9,15 @@ import { PLAN_KIND } from './sanitation';
 import { SAMPLE_DEFAULTS } from './lab';
 import type { TuParams } from './techspec';
 import { effectiveParams } from './dishgroups';
+import { profileOf, samplesRequired } from '../norms/library';
 
 /**
  * Технологическая инструкция (ТИ) на продукцию: титульный лист (организация, код продукции, группа, ОКС, «Утверждаю»,
- * обозначение, дата введения, «Разработано»), разделы 1–9 и лист регистрации изменений. Источник — утверждённая ТТК
- * и то, что уже ведётся в системе; чего система не знает, вписывает технолог (без этого — «ПРОЕКТ»).
- * Обозначение — по образцу «ТИ 9146-002-60265288-09»: код продукции (4 знака) — порядковый номер — ОКПО — год.
+ * обозначение, «вводится впервые», дата введения, «Разработано»), основная часть по ГОСТ 31987-2012 п. 5.2.4 (область
+ * применения, ассортимент, сырьё, рецептура, технологический процесс с санитарной обработкой, упаковка и маркировка,
+ * транспортирование и хранение, организация контроля), справочное приложение и лист регистрации изменений.
+ * Источник — утверждённая ТТК и то, что уже ведётся в системе; чего система не знает, вписывает технолог (без этого — «ПРОЕКТ»).
+ * Обозначение — по п. 5.2.6: при наличии ТУ — «ТИ» и обозначение ТУ без года; иначе код продукции — номер — ОКПО.
  */
 
 const r1 = (x: number) => Math.round(x * 10) / 10, r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -61,13 +64,14 @@ export async function calcTi(tx: Tx, orgId: string, dishId: string, params: TuPa
   const ss = (await tx.query(`select min_weight_g, retention_hours, t_min, t_max, basis from sample_settings where organization_id = $1`, [orgId])).rows[0];
   const samples = ss ? { weight_g: Number(ss.min_weight_g), hours: Number(ss.retention_hours), t: `${Number(ss.t_min)}…${Number(ss.t_max)} °C`, basis: ss.basis, confirmed: true }
     : { weight_g: SAMPLE_DEFAULTS.min_weight_g, hours: SAMPLE_DEFAULTS.retention_hours, t: `${SAMPLE_DEFAULTS.t_min}…${SAMPLE_DEFAULTS.t_max} °C`, basis: SAMPLE_DEFAULTS.basis, confirmed: false };
-  if (!samples.confirmed) warnings.push('Параметры суточной пробы не утверждены в разделе «Лаборатория» — в ТИ указаны значения по умолчанию.');
-  if (!lab.length) warnings.push('Нет программы лабораторного контроля — раздел «Контроль производства» неполный.');
+  const needSamples = samplesRequired(await profileOf(tx, orgId));
+  if (needSamples && !samples.confirmed) warnings.push('Параметры суточной пробы не утверждены в разделе «Лаборатория» — в ТИ указаны значения по умолчанию.');
+  if (!lab.length) warnings.push('Нет программы лабораторного контроля — раздел «Организация контроля за качеством и безопасностью продукции» неполный.');
 
   // 8. санитария: план санитарной обработки, допуск персонала, санитарные правила из реестра
   const sanitation = (await tx.query(`select distinct on (area, work, kind) area, work, kind, period_days from sanitation_plans where organization_id = $1 and status = 'active' order by area, work, kind`, [orgId])).rows
     .map((s) => ({ area: s.area, work: s.work, kind: PLAN_KIND[s.kind] || s.kind, period: `раз в ${s.period_days} дн.` }));
-  if (!sanitation.length) warnings.push('Нет плана санитарной обработки — раздел 8 неполный.');
+  if (!sanitation.length) warnings.push('Нет плана санитарной обработки — пункт 5.4 «Санитарная обработка» неполный.');
   const gate = (await tx.query(`select medical_gate from staff_settings where organization_id = $1`, [orgId])).rows[0]?.medical_gate || 'warn';
   const sanpin = (await tx.query(`select s.code, s.title from reg_sources s where s.organization_id = $1 and s.kind = 'СанПиН'
       and exists (select 1 from reg_source_versions x where x.source_id = s.id and x.workflow_status = 'approved' and (x.effective_from is null or x.effective_from <= current_date)
@@ -75,14 +79,17 @@ export async function calcTi(tx: Tx, orgId: string, dishId: string, params: TuPa
   if (!sanpin.length) warnings.push('В нормативном реестре нет действующих санитарных правил — ТИ не может на них сослаться.');
 
   const tu = (await tx.query(`select designation, version from tech_spec_versions where dish_id = $1 order by version desc limit 1`, [dishId])).rows[0] || null;
-  if (!params.okpd2 || !params.okpo) warnings.push('Для обозначения ТИ укажите код продукции ОКПД2 и ОКПО предприятия (в параметрах ТУ).');
+  if (!tu && (!params.okpd2 || !params.okpo)) warnings.push('Для обозначения ТИ укажите код продукции ОКПД2 и ОКПО предприятия (в параметрах ТУ) или утвердите ТУ — тогда обозначение ТИ строится от обозначения ТУ (ГОСТ 31987-2012, п. 5.2.6).');
   if (!params.tiPackaging) warnings.push('Заполните раздел «Упаковка и маркировка».');
-  if (!params.tiSafety) warnings.push('Заполните раздел «Требования безопасности» (охрана труда, оборудование).');
+  if (!params.tiSafety) warnings.push('Заполните приложение «Требования безопасности» (охрана труда, оборудование).');
   if (!doc.version.storage_conditions || !doc.version.shelf_life) warnings.push('В ТТК не указаны условия хранения или срок годности.');
 
   const year = new Date().getFullYear();
+  // ГОСТ 31987-2012, п. 5.2.6: для продукции по ТУ — «ТИ» и обозначение ТУ без года; иначе обозначение присваивает
+  // держатель подлинника (код продукции, регистрационный номер, ОКПО — без года)
   const code4 = (params.okpd2 || '').replace(/\D/g, '').slice(0, 4).padEnd(4, '_');
-  const designation = `ТИ ${code4}-${(params.tiSeq || '001').padStart(3, '0')}-${params.okpo || '________'}-${String(year).slice(2)}`;
+  const designation = tu ? `ТИ ${tu.designation.replace(/^ТУ\s*/, '').replace(/-\d{2,4}$/, '')}`
+    : `ТИ ${code4}-${(params.tiSeq || '001').padStart(3, '0')}-${params.okpo || '________'}`;
   return {
     designation, status: warnings.length ? 'project' : 'ready', warnings, generated_at: new Date().toISOString(),
     org: doc.org, sites: doc.sites, dish: { ...doc.dish, kind: dish.kind }, ttk: { version_id: v.id, version: doc.version.version, card_no: doc.dish.card_no, card_date: doc.version.card_date },
@@ -90,7 +97,7 @@ export async function calcTi(tx: Tx, orgId: string, dishId: string, params: TuPa
     tu: tu ? { designation: tu.designation, version: tu.version } : null,
     out_g: out, out_label: doc.out_label, raw, recipe, sections: doc.sections, prep, technology: doc.version.technology, serving: doc.version.serving,
     equipment: params.tiEquipment || null, packaging: params.tiPackaging || null, safety: params.tiSafety || null, environment: params.tiEnvironment || null,
-    control: { receipt: RECEIPT_CONTROL, ccp, lab, samples, organoleptic: doc.version.organoleptic, physico: doc.physico, micro: doc.micro, micro_index: doc.micro_index },
+    control: { receipt: RECEIPT_CONTROL, ccp, lab, samples: { ...samples, required: needSamples }, organoleptic: doc.version.organoleptic, physico: doc.physico, micro: doc.micro, micro_index: doc.micro_index },
     storage: { conditions: doc.version.storage_conditions, shelf_life: doc.version.shelf_life },
     sanitation: { plans: sanitation, medical_gate: gate, sanpin },
   };

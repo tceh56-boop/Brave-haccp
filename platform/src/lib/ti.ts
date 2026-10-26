@@ -13,7 +13,7 @@ export interface TiCalc {
     per_100: { brutto_kg: number | null; netto_kg: number | null } | null; losses: { method: string; kind: string; loss_pct: number; basis: string }[] }[];
   prep: string[]; technology: string | null; serving: string | null; equipment: string | null; packaging: string | null; safety: string | null; environment: string | null;
   control: { receipt: string; ccp: { name: string; limits: string; basis: string }[]; lab: { test: string; target: string; period: string; basis: string }[];
-    samples: { weight_g: number; hours: number; t: string; basis: string; confirmed: boolean }; organoleptic: TtkDoc['version']['organoleptic']; physico: TtkDoc['physico'];
+    samples: { required?: boolean; weight_g: number; hours: number; t: string; basis: string; confirmed: boolean }; organoleptic: TtkDoc['version']['organoleptic']; physico: TtkDoc['physico'];
     micro: TtkDoc['micro']; micro_index: string | null };
   storage: { conditions: string | null; shelf_life: string | null };
   sanitation: { plans: { area: string; work: string; kind: string; period: string }[]; medical_gate: string; sanpin: { code: string; title: string }[] };

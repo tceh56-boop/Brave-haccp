@@ -439,7 +439,7 @@ describe('Технологическая инструкция: из утверж
     });
     const r = await getTi(cook.id, orgId, dId);
     expect(r.calc.warnings).toEqual([]);
-    expect(r.calc.designation).toBe(`ТИ 1085-002-12345678-${String(new Date().getFullYear()).slice(2)}`);
+    expect(r.calc.designation).toBe(`ТИ 1085-002-12345678`);   // ГОСТ 31987-2012, п. 5.2.6: без года (ТУ у блюда нет)
     expect(r.calc.control.lab[0]).toMatchObject({ test: 'Микробиология готовых блюд', period: 'раз в 90 дн.' });
     expect(r.calc.sanitation.plans[0]).toMatchObject({ area: 'Холодный цех', kind: 'Текущая уборка' });
     await expect(approveTi(cook.id, orgId, dId, { changeNote: 'Введена впервые' })).rejects.toMatchObject({ code: 'FORBIDDEN' });

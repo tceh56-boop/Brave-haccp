@@ -10,7 +10,8 @@ import type { TiCalc } from '@/lib/ti';
 
 interface Ver { version: number; designation: string; change_note: string; approved_at: string; approved_by_name: string }
 
-/** Технологическая инструкция: титульный лист, разделы 1–9, лист регистрации изменений. Без ?v — текущий расчёт («ПРОЕКТ»). */
+/** Технологическая инструкция по ГОСТ 31987-2012 (п. 5.2): титульный лист (приложение Б), разделы основной части по п. 5.2.4,
+ * приложение, лист регистрации изменений. Без ?v — текущий расчёт («ПРОЕКТ»). */
 export default function TiPrintPage({ params }: { params: Promise<{ dishId: string }> }) {
   return <Suspense fallback={<p className="muted">Загрузка…</p>}><Doc params={params} /></Suspense>;
 }
@@ -53,21 +54,26 @@ function Doc({ params }: { params: Promise<{ dishId: string }> }) {
         <h1 style={{ fontSize: '18pt', marginTop: 30, letterSpacing: 1 }}>ТЕХНОЛОГИЧЕСКАЯ ИНСТРУКЦИЯ</h1>
         <p className="tu-center"><b>по производству {isDish ? 'блюда' : 'полуфабриката'} «{c.dish.name}»</b></p>
         <p className="tu-center" style={{ fontSize: '13pt' }}><b>{c.designation}</b>{!appr && <> <span className="tu-stamp">{c.status === 'ready' ? 'ГОТОВА К УТВЕРЖДЕНИЮ' : 'ПРОЕКТ'}</span></>}</p>
+        <p className="tu-center">(вводится впервые)</p>
         <p style={{ textAlign: 'right', marginTop: 20 }}><b>Дата введения в действие:</b><br />«___» __________ {year} г.</p>
         <p style={{ textAlign: 'right' }}>РАЗРАБОТАНО:<br />Технолог (заведующий производством)<br /><br />____________<br />«___» ________ {year} г.</p>
         <p className="tu-center" style={{ marginTop: 20 }}><b>{c.title.city ? `г. ${c.title.city}` : ''}<br />{year}</b></p>
 
         <h2 style={{ pageBreakBefore: 'always' }}>1. Область применения</h2>
-        <p>Настоящая технологическая инструкция распространяется на {isDish ? 'блюдо' : 'полуфабрикат'} «{c.dish.name}», изготавливаемое {orgTitle(c.org)}{c.sites.length ? ` (${c.sites.join(', ')})` : ''},
-          и устанавливает требования к сырью, рецептуре, технологическому процессу, упаковке и маркировке, контролю производства, хранению и транспортированию, санитарно-гигиенические требования и требования безопасности.
-          Инструкция применяется совместно с технико-технологической картой № {c.ttk.card_no || '—'} от {dmy(c.ttk.card_date)}{c.tu ? ` и ${c.tu.designation}` : ''}.</p>
+        <p>Настоящая технологическая инструкция распространяется на процесс изготовления продукции — {isDish ? 'блюда' : 'полуфабриката'} «{c.dish.name}».
+          Право изготовления, доставки и реализации продукции имеет {orgTitle(c.org)}{c.sites.length ? ` (${c.sites.join(', ')})` : ''}.
+          {c.tu ? ` Инструкция является приложением к ${c.tu.designation}.` : ''} Инструкция применяется совместно с технико-технологической картой № {c.ttk.card_no || '—'} от {dmy(c.ttk.card_date)}.</p>
 
-        <h2>2. Требования к сырью и материалам</h2>
-        <p>Сырьё, пищевые продукты и материалы должны соответствовать требованиям нормативных документов, указанных ниже, и сопровождаться документами, подтверждающими их безопасность и качество.</p>
+        <h2>2. Ассортимент продукции</h2>
+        <table><thead><tr><th>№</th><th>Наименование продукции</th><th>Выход</th></tr></thead>
+          <tbody><tr><td>1</td><td>{c.dish.name}</td><td>{isDish ? `${fx(c.out_g, 0)} г (1 порция)` : `${fx(c.out_g, 0)} г`}</td></tr></tbody></table>
+
+        <h2>3. Требования к сырью</h2>
+        <p>Продовольственное сырьё, пищевые продукты и полуфабрикаты, используемые для изготовления продукции, должны соответствовать требованиям нормативных и технических документов (ГОСТ, ТУ), указанных ниже, и иметь сопроводительные документы, подтверждающие их качество и безопасность в соответствии с нормативными правовыми актами.</p>
         <table><thead><tr><th>№</th><th>Сырьё</th><th>Нормативный документ</th></tr></thead>
           <tbody>{c.raw.map((r, i) => <tr key={r.product_id}><td>{i + 1}</td><td>{r.name}</td><td>{r.doc || <span className="tu-warn">не указан</span>}</td></tr>)}</tbody></table>
 
-        <h2>3. Рецептура</h2>
+        <h2>4. Рецептура</h2>
         <table>
           <thead><tr><th rowSpan={2}>№</th><th rowSpan={2}>Наименование сырья</th><th colSpan={2}>{isDish ? 'На 1 порцию' : `На выход ${fx(c.out_g, 0)} г`}, г</th><th colSpan={2}>На 1 кг готовой продукции, г</th>
             {isDish && <th colSpan={2}>На 100 порций, кг</th>}<th rowSpan={2}>Нормы отходов и потерь</th></tr>
@@ -79,42 +85,41 @@ function Doc({ params }: { params: Promise<{ dishId: string }> }) {
         </table>
         <p><b>Выход готовой продукции: {fx(c.out_g, 0)} г{isDish ? ' (1 порция)' : ''}.</b></p>
 
-        <h2>4. Описание технологического процесса</h2>
-        <p><b>4.1. Подготовка сырья.</b> Сырьё подготавливают в соответствии с нормами отходов и потерь (раздел 3).</p>
+        <h2>5. Технологический процесс</h2>
+        <p><b>5.1. Подготовка сырья.</b> Сырьё подготавливают в соответствии с нормами отходов и потерь (раздел 4).</p>
         {c.prep.length > 0 && <ul>{c.prep.map((x) => <li key={x}>{x}</li>)}</ul>}
-        <p><b>4.2. Приготовление.</b></p>
+        <p><b>5.2. Приготовление.</b></p>
         <p style={{ whiteSpace: 'pre-line' }}>{c.technology || '—'}</p>
-        {c.serving && <p><b>4.3. Оформление и подача.</b> {c.serving}</p>}
+        {c.serving && <p><b>5.3. Оформление и подача.</b> {c.serving}</p>}
         {c.equipment && <p><b>Оборудование и инвентарь:</b> {c.equipment}</p>}
 
-        <h2>5. Упаковка и маркировка</h2>
-        <p style={{ whiteSpace: 'pre-line' }}>{c.packaging || <span className="tu-warn">не заполнено</span>}</p>
-
-        <h2>6. Контроль производства</h2>
-        <p><b>6.1. Входной контроль.</b> {c.control.receipt}</p>
-        <p><b>6.2. Контроль в критических контрольных точках.</b></p>
-        {c.control.ccp.length ? <table><thead><tr><th>Параметр</th><th>Предел</th><th>Основание</th></tr></thead>
-          <tbody>{c.control.ccp.map((x, i) => <tr key={i}><td>{x.name}</td><td>{x.limits}</td><td>{x.basis}</td></tr>)}</tbody></table>
-          : <p>Параметры контроля при выпуске для продукции не установлены.</p>}
-        <p><b>6.3. Органолептическая оценка</b> готовой продукции — по показателям ТТК: внешний вид — {c.control.organoleptic.appearance || '—'}; цвет — {c.control.organoleptic.color || '—'};
-          консистенция — {c.control.organoleptic.consistency || '—'}; вкус и запах — {c.control.organoleptic.taste || '—'}.</p>
-        <p><b>6.4. Лабораторный контроль</b> — по программе производственного контроля:</p>
-        {c.control.lab.length ? <table><thead><tr><th>Исследование</th><th>Объект</th><th>Периодичность</th><th>Основание</th></tr></thead>
-          <tbody>{c.control.lab.map((x, i) => <tr key={i}><td>{x.test}</td><td>{x.target}</td><td>{x.period}</td><td>{x.basis}</td></tr>)}</tbody></table> : <p className="tu-warn">Программа лабораторного контроля не утверждена.</p>}
-        <p>Микробиологические показатели{c.control.micro_index ? ` (${c.control.micro_index})` : ''}: {c.control.micro.map((m) => `${m.name} — ${m.norm || 'не заполнено'}`).join('; ')}.</p>
-        <p><b>6.5. Суточная проба</b> отбирается от каждой партии: не менее {fx(c.control.samples.weight_g, 0)} г, хранится {fx(c.control.samples.hours, 0)} ч при {c.control.samples.t} ({c.control.samples.basis}).</p>
-
-        <h2>7. Требования к хранению и транспортированию</h2>
-        <p>Условия хранения: {c.storage.conditions || '—'}. Срок годности (реализации): {c.storage.shelf_life || '—'}.
-          Транспортирование — в чистой маркированной таре, специализированным транспортом при условиях, обеспечивающих сохранность продукции и соблюдение условий хранения.</p>
-
-        <h2>8. Санитарно-гигиенические требования</h2>
-        <p>Производство осуществляется с соблюдением {c.sanitation.sanpin.length ? c.sanitation.sanpin.map((s) => `${s.code} «${s.title}»`).join(', ') : 'действующих санитарных правил'}. Персонал: {GATE[c.sanitation.medical_gate] || GATE.warn}; соблюдение правил личной гигиены, ежедневный осмотр перед сменой.</p>
+        <p><b>5.4. Санитарная обработка и личная гигиена.</b> Производство осуществляется с соблюдением {c.sanitation.sanpin.length ? c.sanitation.sanpin.map((s) => `${s.code} «${s.title}»`).join(', ') : 'действующих санитарных правил'}. Персонал: {GATE[c.sanitation.medical_gate] || GATE.warn}; соблюдение правил личной гигиены, ежедневный осмотр перед сменой.</p>
         {c.sanitation.plans.length > 0 && <><p>Санитарная обработка помещений, оборудования и инвентаря:</p>
           <table><thead><tr><th>Объект</th><th>Работа</th><th>Вид</th><th>Периодичность</th></tr></thead>
             <tbody>{c.sanitation.plans.map((x, i) => <tr key={i}><td>{x.area}</td><td>{x.work}</td><td>{x.kind}</td><td>{x.period}</td></tr>)}</tbody></table></>}
 
-        <h2>9. Требования безопасности и охраны окружающей среды</h2>
+        <h2>6. Упаковка и маркировка</h2>
+        <p style={{ whiteSpace: 'pre-line' }}>{c.packaging || <span className="tu-warn">не заполнено</span>}</p>
+
+        <h2>7. Транспортирование и хранение</h2>
+        <p>Условия хранения: {c.storage.conditions || '—'}. Срок годности (реализации): {c.storage.shelf_life || '—'}.
+          Транспортирование — в чистой маркированной таре, специализированным транспортом при условиях, обеспечивающих сохранность продукции и соблюдение условий хранения.</p>
+
+        <h2>8. Организация контроля за качеством и безопасностью продукции</h2>
+        <p><b>8.1. Входной контроль.</b> {c.control.receipt}</p>
+        <p><b>8.2. Контроль в критических контрольных точках.</b></p>
+        {c.control.ccp.length ? <table><thead><tr><th>Параметр</th><th>Предел</th><th>Основание</th></tr></thead>
+          <tbody>{c.control.ccp.map((x, i) => <tr key={i}><td>{x.name}</td><td>{x.limits}</td><td>{x.basis}</td></tr>)}</tbody></table>
+          : <p>Параметры контроля при выпуске для продукции не установлены.</p>}
+        <p><b>8.3. Органолептическая оценка</b> готовой продукции — по показателям ТТК: внешний вид — {c.control.organoleptic.appearance || '—'}; цвет — {c.control.organoleptic.color || '—'};
+          консистенция — {c.control.organoleptic.consistency || '—'}; вкус и запах — {c.control.organoleptic.taste || '—'}.</p>
+        <p><b>8.4. Лабораторный контроль</b> — по программе производственного контроля:</p>
+        {c.control.lab.length ? <table><thead><tr><th>Исследование</th><th>Объект</th><th>Периодичность</th><th>Основание</th></tr></thead>
+          <tbody>{c.control.lab.map((x, i) => <tr key={i}><td>{x.test}</td><td>{x.target}</td><td>{x.period}</td><td>{x.basis}</td></tr>)}</tbody></table> : <p className="tu-warn">Программа лабораторного контроля не утверждена.</p>}
+        <p>Микробиологические показатели{c.control.micro_index ? ` (${c.control.micro_index})` : ''}: {c.control.micro.map((m) => `${m.name} — ${m.norm || 'не заполнено'}`).join('; ')}.</p>
+        {(c.control.samples.required || c.control.samples.confirmed) && <p><b>8.5. Суточная проба</b> отбирается от каждой партии: не менее {fx(c.control.samples.weight_g, 0)} г, хранится {fx(c.control.samples.hours, 0)} ч при {c.control.samples.t} ({c.control.samples.basis}).</p>}
+
+        <h2 style={{ pageBreakBefore: 'always' }}>Приложение А (справочное). Требования безопасности и охраны окружающей среды</h2>
         <p style={{ whiteSpace: 'pre-line' }}>{c.safety || <span className="tu-warn">не заполнено</span>}</p>
         {c.environment && <p style={{ whiteSpace: 'pre-line' }}>{c.environment}</p>}
 
