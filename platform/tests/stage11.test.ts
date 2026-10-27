@@ -67,7 +67,7 @@ describe('Расчёт ТУ по утверждённой ТТК', () => {
     expect(t.products.map((p: { name: string }) => p.name)).toEqual(['Масло сливочное 82,5%', 'Молоко 3,2%', 'Мука пшеничная', 'Соль поваренная']);
   });
 
-  it('с данными по документу: КБЖУ с потерями при тепловой обработке, физико-химия, рецептура на 100 кг, потери производства, аллергены', async () => {
+  it('с данными по документу: КБЖУ (потери — только по нормам с основанием), физико-химия, рецептура на 100 кг, потери производства, аллергены', async () => {
     const doc = 'маркировка изготовителя на упаковке';
     await expect(setProductNutrition(cook.id, orgId, P.milk, { kcal: 60, protein: 2.9, fat: 3.2, carbs: 4.7, basis: doc })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(setProductNutrition(tech.id, orgId, P.milk, { kcal: 60, protein: 60, fat: 30, carbs: 20, basis: doc })).rejects.toThrow(/не больше 100 г/);
@@ -83,13 +83,14 @@ describe('Расчёт ТУ по утверждённой ТТК', () => {
     await expect(withSystem((tx) => tx.query(`update product_nutrition set kcal_100 = 1 where product_id = $1`, [P.milk]))).rejects.toThrow(/не изменяются/);
 
     const c = (await getTechSpec(cook.id, orgId, sauce)).calc;
-    // Б 32,58 / Ж 78,96 / У 84,78 г на закладку 1030 г, выход 1000 г, потери 6/12/9 %
-    expect(c.nutrition.per100).toEqual({ protein: 3.1, fat: 6.9, carbs: 7.7, kcal: 105, kj: 439 });
+    // Б 32,58 / Ж 78,96 / У 84,78 г на закладку 1030 г, выход 1000 г; норм обработки с потерями нет — без потерь, с пометкой
+    expect(c.nutrition.per100).toEqual({ protein: 3.3, fat: 7.9, carbs: 8.5, kcal: 118, kj: 493 });
+    expect(c.warnings.join(' ')).toMatch(/Тепловая обработка без норм обработки сырья: потери пищевых веществ не учтены/);
     expect(c.nutrition).toMatchObject({ coverage_pct: 100, verified_pct: 100 });
     expect(c.object).toMatchObject({ yield_g: 1000, input_mass_g: 1030, production_loss_pct: 2.9 });
     expect(c.physico).toEqual(expect.arrayContaining([
-      expect.objectContaining({ indicator: 'Массовая доля жира, %, не менее', calc: 6.9, norm: 6.2 }),
-      expect.objectContaining({ indicator: 'Массовая доля белка, %, не менее', calc: 3.1, norm: 2.8 }),
+      expect.objectContaining({ indicator: 'Массовая доля жира, %, не менее', calc: 7.9, norm: 7.1 }),
+      expect.objectContaining({ indicator: 'Массовая доля белка, %, не менее', calc: 3.3, norm: 3 }),
       expect.objectContaining({ indicator: 'Массовая доля хлорида натрия (соли), %, не более', calc: 1, norm: 1.1 })]));
     expect(c.recipe.find((x: { name: string }) => x.name === 'Молоко 3,2%')).toMatchObject({ netto_g: 900, per_1kg_g: 900, per_100kg_kg: 90 });
     expect(c.allergens.contains.map((a: { code: string }) => a.code).sort()).toEqual(['gluten', 'milk']);
@@ -127,7 +128,7 @@ describe('Параметры и утверждение ТУ', () => {
   });
 
   it('полные проверенные данные + санитарные правила в реестре → «готов к испытаниям»; утверждение с протоколом — неизменяемый снимок', async () => {
-    await saveTechSpecParams(tech.id, orgId, sauce, { okpd2: '10.85.19', seq: '7', okpo: '12345678', microGroupCode: 'sauce', tolerance: 0.1 });
+    await saveTechSpecParams(tech.id, orgId, sauce, { okpd2: '10.85.19.110', tuLocation: 'Тульская обл., г. Тула', seq: '7', okpo: '12345678', microGroupCode: 'sauce', tolerance: 0.1 });
     // санитарные правила: утверждённая действующая редакция в реестре предприятия
     await withSystem(async (tx) => {
       const s = (await tx.query(`insert into reg_sources (organization_id, code, kind, title, binding) values ($1, 'СанПиН 2.3/2.4.4282-26', 'СанПиН', 'СанПиН 2.3/2.4.4282-26 (санитарные требования к организациям общественного питания)', 'mandatory') returning id`, [orgId])).rows[0];
@@ -135,16 +136,19 @@ describe('Параметры и утверждение ТУ', () => {
         values ($1, $2, 'утв. 02.06.2026 № 18', '2026-09-01', 'approved', now(), $3, 'сверено с официальной публикацией', $3, $3, now() + interval '90 days')`, [orgId, s.id, owner.id]);
     });
     const t = await getTechSpec(cook.id, orgId, sauce);
-    expect(t.calc.warnings).toEqual([]);
+    expect(t.calc.warnings).toEqual([expect.stringMatching(/потери пищевых веществ не учтены/)]);   // предупреждение, не препятствие
     expect(t.calc.status).toBe('ready');
-    expect(t.calc.designation).toBe(`ТУ 10.85.19-007-12345678-${new Date().getFullYear()}`);
+    expect(t.calc.designation).toBe(`ТУ 10.85.19-007-12345678-${new Date().getFullYear()}`);   // ГОСТ Р 51740-2016, 4.4.1: первые шесть знаков ОКПД2
+    expect(t.calc.title).toMatchObject({ okpd2: '10.85.19.110', location: 'Тульская обл., г. Тула' });
+    expect(t.calc.normative.map((d: { code: string }) => d.code)).toEqual(expect.arrayContaining(['ГОСТ Р 51740-2016', 'ГОСТ 10444.15-94', 'ГОСТ 31659-2012']));
+    expect(t.calc.normative.map((d: { code: string }) => d.code)).not.toContain('ГОСТ 32031-2022');   // листерии для соусов не нормируются — метод не нужен
     expect(t.calc.normative.find((n: { code: string }) => n.code === 'СанПиН 2.3/2.4.4282-26')).toMatchObject({ state: 'действует, текст в нормативной базе' });
     await expect(approveTechSpec(cook.id, orgId, sauce, { labProtocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(approveTechSpec(chef.id, orgId, sauce, { labProtocol: '№ 15' })).rejects.toThrow(/протокол испытаний/);
     const v = await approveTechSpec(chef.id, orgId, sauce, { labProtocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' });
     expect(v.version).toBe(1);
     const got = await getTechSpecVersion(cook.id, orgId, sauce, 1);
-    expect(got.snapshot.nutrition.per100.kcal).toBe(105);
+    expect(got.snapshot.nutrition.per100.kcal).toBe(118);
     expect(got).toMatchObject({ designation: t.calc.designation, lab_protocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' });
     await expect(withSystem((tx) => tx.query(`update tech_spec_versions set lab_protocol = 'x' where dish_id = $1`, [sauce]))).rejects.toThrow(/не изменяются/);
     expect((await getTechSpec(cook.id, orgId, sauce)).versions).toEqual([expect.objectContaining({ version: 1 })]);

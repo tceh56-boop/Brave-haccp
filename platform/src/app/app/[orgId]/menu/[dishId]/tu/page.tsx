@@ -26,6 +26,8 @@ export interface TuCalc {
     indicators: { code: string; name: string; method: string; norm: string | null; basis: string | null }[] };
   organoleptic: string; channel: string;
   normative: { code: string; title: string; use: string; state: string }[];
+  title?: { holder: string; okpd2: string | null; oks: string | null; replaces: string | null; intro_date: string | null; developer: string | null; location: string | null; purpose: string };
+  raw?: { name: string; doc: string | null }[]; ppk?: { version: number; d: string } | null; organoleptic_table?: Record<string, string | null>; packaging?: string | null;
   designation: string; status: string; errors?: string[]; warnings: string[]; generated_at: string;
 }
 interface Data { params: Record<string, unknown> & { micro?: Record<string, string> }; calc: TuCalc; products: Prod[];
@@ -57,7 +59,7 @@ export default function TuPage({ params }: { params: Promise<{ dishId: string }>
         {!p ? <p className="muted">Не рассчитано — нет данных пищевой ценности ни по одному сырью.</p> : <div className="scroll"><table className="tbl"><thead><tr><th /><th>Белки, г</th><th>Жиры, г</th><th>Углеводы, г</th><th>ккал / кДж</th></tr></thead>
           <tbody><tr><td>на 100 г</td><td>{n(p.protein)}</td><td>{n(p.fat)}</td><td>{n(p.carbs)}</td><td><b>{p.kcal}</b> / {p.kj}</td></tr>
             {c.nutrition.per_portion && <tr><td>порция {c.object.portion_g} г</td><td>{n(c.nutrition.per_portion.protein)}</td><td>{n(c.nutrition.per_portion.fat)}</td><td>{n(c.nutrition.per_portion.carbs)}</td><td>{c.nutrition.per_portion.kcal} / {c.nutrition.per_portion.kj}</td></tr>}</tbody></table></div>}
-        <p className="small muted">{c.processing.by_norms_pct ? `Потери нутриентов — по нормам обработки сырья (${c.processing.by_norms_pct} % массы с данными).` : <>Обработка: {c.processing.mode === 'thermal' ? 'тепловая — типовые потери Б/Ж/У 6/12/9 %' : 'без тепловой обработки'} ({c.processing.mode === c.processing.auto ? c.processing.reason : 'задано вручную'}).</>}
+        <p className="small muted">{c.processing.by_norms_pct ? `Потери нутриентов — по нормам обработки сырья (${c.processing.by_norms_pct} % массы с данными).` : <>Обработка: {c.processing.mode === 'thermal' ? 'тепловая — потери пищевых веществ не учтены: нет норм обработки с основанием' : 'без тепловой обработки'} ({c.processing.mode === c.processing.auto ? c.processing.reason : 'задано вручную'}).</>}
           Данными покрыто {c.nutrition.coverage_pct} % массы сырья, подтверждено документами {c.nutrition.verified_pct} %. Коэффициенты энергии — ТР ТС 022/2011, прил. 4.</p>
       </div>
 
@@ -114,7 +116,8 @@ function Params({ data, dishId, onDone }: { data: Data; dishId: string; onDone: 
   const p = data.params;
   const s = (k: string) => (p[k] === null || p[k] === undefined ? '' : String(p[k]));
   const [f, setF] = useState({ processing: s('processing'), tolerance: p.tolerance != null ? String(Math.round(Number(p.tolerance) * 100)) : '10', organoleptic: s('organoleptic'),
-    channel: s('channel'), okpd2: s('okpd2'), seq: s('seq'), okpo: s('okpo'), micro: { ...(p.micro || {}) } as Record<string, string> });
+    channel: s('channel'), okpd2: s('okpd2'), seq: s('seq'), okpo: s('okpo'),
+    tuPurpose: s('tuPurpose'), tuOks: s('tuOks'), tuReplaces: s('tuReplaces'), tuIntroDate: s('tuIntroDate'), tuDeveloper: s('tuDeveloper'), tuLocation: s('tuLocation'), micro: { ...(p.micro || {}) } as Record<string, string> });
   const [mv, setMv] = useState({ microGroupCode: s('microGroupCode'), micro: { ...(p.micro || {}) } as Record<string, string>, microIndex: s('microIndex') });
   const { busy, error, run } = useSubmit();
   const [saved, setSaved] = useState(false);
@@ -124,16 +127,26 @@ function Params({ data, dishId, onDone }: { data: Data; dishId: string; onDone: 
       <form onSubmit={(e) => { e.preventDefault(); run(async () => {
         await api(`/orgs/${org.id}/dishes/${dishId}/tu`, { method: 'PUT', body: { ...f, processing: f.processing || null, tolerance: Number(f.tolerance.replace(',', '.')) / 100,
           microGroupCode: mv.microGroupCode || null, micro: mv.microGroupCode === 'custom' ? mv.micro : {}, microIndex: mv.microGroupCode === 'custom' ? mv.microIndex || null : null,
-          organoleptic: f.organoleptic || null, channel: f.channel || null } }); setSaved(true); onDone();
+          organoleptic: f.organoleptic || null, channel: f.channel || null, tuPurpose: f.tuPurpose || null, tuOks: f.tuOks || null, tuReplaces: f.tuReplaces || null,
+          tuIntroDate: f.tuIntroDate || null, tuDeveloper: f.tuDeveloper || null, tuLocation: f.tuLocation || null } }); setSaved(true); onDone();
       }); }}>
         <div className="grid2">
           <div><label htmlFor="tp">Обработка</label><select id="tp" value={f.processing} onChange={(e) => setF({ ...f, processing: e.target.value })}>
             <option value="">по технологии ТТК (сейчас: {data.calc.processing.auto === 'thermal' ? 'тепловая' : 'без нагрева'})</option><option value="thermal">тепловая</option><option value="raw">без тепловой обработки</option></select></div>
           <div><label htmlFor="tt">Допуск физико-химии, %</label><input id="tt" inputMode="decimal" value={f.tolerance} onChange={(e) => setF({ ...f, tolerance: e.target.value })} /></div>
-          <div><label htmlFor="to">ОКПД2 продукции</label><input id="to" value={f.okpd2} onChange={(e) => setF({ ...f, okpd2: e.target.value })} placeholder="10.85.19" /></div>
+          <div><label htmlFor="to">ОКПД2 продукции</label><input id="to" value={f.okpd2} onChange={(e) => setF({ ...f, okpd2: e.target.value })} placeholder="10.85.19.110 (9 знаков, ГОСТ Р 51740, 4.2.8)" /></div>
           <div><label htmlFor="tk">ОКПО предприятия</label><input id="tk" inputMode="numeric" value={f.okpo} onChange={(e) => setF({ ...f, okpo: e.target.value })} /></div>
           <div><label htmlFor="ts">Порядковый номер ТУ</label><input id="ts" inputMode="numeric" value={f.seq} onChange={(e) => setF({ ...f, seq: e.target.value })} placeholder="001" /></div>
         </div>
+        <h3 style={{ marginTop: 12 }}>Титульный лист (ГОСТ Р 51740-2016, приложение А)</h3>
+        <div className="grid2">
+          <div><label htmlFor="tx">ОКС (и КГС в скобках)</label><input id="tx" value={f.tuOks} onChange={(e) => setF({ ...f, tuOks: e.target.value })} placeholder="67.020 (Н90)" /></div>
+          <div><label htmlFor="tr">Взамен ТУ (если заменяют)</label><input id="tr" value={f.tuReplaces} onChange={(e) => setF({ ...f, tuReplaces: e.target.value })} placeholder="пусто — «утверждены впервые»" /></div>
+          <div><label htmlFor="td">Дата введения в действие</label><input id="td" type="date" value={f.tuIntroDate} onChange={(e) => setF({ ...f, tuIntroDate: e.target.value })} /></div>
+          <div><label htmlFor="tw">Местонахождение держателя подлинника</label><input id="tw" value={f.tuLocation} onChange={(e) => setF({ ...f, tuLocation: e.target.value })} placeholder={data.calc.title?.location || 'Тульская обл., г. Тула'} /></div>
+        </div>
+        <label htmlFor="tv">Разработчик (по решению держателя)</label><input id="tv" value={f.tuDeveloper} onChange={(e) => setF({ ...f, tuDeveloper: e.target.value })} />
+        <label htmlFor="tpu">Назначение продукта (ГОСТ Р 51740, 5.1.2)</label><input id="tpu" value={f.tuPurpose} onChange={(e) => setF({ ...f, tuPurpose: e.target.value })} placeholder={data.calc.title?.purpose} />
         <label htmlFor="tc">Реализация</label><input id="tc" value={f.channel} onChange={(e) => setF({ ...f, channel: e.target.value })} placeholder={data.calc.channel} />
         <label htmlFor="tl">Органолептические показатели</label><textarea id="tl" rows={2} value={f.organoleptic} onChange={(e) => setF({ ...f, organoleptic: e.target.value })} placeholder={data.calc.organoleptic} />
         <h3 style={{ marginTop: 12 }}>Микробиологические нормативы (ТР ТС 021/2011)</h3>
