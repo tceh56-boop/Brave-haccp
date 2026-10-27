@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Журналы</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}.tbl th{font-size:12px;color:var(--mut)}
+.jf{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;overflow:auto}.jfh{display:grid;grid-template-columns:1.2fr 2.6fr 1.2fr;border:1px solid #333;font:12px Arial,sans-serif}
+.jfh>div{padding:6px 8px;border-right:1px solid #333}.jfh>div:last-child{border:0}.jft{font:700 15px Arial,sans-serif;margin:10px 0 4px}.jfp{background:#ddebf7;font:12px Arial,sans-serif;padding:5px 8px;border:1px solid #9bb7d4;margin:6px 0}
+.jtb{border-collapse:collapse;font:12px Arial,sans-serif;min-width:100%}.jtb th{background:#d9e1f2;font-weight:700;border:1px solid #444;padding:4px 5px;vertical-align:middle;text-align:center}.jtb td{border:1px solid #444;padding:4px 5px;height:27px;vertical-align:middle;white-space:normal}
+.jtb tr.nd td{background:#fdecea}.jtb tr.dev td{background:#fff6e0}.jtb tr.foot td{background:#f3f3f3;font-weight:600}.mk{display:inline-block;margin-left:4px;font-size:10px;font-weight:700;border:1px solid #777;border-radius:3px;padding:0 3px;color:#333}
+.ndv{color:#a8231f;font-weight:700}.jfl{font:11px Arial,sans-serif;color:#333;margin-top:8px}.jfs{font:12px Arial,sans-serif;margin-top:14px}
+@media print{@page{size:A4 landscape;margin:0.25in}body{background:#fff}.wrap>*:not(#body),#body>*:not(.jf){display:none!important}.jf{border:0;padding:0;overflow:visible}.jtb thead{display:table-header-group}.noprint{display:none!important}}
+</style></head><body><div class="wrap">
+<h1>Журналы</h1>
+<div class="sub">Записи журналов СанПиН и HACCP, проверки на сегодня, отклонения и корректирующие действия. Значения вводит человек; дата, время и подпись — автоматически от имени вошедшего сотрудника.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' && /^[\[{"]/.test(x) ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && !(typeof r === 'string' && /^err/i.test(r)) && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { if (typeof r === 'string') return r.replace(/^err:\s*/, ''); return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dataOf(r) { return r && r.data !== undefined ? r.data : r; }
+function v(id) { var e = document.getElementById(id); return e ? String(e.value).trim() : ''; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; window.scrollTo(0, 0); }
+function fld(id, l, val, type, extra) { return '<div' + (extra || '') + '><label>' + l + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function tabs(list, cur, fn) { document.getElementById('tabs').innerHTML = list.map(function (t) { return '<button class="' + (cur === t[0] ? 'on' : '') + '" onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + (t[2] !== undefined && t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join(''); }
+function fileUrl(id, cb) { var f = document.getElementById(id); f = f && f.files && f.files[0]; if (!f) return cb('', ''); var r = new FileReader(); r.onload = function () { cb(r.result, f.type); }; r.onerror = function () { cb('', ''); }; r.readAsDataURL(f); }
+
+var CFG = [], TAB = 'checks', PEND = [], DEV = [], J = null;
+function load() {
+  Promise.all([call('getJournalsConfig', [TOKEN]), call('getPendingChecks', [TOKEN]), call('getJournalDeviations', [200, TOKEN])]).then(function (a) {
+    CFG = Array.isArray(a[0]) ? a[0] : (dataOf(a[0]) || []); var p = dataOf(a[1]) || {}; PEND = p.проверки || []; DEV = (dataOf(a[2]) || []).filter(function (d) { return !/устран|закрыт/i.test(String(d.статус || '')); }); draw();
+  }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; });
+}
+function setTab(t) { TAB = t; J = null; draw(); }
+function draw() {
+  tabs([['checks', 'Проверки на сегодня', PEND.length], ['list', 'Журналы', CFG.length], ['dev', 'Отклонения', DEV.length], ['forms', 'Формы и отчёт', '']], TAB, 'setTab');
+  var h = '';
+  if (TAB === 'checks') h = PEND.length ? PEND.map(function (x, i) { var num = x.режим === 'число';
+    if (x.режим === 'темп_да_нет') return tempCard(x, i);
+    if (x.режим === 'бракераж') return '<div class="card"><div class="nm">' + esc(x.вопрос) + '</div><div class="meta">' + esc(x.журнал) + ' · с ' + esc(x.время) + ' · вносит комиссия в разделе «Бракераж» (решение по партии)</div></div>';
+    return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(x.вопрос) + (x.критическая ? ' <span class="chip r">критическая точка</span>' : '') + '</div><div class="meta">' + esc(x.объект || x.журнал) + ' · плановое время ' + esc(x.время) + (x.статус === 'просрочено' ? ' · <b style="color:var(--red)">просрочено</b>' : '') + '</div></div></div>' +
+      '<div class="acts">' + (num || x.режим === 'да_нет_с_числом_при_нет' ? '<input id="pv' + i + '" type="number" step="any" placeholder="Фактическое значение' + (x.единица ? ', ' + esc(x.единица) : '') + '" style="max-width:220px">' : '') +
+      (num ? '<button class="btn pri" onclick="ans(' + i + ',\'да\')">Записать</button>' : '<button class="btn pri" onclick="ans(' + i + ',\'да\')">ДА</button><button class="btn bad" onclick="ans(' + i + ',\'нет\')">НЕТ</button>') + '</div>' +
+      '<div id="pn' + i + '"></div></div>'; }).join('') : '<div class="empty">На сегодня проверок нет. Расписание задаётся в настройках журналов.</div>';
+  if (TAB === 'list' && !J) h = CFG.map(function (j) { return '<div class="card"><div class="row" onclick="openJ(\'' + esc(j.id) + '\')"><div><div class="nm">' + esc(j.name) + '</div><div class="meta">' + esc(j.category || '') + (j.role ? ' · ' + esc(j.role) : '') + '</div></div><span class="chip ' + (j.required ? 'a' : '') + '">' + (j.required ? 'обязательный' : 'по необходимости') + '</span></div></div>'; }).join('');
+  if (TAB === 'list' && J) h = journalHtml();
+  if (TAB === 'dev') h = DEV.length ? DEV.map(function (d) { return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(d.журнал) + ': ' + esc(d.объект || '') + '</div><div class="meta">' + esc(d.факт || '') + (d.значение !== '' && d.значение !== undefined ? ' · значение ' + esc(d.значение) : '') + ' · ' + esc(d.когда || '') + '</div></div><span class="chip ' + (d.критическая ? 'r' : 'a') + '">' + (d.критическая ? 'критическое' : esc(d.статус || 'открыто')) + '</span></div>' +
+    '<div class="grid" style="margin-top:8px"><div style="grid-column:span 2"><label>Корректирующее действие *</label><input id="ca_' + esc(d.id) + '"></div><div><label>Исполнитель</label><input id="cw_' + esc(d.id) + '"></div></div><div class="acts"><button class="btn pri" onclick="corr(\'' + esc(d.id) + '\',this)">Записать действие</button></div>' +
+    (d.критическая ? '<div class="note" style="margin-top:10px">Критическое отклонение закрывает ответственный — решением с доказательством (после корректирующего действия).</div><div class="grid" style="margin-top:6px"><div style="grid-column:span 2"><label>Решение ответственного *</label><input id="rs_' + esc(d.id) + '"></div><div><label>Доказательство (замер, акт) *</label><input id="rp_' + esc(d.id) + '"></div></div><div class="acts"><button class="btn" onclick="closeCrit(\'' + esc(d.id) + '\',this)">Закрыть отклонение</button></div>' : '') + '</div>'; }).join('') : '<div class="empty">Открытых отклонений нет</div>';
+  if (TAB === 'forms') h = formsHtml();
+  document.getElementById('body').innerHTML = h;
+  if (TAB === 'forms' && !JF.list) loadForms();
+}
+/* Этап 10.8: «Холодильник №5: температура +2 °C?» — ДА записывает установленную, НЕТ — фактическую (число). */
+function tempCard(x, i) {
+  var hum = /%/.test(x.единица || '');
+  return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(x.вопрос) + '</div><div class="meta">' + esc(x.журнал) + ' · по графику ' + esc(x.время) + ' · допустимо ' + esc(rng(x.пределМин, x.пределМакс)) + ' °C' + (x.статус === 'просрочено' ? ' · <b style="color:var(--red)">просрочено</b>' : '') + '</div></div></div>' +
+    '<div class="acts"><button class="btn pri" onclick="tAns(' + i + ',\'да\')">ДА</button><button class="btn bad" onclick="tNo(' + i + ')">НЕТ</button></div><div id="pn' + i + '"></div></div>';
+}
+function rng(a, b) { var f = function (n) { return n === '' || n === null || n === undefined ? '…' : (Number(n) > 0 ? '+' : '') + n; }; return f(a) + '…' + f(b); }
+function tNo(i) { var x = PEND[i], hum = /%/.test(x.единица || '');
+  document.getElementById('pn' + i).innerHTML = '<div class="grid" style="margin-top:8px"><div><label>Фактическая t°, °C *</label><input id="pv' + i + '" type="number" step="any" inputmode="decimal"></div>' +
+    (hum ? '<div><label>Фактическая влажность, % *</label><input id="ph' + i + '" type="number" step="any" inputmode="decimal"></div>' : '') +
+    '<div><label>Время замера (если вносите позже)</label><input id="pt' + i + '" type="time"></div><div style="grid-column:span 3"><label>Комментарий</label><input id="pf' + i + '"></div></div>' +
+    '<div class="acts"><button class="btn pri" onclick="tAns(' + i + ',\'нет\')">Записать</button></div><div class="note">Вне допустимого предела — отклонение: корректирующее действие и повторный замер в разделе «Температуры».</div>'; }
+function tAns(i, a) {
+  var p = PEND[i], d = { id: p.id, ответ: a };
+  if (a === 'нет') { d.значение = v('pv' + i); d.влажность = v('ph' + i); d.время = v('pt' + i); d.комментарий = v('pf' + i);
+    if (d.значение === '') return msg('Введите фактическую температуру — система её не подставляет');
+    if (/%/.test(p.единица || '') && d.влажность === '') return msg('Введите фактическую влажность'); }
+  call('answerJournalCheck', [JSON.stringify(d), TOKEN]).then(function (r) {
+    if (!okOf(r)) return msg('Не записано: ' + errText(r)); var x = dataOf(r) || {};
+    msg(x.отклонение ? 'Вне предела: ' + x.температура + ' °C. ' + (x.следующий_шаг || '') : 'Записано: ' + x.температура + ' °C' + (x.влажность !== null && x.влажность !== undefined ? ', ' + x.влажность + ' %' : ''), !x.отклонение); load();
+  }, function () { msg('Нет связи'); });
+}
+function ans(i, a) {
+  var p = PEND[i], val = v('pv' + i);
+  if (p.режим === 'число' && val === '') return msg('Введите фактическое значение — система его не подставляет');
+  if (a === 'нет') { document.getElementById('pn' + i).innerHTML = '<div class="grid" style="margin-top:8px"><div style="grid-column:span 3"><label>Что фактически не так *</label><input id="pf' + i + '"></div></div><div class="acts"><button class="btn bad" onclick="sendAns(' + i + ',\'нет\')">Зафиксировать отклонение</button></div>'; return; }
+  sendAns(i, 'да');
+}
+function sendAns(i, a) {
+  var p = PEND[i], val = v('pv' + i), fact = v('pf' + i);
+  if (a === 'нет' && !fact) return msg('Опишите, что фактически не так');
+  if (a === 'нет' && p.режим === 'да_нет_с_числом_при_нет' && val === '') return msg('Введите фактическое значение');
+  call('answerJournalCheck', [JSON.stringify({ id: p.id, ответ: a, значение: val, факт: fact }), TOKEN]).then(function (r) {
+    if (!okOf(r)) return msg('Не записано: ' + errText(r)); var d = dataOf(r) || {};
+    msg(d.отклонение ? 'Отклонение зафиксировано. ' + (d.следующий_шаг || '') : 'Записано в журнал', !d.отклонение); load();
+  }, function () { msg('Нет связи'); });
+}
+function closeCrit(id, btn) {
+  if (!v('rs_' + id) || !v('rp_' + id)) return msg('Нужны решение и доказательство');
+  btn.disabled = true;
+  call('resolveCriticalIncident', [JSON.stringify({ devId: id, решение: v('rs_' + id), доказательство: v('rp_' + id) }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Отклонение закрыто', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function corr(id, btn) {
+  btn.disabled = true;
+  call('recordCorrectiveAction', [JSON.stringify({ devId: id, действие: v('ca_' + id), исполнитель: v('cw_' + id) }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не записано: ' + errText(r)); msg('Корректирующее действие записано', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function openJ(id) {
+  document.getElementById('body').innerHTML = '<div class="empty">Загрузка журнала…</div>';
+  Promise.all([call('getJournalEntries', [id, 30, TOKEN]), call('getJournalSignatures', [id, TOKEN])]).then(function (a) { J = dataOf(a[0]) || {}; J.sigs = dataOf(a[1]) || []; draw(); });
+}
+var AUTO = /^№$|^дата$|^время|подпис|^фио ответствен/i;
+function journalHtml() {
+  var j = J.journal || {}, cols = j.columns || [], ent = J.entries || [];
+  var form = cols.filter(function (c) { return !AUTO.test(String(c).trim()); });
+  var h = '<div class="acts" style="margin:0 0 10px"><button class="btn" onclick="J=null;draw()">‹ Все журналы</button></div><div class="card"><div class="nm">' + esc(j.name) + '</div><div class="note" style="opacity:.6">технический код: ' + esc(j.id) + '</div><div class="note">Дата, время и подпись проставляются автоматически от имени вошедшего сотрудника. Измерения — только числом.</div><div class="grid" style="margin-top:8px">' +
+    form.map(function (c, i) { return '<div><label>' + esc(c) + '</label><input data-col="' + esc(c) + '"' + (/t°|температур|влажн|вес|концентрац/i.test(c) && !/режим|норма/i.test(c) ? ' type="number" step="any"' : '') + '></div>'; }).join('') +
+    evFields(cols) + '</div><div class="acts"><button class="btn pri" onclick="addEntry(this)">Внести запись</button></div></div>';
+  h += '<div class="card"><div class="nm">Подписать период</div><div class="grid" style="margin-top:8px">' + fld('sgFrom', 'С', today(), 'date') + fld('sgTo', 'По', today(), 'date') + '</div><div class="note">Подписанный период закрывается для записи; исправления — через «Исправления журналов».</div><div class="acts"><button class="btn" onclick="prepSign(this)">Проверить перед подписью</button></div><div id="sgCard"></div>' +
+    (J.sigs.length ? '<div class="meta" style="margin-top:6px">Подписи: ' + J.sigs.slice(-5).map(function (s) { var on = s.status === 'SIGNED'; return esc(String(s.periodFrom || '').slice(0, 10)) + '—' + esc(String(s.periodTo || '').slice(0, 10)) + ' · ' + esc(s.signedBy || '') + (on ? '' : ' · <b>' + esc(s.status === 'REVOKED' ? 'отозвана' : s.status) + '</b>') +
+      (s.pdfUrl ? ' · <a href="' + esc(s.pdfUrl) + '" target="_blank">PDF</a>' : (on ? ' · <a href="#" onclick="mkPdf(\'' + esc(s.signatureId) + '\',this);return false">сформировать PDF</a>' : '')) + (on ? ' · код проверки ' + esc(s.verificationCode) : ''); }).join('<br>') + '</div>' : '') + '</div>';
+  h += ent.length ? '<div class="card" style="overflow:auto"><table class="tbl"><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '<th>Запись внёс</th></tr>' + ent.slice().reverse().map(function (e) { var a = e._автор; return '<tr>' + cols.map(function (c) { return '<td>' + esc(e[c]) + '</td>'; }).join('') + '<td>' + (a ? esc(a.фио + (a.должность ? ', ' + a.должность : '')) + '<div class="note">' + esc(a.внесено) + '</div>' : '<span class="note">—</span>') + '</td></tr>'; }).join('') + '</table></div>' : '<div class="empty">Записей пока нет</div>';
+  return h;
+}
+/* Этап 10.8: если вносите позже — когда это было сделано; время внесения система запишет сама */
+function evFields(cols) {
+  var dc = cols.filter(function (c) { return /^дата/i.test(c); })[0], tc = cols.filter(function (c) { return /^время/i.test(c); })[0];
+  return (dc ? '<div><label>Дата (если вносите позже)</label><input type="date" data-col="' + esc(dc) + '" max="' + today() + '"></div>' : '') +
+    (tc ? '<div><label>Время (если вносите позже)</label><input type="time" data-col="' + esc(tc) + '"></div>' : '');
+}
+function addEntry(btn) {
+  var e = {}; [].forEach.call(document.querySelectorAll('[data-col]'), function (x) { if (String(x.value).trim() !== '') e[x.getAttribute('data-col')] = String(x.value).trim(); });
+  if (!Object.keys(e).length) return msg('Заполните поля записи');
+  btn.disabled = true;
+  call('addJournalEntry', [J.journal.id, JSON.stringify(e), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не записано: ' + errText(r)); msg('Запись внесена', true); openJ(J.journal.id); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function mkPdf(id, a) { a.textContent = 'формирую…'; call('createSignedJournalPdf', [id, TOKEN]).then(function (r) { if (!okOf(r)) { a.textContent = 'ошибка'; return msg(errText(r)); } var d = dataOf(r); window.open(d.url, '_blank'); openJ(J.journal.id); }); }
+/* ТЗ §12, §58, §60: сначала проверка; кнопка «Подписать журнал» — только если проблем нет. */
+function prepSign(btn) {
+  btn.disabled = true;
+  call('prepareJournalForSigning', [J.journal.id, v('sgFrom'), v('sgTo'), TOKEN]).then(function (r) {
+    btn.disabled = false; if (!okOf(r)) return msg(errText(r)); var d = dataOf(r);
+    document.getElementById('sgCard').innerHTML = '<div class="card" style="margin-top:10px;border-color:' + (d.canSign ? 'var(--green)' : 'var(--red)') + '"><div class="nm">ПОДПИСАНИЕ ЖУРНАЛА</div>' +
+      '<div class="meta">Журнал: <b>' + esc(d.journalName) + '</b><br>Период: ' + esc(d.periodFrom) + ' — ' + esc(d.periodTo) + '<br>Количество записей: ' + d.recordCount +
+      '<br>Подписывает: <b>' + esc(d.signer.name) + '</b>' + (d.signer.position ? ', ' + esc(d.signer.position) : '') + '<br>Состояние: <b>' + esc(d.message) + '</b></div>' +
+      (d.problems.length ? '<ul style="margin:8px 0 0 18px;color:var(--red);font-size:14px">' + d.problems.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('') + '</ul>' : '') +
+      '<div class="note">' + esc(d.note) + '</div><div class="acts">' + (d.canSign ? '<button class="btn pri" onclick="sign(this)">ПОДПИСАТЬ ЖУРНАЛ</button>' : '') + '</div></div>';
+  }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function sign(btn) {
+  if (!confirm('Подписать журнал своим именем? После подписи записи за период не изменяются.')) return;
+  btn.disabled = true;
+  call('signJournal', [J.journal.id, v('sgFrom'), v('sgTo'), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не подписано: ' + errText(r)); var d = dataOf(r) || {}; msg('ЖУРНАЛ ПОДПИСАН. Подписал: ' + (d.signedBy || d.signedByName || '') + ' ' + (d.signedAt ? new Date(d.signedAt).toLocaleString('ru-RU') : ''), true); openJ(J.journal.id); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+/* ===== Этап 10.8: печатные формы J01–J53 (колонки из бланков предприятия), отчёт с фильтрами, печать А4 ===== */
+var JF = { list: null, cur: '', data: null, q: {} };
+function monthStart() { return today().slice(0, 8) + '01'; }
+function loadForms() { call('mcJournalForms', [TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); var d = dataOf(r) || {}; JF.list = d.forms || []; JF.sanday = d.sanday || []; if (!JF.cur) JF.cur = 'J01'; draw(); }, function () { msg('Нет связи'); }); }
+function formsHtml() {
+  if (!JF.list) return '<div class="empty">Загрузка форм…</div>';
+  var q = JF.q, opt = function (k, l) { return '<option value="' + k + '"' + (q.status === k ? ' selected' : '') + '>' + l + '</option>'; };
+  var h = '<div class="card noprint"><div class="grid"><div style="grid-column:span 3"><label>Форма</label><select id="jfId" onchange="JF.cur=this.value;JF.data=null;JF.q={from:JF.q.from,to:JF.q.to};draw()">' +
+    '<optgroup label="Журналы J01–J38">' + JF.list.filter(function (f) { return +f.id.slice(1) <= 38; }).map(fo).join('') + '</optgroup><optgroup label="Бланки J39–J53">' + JF.list.filter(function (f) { return +f.id.slice(1) > 38; }).map(fo).join('') + '</optgroup></select></div>' +
+    fld('jfFrom', 'С', q.from || monthStart(), 'date') + fld('jfTo', 'По', q.to || today(), 'date') +
+    '<div><label>Статус строк</label><select id="jfSt">' + opt('', 'все') + opt('nd', 'не выполнено') + opt('dev', 'отклонения') + opt('late', 'внесено позже') + opt('corr', 'исправлено') + '</select></div>' +
+    fld('jfObj', 'Объект / продукт', q.object || '') + fld('jfWho', 'Сотрудник', q.who || '') +
+    '<div><label>Метка источника</label><select id="jfMk"><option value="">любая</option>' + ['И', 'Д', 'П', 'С', 'Р'].map(function (m) { return '<option' + (q.mark === m ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div></div>' +
+    '<div class="acts"><button class="btn pri" onclick="showForm(this)">Показать</button><button class="btn" onclick="window.print()"' + (JF.data ? '' : ' disabled') + '>Печать (А4, альбомная)</button>' +
+    '<button class="btn" onclick="toDrive(this)">Сформировать на Диске</button></div><div class="note">Форма строится из записей системы: одна запись — несколько форм (например, J01, J25 и J42). Значения не подставляются: нет записи — «НЕ ВЫПОЛНЕНО».</div></div>';
+  var cf = JF.list.filter(function (x) { return x.id === JF.cur; })[0] || {};
+  h += '<div class="card noprint"><div class="meta">' + (cf.notApplicable ? '<b>Не применяется:</b> ' + esc(cf.notApplicable.reason) + ' (пересмотр до ' + esc(cf.notApplicable.review) + ') ' +
+    '<button class="btn" onclick="setNA(false,this)">Снова применяется</button>' : 'Журнал не нужен предприятию (нет витаминизации, фритюра…)? <button class="btn" onclick="setNA(true,this)">Отметить «Не применяется»</button>') + '</div></div>';
+  h += newDataHtml(JF.cur);
+  if (JF.data && JF.data.id === JF.cur) h += formTable(JF.data);
+  return h;
+}
+function fo(f) { return '<option value="' + f.id + '"' + (f.id === JF.cur ? ' selected' : '') + '>' + f.id + ' — ' + esc(f.name || f.title) + (f.overlaps ? ' (связан: ' + esc(f.overlaps) + ')' : '') + '</option>'; }
+function showForm(btn) {
+  JF.q = { from: v('jfFrom'), to: v('jfTo'), status: v('jfSt'), object: v('jfObj'), who: v('jfWho'), mark: v('jfMk') };
+  if (btn) btn.disabled = true;
+  call('mcJournalForm', [JSON.stringify(Object.assign({ id: JF.cur }, JF.q)), TOKEN]).then(function (r) { if (btn) btn.disabled = false; if (!okOf(r)) return msg(errText(r)); JF.data = dataOf(r); draw(); }, function () { if (btn) btn.disabled = false; msg('Нет связи'); });
+}
+function cellHtml(c) { var v0 = String(c.v === undefined ? '' : c.v); return (/^НЕ ВЫПОЛНЕНО/.test(v0) ? '<span class="ndv">' + esc(v0) + '</span>' : esc(v0)) + (c.m ? '<span class="mk" title="' + esc((JF.data.legend || {})[c.m] || '') + '">' + esc(c.m) + '</span>' : ''); }
+function formTable(f) {
+  var h = '<div class="jf"><div class="jfh"><div>' + esc(f.org) + '</div><div><b>СИСТЕМА ХАССП</b><br>' + esc(f.title) + '</div><div>Начат: ' + esc(f.started || '—') + '<br>Окончен: ' + esc(f.ended || '—') + '</div></div>' +
+    '<div class="jfp">' + esc(f.id) + ' | Назначение: ' + esc(f.purpose || '—') + ' | Тип заполнения: ' + esc(f.fill || '—') + '</div><div class="jft">' + esc(f.title) + '</div>' +
+    (f.notes || []).map(function (n) { return '<div class="jfl">' + esc(n) + '</div>'; }).join('') +
+    '<div class="meta noprint" style="margin:6px 0">Строк: ' + f.counts.rows + ' · не выполнено: ' + f.counts.nd + ' · отклонений: ' + f.counts.dev + ' · внесено позже: ' + f.counts.late + ' · исправлено: ' + f.counts.corrected + ' · период ' + esc(f.period.from) + ' — ' + esc(f.period.to) + '</div>' +
+    '<table class="jtb"><thead><tr>' + f.cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+    (f.rows.length ? f.rows.map(function (r) { return '<tr class="' + (r.foot ? 'foot' : r.nd ? 'nd' : r.dev ? 'dev' : '') + '"' + (r.ref ? ' title="' + esc(r.ref) + (r.corrected ? ' · исправлено' : '') + '"' : '') + '>' + r.cells.map(function (c) { return '<td>' + cellHtml(c) + '</td>'; }).join('') + '</tr>'; }).join('')
+      : '<tr><td colspan="' + f.cols.length + '" style="text-align:center;color:#777">Записей за период нет</td></tr>') + '</tbody></table>' +
+    '<div class="jfl">' + esc(f.rule) + '</div><div class="jfl">Метки источника: ' + Object.keys(f.legend).map(function (k) { return '<b>' + k + '</b> — ' + esc(f.legend[k]); }).join('; ') + '. «Внесено позже» — время замера / время внесения.</div>' +
+    '<div class="jfs">Ответственный за ХАССП: ______________________ / подпись ____________ / дата ____________</div></div>';
+  return h;
+}
+function toDrive(btn) {
+  btn.disabled = true;
+  call('mcJournalsToDrive', [JSON.stringify({ ids: [JF.cur], from: v('jfFrom'), to: v('jfTo') }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не сформировано: ' + errText(r)); var d = dataOf(r) || {};
+    msg('На Диске: ' + ((d.files || []).map(function (x) { return x.name; }).join(', ') || 'готово') + (d.folder ? ' · папка «' + d.folder + '»' : ''), true); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+/* новые данные: J49 санитарный день, J50 потребность в дезсредствах, J52 выдача СИЗ */
+function newDataHtml(id) {
+  if (id === 'J33') return j33Html();
+  if (id === 'J49') return '<div class="card noprint"><div class="nm">Санитарный день — отметка выполнения</div><div class="grid" style="margin-top:8px">' + fld('sdDate', 'Дата проведения', today(), 'date') + '</div>' +
+    JF.sanday.map(function (x, i) { if (!/\./.test(x[0])) return '<div class="nm" style="margin-top:12px">' + esc(x[0]) + '. ' + esc(x[1]) + '</div>'; return '<div class="row" style="cursor:default;margin-top:8px;align-items:center"><label class="chk" style="flex:1"><input type="checkbox" id="sd' + i + '"> ' + esc(x[0]) + '. ' + esc(String(x[1]).split('\n')[0]) + '</label><input type="time" id="sdt' + i + '" style="max-width:120px"></div>'; }).join('') +
+    '<div class="acts"><button class="btn pri" onclick="saveSanday(this)">Записать</button></div><div class="note">Отмечаются только выполненные пункты, время — фактическое.</div></div>';
+  if (id === 'J50') return '<div class="card noprint"><div class="nm">Потребность в дезинфицирующих средствах — строка расчёта</div><div class="grid" style="margin-top:8px">' + fld('dnObj', 'Объект / подразделение') + fld('dnArea', 'Площадь, м²', '', 'number') +
+    '<div><label>Вид обработки</label><select id="dnKind"><option value="Т">Т — текущая</option><option value="Г">Г — генеральная</option></select></div>' + fld('dnFreq', 'Кратность в месяц', '', 'number') + fld('dnAgent', 'Средство') + fld('dnConc', 'Концентрация, %', '', 'number') + fld('dnCons', 'Расход раствора, л/м²', '', 'number') +
+    '</div><div class="acts"><button class="btn pri" onclick="saveDsNeed(this)">Добавить</button></div><div class="note">Концентрацию и расход берите из инструкции к средству — система их не подставляет. Потребность считается: площадь × расход × концентрация.</div></div>';
+  if (id === 'J52') return '<div class="card noprint"><div class="nm">Выдача СИЗ</div><div class="grid" style="margin-top:8px">' + fld('ppDate', 'Дата выдачи', today(), 'date') + fld('ppMasks', 'Масок на неделю', '', 'number') + fld('ppShoes', 'Пар обуви на неделю', '', 'number') +
+    fld('ppWho', 'Получил: должность, ФИО', '', 'text', ' style="grid-column:span 3"') + '</div><div class="acts"><button class="btn pri" onclick="savePpe(this)">Записать</button></div><div class="note">«Выдал» — вошедший сотрудник.</div></div>';
+  return '';
+}
+function setNA(on, btn) { var reason = on ? prompt('Причина: почему журнал не применяется на предприятии?') : ''; if (on && !reason) return;
+  btn.disabled = true; call('mcJournalNotApplicable', [JSON.stringify({ id: JF.cur, on: on, reason: reason }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg(on ? 'Отмечено: не применяется' : 'Журнал снова применяется', true); JF.list = null; loadForms(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function j33Html() {
+  var rows = (JF.data && JF.data.id === 'J33' ? JF.data.rows : []).filter(function (r) { return r.cells[3] && (r.cells[3].v === '' || /НЕ ВЫПОЛНЕНО|ожидает/.test(r.cells[3].v)); });
+  return '<div class="card noprint"><div class="nm">Верификация ХАССП</div><div class="note">Система делает выборку: до 10 случайных записей каждого журнала ККТ за месяц. Результат и вывод вносит ответственный за ХАССП.</div>' +
+    '<div class="acts"><button class="btn" onclick="j33Sample(this)">Сделать выборку за прошлый месяц</button></div>' +
+    rows.map(function (r) { var row = String(r.ref || '').replace(/\D+/g, ' ').trim().split(' ').pop(); return '<div class="grid" style="margin-top:10px"><div style="grid-column:span 3"><b>' + esc(r.cells[1].v) + '</b></div>' +
+      fld('vr' + row, 'Результат *') + fld('vd' + row, 'Несоответствия') + fld('va' + row, 'Корректирующее действие') + '</div><div class="acts"><button class="btn pri" onclick="j33Save(' + row + ',this)">Записать результат</button></div>'; }).join('') + '</div>';
+}
+function j33Sample(btn) { btn.disabled = true; call('mcVerificationSampleNow', [JSON.stringify({}), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Выборок создано: ' + (dataOf(r) || {}).created, true); showForm(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function j33Save(row, btn) { btn.disabled = true; call('mcVerificationResult', [JSON.stringify({ row: row, result: v('vr' + row), deviations: v('vd' + row), actions: v('va' + row) }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Результат верификации записан', true); showForm(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function saveSanday(btn) { var items = JF.sanday.map(function (x, i) { var c = document.getElementById('sd' + i); return c && c.checked ? { n: x[0], time: v('sdt' + i) } : null; }).filter(Boolean);
+  btn.disabled = true; call('mcSanitaryDaySave', [JSON.stringify({ date: v('sdDate'), items: items }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Записано пунктов: ' + (dataOf(r) || {}).items, true); showForm(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function saveDsNeed(btn) { btn.disabled = true; call('mcDisinfectantNeedSave', [JSON.stringify({ object: v('dnObj'), area: v('dnArea'), kind: v('dnKind'), freq: v('dnFreq'), agent: v('dnAgent'), conc: v('dnConc'), cons: v('dnCons') }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Строка расчёта добавлена', true); showForm(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+function savePpe(btn) { btn.disabled = true; call('mcPpeIssueSave', [JSON.stringify({ date: v('ppDate'), masks: v('ppMasks'), shoes: v('ppShoes'), receiver: v('ppWho') }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Выдача СИЗ записана', true); showForm(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+load();
+
+</script></body></html>

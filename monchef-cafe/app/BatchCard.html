@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Партия</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}.tbl th{font-size:12px;color:var(--mut)}
+.steps{display:flex;gap:4px;flex-wrap:wrap;font-size:12px;margin:2px 0 10px}.steps span{background:#f3ece9;color:var(--mut);border-radius:999px;padding:3px 9px}.steps span.on{background:var(--wine);color:#fff}
+.lnH,.lnG{display:grid;grid-template-columns:3fr 1fr .9fr 1fr 1.35fr 38px;gap:6px;align-items:center}.lnH{font-size:11.5px;color:var(--mut);margin-top:8px;padding:0 9px}
+.ln{border:1px solid var(--line);border-radius:12px;padding:8px;margin-top:6px;background:#fffdfc}.ln.bad{border-color:#e7b9b5}
+.exp{font-size:12.5px;margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:4px}.exp select{width:auto;max-width:100%;padding:4px 6px;font-size:12.5px}.exp a{color:var(--wine)}
+.mL{display:none}@media(max-width:640px){.lnH{display:none}.lnG{grid-template-columns:1fr 1fr 1fr;align-items:end}.lnG .nmI{grid-column:1/-1}.lnG .dtI{grid-column:span 2}.mL{display:block;margin:2px 0 2px}}
+.sum{font-size:13px;margin-top:10px}.done{border-color:#bfe0cb}.bt{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;border-top:1px solid var(--line);padding:10px 0}
+.bt .inf{flex:1;min-width:200px}.bt .cp{display:flex;gap:6px;align-items:center;font-size:13px}.bt .cp input{width:64px;padding:6px}
+.rc{display:flex;gap:10px;align-items:flex-start;border-top:1px solid var(--line);padding:9px 0}.rc input{width:auto;margin-top:3px}.rc .inf{flex:1;min-width:0}
+.lbWrap{overflow-x:auto;max-width:100%}
+.lp{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;font-size:13px}.lp .grid{grid-template-columns:repeat(3,1fr)}@media(max-width:640px){.lp .grid{grid-template-columns:1fr 1fr}}
+.ck{display:flex;gap:6px;align-items:flex-start;font-size:12.5px;margin:2px 0}.ck i{font-style:normal;width:16px;flex:0 0 16px}.warnbox{background:var(--red-bg);color:var(--red);border-radius:10px;padding:10px;margin-top:8px;font-size:13px}
+.okbox{background:var(--green-bg);color:var(--green);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13px}.ambox{background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13px}
+</style></head><body><div class="wrap">
+<h1>Партия</h1>
+<div class="sub">Карточка партии по QR: остаток, срок, место, оригинальная этикетка, история, прослеживаемость; перемещение, вскрытие, использование, списание.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' && /^[\[{"]/.test(x) ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && !(typeof r === 'string' && /^err/i.test(r)) && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { if (typeof r === 'string') return r.replace(/^err:\s*/, ''); return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dataOf(r) { return r && r.data !== undefined ? r.data : r; }
+function v(id) { var e = document.getElementById(id); return e ? String(e.value).trim() : ''; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; window.scrollTo(0, 0); }
+function fld(id, l, val, type, extra) { return '<div' + (extra || '') + '><label>' + l + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function tabs(list, cur, fn) { document.getElementById('tabs').innerHTML = list.map(function (t) { return '<button class="' + (cur === t[0] ? 'on' : '') + '" onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + (t[2] !== undefined && t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join(''); }
+function fileUrl(id, cb) { var f = document.getElementById(id); f = f && f.files && f.files[0]; if (!f) return cb('', ''); var r = new FileReader(); r.onload = function () { cb(r.result, f.type); }; r.onerror = function () { cb('', ''); }; r.readAsDataURL(f); }
+/* qrcode-generator 1.4.4 — (c) 2009 Kazuhiko Arase, MIT license */
+var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],f={},c=function(t,r){o=function(t){for(var r=new Array(t),e=0;e<t;e+=1){r[e]=new Array(t);for(var n=0;n<t;n+=1)r[e][n]=null}return r}(i=4*e+17),l(0,0),l(i-7,0),l(0,i-7),s(),h(),d(t,r),e>=7&&v(t),null==a&&(a=p(e,n,u)),w(a,r)},l=function(t,r){for(var e=-1;e<=7;e+=1)if(!(t+e<=-1||i<=t+e))for(var n=-1;n<=7;n+=1)r+n<=-1||i<=r+n||(o[t+e][r+n]=0<=e&&e<=6&&(0==n||6==n)||0<=n&&n<=6&&(0==e||6==e)||2<=e&&e<=4&&2<=n&&n<=4)},h=function(){for(var t=8;t<i-8;t+=1)null==o[t][6]&&(o[t][6]=t%2==0);for(var r=8;r<i-8;r+=1)null==o[6][r]&&(o[6][r]=r%2==0)},s=function(){for(var t=B.getPatternPosition(e),r=0;r<t.length;r+=1)for(var n=0;n<t.length;n+=1){var i=t[r],a=t[n];if(null==o[i][a])for(var u=-2;u<=2;u+=1)for(var f=-2;f<=2;f+=1)o[i+u][a+f]=-2==u||2==u||-2==f||2==f||0==u&&0==f}},v=function(t){for(var r=B.getBCHTypeNumber(e),n=0;n<18;n+=1){var a=!t&&1==(r>>n&1);o[Math.floor(n/3)][n%3+i-8-3]=a}for(n=0;n<18;n+=1){a=!t&&1==(r>>n&1);o[n%3+i-8-3][Math.floor(n/3)]=a}},d=function(t,r){for(var e=n<<3|r,a=B.getBCHTypeInfo(e),u=0;u<15;u+=1){var f=!t&&1==(a>>u&1);u<6?o[u][8]=f:u<8?o[u+1][8]=f:o[i-15+u][8]=f}for(u=0;u<15;u+=1){f=!t&&1==(a>>u&1);u<8?o[8][i-u-1]=f:u<9?o[8][15-u-1+1]=f:o[8][15-u-1]=f}o[i-8][8]=!t},w=function(t,r){for(var e=-1,n=i-1,a=7,u=0,f=B.getMaskFunction(r),c=i-1;c>0;c-=2)for(6==c&&(c-=1);;){for(var g=0;g<2;g+=1)if(null==o[n][c-g]){var l=!1;u<t.length&&(l=1==(t[u]>>>a&1)),f(n,c-g)&&(l=!l),o[n][c-g]=l,-1==(a-=1)&&(u+=1,a=7)}if((n+=e)<0||i<=n){n-=e,e=-e;break}}},p=function(t,r,e){for(var n=A.getRSBlocks(t,r),o=b(),i=0;i<e.length;i+=1){var a=e[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var u=0;for(i=0;i<n.length;i+=1)u+=n[i].dataCount;if(o.getLengthInBits()>8*u)throw"code length overflow. ("+o.getLengthInBits()+">"+8*u+")";for(o.getLengthInBits()+4<=8*u&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=8*u||(o.put(236,8),o.getLengthInBits()>=8*u));)o.put(17,8);return function(t,r){for(var e=0,n=0,o=0,i=new Array(r.length),a=new Array(r.length),u=0;u<r.length;u+=1){var f=r[u].dataCount,c=r[u].totalCount-f;n=Math.max(n,f),o=Math.max(o,c),i[u]=new Array(f);for(var g=0;g<i[u].length;g+=1)i[u][g]=255&t.getBuffer()[g+e];e+=f;var l=B.getErrorCorrectPolynomial(c),h=k(i[u],l.getLength()-1).mod(l);for(a[u]=new Array(l.getLength()-1),g=0;g<a[u].length;g+=1){var s=g+h.getLength()-a[u].length;a[u][g]=s>=0?h.getAt(s):0}}var v=0;for(g=0;g<r.length;g+=1)v+=r[g].totalCount;var d=new Array(v),w=0;for(g=0;g<n;g+=1)for(u=0;u<r.length;u+=1)g<i[u].length&&(d[w]=i[u][g],w+=1);for(g=0;g<o;g+=1)for(u=0;u<r.length;u+=1)g<a[u].length&&(d[w]=a[u][g],w+=1);return d}(o,n)};f.addData=function(t,r){var e=null;switch(r=r||"Byte"){case"Numeric":e=M(t);break;case"Alphanumeric":e=x(t);break;case"Byte":e=m(t);break;case"Kanji":e=L(t);break;default:throw"mode:"+r}u.push(e),a=null},f.isDark=function(t,r){if(t<0||i<=t||r<0||i<=r)throw t+","+r;return o[t][r]},f.getModuleCount=function(){return i},f.make=function(){if(e<1){for(var t=1;t<40;t++){for(var r=A.getRSBlocks(t,n),o=b(),i=0;i<u.length;i++){var a=u[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var g=0;for(i=0;i<r.length;i++)g+=r[i].dataCount;if(o.getLengthInBits()<=8*g)break}e=t}c(!1,function(){for(var t=0,r=0,e=0;e<8;e+=1){c(!0,e);var n=B.getLostPoint(f);(0==e||t>n)&&(t=n,r=e)}return r}())},f.createTableTag=function(t,r){t=t||2;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+(r=void 0===r?4*t:r)+"px;",e+='">',e+="<tbody>";for(var n=0;n<f.getModuleCount();n+=1){e+="<tr>";for(var o=0;o<f.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+t+"px;",e+=" height: "+t+"px;",e+=" background-color: ",e+=f.isDark(n,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>"},f.createSvgTag=function(t,r,e,n){var o={};"object"==typeof arguments[0]&&(t=(o=arguments[0]).cellSize,r=o.margin,e=o.alt,n=o.title),t=t||2,r=void 0===r?4*t:r,(e="string"==typeof e?{text:e}:e||{}).text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,(n="string"==typeof n?{text:n}:n||{}).text=n.text||null,n.id=n.text?n.id||"qrcode-title":null;var i,a,u,c,g=f.getModuleCount()*t+2*r,l="";for(c="l"+t+",0 0,"+t+" -"+t+",0 0,-"+t+"z ",l+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',l+=o.scalable?"":' width="'+g+'px" height="'+g+'px"',l+=' viewBox="0 0 '+g+" "+g+'" ',l+=' preserveAspectRatio="xMinYMin meet"',l+=n.text||e.text?' role="img" aria-labelledby="'+y([n.id,e.id].join(" ").trim())+'"':"",l+=">",l+=n.text?'<title id="'+y(n.id)+'">'+y(n.text)+"</title>":"",l+=e.text?'<description id="'+y(e.id)+'">'+y(e.text)+"</description>":"",l+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',l+='<path d="',a=0;a<f.getModuleCount();a+=1)for(u=a*t+r,i=0;i<f.getModuleCount();i+=1)f.isDark(a,i)&&(l+="M"+(i*t+r)+","+u+c);return l+='" stroke="transparent" fill="black"/>',l+="</svg>"},f.createDataURL=function(t,r){t=t||2,r=void 0===r?4*t:r;var e=f.getModuleCount()*t+2*r,n=r,o=e-r;return I(e,e,function(r,e){if(n<=r&&r<o&&n<=e&&e<o){var i=Math.floor((r-n)/t),a=Math.floor((e-n)/t);return f.isDark(a,i)?0:1}return 1})},f.createImgTag=function(t,r,e){t=t||2,r=void 0===r?4*t:r;var n=f.getModuleCount()*t+2*r,o="";return o+="<img",o+=' src="',o+=f.createDataURL(t,r),o+='"',o+=' width="',o+=n,o+='"',o+=' height="',o+=n,o+='"',e&&(o+=' alt="',o+=y(e),o+='"'),o+="/>"};var y=function(t){for(var r="",e=0;e<t.length;e+=1){var n=t.charAt(e);switch(n){case"<":r+="&lt;";break;case">":r+="&gt;";break;case"&":r+="&amp;";break;case'"':r+="&quot;";break;default:r+=n}}return r};return f.createASCII=function(t,r){if((t=t||1)<2)return function(t){t=void 0===t?2:t;var r,e,n,o,i,a=1*f.getModuleCount()+2*t,u=t,c=a-t,g={"██":"█","█ ":"▀"," █":"▄","  ":" "},l={"██":"▀","█ ":"▀"," █":" ","  ":" "},h="";for(r=0;r<a;r+=2){for(n=Math.floor((r-u)/1),o=Math.floor((r+1-u)/1),e=0;e<a;e+=1)i="█",u<=e&&e<c&&u<=r&&r<c&&f.isDark(n,Math.floor((e-u)/1))&&(i=" "),u<=e&&e<c&&u<=r+1&&r+1<c&&f.isDark(o,Math.floor((e-u)/1))?i+=" ":i+="█",h+=t<1&&r+1>=c?l[i]:g[i];h+="\n"}return a%2&&t>0?h.substring(0,h.length-a-1)+Array(a+1).join("▀"):h.substring(0,h.length-1)}(r);t-=1,r=void 0===r?2*t:r;var e,n,o,i,a=f.getModuleCount()*t+2*r,u=r,c=a-r,g=Array(t+1).join("██"),l=Array(t+1).join("  "),h="",s="";for(e=0;e<a;e+=1){for(o=Math.floor((e-u)/t),s="",n=0;n<a;n+=1)i=1,u<=n&&n<c&&u<=e&&e<c&&f.isDark(o,Math.floor((n-u)/t))&&(i=0),s+=i?g:l;for(o=0;o<t;o+=1)h+=s+"\n"}return h.substring(0,h.length-1)},f.renderTo2dContext=function(t,r){r=r||2;for(var e=f.getModuleCount(),n=0;n<e;n++)for(var o=0;o<e;o++)t.fillStyle=f.isDark(n,o)?"black":"white",t.fillRect(n*r,o*r,r,r)},f};t.stringToBytes=(t.stringToBytesFuncs={default:function(t){for(var r=[],e=0;e<t.length;e+=1){var n=t.charCodeAt(e);r.push(255&n)}return r}}).default,t.createStringToBytes=function(t,r){var e=function(){for(var e=S(t),n=function(){var t=e.read();if(-1==t)throw"eof";return t},o=0,i={};;){var a=e.read();if(-1==a)break;var u=n(),f=n()<<8|n();i[String.fromCharCode(a<<8|u)]=f,o+=1}if(o!=r)throw o+" != "+r;return i}(),n="?".charCodeAt(0);return function(t){for(var r=[],o=0;o<t.length;o+=1){var i=t.charCodeAt(o);if(i<128)r.push(i);else{var a=e[t.charAt(o)];"number"==typeof a?(255&a)==a?r.push(a):(r.push(a>>>8),r.push(255&a)):r.push(n)}}return r}};var r,e,n,o,i,a=1,u=2,f=4,c=8,g={L:1,M:0,Q:3,H:2},l=0,h=1,s=2,v=3,d=4,w=5,p=6,y=7,B=(r=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],e=1335,n=7973,i=function(t){for(var r=0;0!=t;)r+=1,t>>>=1;return r},(o={}).getBCHTypeInfo=function(t){for(var r=t<<10;i(r)-i(e)>=0;)r^=e<<i(r)-i(e);return 21522^(t<<10|r)},o.getBCHTypeNumber=function(t){for(var r=t<<12;i(r)-i(n)>=0;)r^=n<<i(r)-i(n);return t<<12|r},o.getPatternPosition=function(t){return r[t-1]},o.getMaskFunction=function(t){switch(t){case l:return function(t,r){return(t+r)%2==0};case h:return function(t,r){return t%2==0};case s:return function(t,r){return r%3==0};case v:return function(t,r){return(t+r)%3==0};case d:return function(t,r){return(Math.floor(t/2)+Math.floor(r/3))%2==0};case w:return function(t,r){return t*r%2+t*r%3==0};case p:return function(t,r){return(t*r%2+t*r%3)%2==0};case y:return function(t,r){return(t*r%3+(t+r)%2)%2==0};default:throw"bad maskPattern:"+t}},o.getErrorCorrectPolynomial=function(t){for(var r=k([1],0),e=0;e<t;e+=1)r=r.multiply(k([1,C.gexp(e)],0));return r},o.getLengthInBits=function(t,r){if(1<=r&&r<10)switch(t){case a:return 10;case u:return 9;case f:case c:return 8;default:throw"mode:"+t}else if(r<27)switch(t){case a:return 12;case u:return 11;case f:return 16;case c:return 10;default:throw"mode:"+t}else{if(!(r<41))throw"type:"+r;switch(t){case a:return 14;case u:return 13;case f:return 16;case c:return 12;default:throw"mode:"+t}}},o.getLostPoint=function(t){for(var r=t.getModuleCount(),e=0,n=0;n<r;n+=1)for(var o=0;o<r;o+=1){for(var i=0,a=t.isDark(n,o),u=-1;u<=1;u+=1)if(!(n+u<0||r<=n+u))for(var f=-1;f<=1;f+=1)o+f<0||r<=o+f||0==u&&0==f||a==t.isDark(n+u,o+f)&&(i+=1);i>5&&(e+=3+i-5)}for(n=0;n<r-1;n+=1)for(o=0;o<r-1;o+=1){var c=0;t.isDark(n,o)&&(c+=1),t.isDark(n+1,o)&&(c+=1),t.isDark(n,o+1)&&(c+=1),t.isDark(n+1,o+1)&&(c+=1),0!=c&&4!=c||(e+=3)}for(n=0;n<r;n+=1)for(o=0;o<r-6;o+=1)t.isDark(n,o)&&!t.isDark(n,o+1)&&t.isDark(n,o+2)&&t.isDark(n,o+3)&&t.isDark(n,o+4)&&!t.isDark(n,o+5)&&t.isDark(n,o+6)&&(e+=40);for(o=0;o<r;o+=1)for(n=0;n<r-6;n+=1)t.isDark(n,o)&&!t.isDark(n+1,o)&&t.isDark(n+2,o)&&t.isDark(n+3,o)&&t.isDark(n+4,o)&&!t.isDark(n+5,o)&&t.isDark(n+6,o)&&(e+=40);var g=0;for(o=0;o<r;o+=1)for(n=0;n<r;n+=1)t.isDark(n,o)&&(g+=1);return e+=Math.abs(100*g/r/r-50)/5*10},o),C=function(){for(var t=new Array(256),r=new Array(256),e=0;e<8;e+=1)t[e]=1<<e;for(e=8;e<256;e+=1)t[e]=t[e-4]^t[e-5]^t[e-6]^t[e-8];for(e=0;e<255;e+=1)r[t[e]]=e;var n={glog:function(t){if(t<1)throw"glog("+t+")";return r[t]},gexp:function(r){for(;r<0;)r+=255;for(;r>=256;)r-=255;return t[r]}};return n}();function k(t,r){if(void 0===t.length)throw t.length+"/"+r;var e=function(){for(var e=0;e<t.length&&0==t[e];)e+=1;for(var n=new Array(t.length-e+r),o=0;o<t.length-e;o+=1)n[o]=t[o+e];return n}(),n={getAt:function(t){return e[t]},getLength:function(){return e.length},multiply:function(t){for(var r=new Array(n.getLength()+t.getLength()-1),e=0;e<n.getLength();e+=1)for(var o=0;o<t.getLength();o+=1)r[e+o]^=C.gexp(C.glog(n.getAt(e))+C.glog(t.getAt(o)));return k(r,0)},mod:function(t){if(n.getLength()-t.getLength()<0)return n;for(var r=C.glog(n.getAt(0))-C.glog(t.getAt(0)),e=new Array(n.getLength()),o=0;o<n.getLength();o+=1)e[o]=n.getAt(o);for(o=0;o<t.getLength();o+=1)e[o]^=C.gexp(C.glog(t.getAt(o))+r);return k(e,0).mod(t)}};return n}var A=function(){var t=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],r=function(t,r){var e={};return e.totalCount=t,e.dataCount=r,e},e={};return e.getRSBlocks=function(e,n){var o=function(r,e){switch(e){case g.L:return t[4*(r-1)+0];case g.M:return t[4*(r-1)+1];case g.Q:return t[4*(r-1)+2];case g.H:return t[4*(r-1)+3];default:return}}(e,n);if(void 0===o)throw"bad rs block @ typeNumber:"+e+"/errorCorrectionLevel:"+n;for(var i=o.length/3,a=[],u=0;u<i;u+=1)for(var f=o[3*u+0],c=o[3*u+1],l=o[3*u+2],h=0;h<f;h+=1)a.push(r(c,l));return a},e}(),b=function(){var t=[],r=0,e={getBuffer:function(){return t},getAt:function(r){var e=Math.floor(r/8);return 1==(t[e]>>>7-r%8&1)},put:function(t,r){for(var n=0;n<r;n+=1)e.putBit(1==(t>>>r-n-1&1))},getLengthInBits:function(){return r},putBit:function(e){var n=Math.floor(r/8);t.length<=n&&t.push(0),e&&(t[n]|=128>>>r%8),r+=1}};return e},M=function(t){var r=a,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+2<r.length;)t.put(o(r.substring(n,n+3)),10),n+=3;n<r.length&&(r.length-n==1?t.put(o(r.substring(n,n+1)),4):r.length-n==2&&t.put(o(r.substring(n,n+2)),7))}},o=function(t){for(var r=0,e=0;e<t.length;e+=1)r=10*r+i(t.charAt(e));return r},i=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);throw"illegal char :"+t};return n},x=function(t){var r=u,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+1<r.length;)t.put(45*o(r.charAt(n))+o(r.charAt(n+1)),11),n+=2;n<r.length&&t.put(o(r.charAt(n)),6)}},o=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);if("A"<=t&&t<="Z")return t.charCodeAt(0)-"A".charCodeAt(0)+10;switch(t){case" ":return 36;case"$":return 37;case"%":return 38;case"*":return 39;case"+":return 40;case"-":return 41;case".":return 42;case"/":return 43;case":":return 44;default:throw"illegal char :"+t}};return n},m=function(r){var e=f,n=t.stringToBytes(r),o={getMode:function(){return e},getLength:function(t){return n.length},write:function(t){for(var r=0;r<n.length;r+=1)t.put(n[r],8)}};return o},L=function(r){var e=c,n=t.stringToBytesFuncs.SJIS;if(!n)throw"sjis not supported.";!function(){var t=n("友");if(2!=t.length||38726!=(t[0]<<8|t[1]))throw"sjis not supported."}();var o=n(r),i={getMode:function(){return e},getLength:function(t){return~~(o.length/2)},write:function(t){for(var r=o,e=0;e+1<r.length;){var n=(255&r[e])<<8|255&r[e+1];if(33088<=n&&n<=40956)n-=33088;else{if(!(57408<=n&&n<=60351))throw"illegal char at "+(e+1)+"/"+n;n-=49472}n=192*(n>>>8&255)+(255&n),t.put(n,13),e+=2}if(e<r.length)throw"illegal char at "+(e+1)}};return i},D=function(){var t=[],r={writeByte:function(r){t.push(255&r)},writeShort:function(t){r.writeByte(t),r.writeByte(t>>>8)},writeBytes:function(t,e,n){e=e||0,n=n||t.length;for(var o=0;o<n;o+=1)r.writeByte(t[o+e])},writeString:function(t){for(var e=0;e<t.length;e+=1)r.writeByte(t.charCodeAt(e))},toByteArray:function(){return t},toString:function(){var r="";r+="[";for(var e=0;e<t.length;e+=1)e>0&&(r+=","),r+=t[e];return r+="]"}};return r},S=function(t){var r=t,e=0,n=0,o=0,i={read:function(){for(;o<8;){if(e>=r.length){if(0==o)return-1;throw"unexpected end of file./"+o}var t=r.charAt(e);if(e+=1,"="==t)return o=0,-1;t.match(/^\s$/)||(n=n<<6|a(t.charCodeAt(0)),o+=6)}var i=n>>>o-8&255;return o-=8,i}},a=function(t){if(65<=t&&t<=90)return t-65;if(97<=t&&t<=122)return t-97+26;if(48<=t&&t<=57)return t-48+52;if(43==t)return 62;if(47==t)return 63;throw"c:"+t};return i},I=function(t,r,e){for(var n=function(t,r){var e=t,n=r,o=new Array(t*r),i={setPixel:function(t,r,n){o[r*e+t]=n},write:function(t){t.writeString("GIF87a"),t.writeShort(e),t.writeShort(n),t.writeByte(128),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(255),t.writeByte(255),t.writeByte(255),t.writeString(","),t.writeShort(0),t.writeShort(0),t.writeShort(e),t.writeShort(n),t.writeByte(0);var r=a(2);t.writeByte(2);for(var o=0;r.length-o>255;)t.writeByte(255),t.writeBytes(r,o,255),o+=255;t.writeByte(r.length-o),t.writeBytes(r,o,r.length-o),t.writeByte(0),t.writeString(";")}},a=function(t){for(var r=1<<t,e=1+(1<<t),n=t+1,i=u(),a=0;a<r;a+=1)i.add(String.fromCharCode(a));i.add(String.fromCharCode(r)),i.add(String.fromCharCode(e));var f,c,g,l=D(),h=(f=l,c=0,g=0,{write:function(t,r){if(t>>>r!=0)throw"length over";for(;c+r>=8;)f.writeByte(255&(t<<c|g)),r-=8-c,t>>>=8-c,g=0,c=0;g|=t<<c,c+=r},flush:function(){c>0&&f.writeByte(g)}});h.write(r,n);var s=0,v=String.fromCharCode(o[s]);for(s+=1;s<o.length;){var d=String.fromCharCode(o[s]);s+=1,i.contains(v+d)?v+=d:(h.write(i.indexOf(v),n),i.size()<4095&&(i.size()==1<<n&&(n+=1),i.add(v+d)),v=d)}return h.write(i.indexOf(v),n),h.write(e,n),h.flush(),l.toByteArray()},u=function(){var t={},r=0,e={add:function(n){if(e.contains(n))throw"dup key:"+n;t[n]=r,r+=1},size:function(){return r},indexOf:function(r){return t[r]},contains:function(r){return void 0!==t[r]}};return e};return i}(t,r),o=0;o<r;o+=1)for(var i=0;i<t;i+=1)n.setPixel(i,o,e(i,o));var a=D();n.write(a);for(var u=function(){var t=0,r=0,e=0,n="",o={},i=function(t){n+=String.fromCharCode(a(63&t))},a=function(t){if(t<0);else{if(t<26)return 65+t;if(t<52)return t-26+97;if(t<62)return t-52+48;if(62==t)return 43;if(63==t)return 47}throw"n:"+t};return o.writeByte=function(n){for(t=t<<8|255&n,r+=8,e+=1;r>=6;)i(t>>>r-6),r-=6},o.flush=function(){if(r>0&&(i(t<<6-r),t=0,r=0),e%3!=0)for(var o=3-e%3,a=0;a<o;a+=1)n+="="},o.toString=function(){return n},o}(),f=a.toByteArray(),c=0;c<f.length;c+=1)u.writeByte(f[c]);return u.flush(),"data:image/gif;base64,"+u};return t}();qrcode.stringToBytesFuncs["UTF-8"]=function(t){return function(t){for(var r=[],e=0;e<t.length;e++){var n=t.charCodeAt(e);n<128?r.push(n):n<2048?r.push(192|n>>6,128|63&n):n<55296||n>=57344?r.push(224|n>>12,128|n>>6&63,128|63&n):(e++,n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>>6&63,128|63&n))}return r}(t)},function(t){"function"==typeof define&&define.amd?define([],t):"object"==typeof exports&&(module.exports=t())}(function(){return qrcode});
+/* Этикетки партии (общие для «Приёмки» и «Партии»): receipt — при приёмке, opening — после вскрытия.
+   QR ведёт на карточку партии. Оригинальная этикетка производителя не заменяется — на каждой этикетке напоминание. */
+var LSIZE = '58x60';
+try { LSIZE = localStorage.getItem('mcLabelSize2') || LSIZE; } catch (e) {}
+var LB_SIZES = [['58x60', '58 × 60 мм — полная'], ['58x40', '58 × 40 мм — кратко'], ['50x50', '50 × 50 мм']];
+var LB_CSS = '.lb{width:58mm;height:60mm;padding:1.6mm 2mm;box-sizing:border-box;font-family:Arial,sans-serif;color:#000;background:#fff;display:flex;flex-direction:column;overflow:hidden;border:1px dashed #bbb;border-radius:2px;font-size:2.3mm;line-height:1.2}' +
+  '.lb.s5840{height:40mm}.lb.s5050{width:50mm;height:50mm}.lbH{display:flex;justify-content:space-between;align-items:flex-start;gap:1.5mm}.lbBr{font-weight:800;font-size:2.4mm;letter-spacing:.3mm}.lbK{font-weight:800;font-size:2.4mm;border:.35mm solid #000;padding:0 .8mm}' +
+  '.lbN{font-weight:700;font-size:3mm;line-height:1.15;max-height:7.2mm;overflow:hidden;margin:.4mm 0 .6mm}.lbR{display:flex;justify-content:space-between;gap:1mm}.lbR b{text-align:right;word-break:break-all}' +
+  '.lbE{display:flex;justify-content:space-between;align-items:center;gap:1mm;border:.4mm solid #000;padding:.5mm .8mm;margin:.6mm 0;font-size:2.5mm}.lbE b{font-size:3.2mm}.lbX{font-weight:800;text-align:center;border:.4mm solid #000;padding:.5mm;margin:.6mm 0;font-size:2.6mm}' +
+  '.lbQ{flex:0 0 15mm;width:15mm}.lb.s5840 .lbQ{flex-basis:12mm;width:12mm}.lbQ svg{width:100%;height:auto;display:block}.lbW{margin-top:auto;border-top:.3mm solid #000;padding-top:.5mm;font-size:1.9mm;font-weight:700;text-align:center}';
+(function () { try { var st = document.createElement('style'); st.textContent = LB_CSS; document.head.appendChild(st); } catch (e) {} })();
+function shortFio(s) { var p = String(s || '').trim().split(/\s+/); return p.length >= 2 ? p[0] + ' ' + p.slice(1, 3).map(function (x) { return x.charAt(0).toUpperCase() + '.'; }).join('') : String(s || ''); }
+function qrSvg(t) { try { var q = qrcode(0, 'L'); q.addData(String(t)); q.make(); return q.createSvgTag({ cellSize: 2, margin: 0, scalable: true }); } catch (e) { return ''; } }
+function lbHtml(b, kind) {
+  kind = kind || b.kind || 'receipt';
+  var r = function (a, x) { return x ? '<div class="lbR"><span>' + esc(a) + '</span><b>' + esc(x) + '</b></div>' : ''; };
+  var sz = LSIZE === '58x40' ? ' s5840' : LSIZE === '50x50' ? ' s5050' : '', compact = LSIZE === '58x40';
+  var tag = kind === 'opening' ? 'ВСКРЫТАЯ ТАРА' : b.pf ? 'П/Ф' : b.processing === 'Дефрост' ? 'РАЗМОРОЖЕНО' : '';
+  var head = '<div class="lbH"><div style="flex:1;min-width:0"><div class="lbBr">MON CHEF' + (tag ? ' <span class="lbK">' + tag + '</span>' : '') + '</div><div class="lbN">' + esc(b.product) + '</div>' +
+    r('№ партии', b.batchId) + '</div><div class="lbQ">' + qrSvg(b.qrText || b.batchId) + '</div></div>';
+  var body;
+  if (kind === 'opening') body = r('Вскрыто', b.openedAt) + r('Вскрыл', shortFio(b.openedBy)) +
+    (b.useUntil && !/НЕ ОПРЕДЕЛ/.test(b.useUntil) ? '<div class="lbE"><span>ИСПОЛЬЗОВАТЬ ДО</span><b>' + esc(b.useUntil) + '</b></div>' : '<div class="lbX">СРОК ПОСЛЕ ВСКРЫТИЯ НЕ ОПРЕДЕЛЁН</div>') +
+    (compact ? '' : r('Хранить', b.store) + r('Остаток', b.qty) + r('Место', b.location));
+  else if (b.pf || b.processing === 'Дефрост') body = r('Из партии', b.parent) + (b.pf ? r('Изготовлено', b.madeAt) : r('Разморожено', b.thawedAt)) +
+    (compact ? '' : r('Поставщик', b.supplier) + r('Партия изгот.', b.supplierBatch) + (b.vsd ? r('ВСД', b.vsd.replace(/^UUID /, '').slice(0, 18)) : '')) +
+    (b.expiry ? '<div class="lbE"><span>ГОДЕН ДО</span><b>' + esc(b.expiry) + '</b></div>' : '<div class="lbX">СРОК НЕ ОПРЕДЕЛЁН</div>') +
+    (compact ? '' : r('Хранить', b.store)) + r(b.pf ? 'Изготовил' : 'Разморозил', shortFio(b.madeBy) || '—');
+  else body = (compact ? '' : (b.noLabel ? r('Документ', b.basisDoc) : r('Партия поставщика', b.supplierBatch || '—')) + r('Поставщик', b.supplier)) + r('Принято', b.received) +
+    (compact ? '' : r('Количество', b.qtyInitial || b.qty)) +
+    (b.expiry ? '<div class="lbE"><span>ГОДЕН ДО</span><b>' + esc(b.expiry) + '</b></div>' : '<div class="lbX">СРОК НЕ УКАЗАН</div>') +
+    (compact ? '' : r('Хранить', b.store) + r('Место', b.location || 'не определено')) + r('Принял', shortFio(b.acceptedBy) || '—');
+  var foot = (b.pf || b.processing === 'Дефрост') && kind !== 'opening' ? (b.thawedAt ? 'РАЗМОРОЖЕНО ' + esc(b.thawedAt) + '<br>ПОВТОРНАЯ ЗАМОРОЗКА ЗАПРЕЩЕНА' : 'ПОЛУФАБРИКАТ' + (compact ? '' : '<br><span style="font-weight:400">сырьё: партия ' + esc(b.parent) + '</span>'))
+    : b.noLabel ? 'БЕЗ МАРКИРОВКИ ПРОИЗВОДИТЕЛЯ' + (compact ? '' : '<br><span style="font-weight:400">основание: ' + esc(b.basisDoc) + '</span>')
+    : 'НЕ УДАЛЯТЬ ОРИГИНАЛЬНУЮ ЭТИКЕТКУ' + (compact ? '' : '<br><span style="font-weight:400">оригинал производителя — в цифровом архиве партии</span>');
+  return '<div class="lb' + sz + '">' + head + body + '<div class="lbW">' + foot + '</div></div>';
+}
+/* MCBT:BEGIN — печать этикеток на Bluetooth-термопринтер (Web Bluetooth). Один источник: stage_ui/mcbt.js, вставляется в страницы сборкой.
+   Этикетка рисуется так же, как для обычной печати (тот же HTML), переводится в картинку нужной ширины и уходит на принтер
+   командами ESC/POS (растр GS v 0) или TSPL (BITMAP). Кириллица печатается всегда: принтер получает изображение, а не текст.
+   Работает в Chrome и Edge на Android и компьютере; на iPhone и iPad Web Bluetooth нет — там печать через «🖨 Печать». */
+var MCBT = (function () {
+  var KEY = 'mc_bt_cfg', DEF = { mode: 'escpos', dots: 384, chunk: 180, pause: 8, feed: 'lines', feedN: 3, cut: false, invert: false, threshold: 160, gapMm: 2 };
+  var cfg = (function () { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { return Object.assign({}, DEF); } })();
+  var dev = null, ch = null, busy = false;
+  var SVC = ['000018f0-0000-1000-8000-00805f9b34fb', '00001101-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455', '0000fee7-0000-1000-8000-00805f9b34fb',
+    'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '0000ff00-0000-1000-8000-00805f9b34fb', '0000ffe0-0000-1000-8000-00805f9b34fb', '0000fff0-0000-1000-8000-00805f9b34fb'];
+  function e(s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (x) {} }
+  function supported() { return !!(navigator && navigator.bluetooth); }
+  function connected() { return !!(dev && dev.gatt && dev.gatt.connected && ch); }
+  function notify() { try { document.querySelectorAll('.mcbt-slot').forEach(function (el) { el.innerHTML = bar(); }); } catch (x) {} }
+  function sleep(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
+  function noBt() { return new Error('Этот браузер не умеет Bluetooth-печать. Нужен Chrome или Edge на Android или компьютере. На iPhone и iPad печатайте кнопкой «🖨 Печать» — через приложение принтера или AirPrint.'); }
+  async function attach(d) {
+    var server = await d.gatt.connect(), services = await server.getPrimaryServices(), found = null;
+    for (var i = 0; i < services.length && !found; i++) {
+      try { var cs = await services[i].getCharacteristics(); for (var j = 0; j < cs.length; j++) if (cs[j].properties.write || cs[j].properties.writeWithoutResponse) { found = cs[j]; break; } } catch (x) {}
+    }
+    if (!found) { try { d.gatt.disconnect(); } catch (x) {} throw new Error('Принтер подключился, но канала для печати не нашёл. Возможно, у принтера нестандартный профиль — печатайте кнопкой «🖨 Печать».'); }
+    dev = d; ch = found; cfg.deviceId = d.id; cfg.deviceName = d.name || ''; save();
+    try { d.addEventListener('gattserverdisconnected', function () { ch = null; notify(); }); } catch (x) {}
+    notify(); return d.name || 'принтер';
+  }
+  /** Выбор принтера — только по нажатию кнопки (так требует браузер). */
+  async function connect() {
+    if (!supported()) throw noBt();
+    var d = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SVC });
+    return attach(d);
+  }
+  /** Тот же принтер — без окна выбора: после разрыва связи или (где браузер позволяет) после перезагрузки страницы. */
+  async function reconnect() {
+    if (connected()) return true;
+    if (dev) { await attach(dev); return true; }
+    if (supported() && navigator.bluetooth.getDevices && cfg.deviceId) {
+      var list = await navigator.bluetooth.getDevices(), d = list.filter(function (x) { return x.id === cfg.deviceId; })[0];
+      if (d) { await attach(d); return true; }
+    }
+    return false;
+  }
+  /** Перед печатью: принтер подключён, переподключён или выбран (окно выбора — в рамках нажатия). */
+  async function ensure() { if (!supported()) throw noBt(); if (await reconnect()) return true; await connect(); return true; }
+  function disconnect() { try { if (dev && dev.gatt.connected) dev.gatt.disconnect(); } catch (x) {} dev = null; ch = null; notify(); }
+
+  /* ---- этикетка → картинка ---- */
+  function load(html) {
+    return new Promise(function (ok, fail) {
+      var f = document.createElement('iframe');
+      f.setAttribute('aria-hidden', 'true'); f.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:1400px;border:0;visibility:hidden';
+      f.onload = function () { ok(f); };
+      f.srcdoc = String(html).replace(/<script[\s\S]*?<\/script>/gi, '');
+      document.body.appendChild(f);
+      setTimeout(function () { fail(new Error('Этикетка не отрисовалась')); }, 8000);
+    });
+  }
+  function xmlText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  async function toCanvas(f, el, css) {
+    var r = el.getBoundingClientRect(), W = Math.max(1, Math.ceil(r.width)), H = Math.max(1, Math.ceil(r.height));
+    var D = Math.max(64, Math.round(cfg.dots / 8) * 8), Hd = Math.max(8, Math.round(H * D / W));
+    var body = new XMLSerializer().serializeToString(el.cloneNode(true));
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + D + '" height="' + Hd + '" viewBox="0 0 ' + W + ' ' + H + '"><foreignObject x="0" y="0" width="' + W + '" height="' + H + '">' +
+      '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + W + 'px;height:' + H + 'px;background:#fff;margin:0;padding:0"><style>' + xmlText(css) + '</style>' + body + '</div></foreignObject></svg>';
+    var img = new Image();
+    await new Promise(function (ok, fail) { img.onload = ok; img.onerror = function () { fail(new Error('Этикетка не перевелась в картинку')); }; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); });
+    var c = document.createElement('canvas'); c.width = D; c.height = Hd;
+    var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, D, Hd); x.drawImage(img, 0, 0, D, Hd);
+    c._mm = { w: Math.round(W * 25.4 / 96), h: Math.round(H * 25.4 / 96) };
+    return c;
+  }
+  /** HTML документа этикеток (как для окна печати) → картинки по одной на этикетку. */
+  async function render(html) {
+    var f = await load(html);
+    try {
+      var d = f.contentDocument, css = [].map.call(d.querySelectorAll('style'), function (s) { return s.textContent; }).join('\n').replace(/@page\s*\{[^}]*\}/g, '');
+      var els = [];
+      ['.label', '.lb', '.lbl', '.lab', '.mclabel'].some(function (sel) { els = [].slice.call(d.querySelectorAll(sel)).filter(function (x) { return !x.parentElement.closest(sel); }); return els.length; });
+      if (!els.length) els = [d.body];
+      var out = []; for (var i = 0; i < els.length; i++) out.push(await toCanvas(f, els[i], css));
+      return out;
+    } finally { try { f.remove(); } catch (x) {} }
+  }
+  /** Чёрно-белый растр: строки по ширине в байтах, 1 — точка (ESC/POS); для TSPL точка — 0 (если принтер печатает негативом — «Инвертировать»). */
+  function mono(c, blackBit) {
+    var w = c.width, h = c.height, wb = Math.ceil(w / 8), px = c.getContext('2d').getImageData(0, 0, w, h).data, out = new Uint8Array(wb * h), th = Number(cfg.threshold) || 160;
+    var inv = !!cfg.invert;
+    for (var y = 0; y < h; y++) for (var xx = 0; xx < w; xx++) {
+      var i = (y * w + xx) * 4, lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2], black = (px[i + 3] > 0 && lum < th);
+      if (inv) black = !black;
+      var bit = blackBit ? black : !black;
+      if (bit) out[y * wb + (xx >> 3)] |= (0x80 >> (xx & 7));
+    }
+    return { wb: wb, h: h, data: out };
+  }
+  function concat(parts) { var n = parts.reduce(function (s, p) { return s + p.length; }, 0), o = new Uint8Array(n), k = 0; parts.forEach(function (p) { o.set(p, k); k += p.length; }); return o; }
+  function ascii(s) { var o = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) o[i] = s.charCodeAt(i) & 0xff; return o; }
+  function escpos(c) {
+    var m = mono(c, true), parts = [new Uint8Array([0x1B, 0x40])], band = 128;
+    for (var y = 0; y < m.h; y += band) {
+      var hh = Math.min(band, m.h - y);
+      parts.push(new Uint8Array([0x1D, 0x76, 0x30, 0x00, m.wb & 0xff, (m.wb >> 8) & 0xff, hh & 0xff, (hh >> 8) & 0xff]));
+      parts.push(m.data.subarray(y * m.wb, (y + hh) * m.wb));
+    }
+    if (cfg.feed === 'gap') parts.push(new Uint8Array([0x1D, 0x0C])); else parts.push(new Uint8Array([0x1B, 0x64, Math.max(0, Math.min(10, Number(cfg.feedN) || 0))]));
+    if (cfg.cut) parts.push(new Uint8Array([0x1D, 0x56, 0x42, 0x00]));
+    return concat(parts);
+  }
+  function tspl(c) {
+    var m = mono(c, false), wmm = Math.max(10, Math.round(m.wb * 8 / 8)), hmm = Math.max(10, Math.round(m.h / 8));
+    return concat([ascii('SIZE ' + wmm + ' mm,' + hmm + ' mm\r\nGAP ' + (Number(cfg.gapMm) || 0) + ' mm,0 mm\r\nDIRECTION 1\r\nCLS\r\nBITMAP 0,0,' + m.wb + ',' + m.h + ',0,'), m.data, ascii('\r\nPRINT 1,1\r\n')]);
+  }
+  async function write(bytes) {
+    var n = Math.max(20, Number(cfg.chunk) || 180), noResp = ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse;
+    for (var i = 0; i < bytes.length; i += n) {
+      var part = bytes.slice(i, i + n);
+      if (noResp) await ch.writeValueWithoutResponse(part); else if (ch.writeValueWithResponse) await ch.writeValueWithResponse(part); else await ch.writeValue(part);
+      if (cfg.pause) await sleep(Number(cfg.pause) || 0);
+    }
+  }
+  /** Напечатать документ этикеток: html — тот же, что открывается в окне печати. Возвращает {labels, bytes}. */
+  async function printHtml(html, copies) {
+    if (busy) throw new Error('Принтер ещё печатает предыдущее задание');
+    busy = true;
+    try {
+      await ensure();
+      var cs = await render(html), total = 0, k = Math.max(1, Math.min(50, Number(copies) || 1));
+      for (var r = 0; r < k; r++) for (var i = 0; i < cs.length; i++) { var b = cfg.mode === 'tspl' ? tspl(cs[i]) : escpos(cs[i]); await write(b); total += b.length; }
+      return { labels: cs.length * k, bytes: total, printer: dev && dev.name || '' };
+    } finally { busy = false; }
+  }
+  function testHtml() {
+    var t = new Date(), p = function (n) { return ('0' + n).slice(-2); };
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>.label{width:48mm;padding:2mm;font-family:Arial,sans-serif;color:#000;background:#fff;box-sizing:border-box}' +
+      '.h{font-weight:700;font-size:4mm;text-align:center;border-bottom:.4mm solid #000;padding-bottom:1mm}.r{display:flex;justify-content:space-between;font-size:3mm;margin-top:1mm}.b{height:4mm;background:#000;margin-top:1.5mm}</style></head>' +
+      '<body><div class="label"><div class="h">MON CHEF — проверка</div><div class="r"><span>Кириллица</span><b>АБВГД ёжик</b></div><div class="r"><span>Цифры</span><b>0123456789</b></div>' +
+      '<div class="r"><span>Время</span><b>' + p(t.getDate()) + '.' + p(t.getMonth() + 1) + ' ' + p(t.getHours()) + ':' + p(t.getMinutes()) + '</b></div><div class="b"></div></div></body></html>';
+  }
+  function bar() {
+    if (!supported()) return '<span class="mcbt-st off">📡 Bluetooth-печать в этом браузере недоступна</span>';
+    return (connected() ? '<span class="mcbt-st on">📡 Принтер: <b>' + e(dev.name || 'подключён') + '</b></span> <button type="button" class="btn" onclick="MCBT.ui(\'off\')">Отключить</button>' :
+      '<span class="mcbt-st off">📡 Принтер не подключён' + (cfg.deviceName ? ' (последний: ' + e(cfg.deviceName) + ')' : '') + '</span> <button type="button" class="btn" onclick="MCBT.ui(\'connect\')">Подключить</button>') +
+      ' <button type="button" class="btn" onclick="MCBT.ui(\'test\')">Пробная печать</button> <button type="button" class="btn" onclick="MCBT.ui(\'settings\')">Настройки принтера</button>';
+  }
+  function settings() {
+    var old = document.getElementById('mcbt-dlg'); if (old) old.remove();
+    var w = document.createElement('div'); w.id = 'mcbt-dlg';
+    w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:12px';
+    var sel = function (id, val, opts) { return '<select id="' + id + '" style="width:100%;padding:8px">' + opts.map(function (o) { return '<option value="' + e(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + e(o[1]) + '</option>'; }).join('') + '</select>'; };
+    var row = function (l, h) { return '<label style="display:block;margin:8px 0 3px;font-size:13px;color:#555">' + l + '</label>' + h; };
+    w.innerHTML = '<div style="background:#fff;color:#222;border-radius:12px;max-width:420px;width:100%;padding:16px;font:14px Arial,sans-serif;max-height:92vh;overflow:auto">' +
+      '<b style="font-size:16px">Настройки Bluetooth-принтера</b><div style="font-size:12px;color:#666;margin-top:4px">Хранятся на этом устройстве. Не знаете язык принтера — начните с ESC/POS, пробная печать покажет.</div>' +
+      row('Язык принтера', sel('mcbtMode', cfg.mode, [['escpos', 'ESC/POS — чековые и многие этикеточные (Xprinter, MPT, Sunmi…)'], ['tspl', 'TSPL — этикеточные (TSC, Xprinter XP-3xx в режиме этикеток…)']])) +
+      row('Ширина печати, точек', sel('mcbtDots', cfg.dots, [[384, '384 — лента 58 мм'], [400, '400 — этикетка 50 мм'], [464, '464 — этикетка 58 мм'], [576, '576 — лента 80 мм']])) +
+      row('После этикетки', sel('mcbtFeed', cfg.feed, [['lines', 'прогон бумаги на N строк'], ['gap', 'к следующей этикетке (по метке/зазору)']])) +
+      row('N строк прогона', '<input id="mcbtFeedN" type="number" min="0" max="10" value="' + e(cfg.feedN) + '" style="width:100%;padding:8px">') +
+      row('Зазор между этикетками, мм (TSPL)', '<input id="mcbtGap" type="number" min="0" max="10" step="0.5" value="' + e(cfg.gapMm) + '" style="width:100%;padding:8px">') +
+      row('Размер пакета, байт (если печать обрывается — уменьшите до 100 или 20)', '<input id="mcbtChunk" type="number" min="20" max="512" value="' + e(cfg.chunk) + '" style="width:100%;padding:8px">') +
+      row('Пауза между пакетами, мс', '<input id="mcbtPause" type="number" min="0" max="100" value="' + e(cfg.pause) + '" style="width:100%;padding:8px">') +
+      row('Порог чёрного (бледно — увеличьте, «залито» — уменьшите)', '<input id="mcbtTh" type="number" min="60" max="240" value="' + e(cfg.threshold) + '" style="width:100%;padding:8px">') +
+      '<label style="display:block;margin-top:10px"><input type="checkbox" id="mcbtInv"' + (cfg.invert ? ' checked' : '') + '> Инвертировать (печатает негативом)</label>' +
+      '<label style="display:block;margin-top:6px"><input type="checkbox" id="mcbtCut"' + (cfg.cut ? ' checked' : '') + '> Обрезать после этикетки (если есть нож)</label>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" class="btn" id="mcbtCancel">Отмена</button><button type="button" class="btn pri" id="mcbtSave">Сохранить</button></div></div>';
+    document.body.appendChild(w);
+    w.querySelector('#mcbtCancel').onclick = function () { w.remove(); };
+    w.querySelector('#mcbtSave').onclick = function () {
+      var v = function (id) { return w.querySelector('#' + id).value; };
+      cfg.mode = v('mcbtMode'); cfg.dots = Number(v('mcbtDots')) || 384; cfg.feed = v('mcbtFeed'); cfg.feedN = Number(v('mcbtFeedN')) || 0; cfg.gapMm = Number(v('mcbtGap')) || 0;
+      cfg.chunk = Number(v('mcbtChunk')) || 180; cfg.pause = Number(v('mcbtPause')) || 0; cfg.threshold = Number(v('mcbtTh')) || 160; cfg.invert = w.querySelector('#mcbtInv').checked; cfg.cut = w.querySelector('#mcbtCut').checked;
+      save(); w.remove(); notify();
+    };
+  }
+  function say(t) { try { if (typeof window.mcbtSay === 'function') return window.mcbtSay(t); } catch (x) {} alert(t); }
+  /** Кнопки панели принтера. */
+  function ui(a) {
+    if (a === 'settings') return settings();
+    if (a === 'off') return disconnect();
+    if (a === 'connect') return connect().then(function (n) { say('Принтер подключён: ' + n); }, function (er) { if (er && er.name === 'NotFoundError') return; say(String(er && er.message || er)); });
+    if (a === 'test') return printHtml(testHtml()).then(function (r) { say('Пробная этикетка отправлена на принтер (' + r.bytes + ' байт). Кириллица и полоса внизу должны пропечататься чётко.'); }, function (er) { if (er && er.name === 'NotFoundError') return; say(String(er && er.message || er)); });
+  }
+  return { supported: supported, connected: connected, connect: connect, reconnect: reconnect, ensure: ensure, disconnect: disconnect, render: render, printHtml: printHtml,
+    escpos: escpos, tspl: tspl, bar: bar, ui: ui, settings: settings, cfg: function () { return cfg; }, testHtml: testHtml };
+})();
+/* MCBT:END */
+/* сообщения Bluetooth-печати — в строку сообщений страницы */
+window.mcbtSay = function (t) { msg(t, !/не |нет |ошиб|недоступ/i.test(t)); };
+(function () { try { var st = document.createElement('style'); st.textContent = '.mcbt-slot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}.mcbt-st{font-size:13px}.mcbt-st.on{color:#2f7d4f}.mcbt-st.off{color:#7d6b6e}'; document.head.appendChild(st); } catch (e) {} })();
+// bt — печать на Bluetooth-принтер (картинкой той же этикетки); done(ids) — только после отправки на принтер
+function lbPrint(list, done, bt) {
+  var html = [], ids = [];
+  list.forEach(function (x) { for (var k = 0; k < (x.n || 1); k++) { html.push(lbHtml(x.b, x.kind)); ids.push(x.b.batchId); } });
+  if (!html.length) return false;
+  if (bt) {
+    if (typeof MCBT === 'undefined') return false;
+    var szb = LSIZE === '58x40' ? '58mm 40mm' : LSIZE === '50x50' ? '50mm 50mm' : '58mm 60mm';
+    var docb = '<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><style>@page{size:' + szb + ';margin:0}*{margin:0;padding:0;box-sizing:border-box}body{background:#fff}' + LB_CSS + '.lb{border:0!important;border-radius:0}</style></head><body>' + html.join('') + '</body></html>';
+    MCBT.ensure().then(function () { msg('Печатаю на Bluetooth-принтер…', true); return MCBT.printHtml(docb, 1); }).then(function (r) {
+      msg('Отправлено на принтер ' + (r.printer || '') + ': этикеток ' + r.labels, true); if (done) done(ids);
+    }, function (er) { if (er && er.name === 'NotFoundError') return; msg('Bluetooth-печать: ' + String(er && er.message || er)); });
+    return true;
+  }
+  var sz = LSIZE === '58x40' ? '58mm 40mm' : LSIZE === '50x50' ? '50mm 50mm' : '58mm 60mm';
+  var doc = '<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Маркировка партий</title><style>@page{size:' + sz + ';margin:0}*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{background:#fff}' +
+    LB_CSS + '.lb{border:0!important;border-radius:0}.lb:not(:last-child){page-break-after:always;break-after:page}</style></head><body>' + html.join('') +
+    '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}</scr' + 'ipt></body></html>';
+  var w = window.open('', '_blank', 'width=420,height=560'); if (!w) { msg('Окно печати заблокировано браузером — разрешите всплывающие окна'); return false; }
+  w.document.write(doc); w.document.close();
+  if (done) done(ids);
+  return true;
+}
+function sizeSel(onch) { return '<label style="display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:13px">Этикетка <select style="width:auto" onchange="LSIZE=this.value;try{localStorage.setItem(\'mcLabelSize2\',LSIZE)}catch(e){};' + (onch || 'draw()') + '">' +
+  LB_SIZES.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === LSIZE ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>'; }
+/* Ветеринарный документ (ВСД, ФГИС «Меркурий») — общий блок для приёмки, карточки партии и «Документов на сырьё».
+   Кнопки: ПРОВЕРИТЬ · ПОГАСИТЬ ВСД · ПРОВЕРИТЬ СТАТУС / РЕЗУЛЬТАТ · ОТКРЫТЬ ВСД · ИСТОРИЯ · ОТКРЫТЬ ПАРТИЮ · ПРОСЛЕЖИВАЕМОСТЬ.
+   Страница только показывает и передаёт нажатия; статус «погашен» ставит сервер по ответу «Меркурия».
+   Хост задаёт VS.onChange (перерисовка) и VS.cardUrl(batchId). */
+var VS = { by: {}, err: {}, note: {}, busy: {}, open: {}, hist: {}, conf: {}, onChange: function () {}, cardUrl: function (b) { return '?batch=' + encodeURIComponent(b); } };
+var VS_ST = { NOT_FOUND: ['Не найден', 'r'], FOUND: ['Найден', 'a'], CHECKING: ['Проверяется', 'a'], VALID: ['Проверен', 'g'], CONFLICT: ['Есть расхождения', 'r'], READY_TO_CANCEL: ['✓ Готов к гашению', 'g'],
+  SENDING: ['Выполняется гашение…', 'a'], UNKNOWN: ['Результат неизвестен', 'r'], CANCELLED: ['✓ Погашен', 'g'], REJECTED: ['Отклонён', 'r'], ERROR: ['Ошибка', 'r'] };
+function vsNum(x) { return /^UUID /.test(String(x.number || '')) ? 'UUID ' + String(x.uuid || x.number.slice(5)).slice(0, 8) + '…' : '№ ' + (x.number || ''); }
+function vsChip(st) { var s = VS_ST[st] || [st || '—', '']; return '<span class="chip ' + s[1] + '">' + esc(s[0]) + '</span>'; }
+function vsPut(v) { if (v && v.id) VS.by[v.id] = Object.assign(VS.by[v.id] || {}, v); return v; }
+/* Сверка: ✓/✗ по каждому пункту, ВСД против приёмки. */
+function vsChecks(ch, id) {
+  if (!ch || !ch.checks) return '';
+  var h = '<div class="vsCk">' + ch.checks.map(function (c) {
+    var ic = c.ok ? (c.confirmed ? '☑' : '✓') : c.hard ? '✗' : '⚠';
+    return '<div class="ck ' + (c.ok ? '' : c.hard ? 'bad' : 'warn') + '"><i>' + ic + '</i><span><b>' + esc(c.label) + ':</b> ВСД — ' + esc(c.vsd) + ' · приёмка — ' + esc(c.local) +
+      (c.msg ? ' <span class="meta">(' + esc(c.msg) + ')</span>' : '') + (c.confirmed ? ' <span class="meta">подтверждено: ' + esc(c.confirmReason) + '</span>' : '') + '</span></div>';
+  }).join('') + '</div>';
+  var q = ch.checks.filter(function (c) { return c.key === 'qty' && !c.ok; })[0];
+  if (q && id) h += '<div class="warnbox"><b>РАСХОЖДЕНИЕ ПО КОЛИЧЕСТВУ</b><br>' + esc(q.msg).replace(/ · /g, '<br>') + '<div class="acts">' +
+    '<button class="btn" onclick="vsPartial(\'' + esc(id) + '\')">Принять ' + esc(q.local) + '</button><button class="btn bad" onclick="vsReject(\'' + esc(id) + '\',this)">Отклонить</button>' +
+    '<button class="btn" onclick="vsFix(\'' + esc(id) + '\')">Исправить</button></div></div>';
+  var soft = ch.checks.filter(function (c) { return !c.ok && !c.hard; });
+  if (soft.length && id) h += '<div class="ambox">Нужно подтверждение человека: ' + soft.map(function (c) { return '<div style="margin-top:4px"><b>' + esc(c.label) + '</b> — укажите, почему это тот же товар:<input id="vsc_' + esc(id) + '_' + c.key + '" value="' + esc((VS.conf[id] || {})[c.key] || '') + '" placeholder="Причина (обязательно)"></div>'; }).join('') +
+    '<div class="acts"><button class="btn" onclick="vsConfirm(\'' + esc(id) + '\',this,' + JSON.stringify(soft.map(function (c) { return c.key; })).replace(/"/g, '&quot;') + ')">Подтвердить и проверить</button></div></div>';
+  return h;
+}
+/* Блок ВСД (ТЗ §25): до гашения — данные и кнопки, после — ✓ ВСД ПОГАШЕН, кто и когда, партия. */
+function vsBlock(v, o) {
+  o = o || {}; if (!v) return ''; v = VS.by[v.id] || vsPut(v);
+  var st = v.status, done = st === 'CANCELLED', id = v.id, e = VS.err[id], busy = VS.busy[id], b0 = (v.batches || [])[0] || o.batchId || '';
+  var h = '<div class="vsd' + (done ? ' ok' : st === 'CONFLICT' || st === 'ERROR' || st === 'UNKNOWN' || st === 'REJECTED' ? ' bad' : '') + '"><div class="vsH">' + (done ? '✓ ВСД ПОГАШЕН' : 'ВЕТЕРИНАРНЫЙ ДОКУМЕНТ') + ' <span class="meta">ФГИС «Меркурий»</span></div>' +
+    '<div class="vsG"><div><label>ВСД</label>' + (/^UUID /.test(v.number) ? '<b>UUID</b> <span style="font-size:12.5px">' + esc(v.uuid) + '</span>' : '<b>№ ' + esc(v.number) + '</b>' + (v.uuid ? '<div class="meta" style="font-size:11px">' + esc(v.uuid) + '</div>' : '')) + '</div>';
+  if (!done) h += '<div><label>Поставщик</label>' + esc(v.supplier || '—') + '</div><div><label>Продукт</label>' + esc(v.product || '—') + '</div><div><label>Количество</label>' + esc(v.qty) + ' ' + esc(v.unit) + '</div>' +
+    '<div><label>Статус</label>' + vsChip(st) + (v.mercuryStatus && v.mercuryStatus !== 'CONFIRMED' ? ' <span class="meta">в «Меркурии»: ' + esc(v.mercuryStatus) + '</span>' : '') + '</div>';
+  else h += '<div><label>Погашен</label>' + esc(v.cancelledAt || '—') + '</div><div><label>Сотрудник</label>' + esc(v.cancelledBy || '—') + '</div><div><label>Партия</label>' + (v.batches || []).map(esc).join(', ') + '</div>';
+  h += '</div>';
+  if (VS.note[id]) h += '<div class="okbox">' + esc(VS.note[id]) + '</div>';
+  if (e) h += '<div class="warnbox"><b>' + esc(e.title || (st === 'UNKNOWN' ? 'РЕЗУЛЬТАТ НЕИЗВЕСТЕН' : 'ВСД НЕ ПОГАШЕН')) + '</b><br>Причина: ' + esc(e.message) + (e.code ? '<br>Код: ' + esc(e.code) : '') + (e.fix ? '<br>Что необходимо сделать: ' + esc(e.fix) : '') + '</div>';
+  else if (v.error && !done) h += '<div class="ambox">' + esc(v.error) + '</div>';
+  if (!done && v.check && v.check.summary && v.check.summary !== 'Совпадает') h += '<div class="meta" style="margin-top:6px">' + esc(v.check.summary) + '</div>';
+  if (!done && v.check) h += vsChecks(v.check, id);
+  if (!done && !(v.batches || []).length && o.unlinkedNote !== false) h += '<div class="ambox">ВСД ещё не привязан к партии — «Сопоставить» с принятым товаром.</div>';
+  var B = function (label, fn, cls, dis) { return '<button class="btn' + (cls ? ' ' + cls : '') + '"' + (busy || dis ? ' disabled' : '') + ' onclick="' + fn + '">' + label + '</button>'; }, acts = [];
+  if (busy) acts.push('<span class="chip a">Выполняется…</span>');
+  if (!done && st !== 'REJECTED' && st !== 'SENDING' && st !== 'UNKNOWN') {
+    if (o.canMap !== false) acts.push(B('Проверить', 'vsDo(\'check\',\'' + esc(id) + '\',this)'));   // этап 10.7: повар видит статус ВСД без кнопок
+    if (o.canCancel !== false) acts.push(B('Погасить ВСД', 'vsDo(\'cancel\',\'' + esc(id) + '\',this)', 'pri', !(st === 'READY_TO_CANCEL' || st === 'ERROR')));
+  }
+  if ((st === 'SENDING' || st === 'UNKNOWN') && o.canMap !== false) acts.push(B('Проверить результат', 'vsDo(\'sync\',\'' + esc(id) + '\',this)', 'pri'));
+  if (done) { if (b0 && o.openBatch !== false) acts.push('<a class="btn pri" target="_top" href="' + esc(VS.cardUrl(b0)) + '">Открыть партию</a>'); if (o.traceJs) acts.push(B('Прослеживаемость', o.traceJs)); else if (b0) acts.push('<a class="btn" target="_top" href="' + esc(VS.cardUrl(b0) + '&view=trace') + '">Прослеживаемость</a>'); }
+  if (v.uuid && (done || st === 'ERROR' || st === 'CONFLICT') && o.canMap !== false) acts.push(B('Проверить статус', 'vsDo(\'sync\',\'' + esc(id) + '\',this)'));
+  acts.push(B(VS.open[id] ? 'Скрыть ВСД' : 'Открыть ВСД', 'VS.open[\'' + esc(id) + '\']=!VS.open[\'' + esc(id) + '\'];VS.onChange()'));
+  acts.push(B('История', 'vsHist(\'' + esc(id) + '\',this)'));
+  h += '<div class="acts">' + acts.join('') + '</div>';
+  if (VS.open[id]) h += '<div class="vsG" style="margin-top:8px">' + [['UUID', v.uuid], ['Статус в «Меркурии»', v.mercuryStatus], ['Дата оформления', v.issueDate], ['Отправитель', v.from], ['Получатель', v.to], ['Изготовитель', v.producer], ['Страна', v.country],
+    ['Партия изготовителя', v.mfrBatch], ['Дата выработки', v.production], ['Годен до', v.expiry], ['Накладная', v.invoice], ['Партии MonChef', (v.batches || []).join(', ')], ['Проверил', v.checkedBy ? v.checkedBy + ' · ' + v.checkedAt : ''],
+    ['Результат гашения', v.result], ['Заявка «Меркурия»', v.applicationId]].filter(function (x) { return x[1]; }).map(function (x) { return '<div><label>' + esc(x[0]) + '</label>' + esc(x[1]) + '</div>'; }).join('') + '</div>' +
+    (v.unsupplied && o.canMap ? '<div class="ambox">Отправитель ВСД (' + esc(v.consignorName || v.consignorBE) + ') не сопоставлен с поставщиком MonChef. <button class="btn" onclick="vsMap(\'' + esc(id) + '\',this)">Сопоставить с поставщиком…</button></div>' : '');
+  if (VS.hist[id]) h += vsHistHtml(VS.hist[id]);
+  return h + '</div>';
+}
+function vsHistHtml(c) {
+  return '<div style="margin-top:8px"><b>История ВСД</b>' + (c.history || []).map(function (x) { return '<div class="rc"><div style="min-width:118px" class="meta">' + esc(x.at) + '</div><div class="inf"><b>' + esc(x.action) + '</b> · ' + esc(x.employee) + (x.role ? ' (' + esc(x.role) + ')' : '') +
+    '<div class="meta">' + esc(x.before) + ' → ' + esc(x.after) + (x.result ? ' · ' + esc(x.result) : '') + (x.code ? ' · ' + esc(x.code) : '') + (x.applicationId ? ' · заявка ' + esc(x.applicationId) : '') + '</div><div class="meta" style="font-size:11px">' + esc(x.operationId) + '</div></div></div>'; }).join('') +
+    '<div style="margin-top:6px"><b>Обмен с «Меркурием»</b></div>' + ((c.exchange || []).length ? c.exchange.map(function (x) { return '<div class="meta">' + esc(x.at) + ' · ' + esc(x.kind) + ' · ' + esc(x.status) + (x.code ? ' · ' + esc(x.code) : '') + (x.applicationId ? ' · ' + esc(x.applicationId) : '') + (x.message ? ' · ' + esc(x.message) : '') + '</div>'; }).join('') : '<div class="meta">запросов не было</div>') + '</div>';
+}
+/* Операция с защитой от двойного нажатия: кнопка блокируется, OperationID попытки один — повтор не выполняется. */
+function vsDo(kind, id, btn, extra) {
+  if (VS.busy[id]) return;
+  if (kind === 'cancel' && !confirm('Погасить ВСД в «Меркурии»? Операция необратима: груз будет принят на вашу площадку.')) return;
+  VS.busy[id] = true; VS.err[id] = null; VS.note[id] = ''; if (btn) { btn.disabled = true; btn.textContent = 'Выполняется…'; }
+  if (kind === 'cancel') VS.by[id] && (VS.by[id].status = 'SENDING');
+  VS.onChange();
+  var fn = kind === 'cancel' ? 'mcVsdCancel' : kind === 'sync' ? 'mcVsdSync' : 'mcVsdCheck';
+  var arg = kind === 'sync' ? id : JSON.stringify(Object.assign({ vsdId: id }, extra || {}, kind === 'cancel' ? { opKey: VS.opKey && VS.opKey[id] || (VS.opKey = VS.opKey || {}, VS.opKey[id] = 'C' + Date.now()) } : {}));
+  call(fn, [arg, TOKEN]).then(function (r) {
+    VS.busy[id] = false;
+    var d = dataOf(r) || {};
+    if (okOf(r)) { var v = d.vsd || d; vsPut(v); if (d.check && !v.check) VS.by[id].check = d.check; VS.note[id] = d.message || d.note || (kind === 'check' ? (d.check && d.check.summary) || '' : ''); if (kind === 'cancel') delete VS.opKey[id]; }
+    else {
+      var er = (r && r.error) || {}; VS.err[id] = { title: er.title, message: er.message || errText(r), code: er.code, fix: er.fix };
+      if (r && r.data) { if (r.data.vsd) vsPut(r.data.vsd); if (r.data.check && VS.by[id]) VS.by[id].check = r.data.check; }
+      if (VS.by[id] && VS.by[id].status === 'SENDING' && !(r && r.data && r.data.vsd)) VS.by[id].status = er.code === 'MERCURY_UNKNOWN_RESULT' ? 'UNKNOWN' : VS.by[id].status;
+      if (kind === 'cancel' && !/UNKNOWN|LOCAL_INCOMPLETE/.test(er.code || '')) delete VS.opKey[id];
+    }
+    VS.onChange();
+  }, function () { VS.busy[id] = false; VS.err[id] = { message: 'нет связи с сервером MonChef', fix: 'Проверьте интернет и нажмите «Проверить результат» — повторное гашение без проверки не выполняется' }; if (VS.by[id] && kind === 'cancel') VS.by[id].status = 'UNKNOWN'; VS.onChange(); });
+}
+function vsConfirm(id, btn, keys) {
+  var conf = {}, miss = 0; keys.forEach(function (k) { var e = document.getElementById('vsc_' + id + '_' + k), t = e ? e.value.trim() : ''; if (!t) miss++; conf[k] = { reason: t }; });
+  if (miss) return alert('Укажите причину для каждого пункта');
+  VS.conf[id] = {}; keys.forEach(function (k) { VS.conf[id][k] = conf[k].reason; });
+  vsDo('check', id, btn, { confirm: conf });
+}
+function vsHist(id, btn) {
+  if (VS.hist[id]) { delete VS.hist[id]; return VS.onChange(); }
+  btn.disabled = true; call('mcGetVsdCard', [id, TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return alert(errText(r)); VS.hist[id] = dataOf(r); vsPut(dataOf(r)); VS.onChange(); }, function () { btn.disabled = false; });
+}
+function vsPartial(id) { alert('Частичная приёмка в «Меркурии» через MonChef в этой версии не выполняется.\n\nОформите в веб-интерфейсе «Меркурия» приёмку фактического количества (акт несоответствия, возврат остатка), затем нажмите здесь «Проверить статус» — результат подтянется в приёмку без повторного гашения.\n\nЕсли количество в MonChef введено с ошибкой — «Исправить».'); }
+function vsFix(id) { var v = VS.by[id] || {}, b = (v.batches || [])[0]; if (b) window.top.location.href = VS.cardUrl(b); else alert('Исправьте количество в строке приёмки'); }
+function vsReject(id, btn) {
+  var why = prompt('Причина отклонения ВСД (товар не принимается / ВСД не к этому грузу). Партия останется в карантине; отказ в «Меркурии» оформляется в его интерфейсе.'); if (!why || !why.trim()) return;
+  btn.disabled = true; call('mcVsdReject', [JSON.stringify({ vsdId: id, reason: why.trim() }), TOKEN]).then(function (r) { if (!okOf(r)) { VS.err[id] = { message: errText(r) }; } else { vsPut(dataOf(r).vsd); VS.note[id] = dataOf(r).note; } VS.onChange(); }, function () { btn.disabled = false; });
+}
+function vsMap(id, btn) {
+  var v = VS.by[id] || {}, s = prompt('Поставщик MonChef для отправителя «' + (v.consignorName || v.consignorBE) + '» (название из справочника поставщиков):', v.supplier || ''); if (!s || !s.trim()) return;
+  btn.disabled = true; call('mcMercuryMapSupplier', [JSON.stringify({ businessEntityGuid: v.consignorBE, enterpriseGuid: v.consignorEnt, supplier: s.trim(), name: v.consignorName }), TOKEN]).then(function (r) { if (!okOf(r)) { alert(errText(r)); btn.disabled = false; return; } vsDo('check', id, null); }, function () { btn.disabled = false; });
+}
+var VS_CSS = '.vsP{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;font-size:13px}' + '.vsd{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;background:#fff}.vsd.ok{border-color:var(--green);background:#f4faf6}.vsd.bad{border-color:var(--red)}' +
+  '.vsH{font-weight:800;letter-spacing:.3px;font-size:13px;margin-bottom:6px}.vsG{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 12px;font-size:14px}.vsG label{display:block;font-size:11px;color:var(--mut)}' +
+  '.vsCk{margin-top:6px}.vsCk .ck{display:flex;gap:6px;font-size:13px;margin:2px 0}.vsCk .ck i{font-style:normal;width:16px;color:var(--green)}.vsCk .ck.bad i,.vsCk .ck.bad{color:var(--red)}.vsCk .ck.warn i{color:var(--amber)}' +
+  '.vsd .warnbox,.vsd .ambox,.vsd .okbox{margin-top:6px}.vsd .rc{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}';
+(function () { try { var st = document.createElement('style'); st.textContent = VS_CSS; document.head.appendChild(st); } catch (e) {} })();
+/* Партия: QR с этикетки открывает эту страницу (?batch=ID). Карточка — остаток, срок, место, статус, оригинальная этикетка,
+   история, прослеживаемость; операции — переместить, вскрыть, использовать, списать, разделить, возврат, печать.
+   Все решения и пересчёты делает сервер; страница только показывает и передаёт ввод. */
+var QP = new URLSearchParams(location.search), ID = QP.get('batch') || ''; if (ID === '1') ID = '';
+if (!TOKEN) { try { TOKEN = localStorage.getItem('mc_token') || ''; } catch (e) {} }
+if (TOKEN) { try { localStorage.setItem('mc_token', TOKEN); } catch (e) {} }
+var LABI = 0, VIEW = 'card', CARD = null, PANE = '', SEC = { hist: true, trace: QP.get('view') === 'trace' }, BOARD = null, SETUP = null, PRODS = [], EVFIX = '', VSDF = null;
+VS.onChange = function () { if (CARD) drawCard(); };
+var APPU = ''; call('getAppUrl', []).then(function (u) { APPU = typeof u === 'string' ? u : (dataOf(u) || ''); if (CARD) drawCard(); }, function () {});
+function procUrl(extra) { return (APPU || '') + '?processing=1&token=' + encodeURIComponent(TOKEN) + (extra || ''); }
+var LVLC = { green: ['g', 'В норме'], yellow: ['a', 'Срок скоро заканчивается'], red: ['r', 'Срок истёк — использовать нельзя'], black: ['r', 'Использование запрещено'], grey: ['', 'Партия закрыта'] };
+function unitsOf(u) { u = String(u || 'г'); return u === 'г' || u === 'кг' ? ['кг', 'г'] : u === 'мл' || u === 'л' ? ['л', 'мл'] : [u]; }
+function uSel(id) { var us = unitsOf(CARD.unit), d = CARD.dispUnit && us.indexOf(CARD.dispUnit) >= 0 ? CARD.dispUnit : us[0]; return '<select id="' + id + '">' + us.map(function (u) { return '<option' + (u === d ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select>'; }
+function boot() {
+  if (!TOKEN) return drawLogin();
+  view(VIEW);
+}
+function drawLogin() {
+  document.getElementById('tabs').innerHTML = '';
+  document.getElementById('body').innerHTML = '<div class="card"><div class="nm">Вход</div><div class="meta">Карточка партии открывается после входа сотрудника.</div><div class="grid" style="margin-top:8px"><div><label>ПИН</label><input id="pin" type="password" inputmode="numeric" onkeydown="if(event.key===\'Enter\')login()"></div></div><div class="acts"><button class="btn pri" onclick="login()">Войти</button></div></div>';
+}
+function login() {
+  call('loginWithPin', [v('pin')]).then(function (r) { var t = r && (r.token || (r.data && r.data.token)); if (!t) return msg('Неверный ПИН'); TOKEN = t; try { localStorage.setItem('mc_token', t); } catch (e) {} boot(); }, function () { msg('Нет связи'); });
+}
+function view(t) {
+  VIEW = t; tabs([['card', 'Партия'], ['exp', 'Сроки'], ['loc', 'Места хранения']], VIEW, 'view'); document.getElementById('msg').textContent = '';
+  if (t === 'card') { if (ID && (!CARD || CARD.batchId !== ID)) return openId(ID); return drawCard(); }
+  if (t === 'exp') return loadBoard();
+  if (t === 'loc') return loadSetup();
+}
+/* ---------- поиск и скан QR ---------- */
+function bar() {
+  return '<div class="card"><div class="grid"><div style="grid-column:span 2"><label>Номер партии или ссылка из QR</label><input id="bid" value="' + esc(ID) + '" placeholder="MC-20261007-000127" onkeydown="if(event.key===\'Enter\')openId(this.value)"></div>' +
+    '<div style="display:flex;align-items:flex-end;gap:6px"><button class="btn pri" onclick="openId(v(\'bid\'))">Открыть</button><button class="btn" onclick="scanQr()">📷 QR</button></div></div>' +
+    '<input id="qrf" type="file" accept="image/*" capture="environment" style="display:none" onchange="qrPhoto(this)"><div id="cam"></div></div>';
+}
+function openId(raw) {
+  var s = String(raw || '').trim(), m = /[?&]batch=([^&#]+)/.exec(s); if (m) s = decodeURIComponent(m[1]); if (!s) return msg('Введите номер партии');
+  ID = s; PANE = ''; LABI = 0; document.getElementById('body').innerHTML = bar() + '<div class="empty">Загрузка карточки…</div>';
+  call('getBatchCard', [s, TOKEN]).then(function (r) { if (!okOf(r)) { CARD = null; document.getElementById('body').innerHTML = bar(); return msg(errText(r)); } CARD = dataOf(r); drawCard(); }, function () { msg('Нет связи'); });
+}
+function reload() { if (ID) openId(ID); }
+function scanQr() {
+  if (!('BarcodeDetector' in window)) { document.getElementById('qrf').click(); return; }
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { document.getElementById('qrf').click(); return; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (st) {
+    var box = document.getElementById('cam'); box.innerHTML = '<video id="vid" playsinline style="width:100%;max-width:420px;border-radius:12px;margin-top:8px"></video><div class="acts"><button class="btn" onclick="camStop()">Закрыть камеру</button></div>';
+    var vid = document.getElementById('vid'); vid.srcObject = st; vid.play(); window._camSt = st;
+    var det = new BarcodeDetector({ formats: ['qr_code'] }), tick = function () { if (!window._camSt) return; det.detect(vid).then(function (c) { if (c.length) { camStop(); openId(c[0].rawValue); } else setTimeout(tick, 300); }, function () { setTimeout(tick, 500); }); };
+    tick();
+  }, function () { document.getElementById('qrf').click(); });
+}
+function camStop() { try { window._camSt.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} window._camSt = null; var b = document.getElementById('cam'); if (b) b.innerHTML = ''; }
+function qrPhoto(input) {
+  var f = input.files && input.files[0]; input.value = ''; if (!f) return;
+  if (!('BarcodeDetector' in window)) return msg('Этот браузер не читает QR из фото. Наведите камеру телефона на QR — откроется эта карточка, или введите номер партии.');
+  createImageBitmap(f).then(function (bmp) { return new BarcodeDetector({ formats: ['qr_code'] }).detect(bmp); }).then(function (c) { if (!c.length) return msg('QR на фото не найден'); openId(c[0].rawValue); }, function () { msg('QR не прочитан'); });
+}
+/* ---------- карточка ---------- */
+function row(a, b) { return b === '' || b === null || b === undefined ? '' : '<div><label>' + esc(a) + '</label><div>' + b + '</div></div>'; }
+function drawCard() {
+  var box = document.getElementById('body'); if (!CARD) { box.innerHTML = bar() + '<div class="empty">Отсканируйте QR с этикетки партии или введите номер.</div>'; return; }
+  var c = CARD, st = c.state, lc = LVLC[st.level] || ['', ''], a = c.actions || {};
+  var warn = '';
+  if (st.level === 'red') warn = '<div class="warnbox"><b>СРОК ИСТЁК</b> — ' + esc(c.expiry) + '. Использование запрещено: спишите или верните поставщику.</div>';
+  else if (st.level === 'black') warn = '<div class="warnbox" style="background:#2a1a1d;color:#fff"><b>ИСПОЛЬЗОВАНИЕ ЗАПРЕЩЕНО</b> — партия ' + esc(st.statusRu) + (st.status === 'QUARANTINE' ? ' (ждёт входного контроля)' : '') + '.</div>';
+  else if (st.level === 'yellow') warn = '<div class="ambox"><b>Срок скоро заканчивается:</b> ' + esc(c.expiry) + '</div>';
+  if (!c.locationId && /^(ACTIVE|OPENED|PARTIALLY_USED|QUARANTINE)$/.test(st.status)) warn += '<div class="warnbox"><b>Место хранения не определено</b> — выберите место («Переместить»).</div>';
+  if (c.afterOpen && c.afterOpen.undetermined) warn += '<div class="warnbox"><b>Срок после вскрытия не определён.</b> Требуется решение ответственного лица.</div>';
+  var pr = c.processing || {};
+  if (st.status === 'DEFROSTING') warn += '<div class="ambox"><b>Идёт дефрост</b> с ' + esc(pr.defrostStart) + ' — завершить до ' + esc(pr.defrostUntil) + '. Использовать нельзя до завершения. <a target="_top" href="' + esc(procUrl('&view=def')) + '">Замер / завершить</a></div>';
+  if (st.status === 'HOLD') warn += '<div class="warnbox"><b>Срок не определён</b> — ' + esc(c.expiryBasis) + '. ' + (a.decideExpiry ? '<a target="_top" href="' + esc(procUrl('&view=hold')) + '">Утвердить срок</a>' : 'Нужно решение ответственного HACCP.') + '</div>';
+  if (pr.thawedAt) warn += '<div class="ambox">Разморожено ' + esc(pr.thawedAt) + ' — повторная заморозка запрещена.</div>';
+  var h = bar() + '<div class="card"><div class="row" style="cursor:default"><div><div class="nm" style="font-size:19px">' + esc(c.product) + '</div><div class="meta" style="font-family:monospace;font-size:14px">' + esc(c.batchId) + (c.parent ? ' · из партии <a href="#" onclick="openId(\'' + esc(c.parent) + '\');return false">' + esc(c.parent) + '</a>' : '') + '</div></div>' +
+    '<span class="chip ' + lc[0] + '" title="' + esc(lc[1]) + '">' + esc(st.statusRu) + '</span></div>' + warn +
+    '<div class="grid" style="margin-top:10px">' + row('Остаток', '<b>' + esc(c.qty) + '</b> из ' + esc(c.qtyInitial) + (c.packages > 1 ? ' <span class="meta">· ' + c.packages + ' уп. по фото</span>' : '')) + row('Годен до', '<b>' + (esc(c.expiry) || 'не указан') + '</b>' + (c.expirySource ? ' <span class="meta">' + esc({ LABEL: 'этикетка производителя', MANUAL: 'вручную', MATRIX: 'матрица продукта', NONE: '' }[c.expirySource] || c.expirySource) + '</span>' : '')) +
+    row('Место', c.locationText ? esc(c.locationText) : '<span class="chip r">не определено</span>') + row('Хранить', esc(c.store)) +
+    row('Срок производителя', esc(c.originalExpiry)) + row('Изготовлено', esc(c.productionDate) + (c.packagingDate && c.packagingDate !== c.productionDate ? ' · упаковано ' + esc(c.packagingDate) : '')) +
+    (c.noLabel ? row('Маркировка', 'без маркировки производителя · основание: ' + esc(c.basisDoc)) : '') + (c.diff ? row('Расхождение с накладной', '<span class="chip a">' + esc(c.diff) + '</span>') : '') +
+    row('Партия производителя', esc(c.supplierBatch)) + row('Изготовитель', esc(c.manufacturer)) + row('GTIN / EAN', esc(c.gtin)) +
+    row('Поставщик', esc(c.supplier)) + row('Накладная', c.docNumber ? '№ ' + esc(c.docNumber) + (c.docDate ? ' от ' + esc(c.docDate) : '') : '') + row('Принято', esc(c.received) + (c.acceptedBy ? ' · ' + esc(c.acceptedBy) : '')) +
+    (pr.kind && pr.kind !== 'Дефрост' ? row('Получено', esc(pr.kind) + ' из партии <a href="#" onclick="openId(\'' + esc(c.parentBatch) + '\');return false">' + esc(c.parentBatch) + '</a>' + (pr.act ? ' · акт ' + esc(pr.act) : '')) : '') +
+    row('Стоимость', (c.pricePerUnit !== '' ? esc(c.pricePerUnit) + ' ₽/' + esc(c.dispUnit) + ' · ' : '') + 'партия ' + esc(c.totalCost) + ' ₽ · остаток ' + esc(c.remainCost) + ' ₽') +
+    (c.afterOpen ? row('Вскрыто', esc(c.afterOpen.at) + ' · ' + esc(c.afterOpen.by)) + row('Использовать до', c.afterOpen.undetermined ? '<span class="chip r">не определено</span>' : '<b>' + esc(c.expiry) + '</b> <span class="meta">' + esc(c.afterOpen.basis) + '</span>') : '') +
+    '</div>' +
+    '<div class="acts">' + [['label', c.noLabel ? '🖼 Фото при приёмке' : '🖼 Оригинальная этикетка', !!((c.originalLabels || []).some(function (x) { return x.fileId; }) || (c.originalLabel && c.originalLabel.fileId))], ['hist', '🕘 История', true], ['trace', '🔗 Прослеживаемость', true], ['docs', '📄 Документы', (c.documents || []).length > 0]].filter(function (x) { return x[2]; })
+      .map(function (x) { return '<button class="btn' + (SEC[x[0]] ? ' pri' : '') + '" onclick="tog(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' +
+    '<div class="acts">' + [['move', 'Переместить', a.move], ['open', 'Вскрыть тару', a.open], ['use', 'Использовать', a.use], ['waste', 'Списать', a.waste], ['split', 'Разделить', a.split], ['ret', 'Возврат поставщику', a.ret],
+      ['print', '🏷 Напечатать этикетку', a.print], ['decide', 'Срок после вскрытия', a.decideOpen && c.afterOpen]].filter(function (x) { return x[2]; })
+      .map(function (x) { return '<button class="btn' + (PANE === x[0] ? ' pri' : '') + '" onclick="pane(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') +
+      (a.process ? '<a class="btn" target="_top" href="' + esc(procUrl('&src=' + encodeURIComponent(c.batchId))) + '">🔪 Зачистка / разбор</a>' : '') +
+      (a.defrost ? '<a class="btn" target="_top" href="' + esc(procUrl('&src=' + encodeURIComponent(c.batchId))) + '">❄→ Дефрост</a>' : '') + '</div>' +
+    '<div id="pane">' + paneHtml() + '</div></div>';
+  if ((c.vsd || []).length || c.vetControlled) h += vsdCard();
+  if (SEC.label) { var ols = c.originalLabels && c.originalLabels.length ? c.originalLabels : [c.originalLabel], k = Math.min(LABI, ols.length - 1), ol = ols[k];
+    h += '<div class="card"><div class="nm">' + (c.noLabel ? 'Фото товара при приёмке' : 'Оригинальная этикетка производителя') + (ols.length > 1 ? ' — ' + (c.noLabel ? 'фото ' : 'упаковка ') + (k + 1) + ' из ' + ols.length : '') + '</div><div class="meta">' + esc(ol.labelId) + (ol.net ? ' · нетто ' + esc(ol.net) + ' кг' : '') + ' · файл хранится без изменений; на складе оригинал не удаляется до полного использования продукта</div>' +
+    (ols.length > 1 ? '<div class="acts">' + ols.map(function (x, n) { return '<button class="btn' + (n === k ? ' pri' : '') + '" onclick="LABI=' + n + ';drawCard()">Уп. ' + (n + 1) + '</button>'; }).join('') + '</div>' : '') +
+    '<div id="olab" class="empty">Загрузка фото…</div>' + (ol.text ? '<details><summary class="meta">Распознанный текст</summary><pre style="white-space:pre-wrap;font-size:12px">' + esc(ol.text) + '</pre></details>' : '') + '</div>'; }
+  if (SEC.docs) h += '<div class="card"><div class="nm">Документы</div>' + (c.documents || []).map(function (d) { return '<div class="rc"><div class="inf"><b>' + esc(d.type) + '</b> № ' + esc(d.number) + ' · ' + esc(d.date) + ' · ' + esc(d.status) + (d.verifiedBy ? ' · проверил ' + esc(d.verifiedBy) : '') + '<div class="meta">' + esc(d.id) + (d.hash ? ' · SHA-256 ' + esc(String(d.hash).slice(0, 16)) + '…' : '') + '</div></div>' + (d.fileId ? '<button class="btn" onclick="openFile(\'' + esc(d.fileId) + '\')">Открыть</button>' : '') + '</div>'; }).join('') + '<div id="docv"></div></div>';
+  if ((c.fefo || []).length > 1) h += '<div class="card"><div class="nm">FEFO — партии этого продукта</div><div class="meta">Первой используется партия с ближайшим сроком.</div>' + c.fefo.map(function (f) { return '<div class="rc"><div class="inf">' + (f.self ? '<b>' + esc(f.batchId) + '</b> (эта)' : '<a href="#" onclick="openId(\'' + esc(f.batchId) + '\');return false">' + esc(f.batchId) + '</a>') + ' · годен до ' + esc(f.expiry) + ' · ' + esc(f.remain) + (f.location ? ' · ' + esc(f.location) : '') + '</div>' + (f.recommended ? '<span class="chip g">рекомендуется</span>' : '') + '</div>'; }).join('') + '</div>';
+  if (SEC.hist) h += '<div class="card"><div class="nm">История партии</div>' + (c.timeline || []).map(function (t) {
+    var fix = a.correct && /^(MOVE|STORAGE_ASSIGNED)$/.test(t.type) && t.id ? ' <a href="#" onclick="EVFIX=\'' + esc(t.id) + '\';pane(\'fix\');return false">исправить</a>' : '';
+    return '<div class="rc"><div style="min-width:118px" class="meta">' + esc(t.when) + '</div><div class="inf"><b>' + esc(t.title) + '</b>' + (t.who ? ' · ' + esc(t.who) : '') + (t.detail ? '<div class="meta">' + esc(t.detail) + '</div>' : '') + (t.op ? '<div class="meta" style="font-size:11px">' + esc(t.op) + (t.id ? ' · ' + esc(t.id) : '') + '</div>' : '') + fix + '</div></div>';
+  }).join('') + '</div>';
+  if (SEC.trace) h += traceHtml();
+  box.innerHTML = h;
+  if (SEC.label) { var ol2 = (c.originalLabels && c.originalLabels.length ? c.originalLabels : [c.originalLabel])[LABI] || c.originalLabel; if (ol2.fileId) openFile(ol2.fileId, 'olab'); }
+}
+function tog(k) { SEC[k] = !SEC[k]; drawCard(); }
+function pane(k) { PANE = PANE === k && k !== 'fix' ? '' : k; drawCard(); if (k === 'open') calcOpen(); }
+function openFile(id, target) {
+  var el = document.getElementById(target || 'docv'); if (el) el.innerHTML = '<div class="empty">Загрузка…</div>';
+  call('getSecureFile', [id, TOKEN]).then(function (r) { var d = dataOf(r) || {}; if (!okOf(r) || !d.dataUrl) { if (el) el.innerHTML = '<div class="empty">Файл недоступен</div>'; return; }
+    if (el) el.innerHTML = /pdf/.test(d.mimeType) ? '<iframe src="' + d.dataUrl + '" style="width:100%;height:520px;border:0"></iframe>' : '<img src="' + d.dataUrl + '" style="max-width:100%;border-radius:10px">'; }, function () { if (el) el.innerHTML = '<div class="empty">Нет связи</div>'; });
+}
+function paneHtml() {
+  var c = CARD; if (!PANE || !c) return '';
+  var locOpts = (c.locations || []).map(function (l) { return '<option value="' + esc(l.id) + '"' + (l.id === c.locationId ? ' disabled' : '') + '>' + esc(l.name) + (l.range ? ' (' + esc(l.range) + ')' : '') + '</option>'; }).join('');
+  var f = '<div class="lp">';
+  if (PANE === 'move') f += (locOpts ? '<div class="grid"><div><label>Куда</label><select id="mTo">' + locOpts + '</select></div><div><label>Сколько (пусто — вся партия)</label><input id="mQ" type="number" step="any"></div><div><label>Ед.</label>' + uSel('mU') + '</div></div><label>Причина</label><input id="mR" placeholder="например, в производственный холодильник"><div class="acts"><button class="btn pri" onclick="doMove()">Переместить</button><button class="btn" onclick="suggestPlace(this)">Куда положить?</button></div><div id="mSug" class="note"></div><div class="note">Часть партии выделяется в дочернюю партию со своим QR.</div>' : '<div class="ambox">Места хранения не заведены — вкладка «Места хранения».</div>');
+  if (PANE === 'open') f += '<div id="oPrev" class="meta">Считаю срок после вскрытия…</div><div class="grid"><div><label>Вскрыть часть (пусто — всю тару)</label><input id="oQ" type="number" step="any"></div><div><label>Ед.</label>' + uSel('oU') + '</div></div><div class="acts"><button class="btn pri" onclick="doOpen()">Вскрыть тару</button></div>';
+  if (PANE === 'use') f += '<div class="grid"><div><label>Сколько</label><input id="uQ" type="number" step="any"></div><div><label>Ед.</label>' + uSel('uU') + '</div><div><label>Для чего</label><input id="uP" placeholder="заготовка, блюдо, заказ"></div></div><div class="acts"><button class="btn pri" onclick="doUse(false)">Использовать</button></div>';
+  if (PANE === 'waste') f += '<div class="grid"><div><label>Сколько (пусто — весь остаток)</label><input id="wQ" type="number" step="any"></div><div><label>Ед.</label>' + uSel('wU') + '</div><div><label>Причина *</label><select id="wR"><option value="">—</option><option>Порча</option><option>Истёк срок годности</option><option>Брак</option><option>Повреждение упаковки</option><option>Нарушение условий хранения</option><option>Другое</option></select></div></div><label>Комментарий</label><input id="wC"><label style="margin-top:6px">Фото (по желанию)</label><input id="wF" type="file" accept="image/*" capture="environment"><div class="acts"><button class="btn bad" onclick="doWaste()">Списать</button></div>';
+  if (PANE === 'split') f += '<div class="grid"><div><label>Выделить</label><input id="sQ" type="number" step="any"></div><div><label>Ед.</label>' + uSel('sU') + '</div><div><label>Причина</label><input id="sR" placeholder="фасовка, разные места"></div></div><div class="acts"><button class="btn pri" onclick="doSplit()">Разделить</button></div><div class="note">Дочерняя партия получает номер ' + esc(c.batchId) + '-NN, тот же срок, документы и оригинальную этикетку; связь сохраняется навсегда.</div>';
+  if (PANE === 'ret') f += '<label>Причина возврата *</label><input id="rR"><div class="acts"><button class="btn bad" onclick="doReturn()">Вернуть поставщику весь остаток</button></div>';
+  if (PANE === 'print') f += '<div class="grid"><div><label>Этикетка</label><select id="pK"><option value="receipt">партии (приёмка)</option>' + (c.afterOpen ? '<option value="opening" selected>вскрытой тары</option>' : '') + '</select></div><div><label>Копий</label><input id="pN" type="number" value="1" min="1" max="50"></div><div style="display:flex;align-items:flex-end">' + sizeSel('drawCard()') + '</div></div><div class="lbWrap" style="margin-top:8px">' + lbHtml(c, c.afterOpen ? 'opening' : 'receipt') + '</div><div class="acts"><button class="btn pri" onclick="doPrint()">🏷 Печать</button>' + (typeof MCBT !== 'undefined' && MCBT.supported() ? '<button class="btn" onclick="doPrint(1)">📡 Bluetooth</button>' : '') + '</div><div class="mcbt-slot">' + (typeof MCBT !== 'undefined' ? MCBT.bar() : '') + '</div>';
+  if (PANE === 'decide') f += '<div class="note">Решение ответственного: срок после вскрытия с основанием (ТИ, документ, решение HACCP-группы). Можно сделать правилом продукта — следующие вскрытия посчитаются сами.</div><div class="grid"><div><label>Срок после вскрытия, ч *</label><input id="dH" type="number" step="any"></div><div style="grid-column:span 2"><label>Основание *</label><input id="dB"></div></div><label class="chk"><input id="dP" type="checkbox">сделать правилом продукта «' + esc(c.product) + '»</label><div class="acts"><button class="btn pri" onclick="doDecide()">Утвердить срок</button></div>';
+  if (PANE === 'fix') f += '<div class="note">Ошибочная операция не правится: создаётся корректировка со ссылкой на неё (' + esc(EVFIX) + ').</div><div class="grid"><div><label>Верное место</label><select id="fTo"><option value="">— только запись корректировки —</option>' + locOpts + '</select></div><div style="grid-column:span 2"><label>Причина *</label><input id="fR"></div></div><div class="acts"><button class="btn pri" onclick="doFix()">Записать корректировку</button></div>';
+  return f + '</div>';
+}
+function done(r, okText, after) { if (!okOf(r)) { msg(errText(r)); return false; } msg(okText, true); PANE = ''; if (after) after(dataOf(r)); else reload(); return true; }
+// подсказка места: профиль хранения продукта → правило размещения → место с подходящей температурой; партию не перемещает
+function suggestPlace(btn) {
+  btn.disabled = true;
+  call('mcSuggestPlace', [CARD.batchId, TOKEN]).then(function (r) { btn.disabled = false; var box = document.getElementById('mSug'); if (!box) return;
+    if (!okOf(r)) { box.textContent = errText(r); return; }
+    var d = dataOf(r), s = d.suggestion;
+    if (!s) { box.textContent = d.note; return; }
+    if (s.current) { box.innerHTML = 'Партия уже там, где положено: <b>' + esc(s.name) + '</b> — ' + esc(s.reason); return; }
+    var sel = document.getElementById('mTo'); if (sel) { var ok = [].some.call(sel.options, function (o) { return o.value === s.locationId; }); if (ok) sel.value = s.locationId; }
+    box.innerHTML = 'Предлагается: <b>' + esc(s.name) + '</b>' + (s.range ? ' (' + esc(s.range) + ')' : '') + ' — ' + esc(s.reason) + '. Выбрано в поле «Куда»; нажмите «Переместить».';
+  }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function doMove() { call('moveBatch', [CARD.batchId, v('mTo'), v('mQ'), v('mU'), v('mR'), TOKEN]).then(function (r) { done(r, 'Перемещено', function (d) { msg('Перемещено: ' + d.from + ' → ' + d.to + (d.split ? ' (выделена партия ' + d.batchId + ')' : ''), true); openId(d.batchId); }); }, function () { msg('Нет связи'); }); }
+function calcOpen() { call('calculatePostOpeningExpiry', [CARD.batchId, TOKEN]).then(function (r) { var d = dataOf(r) || {}, el = document.getElementById('oPrev'); if (!el) return;
+  el.innerHTML = d.hours ? '<div class="okbox">После вскрытия использовать до <b>' + esc(d.useUntil) + '</b> · ' + esc(d.basis) + '</div>' : '<div class="warnbox"><b>Срок после вскрытия не определён.</b> Требуется решение ответственного лица.' + (d.labelText ? '<br>На этикетке: «' + esc(d.labelText) + '»' : '') + (d.hint ? '<br>Подсказка для ответственного: ' + esc(d.hint) : '') + '<br>Вскрытие будет записано, этикетка напечатается с пометкой «не определён».</div>'; }, function () {}); }
+function doOpen() { call('openBatchContainer', [CARD.batchId, v('oQ'), v('oU'), TOKEN]).then(function (r) { done(r, 'Тара вскрыта', function (d) {
+  msg(d.useUntil ? 'Тара вскрыта. Использовать до ' + d.useUntil + ' — напечатайте этикетку вскрытия.' : d.message, !!d.useUntil); ID = d.batchId; PANE = 'print'; call('getBatchCard', [d.batchId, TOKEN]).then(function (x) { CARD = dataOf(x); drawCard(); }); }); }, function () { msg('Нет связи'); }); }
+function doUse(ack) { call('useBatch', [CARD.batchId, v('uQ'), v('uU'), v('uP'), !!ack, TOKEN]).then(function (r) {
+  if (!okOf(r) && r && r.error && r.error.code === 'FEFO') { if (confirm(errText(r))) doUse(true); return; }
+  done(r, 'Записано', function (d) { msg('Использовано. Остаток: ' + (d.remainText || d.remain + ' ' + d.unit) + (d.status === 'CONSUMED' ? ' — партия израсходована' : ''), true); reload(); }); }, function () { msg('Нет связи'); }); }
+function doWaste() {
+  if (!v('wR')) return msg('Укажите причину списания');
+  var go = function (photo) { call('wasteBatch', [CARD.batchId, v('wQ'), v('wU'), v('wR'), photo || '', v('wC'), TOKEN]).then(function (r) { done(r, 'Списано'); }, function () { msg('Нет связи'); }); };
+  var f = document.getElementById('wF'); if (f && f.files && f.files[0]) { var rd = new FileReader(); rd.onload = function () { go(rd.result); }; rd.readAsDataURL(f.files[0]); } else go('');
+}
+function doSplit() { call('splitBatch', [CARD.batchId, v('sQ'), v('sU'), v('sR'), TOKEN]).then(function (r) { done(r, 'Разделено', function (d) { msg('Выделена партия ' + d.child + ' — напечатайте её этикетку', true); openId(d.child); PANE = 'print'; }); }, function () { msg('Нет связи'); }); }
+function doReturn() { if (!v('rR')) return msg('Укажите причину'); call('returnBatch', [CARD.batchId, v('rR'), TOKEN]).then(function (r) { done(r, 'Возврат оформлен'); }, function () { msg('Нет связи'); }); }
+function doDecide() { call('setPostOpeningExpiry', [CARD.batchId, v('dH'), v('dB'), document.getElementById('dP').checked, TOKEN]).then(function (r) { done(r, 'Срок утверждён', function (d) { msg('Использовать до ' + d.useUntil + ' — напечатайте новую этикетку', true); PANE = 'print'; reload(); }); }, function () { msg('Нет связи'); }); }
+function doFix() { if (!v('fR')) return msg('Укажите причину'); call('correctBatchOperation', [EVFIX, v('fR'), v('fTo'), TOKEN]).then(function (r) { done(r, 'Корректировка записана'); }, function () { msg('Нет связи'); }); }
+function doPrint(bt) {
+  var kind = v('pK') || 'receipt', n = parseInt(v('pN'), 10) || 1;
+  var go = function () { call('printBatchLabel', [CARD.batchId, kind, n, TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); var d = dataOf(r); lbPrint([{ b: d.label, n: d.copies, kind: kind }], null, bt); }, function () { msg('Нет связи'); }); };
+  // Bluetooth: принтер выбирается в рамках нажатия — до запроса на сервер
+  if (bt && typeof MCBT !== 'undefined') MCBT.ensure().then(go, function (er) { if (er && er.name === 'NotFoundError') return; msg('Bluetooth-печать: ' + String(er && er.message || er)); }); else go();
+}
+/* ---------- прослеживаемость ---------- */
+function traceHtml() {
+  var t = CARD.trace; if (!t) return '<div class="card"><div class="empty">Нет данных прослеживаемости</div></div>';
+  var L = {}; (CARD.locations || []).forEach(function (l) { L[l.id] = l.name; });
+  var lst = function (title, arr, fmt) { return arr && arr.length ? '<div class="rc"><div style="min-width:150px"><b>' + title + '</b></div><div class="inf">' + arr.map(fmt).join('<br>') + '</div></div>' : ''; };
+  var id = function (x) { return esc(x.id) + (x.qty ? ' · ' + esc(x.qty) + ' ' + esc(x.unit || '') : '') + (x.actor ? ' · ' + esc(x.actor) : ''); };
+  var bl = function (x) { return '<a href="#" onclick="openId(\'' + esc(x.id) + '\');return false">' + esc(x.id) + '</a>' + (x.relation ? ' <span class="meta">' + esc(x.relation) + '</span>' : '') + (x.qty ? ' · ' + esc(x.qty) + ' ' + esc(x.unit || '') : ''); };
+  var wf = t.whereFrom || {}, u = t.usedIn || {}, sh = t.shipped || {};
+  var vsdL = lst('ВСД «Меркурий»', wf.vsd, function (x) { return esc(vsNum(x)) + ' · <b>' + esc(x.statusRu) + '</b>' + (x.cancelledAt ? ' · погашен ' + esc(x.cancelledAt) + ' · ' + esc(x.cancelledBy) : '') + (x.invoice ? ' · накладная ' + esc(x.invoice) : ''); });
+  return '<div class="card"><div class="nm">Прослеживаемость</div><div class="meta">Откуда пришла партия и куда ушла — по общему графу связей.</div>' +
+    '<div style="margin-top:6px"><b>↑ Откуда</b></div>' + vsdL + lst('Поставщик · накладная', wf.suppliersDocs, function (x) { return esc(CARD.supplier) + ' · документ ' + esc(x.id); }) + lst('Оригинальная этикетка', wf.originalLabels, id) + lst('Фото при приёмке', wf.receiptPhotos, id) +
+    lst('Из партий', wf.parentBatches, bl) + lst('Из производства', wf.productions, id) + lst('Приёмка', [{ id: CARD.received + ' · ' + CARD.acceptedBy }], id) +
+    '<div style="margin-top:8px"><b>↓ Куда</b></div>' + lst('Перемещения', t.movements, function (m) { return esc(m.relation) + ' → ' + esc(L[m.location] || m.location) + (m.actor ? ' · ' + esc(m.actor) : ''); }) +
+    lst('Вскрытия', t.openings, id) + lst('Использование', t.uses, id) + lst('Производство', u.productions, id) + lst('Выпущенные / дочерние партии', u.producedBatches, bl) + lst('ТТК', u.ttk, id) +
+    lst('ККТ', t.ccp, id) + lst('Суточные пробы', t.samples, id) + lst('Банкеты', sh.banquets, id) + lst('Реализация', sh.sales, id) + lst('Списания', t.wastes, id) + lst('Возвраты', t.returns, id) + '</div>';
+}
+/* ---------- ветеринарные документы (ВСД «Меркурий») ---------- */
+function vsdCard() {
+  var c = CARD, a = c.actions || {}, list = c.vsd || [];
+  var h = '<div class="card"><div class="nm">Ветеринарные документы</div>';
+  if (!list.length) h += '<div class="warnbox"><b>ВСД не привязан.</b> Продукт ветеринарно подконтролен — партия не будет допущена без погашенного ВСД.' + (a.vsd ? '' : ' ВСД сопоставляет и гасит ответственный за ХАССП — ему отправлено уведомление «Непогашенная накладная».') + '</div>';
+  h += list.map(function (v) { return v.inheritedFrom ? '<div class="meta" style="margin-top:6px">ВСД партии сырья <a href="#" onclick="openId(\'' + esc(v.inheritedFrom) + '\');return false">' + esc(v.inheritedFrom) + '</a> — гасится и проверяется на ней</div>' + vsBlock(v, { openBatch: false, canCancel: false, canMap: false, traceJs: 'SEC.trace=true;drawCard()', unlinkedNote: false })
+    : vsBlock(v, { openBatch: false, canCancel: a.vsdCancel !== false, canMap: !!a.vsd, traceJs: 'SEC.trace=true;drawCard()', unlinkedNote: false }); }).join('');
+  if (a.vsd && !list.some(function (v) { return v.status !== 'REJECTED'; })) {
+    h += '<div class="acts"><button class="btn pri" onclick="vsdFetchB(this)">ПОЛУЧИТЬ ВСД' + (c.docNumber ? ' по накладной № ' + esc(c.docNumber) : '') + '</button><input id="vsdUB" placeholder="или UUID ВСД" style="max-width:280px"><button class="btn" onclick="vsdFetchB(this,v(\'vsdUB\'))">Найти по UUID</button></div>';
+    if (VSDF && VSDF.err) h += '<div class="' + (/UNAVAILABLE/.test(VSDF.err.code || '') ? 'warnbox' : 'ambox') + '">' + (/UNAVAILABLE/.test(VSDF.err.code || '') ? '<b>МЕРКУРИЙ НЕДОСТУПЕН</b><br>' : '') + esc(VSDF.err.message) + (VSDF.err.fix ? '<br>' + esc(VSDF.err.fix) : '') + '</div>';
+    if (VSDF && VSDF.list) h += VSDF.list.length ? VSDF.list.map(function (x) { var taken = (x.batches || []).length;
+      return '<div class="rc"><div class="inf"><b>ВСД ' + esc(vsNum(x)) + '</b> · ' + esc(x.product) + ' · ' + esc(x.qty) + ' ' + esc(x.unit) + ' · ' + esc(x.supplier || x.from) + ' ' + vsChip(x.status) + (x.invoiceMatch ? ' <span class="chip g">по накладной</span>' : '') + (taken ? ' <span class="chip r">привязан к ' + esc(x.batches.join(', ')) + '</span>' : '') + '</div>' +
+        (taken ? '' : '<button class="btn" onclick="vsdLinkB(\'' + esc(x.id) + '\',this)">СОПОСТАВИТЬ с партией</button>') + '</div>'; }).join('') : '<div class="empty">ВСД не найдены</div>';
+  }
+  return h + '</div>';
+}
+function vsdFetchB(btn, uuid) {
+  btn.disabled = true; VSDF = { list: null };
+  call('mcVsdFetch', [JSON.stringify({ docNo: CARD.docNumber || '', supplier: CARD.supplier || '', uuid: uuid || '' }), TOKEN]).then(function (r) {
+    if (!okOf(r)) { var e = (r && r.error) || {}; VSDF = { err: { message: e.message || errText(r), code: e.code, fix: e.fix } }; } else VSDF = { list: dataOf(r).vsd || [] };
+    drawCard();
+  }, function () { VSDF = { err: { message: 'Нет связи' } }; drawCard(); });
+}
+function vsdLinkB(id, btn) {
+  btn.disabled = true; btn.textContent = 'Выполняется…';
+  call('mcVsdLink', [JSON.stringify({ vsdId: id, batchIds: [CARD.batchId] }), TOKEN]).then(function (r) { if (!okOf(r)) { btn.disabled = false; btn.textContent = 'СОПОСТАВИТЬ с партией'; return msg(errText(r)); }
+    VSDF = null; vsPut(dataOf(r).vsd); msg('ВСД привязан к партии: ' + ((dataOf(r).check || {}).summary || ''), true); reload(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+/* ---------- сроки ---------- */
+function loadBoard() { document.getElementById('body').innerHTML = '<div class="empty">Загрузка…</div>'; call('mcBatchExpiryBoard', [TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); BOARD = dataOf(r); drawBoard(); }, function () { msg('Нет связи'); }); }
+function drawBoard() {
+  var b = BOARD || { counts: {}, items: [] }, c = b.counts || {};
+  document.getElementById('body').innerHTML = '<div class="card"><div class="acts" style="margin-top:0"><span class="chip r">истёк: ' + (c.red || 0) + '</span><span class="chip" style="background:#2a1a1d;color:#fff">запрещено: ' + (c.black || 0) + '</span><span class="chip a">скоро: ' + (c.yellow || 0) + '</span><span class="chip g">в норме: ' + (c.green || 0) + '</span></div>' +
+    (b.items.length ? b.items.map(function (x) { var lc = x.level === 'red' ? 'r' : x.level === 'yellow' ? 'a' : ''; return '<div class="rc" style="cursor:pointer" onclick="VIEW=\'card\';openId(\'' + esc(x.batchId) + '\');tabs([[\'card\',\'Партия\'],[\'exp\',\'Сроки\'],[\'loc\',\'Места хранения\']],\'card\',\'view\')"><div class="inf"><b>' + esc(x.product) + '</b> · ' + esc(x.batchId) + '<div class="meta">годен до ' + (esc(x.expiry) || 'не указан') + ' · ' + esc(x.remain) + (x.location ? ' · ' + esc(x.location) : '') + (x.opened ? ' · вскрыта' : '') + '</div></div><span class="chip ' + lc + '"' + (x.level === 'black' ? ' style="background:#2a1a1d;color:#fff"' : '') + '>' + esc(x.statusRu) + '</span></div>'; }).join('') : '<div class="empty">Просроченных, заблокированных и близких к сроку партий нет</div>') + '</div>';
+}
+/* ---------- места хранения и профиль продукта ---------- */
+function loadSetup() { document.getElementById('body').innerHTML = '<div class="empty">Загрузка…</div>'; Promise.all([call('mcGetStorageSetup', [TOKEN]), call('getProductNames', [TOKEN])]).then(function (a) { if (!okOf(a[0])) return msg(errText(a[0])); SETUP = dataOf(a[0]); var p = a[1]; PRODS = Array.isArray(p) ? p : (dataOf(p) || []); drawSetup(); }, function () { msg('Нет связи'); }); }
+function drawSetup() {
+  var s = SETUP, ed = s.canEdit, types = s.types || {};
+  var h = '<div class="card"><div class="nm">Места хранения</div><div class="meta">Холодильники, морозильники, склады. Партия получает место автоматически по подтверждённому месту продукта или правилу; если место не определено — его выбирает сотрудник, и оно запоминается для следующих поставок.</div>' +
+    (s.locations.length ? s.locations.map(function (l) { return '<div class="rc"><div class="inf"><b>' + esc(l.name) + '</b> · ' + esc(l.typeRu) + (l.range ? ' · ' + esc(l.range) : '') + ' <span class="meta">' + esc(l.id) + (l.active ? '' : ' · отключено') + '</span></div>' + (ed ? '<button class="btn" onclick="editLoc(\'' + esc(l.id) + '\')">Изменить</button>' : '') + '</div>'; }).join('') : '<div class="ambox">Места хранения не заведены.</div>');
+  if (ed) h += '<div class="lp" id="locf"><div class="grid"><input type="hidden" id="lId"><div><label>Название *</label><input id="lN" placeholder="Холодильник №1"></div><div><label>Тип *</label><select id="lT">' + Object.keys(types).map(function (k) { return '<option value="' + k + '">' + esc(types[k]) + '</option>'; }).join('') + '</select></div><div><label>Активно</label><select id="lA"><option value="1">да</option><option value="0">нет</option></select></div><div><label>t мин, °C</label><input id="lMin" type="number" step="any"></div><div><label>t макс, °C</label><input id="lMax" type="number" step="any"></div></div><div class="acts"><button class="btn pri" onclick="saveLoc()">Сохранить место</button>' +
+    (!s.locations.length ? '<button class="btn" onclick="seedLoc()">Создать типовые места (холодильники, морозильник, сухой склад)</button>' : '') + '</div></div>';
+  h += '</div><div class="card"><div class="nm">Хранение продуктов</div><div class="meta">Подтверждённое место, срок после вскрытия (с основанием), обязательность фото оригинальной этикетки.</div>' +
+    (s.profiles.length ? s.profiles.map(function (p) { return '<div class="rc"><div class="inf"><b>' + esc(p.name) + '</b>' + (p.defaultLocationName ? ' · место: ' + esc(p.defaultLocationName) : '') + (p.afterOpenH ? ' · после вскрытия ' + esc(p.afterOpenH) + ' ч (' + esc(p.afterOpenBasis) + ')' : '') + (p.requiresLabel === 'да' ? ' · фото этикетки обязательно' : '') + '<div class="meta">' + esc(p.by || '') + '</div></div></div>'; }).join('') : '<div class="empty">Профилей пока нет — появляются при первом выборе места при приёмке.</div>');
+  if (ed) h += '<div class="lp"><datalist id="pl">' + PRODS.slice(0, 3000).map(function (n) { return '<option value="' + esc(typeof n === 'string' ? n : n.name) + '">'; }).join('') + '</datalist><div class="grid"><div style="grid-column:span 2"><label>Продукт *</label><input id="pN" list="pl"></div><div><label>Место по умолчанию</label><select id="pL"><option value="">—</option>' + s.locations.filter(function (l) { return l.active; }).map(function (l) { return '<option value="' + esc(l.id) + '">' + esc(l.name) + '</option>'; }).join('') + '</select></div>' +
+    '<div><label>Срок после вскрытия, ч</label><input id="pH" type="number" step="any"></div><div style="grid-column:span 2"><label>Основание срока после вскрытия</label><input id="pB" placeholder="ТИ, документ производителя, решение HACCP-группы"></div></div><label class="chk"><input id="pR" type="checkbox">фото оригинальной этикетки обязательно при приёмке</label><div class="acts"><button class="btn pri" onclick="saveProf()">Сохранить</button></div></div>';
+  document.getElementById('body').innerHTML = h + '</div>';
+}
+function editLoc(id) { var l = SETUP.locations.filter(function (x) { return x.id === id; })[0]; if (!l) return; document.getElementById('lId').value = l.id; document.getElementById('lN').value = l.name; document.getElementById('lT').value = l.type; document.getElementById('lA').value = l.active ? '1' : '0'; document.getElementById('lMin').value = l.tmin === null ? '' : l.tmin; document.getElementById('lMax').value = l.tmax === null ? '' : l.tmax; document.getElementById('locf').scrollIntoView(); }
+function saveLoc() { call('mcSaveStorageLocation', [JSON.stringify({ id: v('lId'), name: v('lN'), type: v('lT'), active: v('lA') === '1', tmin: v('lMin'), tmax: v('lMax') }), TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); msg('Сохранено', true); loadSetup(); }, function () { msg('Нет связи'); }); }
+function seedLoc() { call('mcSeedStorageLocations', [TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); msg('Созданы типовые места — переименуйте их под ваше оборудование', true); loadSetup(); }, function () { msg('Нет связи'); }); }
+function saveProf() { call('mcSaveProductStorage', [JSON.stringify({ name: v('pN'), defaultLocation: v('pL') || undefined, afterOpenH: v('pH') || undefined, afterOpenBasis: v('pB') || undefined, requiresLabel: document.getElementById('pR').checked }), TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); msg('Сохранено', true); loadSetup(); }, function () { msg('Нет связи'); }); }
+boot();
+</script></body></html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Приборы и поверка</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+</style></head><body><div class="wrap">
+<h1>Приборы и поверка</h1>
+<div class="sub">Реестр оборудования. Измерение прибором с истёкшей поверкой система не принимает — в журналах, ККТ и входном контроле.</div>
+<div class="acts" style="margin:0 0 12px"><button class="btn pri" onclick="edit(-1)">+ Добавить прибор</button></div>
+<div id="form"></div>
+<div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', ITEMS = [];
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function iso(d) { var m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(d || ''); return m ? m[3] + '-' + m[2] + '-' + m[1] : ''; }
+function load() {
+  call('mcGetEquipment', [TOKEN]).then(function (r) {
+    if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; }
+    ITEMS = r.data.items || []; draw();
+  }, function (e) { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; });
+}
+function chip(x) {
+  if (x.effective !== 'ACTIVE') return '<span class="chip r">' + (x.status === 'ACTIVE' ? 'Поверка истекла' : x.status === 'REPAIR' ? 'В ремонте' : 'Списан') + '</span>';
+  if (x.measuring && x.daysLeft !== null && x.daysLeft <= 30) return '<span class="chip a">Поверка через ' + x.daysLeft + ' дн.</span>';
+  return '<span class="chip g">' + (x.measuring ? 'Поверен' : 'В работе') + '</span>';
+}
+function draw() {
+  document.getElementById('list').innerHTML = ITEMS.length ? ITEMS.map(function (x, i) {
+    return '<div class="card"><div class="row" onclick="edit(' + i + ')"><div><div class="nm">' + esc(x.name) + (x.model ? ' · ' + esc(x.model) : '') + '</div>' +
+      '<div class="meta">' + (x.serial ? 'Зав. № ' + esc(x.serial) + ' · ' : '') + esc(x.location || '') + (x.responsible ? ' · отв. ' + esc(x.responsible) : '') + '</div>' +
+      (x.measuring ? '<div class="meta">Диапазон ' + esc(x.range || '—') + ', точность ' + esc(x.accuracy || '—') + ' · поверка ' + esc(x.calibrated) + ' → до ' + esc(x.nextCalibration) + (x.document ? ' · ' + esc(x.document) : '') + '</div>' : '') +
+      (x.reason ? '<div class="meta" style="color:var(--red)">' + esc(x.reason) + '</div>' : '') + '</div>' + chip(x) + '</div></div>';
+  }).join('') : '<div class="empty">Приборов пока нет. Добавьте термометры, щупы и весы — после этого во входном контроле нужно будет выбрать прибор.</div>';
+}
+function f(id, lbl, val, type) { return '<div><label>' + lbl + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function edit(i) {
+  var x = i >= 0 ? ITEMS[i] : { measuring: true, status: 'ACTIVE' };
+  document.getElementById('form').innerHTML = '<div class="card open"><div class="nm">' + (i >= 0 ? 'Прибор ' + esc(x.id) : 'Новый прибор') + '</div><div class="form" style="display:block">' +
+    '<div class="grid">' + f('fn', 'Наименование', x.name) + f('fm', 'Модель', x.model) + f('fs', 'Заводской №', x.serial) + f('fl', 'Место', x.location) + f('fr', 'Ответственный', x.responsible) +
+    '<div><label>Статус</label><select id="fst"><option value="ACTIVE">в работе</option><option value="REPAIR"' + (x.status === 'REPAIR' ? ' selected' : '') + '>в ремонте</option><option value="RETIRED"' + (x.status === 'RETIRED' ? ' selected' : '') + '>списан</option></select></div></div>' +
+    '<label class="chk" style="margin:10px 0"><input type="checkbox" id="fmeas"' + (x.measuring ? ' checked' : '') + '>Измерительный прибор (нужна поверка)</label>' +
+    '<div class="grid">' + f('fra', 'Диапазон', x.range) + f('fa', 'Точность', x.accuracy) + f('fd', 'Документ поверки (№ свидетельства)', x.document) +
+    f('fc', 'Дата поверки', iso(x.calibrated), 'date') + f('fx', 'Следующая поверка', iso(x.nextCalibration), 'date') + '</div>' +
+    '<div class="acts"><button class="btn pri" onclick="save(\'' + esc(x.id || '') + '\')">Сохранить</button><button class="btn" onclick="document.getElementById(\'form\').innerHTML=\'\'">Отмена</button></div><div class="msg" id="fmsg"></div></div></div>';
+  window.scrollTo(0, 0);
+}
+function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function save(id) {
+  var p = { id: id || '', name: v('fn'), model: v('fm'), serial: v('fs'), location: v('fl'), responsible: v('fr'), status: v('fst'), measuring: document.getElementById('fmeas').checked,
+    range: v('fra'), accuracy: v('fa'), document: v('fd'), calibrated: v('fc'), nextCalibration: v('fx') };
+  call('mcSaveEquipment', [JSON.stringify(p), TOKEN]).then(function (r) {
+    var m = document.getElementById('fmsg');
+    if (!r || r.success === false || r.ok === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    document.getElementById('form').innerHTML = ''; load();
+  }, function () { var m = document.getElementById('fmsg'); m.className = 'msg err'; m.textContent = 'Нет связи — не сохранено'; });
+}
+load();
+</script></body></html>

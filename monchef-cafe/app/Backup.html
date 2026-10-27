@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Резервные копии</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+</style></head><body><div class="wrap">
+<h1>Резервные копии</h1>
+<div class="sub">Копия таблицы с манифестом (SHA-256 каждого листа). Учение по восстановлению открывает копию и сверяет каждый лист с манифестом — рабочие данные не меняются.</div>
+<div class="acts" style="margin:0 0 12px"><button class="btn pri" id="bk" onclick="backup()">Сделать резервную копию</button></div>
+<div class="msg" id="msg"></div>
+<div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; }
+var TYPES = { BACKUP: ['g', 'Копия'], RESTORE_DRILL_OK: ['g', 'Учение: успешно'], RESTORE_DRILL_FAIL: ['r', 'Учение: расхождения'], RESTORE_SHEET: ['a', 'Восстановлен лист'] };
+function load() {
+  call('mcGetBackups', [TOKEN]).then(function (r) {
+    if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; }
+    var a = r.data || [];
+    document.getElementById('list').innerHTML = a.length ? a.map(function (x) {
+      var t = TYPES[x.type] || ['', x.type];
+      return '<div class="card"><div class="row"><div><div class="nm">' + esc(x.id) + ' · ' + esc(x.at) + '</div><div class="meta">' + esc(x.who) + (x.sheets ? ' · листов ' + esc(x.sheets) : '') + (x.rows ? ' · строк ' + esc(x.rows) : '') + (x.hash ? ' · хеш ' + esc(x.hash) + '…' : '') + '</div>' +
+        (x.result ? '<div class="meta">' + esc(x.result) + '</div>' : '') + '</div><div style="display:flex;gap:8px;align-items:center"><span class="chip ' + t[0] + '">' + t[1] + '</span>' +
+        (x.type === 'BACKUP' ? '<button class="btn" onclick="drill(\'' + esc(x.id) + '\',this)">Учение по восстановлению</button><button class="btn" onclick="restore(\'' + esc(x.id) + '\',this)">Восстановить лист…</button>' : '') + '</div></div></div>';
+    }).join('') : '<div class="empty">Копий ещё нет</div>';
+  }, function () { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; });
+}
+function backup() {
+  var b = document.getElementById('bk'); b.disabled = true; b.textContent = 'Копирую…';
+  call('mcCreateBackup', [TOKEN]).then(function (r) { b.disabled = false; b.textContent = 'Сделать резервную копию';
+    if (!r || r.success === false) return msg(errText(r)); msg('Копия ' + r.data.backupId + ': ' + r.data.sheets + ' листов, ' + r.data.rows + ' строк', true); load();
+  }, function () { b.disabled = false; msg('Нет связи'); });
+}
+function drill(id, btn) {
+  btn.disabled = true; btn.textContent = 'Проверяю…';
+  call('mcRestoreDrill', [id, TOKEN]).then(function (r) {
+    if (!r || r.success === false) { btn.disabled = false; return msg(errText(r)); }
+    msg(r.data.ok ? 'Учение успешно: все ' + r.data.sheetsChecked + ' листов копии совпадают с манифестом' : 'Расхождения: ' + r.data.problems.join('; '), r.data.ok); load();
+  }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function restore(id, btn) {
+  var sheet = prompt('Какой лист восстановить из копии ' + id + '? (точное название листа)'); if (!sheet) return;
+  var word = prompt('Лист «' + sheet + '» будет заменён содержимым из копии. Перед этим будет сделана страховочная копия. Для подтверждения введите слово ВОССТАНОВИТЬ'); if (!word) return;
+  btn.disabled = true;
+  call('mcRestoreSheet', [id, sheet, word, TOKEN]).then(function (r) {
+    btn.disabled = false; if (!r || r.success === false) return msg(errText(r));
+    msg('Лист «' + r.data.sheet + '» восстановлен: ' + r.data.rows + ' строк; страховочная копия ' + r.data.safetyBackup, true); load();
+  }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+load();
+</script></body></html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Лаборатория</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}.tbl th{font-size:12px;color:var(--mut)}
+</style></head><body><div class="wrap">
+<h1>Лаборатория</h1>
+<div class="sub">План лабораторного контроля, отбор проб и протоколы. Результат вносится один раз; «не соответствует» открывает отклонение.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' && /^[\[{"]/.test(x) ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && !(typeof r === 'string' && /^err/i.test(r)) && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { if (typeof r === 'string') return r.replace(/^err:\s*/, ''); return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dataOf(r) { return r && r.data !== undefined ? r.data : r; }
+function v(id) { var e = document.getElementById(id); return e ? String(e.value).trim() : ''; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; window.scrollTo(0, 0); }
+function fld(id, l, val, type, extra) { return '<div' + (extra || '') + '><label>' + l + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function tabs(list, cur, fn) { document.getElementById('tabs').innerHTML = list.map(function (t) { return '<button class="' + (cur === t[0] ? 'on' : '') + '" onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + (t[2] !== undefined && t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join(''); }
+function fileUrl(id, cb) { var f = document.getElementById(id); f = f && f.files && f.files[0]; if (!f) return cb('', ''); var r = new FileReader(); r.onload = function () { cb(r.result, f.type); }; r.onerror = function () { cb('', ''); }; r.readAsDataURL(f); }
+
+var PL = [], TS = [], TAB = 'tests';
+function load() { Promise.all([call('getLabPlans', [TOKEN]), call('getLabTests', [200, TOKEN])]).then(function (a) { PL = dataOf(a[0]) || []; TS = dataOf(a[1]) || []; draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function setTab(t) { TAB = t; draw(); }
+function draw() {
+  tabs([['tests', 'Исследования', TS.length], ['plan', 'План контроля', PL.length]], TAB, 'setTab');
+  var h = '';
+  if (TAB === 'plan') h = '<div class="card"><div class="nm">Пункт плана</div><div class="grid" style="margin-top:8px">' + fld('pObj', 'Объект *') + '<div><label>Тип объекта</label><select id="pType"><option>продукция</option><option>смывы</option><option>вода</option><option>воздух</option><option>персонал</option><option>другое</option></select></div>' + fld('pKind', 'Показатель *') + fld('pDays', 'Периодичность, дней *', '', 'number') + fld('pNorm', 'Норматив (документ, пункт)') + fld('pLab', 'Лаборатория') + fld('pResp', 'Ответственный') + '</div><div class="acts"><button class="btn pri" onclick="addPlan(this)">Добавить в план</button></div></div>' +
+    (PL.length ? PL.map(function (p) { return '<div class="card"><div class="nm">' + esc(p.объект) + ' · ' + esc(p.вид) + '</div><div class="meta">раз в ' + esc(p.периодичность) + ' дн. · ' + esc(p.норматив || '') + ' · ' + esc(p.лаборатория || '') + ' · ' + esc(p.ответственный || '') + '</div></div>'; }).join('') : '<div class="empty">План пуст</div>');
+  if (TAB === 'tests') h = '<div class="card"><div class="nm">Новое исследование (отбор пробы)</div><div class="grid" style="margin-top:8px"><div style="grid-column:span 2"><label>По пункту плана</label><select id="tPlan" onchange="var p=PL.filter(function(x){return x.id===this.value}.bind(this))[0];if(p){document.getElementById(\'tObj\').value=p.объект;document.getElementById(\'tKind\').value=p.вид;document.getElementById(\'tLab\').value=p.лаборатория||\'\';}"><option value="">— без плана —</option>' + PL.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.объект + ' · ' + p.вид) + '</option>'; }).join('') + '</select></div>' +
+    fld('tObj', 'Объект *') + fld('tKind', 'Показатель *') + fld('tLab', 'Лаборатория') + fld('tDate', 'Дата отбора *', today(), 'date') + '</div><div class="acts"><button class="btn pri" onclick="addTest(this)">Записать отбор</button></div></div>' +
+    (TS.length ? TS.map(function (t) { var bad = /не соответ/i.test(String(t.результат || ''));
+      return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(t.объект) + ' · ' + esc(t.вид) + '</div><div class="meta">отбор ' + esc(t.датаОтбора) + (t.лаборатория ? ' · ' + esc(t.лаборатория) : '') + (t.протокол ? ' · протокол ' + esc(t.протокол) + ' от ' + esc(t.датаРезультата) : '') + '</div></div><span class="chip ' + (!t.результат ? 'a' : bad ? 'r' : 'g') + '">' + esc(t.результат || 'ждёт результата') + '</span></div>' +
+        (!t.результат ? '<div class="grid" style="margin-top:8px"><div><label>Результат *</label><select id="r_' + esc(t.id) + '"><option>соответствует</option><option>не соответствует</option></select></div>' + fld('p_' + t.id, 'Протокол № *') + fld('d_' + t.id, 'Дата протокола *', today(), 'date') + '</div><div class="acts"><button class="btn pri" onclick="res(\'' + esc(t.id) + '\',this)">Внести результат</button></div><div class="note">Результат вносится один раз; «не соответствует» открывает отклонение.</div>' : '') + '</div>'; }).join('') : '<div class="empty">Исследований нет</div>');
+  document.getElementById('body').innerHTML = h;
+}
+function addPlan(btn) { var d = { объект: v('pObj'), типОбъекта: v('pType'), вид: v('pKind'), периодичность: v('pDays'), норматив: v('pNorm'), лаборатория: v('pLab'), ответственный: v('pResp') };
+  if (!d.объект || !d.вид || !d.периодичность) return msg('Заполните объект, показатель и периодичность');
+  btn.disabled = true; call('createLabPlan', [JSON.stringify(d), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Пункт плана добавлен', true); load(); }); }
+function addTest(btn) { btn.disabled = true; call('createLabTest', [JSON.stringify({ planId: v('tPlan'), объект: v('tObj'), вид: v('tKind'), лаборатория: v('tLab'), датаОтбора: v('tDate') }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Отбор записан', true); load(); }); }
+function res(id, btn) { btn.disabled = true; call('recordLabResult', [JSON.stringify({ id: id, результат: v('r_' + id), протокол: v('p_' + id), датаРезультата: v('d_' + id) }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); var d = dataOf(r) || {}; msg('Результат внесён' + (d.отклонение || d.deviationId ? ' — открыто отклонение' : ''), true); load(); }); }
+load();
+
+</script></body></html>

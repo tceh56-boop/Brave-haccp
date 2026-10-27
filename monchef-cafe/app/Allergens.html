@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Аллергены</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.al{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}.al label{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--ink);margin:0}.al input{width:auto}
+.hint{background:var(--amber-bg);color:var(--amber);border-radius:9px;padding:6px 10px;font-size:13px;margin-top:6px}
+</style></head><body><div class="wrap">
+<h1>Аллергены</h1>
+<div class="sub">Перечень — ТР ТС 022/2011 (ст. 4.4, п. 13). Профиль продукта заполняет человек по документу: спецификация, маркировка, декларация. Аллергены блюда считаются автоматически по ТТК (через полуфабрикаты до сырья) и видны в карточке блюда. Подсказка по названию — только напоминание, что проверить; фактом она не считается.</div>
+<div class="tabs" id="tabs"></div>
+<div class="msg" id="msg"></div>
+<input id="q" placeholder="Поиск продукта" oninput="draw()" style="margin-bottom:10px">
+<div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', D = null, TAB = 'todo', OPEN = -1;
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function nm(c) { var x = (D.directory || []).filter(function (a) { return a.code === c; })[0]; return x ? x.name : c; }
+function load() { call('mcGetAllergenRegistry', [TOKEN]).then(function (r) { if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } D = r.data; draw(); }, function () { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function setTab(t) { TAB = t; OPEN = -1; draw(); }
+function draw() {
+  var it = D.items || [], todo = it.filter(function (x) { return !x.profile; }), done = it.filter(function (x) { return x.profile; });
+  document.getElementById('tabs').innerHTML = '<button class="' + (TAB === 'todo' ? 'on' : '') + '" onclick="setTab(\'todo\')">Без профиля<b>' + todo.length + '</b></button><button class="' + (TAB === 'done' ? 'on' : '') + '" onclick="setTab(\'done\')">Подтверждены<b>' + done.length + '</b></button><button class="' + (TAB === 'dir' ? 'on' : '') + '" onclick="setTab(\'dir\')">Перечень<b>' + D.directory.length + '</b></button>';
+  if (TAB === 'dir') { document.getElementById('list').innerHTML = D.directory.map(function (a) { return '<div class="card"><div class="nm">' + esc(a.name) + '</div><div class="meta">' + esc(a.code) + '</div></div>'; }).join(''); return; }
+  var q = document.getElementById('q').value.toLowerCase(), L = (TAB === 'todo' ? todo : done).filter(function (x) { return !q || x.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 200);
+  document.getElementById('list').innerHTML = L.length ? L.map(function (x) {
+    var i = it.indexOf(x), p = x.profile, chip = p ? (p.status === 'NONE' ? '<span class="chip g">не содержит</span>' : '<span class="chip a">' + esc(p.codes.map(nm).join(', ')) + '</span>') : '<span class="chip r">нет профиля</span>';
+    var h = '<div class="card' + (OPEN === i ? ' open' : '') + '"><div class="row" onclick="toggle(' + i + ')"><div><div class="nm">' + esc(x.name) + '</div><div class="meta">в ТТК: ' + x.dishes + (p ? ' · ' + esc(p.basis) + ' · ' + esc(p.who) + ' · ' + esc(p.at) : '') + '</div>' +
+      (!p && x.hints.length ? '<div class="hint">Проверить по документу: ' + esc(x.hints.map(nm).join(', ')) + '</div>' : '') + '</div>' + chip + '</div>';
+    if (OPEN === i) h += '<div class="form"><label>Содержит</label><div class="al">' + D.directory.map(function (a) { return '<label><input type="checkbox" class="ac" value="' + a.code + '"' + (p && p.codes.indexOf(a.code) >= 0 ? ' checked' : '') + '>' + esc(a.name) + '</label>'; }).join('') + '</div>' +
+      '<div class="grid" style="margin-top:10px"><div style="grid-column:span 2"><label>Основание (документ)</label><input id="basis" placeholder="напр. спецификация поставщика № …, маркировка упаковки" value="' + esc(p ? p.basis : '') + '"></div><div><label>Комментарий</label><input id="note"></div></div>' +
+      '<div class="acts"><button class="btn pri" onclick="save(' + i + ',\'CONFIRMED\')">Сохранить: содержит отмеченные</button><button class="btn" onclick="save(' + i + ',\'NONE\')">Не содержит аллергенов</button></div><div class="msg" id="fm"></div></div>';
+    return h + '</div>'; }).join('') : '<div class="empty">' + (TAB === 'todo' ? 'У всех продуктов есть профиль' : 'Пока нет подтверждённых профилей') + '</div>';
+}
+function toggle(i) { OPEN = OPEN === i ? -1 : i; draw(); }
+function save(i, st) {
+  var codes = [].slice.call(document.querySelectorAll('.ac:checked')).map(function (e) { return e.value; });
+  var m = document.getElementById('fm');
+  if (st === 'NONE' && codes.length) { m.className = 'msg err'; m.textContent = 'Снимите отметки, если продукт не содержит аллергенов'; return; }
+  call('mcSetProductAllergens', [JSON.stringify({ product: D.items[i].name, codes: codes, status: st, basis: document.getElementById('basis').value, note: document.getElementById('note').value }), TOKEN]).then(function (r) {
+    if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    var g = document.getElementById('msg'); g.className = 'msg ok'; g.textContent = 'Профиль «' + r.data.product + '» сохранён'; OPEN = -1; load();
+  }, function () { m.className = 'msg err'; m.textContent = 'Нет связи'; });
+}
+load();
+</script></body></html>
