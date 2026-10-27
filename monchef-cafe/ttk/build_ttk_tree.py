@@ -46,7 +46,8 @@ for k, i in enumerate(titles):
     n = int(TITLE_RE.match(text_of(els[i]).strip()).group(1))
     end = starts[k + 1] if k + 1 < len(starts) else len(els)
     rng = els[starts[k]:end]
-    name = text_of(els[i + 1]).strip().strip('«»').strip()
+    name = text_of(els[i + 1]).strip()
+    if name.startswith('«') and name.endswith('»'): name = name[1:-1].strip()   # внешние кавычки названия; внутренние («Греческий») остаются
     paras = [text_of(e) for e in rng if e.tag == qn('w:p')]
     st, on = [], False
     for p in paras:
