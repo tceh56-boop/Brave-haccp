@@ -30,7 +30,7 @@ function Doc({ dishId }: { dishId: string }) {
   const c = calc, o = c.object, p = c.nutrition.per100, year = new Date(appr?.approved_at || c.generated_at).getFullYear();
   const errors = c.errors || [];   // в снимках, утверждённых до появления проверки, поля нет
   const stamp = appr ? `УТВЕРЖДЕНО · версия ${appr.version}` : errors.length ? 'ОШИБКА В ДАННЫХ — НЕ ПРИМЕНЯТЬ' : c.status === 'ready' ? 'ГОТОВ К ИСПЫТАНИЯМ' : 'ПРОЕКТ';
-  const allergens = c.allergens.contains.length ? c.allergens.contains.map((a) => `${a.label} (${a.sources.join(', ')})`).join('; ') : c.allergens.complete ? 'не содержит' : 'профиль аллергенов неполный';
+  const allergens = c.allergens.contains.length ? c.allergens.contains.map((a) => `${a.label} (${a.sources.join(', ')})`).join('; ') : c.allergens.complete ? 'не содержит' : errors.length ? 'не определены — часть сырья не вошла в расчёт (см. ошибки)' : 'профиль аллергенов неполный';
   return (
     <>
       <div className="noprint">

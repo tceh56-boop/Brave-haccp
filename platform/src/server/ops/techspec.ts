@@ -242,7 +242,9 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
       by_norms_pct: acc.data_g > 0 ? Math.round(acc.byNorms_g / acc.data_g * 100) : 0, fallback: [...acc.fallback] },
     nutrition: { per100, per_portion: perPortion, coverage_pct: coverage, verified_pct: verified },
     physico, tolerance: tol, recipe,
-    allergens: { contains: allergens, suggest, no_profile: [...acc.noProfile], complete: !acc.noProfile.size },
+    allergens: { contains: allergens, suggest, no_profile: [...acc.noProfile], uncounted: errors.length > 0,
+      // строка, не вошедшая в расчёт, могла нести аллерген: «не содержит» при ошибке данных не утверждается
+      complete: !acc.noProfile.size && !errors.length },
     storage, micro,
     organoleptic: params.organoleptic || 'Внешний вид, цвет, консистенция, вкус и запах — по описанию утверждённой ТТК; оценка по ГОСТ 31986-2012.',
     channel: params.channel || 'через предприятия общественного питания и вне их',

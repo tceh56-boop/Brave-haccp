@@ -180,3 +180,13 @@ describe('ТУ по нормативной базе: микробиология 
     await expect(approveTechSpec(chef.id, orgId, bad, { labProtocol: 'Протокол № 1 от 01.10.2026, ИЛЦ «Тест»' })).rejects.toThrow(/больше закладки/);
   });
 });
+
+describe('Аллергены при ошибке данных', () => {
+  it('строка не вошла в расчёт — «не содержит» не утверждается', async () => {
+    const cream = (await createProduct(chef.id, orgId, { name: 'Сливки 33%', unit: 'л' })).id;
+    const d = await withTtk('Соус со сливками', 'semi', 100, 'Варить 5 минут.', [{ productId: cream, unit: 'л', brutto: 0.1, netto: 0.1 }, { productId: P.salt, unit: 'г', brutto: 1, netto: 1 }]);
+    const c = (await getTechSpec(chef.id, orgId, d)).calc;
+    expect(c.errors.join(' ')).toMatch(/Сливки 33%: нет пересч/);
+    expect(c.allergens.complete).toBe(false);
+  });
+});
