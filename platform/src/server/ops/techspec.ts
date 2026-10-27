@@ -216,6 +216,9 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
     { indicator: 'Массовая доля белка, %, не менее', calc: per100.protein, norm: r1(per100.protein * (1 - tol)), method: 'по методике аккредитованной лаборатории' },
     { indicator: 'Массовая доля углеводов, %', calc: per100.carbs, norm: 'справочно', method: 'расчётный' },
   ].filter((x) => typeof x.norm !== 'number' || x.norm > 0) : []) as { indicator: string; calc: number; norm: number | string; method: string }[];
+  // данные пищевой ценности не по всему сырью — расчёт занижен: норму «не менее» по нему устанавливать нельзя
+  const partial = acc.input_g > 0 && acc.data_g < acc.input_g;
+  if (partial) for (const x of physico) if (/жира|белка/.test(x.indicator)) x.norm = `не установлено: данные о пищевой ценности есть для ${Math.round(acc.data_g / acc.input_g * 100)} % массы сырья`;
   if (acc.salt_g > 0) physico.push({ indicator: 'Массовая доля хлорида натрия (соли), %, не более', calc: saltPct, norm: r2(saltPct * (1 + tol)), method: 'по методике аккредитованной лаборатории' });
 
   const lossPct = acc.input_g > 0 && yieldG > 0 ? r1((acc.input_g - yieldG) / acc.input_g * 100) : 0;
