@@ -19,7 +19,10 @@ function mkFolder(name, parent) {
   const f = { id: 'F' + (++fid), name, parent, kids: [],
     getId() { return this.id; }, getName() { return this.name; }, getUrl() { return 'https://drive.google.com/drive/folders/' + this.id; },
     getFoldersByName(n) { const l = this.kids.filter(k => k.name === n); let i = 0; return { hasNext: () => i < l.length, next: () => l[i++] }; },
-    createFolder(n) { const k = mkFolder(n, this); this.kids.push(k); return k; } };
+    createFolder(n) { const k = mkFolder(n, this); this.kids.push(k); return k; },
+    files: [], getFiles() { const l = this.files.slice(); let i = 0; return { hasNext: () => i < l.length, next: () => l[i++] }; },
+    getFilesByName(n) { const l = this.files.filter(x => x.getName() === n); let i = 0; return { hasNext: () => i < l.length, next: () => l[i++] }; },
+    createFile(b) { const f = { n: b.getName(), getName() { return this.n; }, getLastUpdated: () => new Date(), getBlob: () => ({ setContentType() {} }) }; this.files.push(f); return f; } };
   folders[f.id] = f; return f;
 }
 const driveRoot = mkFolder('Мой диск / Кафе', null);
@@ -78,6 +81,22 @@ const crab = pick({ id: 'Z', name: 'Масса для краб-кейков', pa
 ok(crab[9] === 24, 'конфликт внутри папки: «Масса для краб-кейков» — 24 ч (не 48 ч «Краб-кейка»)');
 const unknownPf = pick({ id: 'N', name: 'Новый соус', path: 'ТТК кафе/02 Полуфабрикаты/02.01 Соусы горячие, бульоны, основы супов/x', category: '' });
 ok(unknownPf[9] === 72 && unknownPf[13] === -18 && unknownPf[14] === 720, 'новая карта в папке 02.01 сразу получает СТО папки: 72 ч, заморозка −18 °С 30 сут');
+
+if (process.env.TTK_ZIP) {   // архив сборки: TTK_ZIP="…/ТТК кафе.zip" node test/ttk_tree.test.js
+console.log('Раскладка карт из архива');
+const zipNames = require('child_process').execSync('unzip -Z1 ' + JSON.stringify(process.env.TTK_ZIP || ''), { encoding: 'utf8' }).split('\n').filter(Boolean);
+top.createFile({ getName: () => 'ТТК кафе.zip' });
+g.Utilities.unzip = () => zipNames.map(n => { let nm = n; return { getName: () => nm, setName(x) { nm = x; return this; } }; });
+d = data(g.mcCafeTtkUnpack(chef), 'распаковка');
+const docs = zipNames.filter(n => !/\/$/.test(n)).length;
+ok(d.created === docs && d.left === 0, 'разложено файлов: ' + d.created + ' из архива ' + d.zip);
+const pf = top.kids.find(k => k.name === '02 Полуфабрикаты').kids.find(k => k.name.startsWith('02.04'));
+ok(pf.files.some(f => /^ТТК 069 /.test(f.getName())) && pf.files.some(f => /^_СТО 02.04-2026/.test(f.getName())), 'в папке 02.04 — карта № 69 и её СТО');
+Object.keys(env.cache).filter(k => /^mc_gate_/.test(k)).forEach(k => delete env.cache[k]);   // прошло больше 15 с — не «двойное нажатие»
+d = data(g.mcCafeTtkUnpack(chef), 'распаковка 2');
+ok(d.created === 0 && d.skipped === docs, 'повторная раскладка ничего не дублирует');
+
+} else console.log('  (раскладка из архива пропущена: задайте TTK_ZIP)');
 
 console.log('Интерфейс');
 d = data(g.mcCafeTtkTreeData(dir), 'данные 2');

@@ -18,6 +18,7 @@ var MC_TTK_RULE_PREFIX_ = 'STO-';
   if (typeof MC_CAFE_GATE_ !== 'undefined') {
     MC_CAFE_GATE_.mcCafeTtkTreeData = ['catalog|ttk_edit|haccp|haccp_view', false];
     MC_CAFE_GATE_.mcCafeTtkTreeInstall = ['ttk_approve|haccp|haccp_approve', true];
+    MC_CAFE_GATE_.mcCafeTtkUnpack = ['ttk_approve|haccp|haccp_approve', true];
   }
   if (typeof MC_RB_MODULES_ !== 'undefined') { MC_RB_MODULES_.cafettk = 'catalog|ttk_edit|haccp|haccp_view'; if (typeof MC_RB_MODULE_RU_ !== 'undefined') MC_RB_MODULE_RU_.cafettk = 'Дерево папок ТТК и СТО'; }
   if (typeof _UI_BUILDERS_ !== 'undefined' && _UI_BUILDERS_.menu && !_UI_BUILDERS_.menu.__ttkTree) {
@@ -170,6 +171,46 @@ function mcCafeTtkTreeInstall(json, token) {
       });
     }
     _audit_(op, 'CAFE_TTK_TREE', 'Дерево ТТК', MC_TTK_TREE_.root, null, out);
+    _endOp_(op);
+    return _ok_(out, op.id);
+  } catch (e) { if (op) _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
+}
+
+/**
+ * Разложить карты из архива: «ТТК кафе*.zip» (сборка build_ttk_tree.py) лежит в папке «ТТК кафе» или в корне.
+ * Файлы архива раскладываются по своим путям в дереве; файл с тем же именем в папке не перезаписывается.
+ * Большой архив — частями: через 4,5 мин работа останавливается, повторный запуск продолжает с того же места.
+ */
+function mcCafeTtkUnpack(token) {
+  var op = null;
+  try { op = _beginOp_(token, 'ttk_approve|haccp|haccp_approve', 'CAFE_TTK_UNPACK', 'Дерево ТТК', null, null); } catch (e) { return _failFrom_(e); }
+  try {
+    var rootId = _ttkRootId_();
+    if (!rootId) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'Сначала создайте папки на Диске (укажите корень)', op.id); }
+    _ttkDriveWalk_(rootId, true);
+    var root = DriveApp.getFolderById(rootId), top = _ttkChild_(root, MC_TTK_TREE_.root, false).f, zip = null;
+    [top, root].forEach(function (f) {
+      if (zip || !f) return;
+      var it = f.getFiles();
+      while (it.hasNext()) { var x = it.next(); if (/^ТТК кафе.*\.zip$/i.test(x.getName()) && (!zip || x.getLastUpdated() > zip.getLastUpdated())) zip = x; }
+    });
+    if (!zip) { _endOp_(op, 'FAILED'); return _fail_('NOT_FOUND', 'Архив «' + MC_TTK_TREE_.root + '.zip» не найден: загрузите его в папку «' + MC_TTK_TREE_.root + '» на Диске', op.id); }
+    var blob = zip.getBlob(); blob.setContentType('application/zip');
+    var parts = Utilities.unzip(blob), t0 = Date.now(), cache = {}, out = { files: parts.length, created: 0, skipped: 0, left: 0, zip: zip.getName() };
+    var dirOf = function (segs) {
+      var k = segs.join('/'); if (cache[k]) return cache[k];
+      var cur = top; segs.forEach(function (s) { cur = _ttkChild_(cur, s, true).f; });
+      return (cache[k] = cur);
+    };
+    for (var i = 0; i < parts.length; i++) {
+      var name = String(parts[i].getName() || ''); if (!name || /\/$/.test(name)) continue;
+      if (Date.now() - t0 > 270000) { out.left = parts.length - i; break; }
+      var segs = name.split('/').filter(Boolean); if (segs[0] === MC_TTK_TREE_.root) segs.shift();
+      var base = segs.pop(), dir = dirOf(segs);
+      if (dir.getFilesByName(base).hasNext()) { out.skipped++; continue; }
+      dir.createFile(parts[i].setName(base)); out.created++;
+    }
+    _audit_(op, 'CAFE_TTK_UNPACK', 'Дерево ТТК', zip.getName(), null, out);
     _endOp_(op);
     return _ok_(out, op.id);
   } catch (e) { if (op) _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }

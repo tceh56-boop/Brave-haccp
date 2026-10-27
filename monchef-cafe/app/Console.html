@@ -4385,7 +4385,7 @@ VIEWS.cafeaudit = {
 
 /* ---------- Дерево папок ТТК и СТО ---------- */
 VIEWS.cafettk = {
-  fns: { mk: 'mcCafeTtkTreeInstall', rules: 'mcCafeTtkTreeInstall', appr: 'mcCafeTtkTreeInstall' },
+  fns: { mk: 'mcCafeTtkTreeInstall', unz: 'mcCafeTtkUnpack', rules: 'mcCafeTtkTreeInstall', appr: 'mcCafeTtkTreeInstall' },
   title: 'Дерево папок ТТК и СТО', sub: 'Папка — группа продукции с одним стандартом организации (СТО): условия и сроки хранения, реализация. Карта в папке подчиняется СТО папки; новая карта получает его срок сразу.',
   acts: [['Обновить', 'load']],
   open: function () { this.h.load(); },
@@ -4397,10 +4397,10 @@ VIEWS.cafettk = {
         var d = S._d = vData(r) || {}, rl = d.rules || {}, dr = d.drive || null;
         var h = vKpis([['Папок', (d.folders || []).length], ['Карт', (d.folders || []).reduce(function (a, f) { return a + f.cards; }, 0)], ['Отклонений от СТО', (d.deviations || []).length, (d.deviations || []).length ? 'red' : 'green', 'срок в карте больше нормы'],
           ['Правила сроков', rl.approved + ' / ' + rl.total, rl.approved === rl.total ? 'green' : 'gold', rl.approved === rl.total ? 'в действии' : rl.loaded ? 'черновики — ждут утверждения' : 'не загружены']]);
-        if (d.canInstall) h += vCard('Google Диск и правила сроков', '<div class="dnote">Папки создаются в указанной папке Диска: «' + esc(d.root) + '» и всё дерево. Существующие папки и файлы не трогаются. Карты (.docx из архива «' + esc(d.root) + '.zip») раскладываются по папкам вручную или распаковкой архива.</div>' +
+        if (d.canInstall) h += vCard('Google Диск и правила сроков', '<div class="dnote">Папки создаются в указанной папке Диска: «' + esc(d.root) + '» и всё дерево. Существующие папки и файлы не трогаются. Карты и СТО: загрузите архив «' + esc(d.root) + '.zip» в папку «' + esc(d.root) + '» и нажмите «Разложить карты из архива».</div>' +
           vForm([['tr', 'Папка на Диске (ссылка или ID)', 'text', d.rootId || '', 'https://drive.google.com/drive/folders/…']]) +
           (dr ? '<div class="sub">' + (dr.error ? esc(dr.error) : 'На Диске: папок есть ' + dr.exists + (dr.missing && dr.missing.length ? ', нет ' + dr.missing.length : ', дерево полное') + (dr.url ? ' · <a href="' + esc(dr.url) + '" target="_blank">открыть</a>' : '')) + '</div>' : '') +
-          '<div class="mvbar">' + vBtn('Создать папки на Диске', 'mk', '', true) + vBtn('Загрузить СТО в правила сроков (черновики)', 'rules') + (d.canApprove ? vBtn('Ввести правила СТО в действие', 'appr') : '') + '</div>');
+          '<div class="mvbar">' + vBtn('Создать папки на Диске', 'mk', '', true) + vBtn('Разложить карты из архива', 'unz') + vBtn('Загрузить СТО в правила сроков (черновики)', 'rules') + (d.canApprove ? vBtn('Ввести правила СТО в действие', 'appr') : '') + '</div>');
         (d.folders || []).forEach(function (f) {
           h += vCard(f.code + ' ' + f.name + ' · ' + f.sto, '<div class="sub">' + esc(f.top + ' / ' + f.dir) + ' · ' + esc(f.shops) + ' · карт: ' + f.cards + '</div>' +
             vTable(f.kind === 'dish' ? [{ k: 'what', l: 'Вид' }, { k: 'temp', l: 'Температура при отпуске' }, { k: 'note', l: 'Реализация' }] :
@@ -4414,6 +4414,7 @@ VIEWS.cafettk = {
     },
     _go: function (btn, p, txt) { vDo(btn, 'mcCafeTtkTreeInstall', [JSON.stringify(p)], txt, function () { VIEWS.cafettk.h.load(); }); },
     mk: function (a, btn) { VIEWS.cafettk.h._go(btn, { folders: true, rootId: vV('tr') }, function (d) { return 'Папки: создано ' + d.drive.created + ', уже были ' + d.drive.exists; }); },
+    unz: function (a, btn) { vDo(btn, 'mcCafeTtkUnpack', [], function (d) { return 'Из «' + d.zip + '»: разложено ' + d.created + ', уже были ' + d.skipped + (d.left ? ', осталось ' + d.left + ' — нажмите ещё раз' : ''); }, function () { VIEWS.cafettk.h.load(); }); },
     rules: function (a, btn) { VIEWS.cafettk.h._go(btn, { rules: true }, function (d) { return 'Правила СТО: добавлено ' + d.rules.added + ', обновлено ' + d.rules.updated + ' (черновики)'; }); },
     appr: function (a, btn) { VIEWS.cafettk.h._go(btn, { approve: true }, function (d) { return 'Правила СТО введены в действие: ' + (d.rules.added + d.rules.updated); }); }
   }
