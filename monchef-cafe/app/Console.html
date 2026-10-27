@@ -496,6 +496,18 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:#fbf3e8}
 .mvchk input{width:auto}.mvq{width:110px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff}
 @media(max-width:760px){.mvq{width:100%}.mvact{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}}
 .btn.bad{background:var(--red,#a8231f);border-color:var(--red,#a8231f);color:#fff}.clr{border-top:1px solid var(--line);padding:10px 4px;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}.clr.ok{background:rgba(31,122,60,.06)}.clr.no{background:rgba(168,35,31,.07)}.clt{font-size:14px}.clt .sub{font-size:12px;color:var(--muted)}.clb{display:flex;gap:6px;flex-wrap:wrap}.clb .btn{padding:7px 10px;font-size:13px}.clf{grid-column:1/-1;display:flex;gap:8px;align-items:center}.clf label{font-size:12px;color:var(--muted);min-width:110px}.clf input{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font:inherit;min-width:0}.mcbt-st{font-size:13px;margin-right:6px}.mcbt-st.on{color:var(--green,#1f7a3c)}.mcbt-st.off{color:var(--muted)}.mcbt-slot{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.lbpv{margin:10px 0;overflow:auto}ul.cl{margin:4px 0 0 18px;padding:0;font-size:13px;line-height:1.5}.mvwarn{background:var(--amber-bg,#fff4dc);color:var(--amber,#8a5a00);border-radius:10px;padding:8px 12px;margin-top:6px;font-size:13px}@media(max-width:640px){.clr{grid-template-columns:1fr}.clf{flex-direction:column;align-items:stretch}.clf label{min-width:0}}
+
+/* MON CHEF · Кафе: ввод продаж по позициям, прайс, P&L, аудит */
+.cftools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}.cftools input#cfflt{flex:1;min-width:200px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font:inherit}
+.cfcat{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px}
+.cfrow{display:grid;grid-template-columns:minmax(160px,1fr) 110px 100px 100px 110px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line);border-radius:8px}
+.cfrow.on{background:#fbf3e6}.cfrow label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px}.cfn{font-weight:600}.cfn .sub{font-weight:400}
+.cfin{width:100%;box-sizing:border-box;padding:7px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}.cfs{text-align:right;font-weight:600;white-space:nowrap}.cfc{font-size:13px;color:var(--muted)}
+#cfgrid .cfrow,#vbody .cfrow{min-width:0}.cfsum{position:sticky;bottom:8px;z-index:3;box-shadow:0 6px 24px rgba(60,20,30,.12)}#cftotal{font-size:18px;font-weight:700}
+.cfpnl tr.cfb td{font-weight:700;border-top:2px solid var(--line)}.cfpnl tr.cfm td{color:var(--muted);font-style:italic}
+.cfdb{display:flex;align-items:center;gap:8px;min-width:140px}.cfdb i{display:block;height:8px;border-radius:6px;background:var(--wine);min-width:2px}.cfdb span{font-size:12px;white-space:nowrap}
+.cfar{display:grid;grid-template-columns:minmax(140px,240px) 1fr;gap:10px;align-items:center;padding:4px 0}
+@media (max-width:720px){.cfrow{grid-template-columns:1fr 1fr 1fr;}.cfrow .cfn{grid-column:1/-1}.cfrow .cfs{grid-column:1/-1;text-align:left}.cfar{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -523,7 +535,7 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:#fbf3e8}
     <header class="top">
       <button class="burger" onclick="document.body.classList.toggle('menu')" aria-label="Меню"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="gsearch" placeholder="Поиск по продуктам, банкетам, заданиям…"></label>
+        <input id="gsearch" placeholder="Поиск по продуктам, блюдам, заданиям…"></label>
       <div class="user" onclick="switchUser()" title="Сменить сотрудника"><span class="av" id="uav">?</span><div><b id="uname"></b><small id="urole"></small></div></div>
     </header>
     <main class="content" id="content"></main>
@@ -534,6 +546,10 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:#fbf3e8}
 <script>
 var ICONS = {
   home:'<path d="M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  cafesales:'<path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/>',
+  cafeplan:'<path d="M4 20V9l8-5 8 5v11z"/><path d="M9 20v-6h6v6M9 11h6"/>',
+  economics:'<path d="M3 20h18M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/>',
+  entaudit:'<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M8.5 11l2 2 3.5-3.5"/>',
   banquets:'<path d="M4 20h16M6 20V10h12v10M8 10V6h8v4M12 3v3"/>',
   menu:'<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"/>',
   planning:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
@@ -556,10 +572,11 @@ var ICONS = {
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>'
 };
 // ТЗ §43: 20 разделов в установленном порядке (отбор сырья — внутри «Производства»)
-var SECTIONS = [['home','Главная'],['banquets','Банкеты'],['menu','Меню и ТТК'],['planning','Планирование'],['production','Производство'],
-  ['stock','Склад'],['revisions','Ревизии'],['deficits','Дефициты'],['surplus','Излишки'],['procurement','Закупки'],['issue','Выдача'],
+// MON CHEF · Кафе: банкетов нет — вместо «Банкетов», «Планирования» и «Выдачи» продажи, план по остаткам, экономика и аудит
+var SECTIONS = [['home','Главная'],['cafesales','Продажи'],['menu','Меню и ТТК'],['cafeplan','План по остаткам'],['production','Производство'],
+  ['stock','Склад'],['revisions','Ревизии'],['deficits','Дефициты'],['surplus','Излишки'],['procurement','Закупки'],['economics','Экономика'],
   ['haccp','HACCP'],['sanitation','Санитария'],['personnel','Персонал'],['lab','Лаборатория'],['equipment','Оборудование'],['documents','Документы'],
-  ['reports','Отчёты'],['inspection','Проверка'],['settings','Настройки']];
+  ['reports','Отчёты'],['entaudit','Аудит предприятия'],['inspection','Проверка'],['settings','Настройки']];
 var TOKEN = null, APP_URL = '', CUR = 'home', DATA = null, TAB = 0, CACHE = {};
 // этап 10.7: что доступно вошедшему (с сервера: uiMe) — меню строится только из доступных разделов
 var ACC = null, IDLE_MIN = 15, LAST_ACT = Date.now();
@@ -3782,7 +3799,7 @@ VIEWS.stockops = {
 /* ---------- Центр задач ---------- */
 VIEWS.tasks = {
   fns: { sync: 'mcTaskSyncProduction', add: 'mcTaskCreate', start: 'mcTaskStart', ok: 'mcTaskComplete', bad: 'mcTaskComplete', badgo: 'mcTaskComplete' },
-  title: 'Задачи', sub: 'Единый список: ручные задачи и задачи производства банкетов. «В работу», «Выполнено» и «Отклонение» — от вашего имени; отклонение — с пояснением.',
+  title: 'Задачи', sub: 'Единый список: ручные задачи, задачи по остаткам п/ф и сырья (приготовить, закупить, использовать, списать) и задачи аудита. «В работу», «Выполнено» и «Отклонение» — от вашего имени; отклонение — с пояснением.',
   acts: [['↻ Подтянуть задачи производства', 'sync'], ['Обновить', 'load']],
   open: function () { VIEWS.tasks._st = VIEWS.tasks._st || 'open'; this.h.load(); },
   h: {
@@ -3928,7 +3945,7 @@ VIEWS.haccpcontour = {
 /* ---------- Журнал продаж: ручная запись ---------- */
 VIEWS.sales = {
   fns: { add: 'mcSaleAdd' },
-  title: 'Журнал продаж', sub: 'Продажи вне банкетов — вручную. Продажи по банкетам записываются сами при выдаче банкета. Продавец — сотрудник из списка; вносящий виден в строке журнала.',
+  title: 'Журнал продаж', sub: 'Журнал J36. Продажи кафе («Продажи» → «Ввести продажи») попадают сюда сами, со списанием по ТТК. Здесь — ручная запись без списания со склада (исправления). Продавец — сотрудник из списка; вносящий виден в строке журнала.',
   acts: [['Обновить', 'load']],
   open: function () { this.h.load(); },
   h: {
@@ -3990,6 +4007,379 @@ VIEWS.haccpevents = {
     },
     off: function (id, btn) { VIEWS.haccpevents.h.tog(id, btn, false); },
     on: function (id, btn) { VIEWS.haccpevents.h.tog(id, btn, true); }
+  }
+};
+
+/* ======================= MON CHEF · КАФЕ: экраны ======================= */
+function cfMoney(v) { return v === null || v === undefined || v === '' ? '—' : vNum(v, 2) + ' ₽'; }
+function cfPct(v) { return v === null || v === undefined || v === '' ? '—' : vNum(v, 1) + ' %'; }
+function cfBar(p, tone) { var v = Number(p) || 0, w = Math.max(0, Math.min(100, v)); return '<div class="bar"><i><b style="width:' + w + '%' + (tone ? ';background:' + tone : '') + '"></b></i><span>' + Math.round(v) + '</span></div>'; }
+function cfNumIn(cls, code, val, ph) { return '<input class="cfin ' + cls + '" data-c="' + esc(code) + '" type="number" step="any" min="0" inputmode="decimal" value="' + esc(val === null || val === undefined ? '' : val) + '" placeholder="' + esc(ph || '') + '">'; }
+function cfPeriodForm(S) {
+  return vCard('Период', vForm([['pf', 'С', 'date', S._from || vIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1))], ['pt', 'По', 'date', S._to || vIso()]]) +
+    '<div class="mvbar">' + vBtn('Показать', 'per', '', true) + vBtn('Этот месяц', 'perm') + vBtn('Прошлый месяц', 'perp') + vBtn('7 дней', 'per7') + '</div>');
+}
+function cfPeriodH(id) {
+  var V = function () { return VIEWS[id]; }, d2 = function (d) { return vIso(d); };
+  return {
+    per: function () { V()._from = vV('pf'); V()._to = vV('pt'); V().h.load(); },
+    perm: function () { var n = new Date(); V()._from = d2(new Date(n.getFullYear(), n.getMonth(), 1)); V()._to = d2(n); V().h.load(); },
+    perp: function () { var n = new Date(); V()._from = d2(new Date(n.getFullYear(), n.getMonth() - 1, 1)); V()._to = d2(new Date(n.getFullYear(), n.getMonth(), 0)); V().h.load(); },
+    per7: function () { var n = new Date(); V()._from = d2(new Date(n.getTime() - 6 * 864e5)); V()._to = d2(n); V().h.load(); }
+  };
+}
+
+/* ---------- Продажи: ввод по позициям ---------- */
+VIEWS.cafesale = {
+  fns: { post: 'mcCafeSalePost', cancel: 'mcCafeSaleCancel', cgo: 'mcCafeSaleCancel', addp: 'mcCafeSalePost' },
+  title: 'Продажи: ввод по позициям', sub: 'Количество по каждой позиции меню — за чек или за смену. Продукты списываются по ТТК с партий (FEFO, п/ф со склада — первыми); нехватка уходит в «Расхождения». Продавец — из списка сотрудников.',
+  acts: [['Обновить', 'load']],
+  open: function () { var S = VIEWS.cafesale; S._extra = S._extra || []; this.h.load(); },
+  h: {
+    load: function () {
+      var S = VIEWS.cafesale; vLoading();
+      vCall('mcCafeData', [JSON.stringify({ date: S._date || '' })]).then(function (r) {
+        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = S._d = vData(r) || {}, t = d.totals || {};
+        var h = vKpis([['Выручка за день', vNum(t.sum, 2) + ' ₽', 'wine'], ['Чеков', t.checks || 0, '', 'ср. чек ' + vNum(t.avgCheck, 2) + ' ₽'], d.money ? ['Food cost', t.foodCost === null ? '—' : vNum(t.foodCost, 1) + ' %'] : null,
+          ['Расхождения', d.openGaps || 0, d.openGaps ? 'red' : 'green', 'не хватило на складе']]);
+        if (d.canPost) {
+          var menu = (d.menu || []).filter(function (m) { return S._all || m.active || !(d.menu || []).some(function (x) { return x.active; }); });
+          h += vCard('Документ продажи', vForm([['cfd', 'Дата', 'date', d.date || vIso()], ['cft', 'Время', 'time', vNowHm()], ['cfp', 'Оплата', 'select', S._pay || 'CARD', (d.payments || []).map(function (x) { return [x.code, x.name]; })],
+            ['cfs', 'Продавец', 'select', S._seller || d.me, (d.employees || []).map(function (x) { return [x.name, x.name + (x.position ? ' — ' + x.position : '')]; })], ['cfc', 'Чек / заказ', 'text', '', 'необязательно'], ['cfsh', 'Смена', 'text', S._shift || '', 'например: утро']]));
+          var cats = {}; menu.forEach(function (m) { (cats[m.cat || 'Без категории'] = cats[m.cat || 'Без категории'] || []).push(m); });
+          var rows = Object.keys(cats).map(function (c) {
+            return '<div class="cfcat">' + esc(c) + '</div>' + cats[c].map(function (m) {
+              return '<div class="cfrow" data-n="' + esc((m.name + ' ' + (m.cat || '')).toLowerCase()) + '"><div class="cfn">' + esc(m.name) + (m.hasTtk ? '' : ' <span class="chip r">нет состава ТТК</span>') + (m.price === null ? ' <span class="chip a">нет в прайсе</span>' : '') + '</div>' +
+                '<label>Цена' + cfNumIn('cfpr', m.code, m.price, '₽') + '</label><label>Кол-во' + cfNumIn('cfq', m.code, '', '0') + '</label><label>Скидка' + cfNumIn('cfdc', m.code, '', '₽') + '</label><div class="cfs" data-c="' + esc(m.code) + '"></div></div>';
+            }).join('');
+          }).join('');
+          h += vCard('Позиции меню', '<div class="cftools"><input id="cfflt" placeholder="Найти позицию…"><label class="mvchk" style="margin:0"><input type="checkbox" id="cfall"' + (S._all ? ' checked' : '') + '> всё меню (не только прайс)</label></div>' +
+            '<div id="cfgrid">' + (rows || '<div class="empty">В меню нет блюд. Заполните «Меню и ТТК» и прайс.</div>') + '</div>');
+          var pdl = '<datalist id="cfpdl">' + (d.products || []).map(function (p) { return '<option value="' + esc(p.name) + '">' + esc(p.qty + ' ' + p.unit) + '</option>'; }).join('') + '</datalist>';
+          h += vCard('Товар со склада (без ТТК)', pdl + vForm([['cxn', 'Товар', 'text', '', 'например: вода 0,5 л'], ['cxq', 'Кол-во', 'number', '1'], ['cxu', 'Ед.', 'select', 'шт', [['шт', 'шт'], ['г', 'г'], ['кг', 'кг'], ['мл', 'мл'], ['л', 'л'], ['порц.', 'порц.']]], ['cxp', 'Цена, ₽', 'number']]) +
+            '<div class="mvbar">' + vBtn('Добавить строку', 'addx') + '</div><div id="cfextra">' + VIEWS.cafesale.h._extraHtml() + '</div>');
+          h += '<div class="card mvcard cfsum"><div class="mvb"><div id="cftotal">Позиций: 0 · Сумма: 0 ₽</div><div class="mvbar">' + vBtn('Провести продажи', 'post', '', true) + vBtn('Очистить', 'clr') + '</div></div></div>';
+        } else h += '<div class="card mvcard"><div class="mvb">Ввод продаж — у ролей с правом «Продажи кафе». Здесь — просмотр.</div></div>';
+        h += '<div id="cfcx"></div>' + vCard('Продажи за ' + (d.date || '').split('-').reverse().join('.'), vForm([['cfday', 'День', 'date', d.date || vIso()]]) + '<div class="mvbar">' + vBtn('Показать день', 'day') + '</div>' +
+          vTable([{ k: 'time', l: 'Время' }, { k: 'doc', l: 'Документ' }, { k: 'name', l: 'Позиция' }, { l: 'Кол-во', t: 'num', f: function (x) { return vNum(x.qty); } }, { l: 'Цена', t: 'num', f: function (x) { return vNum(x.price, 2); } },
+            { l: 'Сумма', t: 'num', f: function (x) { return vNum(x.sum, 2); } }, d.money ? { l: 'Себест.', t: 'num', f: function (x) { return vNum(x.cost, 2); } } : null, { k: 'payment', l: 'Оплата' }, { k: 'seller', l: 'Продавец' },
+            { l: 'Статус', html: true, f: function (x) { return vChip(x.statusRu, x.status === 'CANCELLED' ? 'r' : 'g') + (x.shortSum ? ' ' + vChip('нехватка ' + vNum(x.shortSum, 2) + ' ₽', 'a') : '') + (x.cancelReason ? '<div class="sub">' + esc(x.cancelReason) + '</div>' : ''); } }].filter(Boolean),
+            d.sales || [], d.canPost ? function (x) { return x.status === 'CANCELLED' ? '' : vBtn('Сторно', 'cancel', x.saleId); } : null, 'Продаж за день нет'));
+        vBody(h);
+        var li = document.getElementById('mvf_cxn'); if (li) li.setAttribute('list', 'cfpdl');
+        var f = document.getElementById('cfflt'); if (f) f.addEventListener('input', function () { var q = this.value.trim().toLowerCase(); [].forEach.call(document.querySelectorAll('.cfrow'), function (x) { x.style.display = !q || x.getAttribute('data-n').indexOf(q) >= 0 ? '' : 'none'; }); });
+        var al = document.getElementById('cfall'); if (al) al.addEventListener('change', function () { S._all = this.checked; S.h.load(); });
+        var gr = document.getElementById('cfgrid'); if (gr) gr.addEventListener('input', S.h.calc);
+        S.h.calc();
+      });
+    },
+    _extraHtml: function () {
+      var x = VIEWS.cafesale._extra || [];
+      return x.length ? '<ul class="cl">' + x.map(function (l, i) { return '<li>' + esc(l.name + ' × ' + l.qty + ' ' + l.unit + ' по ' + l.price + ' ₽') + ' ' + vBtn('убрать', 'delx', i) + '</li>'; }).join('') + '</ul>' : '';
+    },
+    lines: function () {
+      var by = {}, get = function (cls) { [].forEach.call(document.querySelectorAll('.' + cls), function (i) { var c = i.getAttribute('data-c'); (by[c] = by[c] || {})[cls] = i.value; }); };
+      get('cfpr'); get('cfq'); get('cfdc');
+      var out = Object.keys(by).filter(function (c) { return Number(String(by[c].cfq || '').replace(',', '.')) > 0; }).map(function (c) { return { kind: 'dish', code: c, qty: by[c].cfq, price: by[c].cfpr, discount: by[c].cfdc || 0 }; });
+      return out.concat((VIEWS.cafesale._extra || []).map(function (l) { return { kind: 'product', name: l.name, qty: l.qty, unit: l.unit, price: l.price }; }));
+    },
+    calc: function () {
+      var n = 0, sum = 0;
+      [].forEach.call(document.querySelectorAll('.cfrow'), function (row) {
+        var g = function (c) { var i = row.querySelector('.' + c); return i ? Number(String(i.value || '').replace(',', '.')) || 0 : 0; }, q = g('cfq'), s = Math.max(0, q * g('cfpr') - g('cfdc')), out = row.querySelector('.cfs');
+        if (out) out.textContent = q > 0 ? vNum(s, 2) + ' ₽' : '';
+        row.classList.toggle('on', q > 0);
+        if (q > 0) { n++; sum += s; }
+      });
+      (VIEWS.cafesale._extra || []).forEach(function (l) { n++; sum += (Number(l.qty) || 0) * (Number(l.price) || 0); });
+      var t = document.getElementById('cftotal'); if (t) t.textContent = 'Позиций: ' + n + ' · Сумма: ' + vNum(sum, 2) + ' ₽';
+    },
+    addx: function () {
+      if (!vV('cxn') || !(Number(vV('cxq')) > 0) || vV('cxp') === '') { vMsg('Нужны товар, количество и цена', 'err'); return; }
+      VIEWS.cafesale._extra.push({ name: vV('cxn'), qty: vV('cxq'), unit: vV('cxu'), price: vV('cxp') });
+      document.getElementById('cfextra').innerHTML = VIEWS.cafesale.h._extraHtml(); VIEWS.cafesale.h.calc();
+      ['cxn', 'cxp'].forEach(function (k) { var i = document.getElementById('mvf_' + k); if (i) i.value = ''; });
+    },
+    delx: function (i) { VIEWS.cafesale._extra.splice(Number(i), 1); document.getElementById('cfextra').innerHTML = VIEWS.cafesale.h._extraHtml(); VIEWS.cafesale.h.calc(); },
+    clr: function () { [].forEach.call(document.querySelectorAll('.cfq,.cfdc'), function (i) { i.value = ''; }); VIEWS.cafesale._extra = []; var x = document.getElementById('cfextra'); if (x) x.innerHTML = ''; VIEWS.cafesale.h.calc(); },
+    post: function (a, btn) {
+      var S = VIEWS.cafesale, lines = S.h.lines();
+      if (!lines.length) { vMsg('Укажите количество хотя бы у одной позиции', 'err'); return; }
+      var bad = lines.filter(function (l) { return l.price === '' || l.price === undefined; });
+      if (bad.length) { vMsg('У ' + bad.length + ' позиций нет цены — укажите цену', 'err'); return; }
+      S._pay = vV('cfp'); S._seller = vV('cfs'); S._shift = vV('cfsh');
+      vDo(btn, 'mcCafeSalePost', [JSON.stringify({ date: vV('cfd'), time: vV('cft'), payment: vV('cfp'), seller: vV('cfs'), check: vV('cfc'), shift: vV('cfsh'), lines: lines })], function (d) {
+        return 'Проведено ' + d.docId + ': ' + d.lines.length + ' поз. на ' + vNum(d.sum, 2) + ' ₽' + (d.shortages && d.shortages.length ? ' · не хватило на складе: ' + d.shortages.length + ' (см. «Расхождения»)' : '') +
+          (d.noTtk && d.noTtk.length ? ' · без состава ТТК: ' + d.noTtk.join(', ') : '') + (d.tasks ? ' · задачи по остаткам: новых ' + d.tasks.created + ', закрыто ' + d.tasks.closed : '');
+      }, function () { S._extra = []; S._date = ''; S.h.load(); });
+    },
+    day: function () { VIEWS.cafesale._date = vV('cfday'); VIEWS.cafesale.h.load(); },
+    cancel: function (id) {
+      var box = document.getElementById('cfcx'); if (!box) return;
+      box.innerHTML = vCard('Сторно продажи ' + id, '<div class="dnote">Выручка снимается. Продукты на склад не возвращаются: блюдо приготовлено — себестоимость уйдёт в потери.</div>' +
+        vForm([['cxr', 'Причина *', 'text', '', 'например: ошибка ввода, возврат гостя']]) + '<div class="mvbar">' + vBtn('Провести сторно', 'cgo', id, true) + '</div>');
+      box.scrollIntoView({ behavior: 'smooth' });
+    },
+    cgo: function (id, btn) { if (!vV('cxr')) { vMsg('Укажите причину', 'err'); return; } vDo(btn, 'mcCafeSaleCancel', [id, vV('cxr')], 'Сторно проведено', function () { VIEWS.cafesale.h.load(); }); }
+  }
+};
+
+/* ---------- Прайс кафе ---------- */
+VIEWS.cafeprices = {
+  fns: { save: 'mcCafePriceSave' },
+  title: 'Прайс кафе', sub: 'Цены продажи позиций меню. Себестоимость порции — по ТТК по средним ценам остатков (полная раскладка до сырья). «В продаже» — позиция есть в форме ввода продаж.',
+  acts: [['Обновить', 'load']],
+  open: function () { this.h.load(); },
+  h: {
+    load: function () {
+      var S = VIEWS.cafeprices; vLoading();
+      vCall('mcCafeData', [JSON.stringify({ withCost: true })]).then(function (r) {
+        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = S._d = vData(r) || {}, m = d.menu || [], fcT = 35;
+        var withP = m.filter(function (x) { return x.price !== null; }), hi = withP.filter(function (x) { return x.fc !== null && x.fc > fcT; }), loss = withP.filter(function (x) { return x.cost > x.price; });
+        var h = vKpis([['Позиций в меню', m.length], ['В прайсе', withP.length], ['Food cost > ' + fcT + ' %', hi.length, hi.length ? 'gold' : 'green'], ['Цена ниже себестоимости', loss.length, loss.length ? 'red' : 'green']]);
+        h += vCard('Цены', '<div class="cftools"><input id="cfflt" placeholder="Найти позицию…"></div>' + m.map(function (x) {
+          return '<div class="cfrow" data-n="' + esc((x.name + ' ' + (x.cat || '')).toLowerCase()) + '"><div class="cfn">' + esc(x.name) + '<div class="sub">' + esc(x.cat || '') + (x.hasTtk ? '' : ' · нет состава ТТК') + (x.costNote ? ' · ' + esc(x.costNote) : '') + '</div></div>' +
+            '<div class="cfc">себест. <b>' + (d.money ? vNum(x.cost, 2) + ' ₽' : '—') + '</b></div><label>Цена, ₽' + cfNumIn('cfpr', x.code, x.price, '') + '</label>' +
+            '<div class="cfs" data-c="' + esc(x.code) + '" data-cost="' + esc(x.cost || 0) + '"></div><label class="mvchk" style="margin:0"><input type="checkbox" class="cfact" data-c="' + esc(x.code) + '"' + (x.active || x.price === null ? ' checked' : '') + '> в продаже</label></div>';
+        }).join('') + (d.canPrice ? '<div class="mvbar">' + vBtn('Сохранить прайс', 'save', '', true) + '</div>' : ''));
+        vBody(h);
+        var f = document.getElementById('cfflt'); if (f) f.addEventListener('input', function () { var q = this.value.trim().toLowerCase(); [].forEach.call(document.querySelectorAll('.cfrow'), function (x) { x.style.display = !q || x.getAttribute('data-n').indexOf(q) >= 0 ? '' : 'none'; }); });
+        var calc = function () { [].forEach.call(document.querySelectorAll('.cfrow'), function (row) { var p = Number(String((row.querySelector('.cfpr') || {}).value || '').replace(',', '.')), s = row.querySelector('.cfs'), c = Number(s.getAttribute('data-cost')) || 0;
+          s.innerHTML = p > 0 && c > 0 ? 'food cost ' + vChip(vNum(c / p * 100, 1) + ' %', c > p ? 'r' : c / p * 100 > fcT ? 'a' : 'g') + ' · маржа ' + vNum(p - c, 2) + ' ₽' : ''; }); };
+        document.getElementById('vbody').addEventListener('input', calc); calc();
+      });
+    },
+    save: function (a, btn) {
+      var S = VIEWS.cafeprices, items = [];
+      [].forEach.call(document.querySelectorAll('.cfrow'), function (row) {
+        var i = row.querySelector('.cfpr'), ch = row.querySelector('.cfact'); if (!i || i.value === '') return;
+        items.push({ code: i.getAttribute('data-c'), price: i.value, active: !!(ch && ch.checked) });
+      });
+      if (!items.length) { vMsg('Нет цен для сохранения', 'err'); return; }
+      vDo(btn, 'mcCafePriceSave', [JSON.stringify({ items: items })], function (d) { return 'Прайс сохранён: изменено ' + d.changed; }, function () { S.h.load(); });
+    }
+  }
+};
+
+/* ---------- Расхождения при продажах ---------- */
+VIEWS.cafegaps = {
+  fns: { go: 'mcCafeGapResolve' },
+  title: 'Расхождения при продажах', sub: 'Продано больше, чем было на складе по учёту. Разберите каждое: не внесён приход (внесите его — остаток выровняется), недостача (уйдёт в аудит), ошибка ТТК (поправьте карту).',
+  acts: [['Обновить', 'load']],
+  open: function () { this.h.load(); },
+  h: {
+    load: function () {
+      var S = VIEWS.cafegaps; vLoading();
+      vCall('mcCafeData', [JSON.stringify({ gaps: true })]).then(function (r) {
+        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = vData(r) || {}, g = d.gaps || [], sum = g.reduce(function (a, x) { return a + (Number(x.sum) || 0); }, 0);
+        var h = vKpis([['Открытых', g.length, g.length ? 'red' : 'green'], d.money ? ['На сумму', vNum(sum, 2) + ' ₽', g.length ? 'red' : ''] : null]);
+        h += vCard('Открытые расхождения', g.length ? '<div class="tw"><table><thead><tr><th></th><th>Когда</th><th>Продажа</th><th>Продукт</th><th class="num">Не хватило</th>' + (d.money ? '<th class="num">Сумма</th>' : '') + '</tr></thead><tbody>' +
+          g.map(function (x) { return '<tr><td><input type="checkbox" class="cfg" value="' + esc(x.id) + '"></td><td>' + esc(x.at) + '</td><td>' + esc(x.sale) + '<div class="sub">' + esc(x.saleId) + '</div></td><td>' + esc(x.product) + '</td><td class="num">' + vNum(x.qty) + ' ' + esc(x.unit) + '</td>' + (d.money ? '<td class="num">' + vNum(x.sum, 2) + '</td>' : '') + '</tr>'; }).join('') +
+          '</tbody></table></div><div class="mvbar"><button class="btn" onclick="[].forEach.call(document.querySelectorAll(\'.cfg\'),function(i){i.checked=true})">Выбрать все</button></div>' : '<div class="empty">Расхождений нет</div>');
+        if (g.length && d.canResolve) h += vCard('Решение по выбранным', vForm([['gd', 'Решение *', 'select', 'INCOME_LATE', [['INCOME_LATE', 'Приход не был внесён (внесу приход)'], ['SHORTAGE', 'Недостача'], ['TTK_ERROR', 'Ошибка ТТК (поправлю карту)'], ['OTHER', 'Прочее']]], ['gc', 'Комментарий', 'text']]) +
+          '<div class="mvbar">' + vBtn('Записать решение', 'go', '', true) + '</div>');
+        vBody(h);
+      });
+    },
+    go: function (a, btn) {
+      var ids = [].map.call(document.querySelectorAll('.cfg:checked'), function (i) { return i.value; });
+      if (!ids.length) { vMsg('Отметьте расхождения', 'err'); return; }
+      vDo(btn, 'mcCafeGapResolve', [JSON.stringify({ ids: ids, decision: vV('gd'), comment: vV('gc') })], function (d) { return 'Разобрано: ' + d.resolved; }, function () { VIEWS.cafegaps.h.load(); });
+    }
+  }
+};
+
+/* ---------- Нормы остатков, прогноз и задачи ---------- */
+VIEWS.cafenorms = {
+  fns: { rebuild: 'mcCafeTasksRebuild', save: 'mcCafeNormSave', auto: 'mcCafeNormSave' },
+  title: 'Нормы остатков и задачи', sub: 'Расход в день — большее из фактического расхода склада и расхода по продажам (ТТК). Минимум и цель — в днях расхода (п/ф 1 и 2 дня, сырьё 2 и 5) или вручную. Ниже минимума — задача «приготовить» или «закупить».',
+  acts: [['↻ Пересчитать задачи', 'rebuild'], ['Обновить', 'load']],
+  open: function () { VIEWS.cafenorms._t = VIEWS.cafenorms._t || 'low'; this.h.load(); },
+  h: {
+    load: function () {
+      var S = VIEWS.cafenorms; vLoading();
+      vCall('mcCafePlanData', []).then(function (r) {
+        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = S._d = vData(r) || {}, it = d.items || [], q = function (x) { return x ? vNum(x.qty) + ' ' + x.unit : '—'; };
+        var low = it.filter(function (x) { return x.status === 'ниже минимума' || x.status === 'нет в наличии'; });
+        var h = vKpis([['П/ф ниже минимума', low.filter(function (x) { return x.type === 'ПФ'; }).length, 'red'], ['Сырьё ниже минимума', low.filter(function (x) { return x.type !== 'ПФ'; }).length, 'gold'],
+          ['Задач по остаткам', (d.tasks || []).length], ['Период расхода', d.days + ' дн.']]);
+        var pr = { CRITICAL: ['критический', 'r'], HIGH: ['высокий', 'r'], NORMAL: ['обычный', ''], LOW: ['низкий', 'b'] };
+        h += vCard('Задачи по остаткам', vTable([{ l: 'Приоритет', html: true, f: function (t) { var p = pr[t.priority] || [t.priority, '']; return vChip(p[0], p[1]); } }, { l: 'Задача', html: true, f: function (t) { return esc(t.title) + '<div class="sub">' + esc(t.description) + '</div>'; } },
+          { k: 'due', l: 'Срок' }], d.tasks || [], null, 'Открытых задач по остаткам нет') + '<div class="mvbar">' + (window.openView ? '<button class="btn" onclick="openView(\'tasks\')">Все задачи (выполнение)</button><button class="btn" onclick="openView(\'pfincome\')">Приход п/ф</button>' : '') + '</div>');
+        h += '<div id="cfne"></div>';
+        var shown = it.filter(function (x) { return S._t === 'all' ? (x.have.qty > 0 || x.min.qty > 0) : S._t === 'pf' ? x.type === 'ПФ' : S._t === 'raw' ? x.type !== 'ПФ' && (x.have.qty > 0 || x.min.qty > 0) : S._t === 'manual' ? x.mode === 'вручную' : (x.status === 'ниже минимума' || x.status === 'нет в наличии' || x.expSoon || x.expired); });
+        h += vCard('Остатки и нормы', vForm([['nt', 'Показать', 'select', S._t, [['low', 'требуют внимания'], ['pf', 'полуфабрикаты'], ['raw', 'сырьё'], ['manual', 'нормы вручную'], ['all', 'всё с остатком или нормой']]]]) + '<div class="mvbar">' + vBtn('Показать', 'flt') + '</div>' +
+          vTable([{ k: 'name', l: 'Позиция' }, { k: 'type', l: 'Тип' }, { l: 'Остаток', f: function (x) { return q(x.have); } }, { l: 'Расход/день', f: function (x) { return x.rate ? q(x.rate) + (x.rateSrc ? ' (' + x.rateSrc + ')' : '') : '—'; } },
+            { l: 'Минимум', f: function (x) { return q(x.min); } }, { l: 'Цель', f: function (x) { return q(x.target); } }, { k: 'mode', l: 'Норма' }, { l: 'Хватит, дн.', t: 'num', f: function (x) { return x.cover === null ? '' : x.cover; } },
+            { l: 'Статус', html: true, f: function (x) { return vChip(x.status) + (x.expSoon ? ' ' + vChip('истекает: ' + x.expSoon, 'a') : '') + (x.expired ? ' ' + vChip('просрочено: ' + x.expired, 'r') : ''); } }],
+            shown, d.canEdit ? function (x, i) { return vBtn('Норма', 'edit', x.key) + (x.mode === 'вручную' ? vBtn('Авто', 'auto', x.key) : ''); } : null, 'Нет позиций'));
+        h += vCard('Прогноз на завтра: полуфабрикаты', vTable([{ k: 'name', l: 'П/ф' }, { k: 'need', l: 'Нужно' }, { k: 'have', l: 'Есть' }, { l: 'Не хватает', html: true, f: function (x) { return x.short ? vChip(x.gap, 'r') : vChip('хватает', 'g'); } }], d.pfTomorrow || [], null, 'Нет продаж для прогноза'));
+        h += vCard('Прогноз на завтра: блюда', vTable([{ k: 'name', l: 'Блюдо' }, { l: 'В среднем в день', t: 'num', f: function (x) { return vNum(x.perDay, 1); } }, { l: 'Завтра (по дню недели)', t: 'num', f: function (x) { return vNum(x.tomorrow, 1); } }], d.forecast || [], null, 'Продаж за период нет'));
+        var c = d.cfg || {};
+        h += '<div class="card mvcard"><div class="mvb dnote">Нормы по умолчанию: п/ф — минимум ' + c.pfMin + ' и цель ' + c.pfTarget + ' дн. расхода, сырьё — ' + c.rawMin + ' и ' + c.rawTarget + ' дн. Меняются свойствами скрипта MC_CAFE_PF_MIN_DAYS, MC_CAFE_PF_TARGET_DAYS, MC_CAFE_RAW_MIN_DAYS, MC_CAFE_RAW_TARGET_DAYS; период расхода — MC_CAFE_RATE_DAYS.</div></div>';
+        vBody(h);
+      });
+    },
+    flt: function () { VIEWS.cafenorms._t = vV('nt'); VIEWS.cafenorms.h.load(); },
+    rebuild: function (a, btn) { vDo(btn, 'mcCafeTasksRebuild', [], function (d) { return 'Задачи: новых ' + d.created + ', обновлено ' + d.updated + ', закрыто ' + d.closed + ', открыто ' + d.open; }, function () { VIEWS.cafenorms.h.load(); }); },
+    edit: function (key) {
+      var S = VIEWS.cafenorms, x = (S._d.items || []).filter(function (i) { return i.key === key; })[0]; if (!x) return;
+      var units = x.base === 'г' ? [['г', 'г'], ['кг', 'кг']] : x.base === 'мл' ? [['мл', 'мл'], ['л', 'л']] : [['шт', 'шт']], box = document.getElementById('cfne');
+      S._edit = x;
+      box.innerHTML = vCard('Норма: ' + x.name, '<div class="dnote">Сейчас: остаток ' + vNum(x.have.qty) + ' ' + x.have.unit + ', расход ' + (x.rate ? vNum(x.rate.qty) + ' ' + x.rate.unit + '/день' : 'не определён') + '. Пустое поле — по расходу (авто).</div>' +
+        vForm([['nu', 'Единица', 'select', x.min.unit, units], ['nm', 'Минимум', 'number', x.mode === 'вручную' ? x.min.qty : ''], ['ng', 'Цель', 'number', x.mode === 'вручную' ? x.target.qty : ''], ['nc', 'Комментарий', 'text']]) +
+        '<div class="mvbar">' + vBtn('Сохранить норму', 'save', key, true) + '</div>');
+      box.scrollIntoView({ behavior: 'smooth' });
+    },
+    save: function (key, btn) {
+      var x = VIEWS.cafenorms._edit; if (!x) return;
+      vDo(btn, 'mcCafeNormSave', [JSON.stringify({ name: x.name, type: x.type, unit: vV('nu'), min: vV('nm'), target: vV('ng'), comment: vV('nc') })], 'Норма сохранена, задачи пересчитаны', function () { VIEWS.cafenorms.h.load(); });
+    },
+    auto: function (key, btn) {
+      var x = (VIEWS.cafenorms._d.items || []).filter(function (i) { return i.key === key; })[0]; if (!x) return;
+      vDo(btn, 'mcCafeNormSave', [JSON.stringify({ name: x.name, unit: x.base, clear: true })], 'Норма снова считается по расходу', function () { VIEWS.cafenorms.h.load(); });
+    }
+  }
+};
+
+/* ---------- Расходы и статьи ---------- */
+VIEWS.cafeexpenses = {
+  fns: { add: 'mcCafeExpenseAdd', cancel: 'mcCafeExpenseCancel', cgo: 'mcCafeExpenseCancel', asave: 'mcCafeArticleSave' },
+  title: 'Расходы', sub: 'Расходы предприятия по статьям: дата, сумма, документ-основание. Ошибочный расход — сторно с причиной (запись остаётся). План статьи на месяц — для план-факта и точки безубыточности.',
+  acts: [['Обновить', 'load']],
+  open: function () { this.h.load(); },
+  h: (function () {
+    var H = {
+      load: function () {
+        var S = VIEWS.cafeexpenses; vLoading();
+        vCall('mcCafeEconData', [JSON.stringify({ from: S._from || '', to: S._to || '' })]).then(function (r) {
+          var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+          var d = S._d = vData(r) || {}, p = d.pnl || {}, arts = (d.articles || []).filter(function (a) { return a.active; });
+          var h = vKpis([['Расходы за период', vNum(p.opex, 2) + ' ₽', 'wine'], ['Из них постоянные', vNum(p.fixedOpex, 2) + ' ₽'], ['Записей', (d.expenses || []).filter(function (x) { return x.status !== 'CANCELLED'; }).length]]);
+          if (d.canEdit) {
+            var opts = []; (d.groups || []).forEach(function (g) { arts.filter(function (a) { return a.group === g; }).forEach(function (a) { opts.push([a.code, g + ' · ' + a.name]); }); });
+            h += vCard('Новый расход', vForm([['ed', 'Дата *', 'date', vIso()], ['ea', 'Статья *', 'select', '', [['', '— выберите —']].concat(opts)], ['es', 'Сумма, ₽ *', 'number'], ['ep', 'Оплата', 'select', 'Безналичный', [['Безналичный', 'безналичный'], ['Наличные', 'наличные'], ['Карта', 'карта']]],
+              ['ek', 'Контрагент', 'text', '', 'кому заплатили'], ['edoc', 'Документ', 'text', '', 'счёт, акт, чек №'], ['ec', 'Комментарий', 'text']]) + '<div class="mvbar">' + vBtn('Записать расход', 'add', '', true) + '</div>');
+          }
+          h += cfPeriodForm(S) + '<div id="cfex"></div>';
+          h += vCard('Расходы за период', vTable([{ k: 'date', l: 'Дата' }, { k: 'article', l: 'Статья' }, { k: 'group', l: 'Группа' }, { l: 'Сумма', t: 'num', f: function (x) { return vNum(x.sum, 2); } }, { k: 'counterparty', l: 'Контрагент' }, { k: 'doc', l: 'Документ' },
+            { l: 'Статус', html: true, f: function (x) { return x.status === 'CANCELLED' ? vChip('сторно', 'r') + '<div class="sub">' + esc(x.cancelReason) + '</div>' : vChip('проведён', 'g') + (x.doc ? '' : ' ' + vChip('без документа', 'a')); } }, { k: 'author', l: 'Внёс' }],
+            d.expenses || [], d.canEdit ? function (x) { return x.status === 'CANCELLED' ? '' : vBtn('Сторно', 'cancel', x.id); } : null, 'Расходов за период нет'));
+          h += vCard('Статьи расходов', vTable([{ k: 'name', l: 'Статья' }, { k: 'group', l: 'Группа' }, { k: 'type', l: 'Тип' }, { l: 'План в месяц', t: 'num', f: function (x) { return x.plan ? vNum(x.plan, 2) : '—'; } },
+            { l: 'Активна', html: true, f: function (x) { return x.active ? vChip('да', 'g') : vChip('нет', 'b'); } }], d.articles || [], d.canEdit ? function (x) { return vBtn('Изменить', 'aedit', x.code); } : null, 'Статей нет') +
+            (d.canEdit ? '<div class="mvbar">' + vBtn('+ Новая статья', 'aedit', '') + '</div><div id="cfae"></div>' : ''));
+          vBody(h);
+        });
+      },
+      add: function (a, btn) {
+        if (!vV('ea') || !(Number(vV('es')) > 0)) { vMsg('Нужны статья и сумма', 'err'); return; }
+        vDo(btn, 'mcCafeExpenseAdd', [JSON.stringify({ date: vV('ed'), code: vV('ea'), sum: vV('es'), payment: vV('ep'), counterparty: vV('ek'), doc: vV('edoc'), comment: vV('ec') })],
+          function (d) { return 'Расход ' + d.id + ' записан: ' + d.article + ' ' + vNum(d.sum, 2) + ' ₽' + (d.noDoc ? ' (без документа — аудит это отметит)' : ''); }, function () { VIEWS.cafeexpenses.h.load(); });
+      },
+      cancel: function (id) {
+        var box = document.getElementById('cfex'); if (!box) return;
+        box.innerHTML = vCard('Сторно расхода ' + id, vForm([['exr', 'Причина *', 'text', '', 'например: внесено дважды']]) + '<div class="mvbar">' + vBtn('Провести сторно', 'cgo', id, true) + '</div>');
+        box.scrollIntoView({ behavior: 'smooth' });
+      },
+      cgo: function (id, btn) { if (!vV('exr')) { vMsg('Укажите причину', 'err'); return; } vDo(btn, 'mcCafeExpenseCancel', [id, vV('exr')], 'Сторно расхода проведено', function () { VIEWS.cafeexpenses.h.load(); }); },
+      aedit: function (code) {
+        var S = VIEWS.cafeexpenses, a = (S._d.articles || []).filter(function (x) { return x.code === code; })[0] || { code: '', name: '', group: 'Прочие', type: 'переменные', plan: '', active: true }, box = document.getElementById('cfae');
+        S._acode = a.code;
+        box.innerHTML = vCard(a.code ? 'Статья: ' + a.name : 'Новая статья', vForm([['an', 'Название *', 'text', a.name], ['ag', 'Группа', 'select', a.group, (S._d.groups || []).map(function (g) { return [g, g]; })],
+          ['at', 'Тип', 'select', a.type, [['постоянные', 'постоянные'], ['переменные', 'переменные']]], ['ap', 'План в месяц, ₽', 'number', a.plan || ''], ['aa', 'Активна', 'check', a.active]]) + '<div class="mvbar">' + vBtn('Сохранить статью', 'asave', '', true) + '</div>');
+        box.scrollIntoView({ behavior: 'smooth' });
+      },
+      asave: function (x, btn) {
+        if (!vV('an')) { vMsg('Укажите название', 'err'); return; }
+        vDo(btn, 'mcCafeArticleSave', [JSON.stringify({ code: VIEWS.cafeexpenses._acode || '', name: vV('an'), group: vV('ag'), type: vV('at'), plan: vV('ap'), active: vV('aa') })], 'Статья сохранена', function () { VIEWS.cafeexpenses.h.load(); });
+      }
+    };
+    var P = cfPeriodH('cafeexpenses'); Object.keys(P).forEach(function (k) { H[k] = P[k]; });
+    return H;
+  })()
+};
+
+/* ---------- Прибыли и убытки ---------- */
+VIEWS.cafepnl = {
+  fns: {},
+  title: 'Прибыли и убытки', sub: 'Отчёт за период из первичных записей: продажи и себестоимость по ТТК, сторно, списания, расходы по статьям. Закупки — справочно (в прибыль идёт себестоимость проданного).',
+  acts: [['Обновить', 'load']],
+  open: function () { this.h.load(); },
+  h: (function () {
+    var H = {
+      load: function () {
+        var S = VIEWS.cafepnl; vLoading();
+        vCall('mcCafeEconData', [JSON.stringify({ from: S._from || '', to: S._to || '' })]).then(function (r) {
+          var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+          var d = vData(r) || {}, p = d.pnl || {}, fcT = d.fcTarget || 35;
+          var h = cfPeriodForm(S) + vKpis([['Выручка', vNum(p.revenue, 2) + ' ₽', 'wine', 'в день ' + vNum(p.perDay, 2) + ' ₽'], ['Средний чек', vNum(p.avgCheck, 2) + ' ₽', '', p.checks + ' чек.'],
+            ['Food cost', p.foodCost === null ? '—' : vNum(p.foodCost, 1) + ' %', p.foodCost !== null && p.foodCost > fcT ? 'red' : 'green', 'цель ≤ ' + fcT + ' %'], ['Валовая прибыль', vNum(p.gross, 2) + ' ₽', '', vNum(p.grossPct, 1) + ' %'],
+            ['Операционная прибыль', vNum(p.operating, 2) + ' ₽', p.operating < 0 ? 'red' : 'green', p.margin === null ? '' : 'рентабельность ' + vNum(p.margin, 1) + ' %'],
+            ['Точка безубыточности', p.breakEven === null ? '—' : vNum(p.breakEven, 2) + ' ₽', p.breakEven !== null && p.revenue < p.breakEven ? 'red' : '', 'выручка за период при постоянных ' + vNum(p.fixedForBe, 2) + ' ₽']]);
+          h += vCard('Отчёт о прибылях и убытках · ' + (p.period ? p.period.from.split('-').reverse().join('.') + ' — ' + p.period.to.split('-').reverse().join('.') : ''),
+            '<div class="tw"><table class="cfpnl"><thead><tr><th>Статья</th><th class="num">Сумма, ₽</th><th class="num">% выручки</th></tr></thead><tbody>' + (p.lines || []).map(function (l) {
+              var b = /^(Выручка|Валовая прибыль|Операционная прибыль)$/.test(l.line);
+              return '<tr' + (b ? ' class="cfb"' : /^Справочно/.test(l.line) ? ' class="cfm"' : '') + '><td>' + esc(l.line) + '</td><td class="num">' + vNum(l.sum, 2) + '</td><td class="num">' + (l.pct === '' ? '' : vNum(l.pct, 1)) + '</td></tr>';
+            }).join('') + '</tbody></table></div>');
+          h += vCard('План-факт расходов', vTable([{ k: 'article', l: 'Статья' }, { k: 'group', l: 'Группа' }, { l: 'План', t: 'num', f: function (x) { return vNum(x.plan, 2); } }, { l: 'Факт', t: 'num', f: function (x) { return vNum(x.fact, 2); } },
+            { l: 'Откл.', t: 'num', f: function (x) { return vNum(x.diff, 2); } }, { l: 'Исполнение', html: true, f: function (x) { return x.pct === null ? '—' : cfBar(x.pct, x.pct > 110 ? 'var(--red)' : '') + ''; } }], p.planVsFact || [], null, 'Нет плана и расходов'));
+          var max = Math.max.apply(null, (p.days || []).map(function (x) { return x.rev; }).concat([1]));
+          h += vCard('Выручка по дням', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { l: 'Выручка', html: true, f: function (x) { return '<div class="cfdb"><i style="width:' + Math.round(x.rev / max * 100) + '%"></i><span>' + vNum(x.rev, 2) + '</span></div>'; } },
+            { l: 'Food cost', t: 'num', f: function (x) { return x.fc === null ? '—' : vNum(x.fc, 1) + ' %'; } }, { k: 'lines', l: 'Позиций', t: 'num' }], (p.days || []).slice().reverse(), null, 'Продаж нет'));
+          var clsT = { 'Звезда': 'g', 'Рабочая лошадка': 'a', 'Загадка': 'b', 'Собака': 'r' };
+          h += vCard('Меню-инжиниринг и ABC', '<div class="dnote">Популярность — доля позиции в продажах против 70 % средней доли; маржа — маржа на порцию против средней. A — 80 % выручки, B — следующие 15 %, C — остальное.</div>' +
+            vTable([{ k: 'name', l: 'Позиция' }, { l: 'Продано', t: 'num', f: function (x) { return vNum(x.qty); } }, { l: 'Доля, %', t: 'num', f: function (x) { return vNum(x.mix, 1); } }, { l: 'Выручка', t: 'num', f: function (x) { return vNum(x.rev, 2); } },
+              { l: 'Food cost', t: 'num', f: function (x) { return x.fc === null ? '—' : vNum(x.fc, 1) + ' %'; } }, { l: 'Маржа/порц.', t: 'num', f: function (x) { return vNum(x.unitMargin, 2); } }, { k: 'abc', l: 'ABC' },
+              { l: 'Класс', html: true, f: function (x) { return vChip(x.cls, clsT[x.cls]); } }, { k: 'advice', l: 'Что делать' }], p.menu || [], null, 'Продаж нет'));
+          h += vCard('Оплаты и списания', vTable([{ k: 'name', l: 'Вид оплаты' }, { l: 'Сумма', t: 'num', f: function (x) { return vNum(x.sum, 2); } }], p.byPay || [], null, 'Нет') +
+            vTable([{ k: 'k', l: 'Списания' }, { l: 'Сумма', t: 'num', f: function (x) { return vNum(x.v, 2); } }], Object.keys((p.writeOffs || {}).byReason || {}).map(function (k) { return { k: k, v: p.writeOffs.byReason[k] }; }), null, 'Списаний нет'));
+          vBody(h);
+        });
+      }
+    };
+    var P = cfPeriodH('cafepnl'); Object.keys(P).forEach(function (k) { H[k] = P[k]; });
+    return H;
+  })()
+};
+
+/* ---------- Аудит предприятия ---------- */
+VIEWS.cafeaudit = {
+  fns: { run: 'mcCafeAuditRun' },
+  title: 'Аудит предприятия', sub: 'Внутренний аудит по записям системы: склад и партии, продажи и меню, экономика, задачи, ХАССП и персонал, целостность учёта. Не заключение надзорного органа.',
+  acts: [['Обновить', 'load']],
+  open: function () { this.h.load(); },
+  h: {
+    load: function () {
+      var S = VIEWS.cafeaudit; vLoading();
+      vCall('mcCafeAuditData', []).then(function (r) {
+        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = S._d = vData(r) || {};
+        var h = d.canRun ? vCard('Провести аудит', vForm([['ad', 'Период', 'select', '30', [['7', '7 дней'], ['30', '30 дней'], ['60', '60 дней'], ['90', '90 дней']]], ['at', 'Поставить задачи по критичным и высоким находкам', 'check', true]]) +
+          '<div class="mvbar">' + vBtn('▶ Провести аудит', 'run', '', true) + '</div>') : '';
+        h += '<div id="cfar">' + (d.last ? S.h._res(d.last) : '<div class="empty">Аудит ещё не проводился</div>') + '</div>';
+        h += vCard('История', vTable([{ k: 'at', l: 'Когда' }, { k: 'who', l: 'Кто' }, { k: 'days', l: 'Дней', t: 'num' }, { l: 'Балл', html: true, f: function (x) { return cfBar(x.score, x.score < 70 ? 'var(--red)' : x.score < 85 ? 'var(--gold)' : 'var(--green)'); } },
+          { k: 'grade', l: 'Оценка' }, { k: 'critical', l: 'Критичных', t: 'num' }, { k: 'high', l: 'Высоких', t: 'num' }], d.history || [], null, 'Прогонов нет'));
+        vBody(h);
+      });
+    },
+    _res: function (a) {
+      var S = VIEWS.cafeaudit; S._f = a.findings || [];
+      var tone = a.score >= 85 ? 'green' : a.score >= 70 ? 'gold' : 'red', st = { CRITICAL: 'r', HIGH: 'r', MEDIUM: 'a', LOW: 'b' };
+      return vKpis([['Балл', a.score, tone, a.grade + (a.prevScore !== null && a.prevScore !== undefined ? ' · прошлый ' + a.prevScore : '')], ['Критичных', a.critical, a.critical ? 'red' : 'green'], ['Высоких', a.high, a.high ? 'red' : 'green'],
+        ['Находок', (a.findings || []).length, '', a.at + (a.tasks ? ' · задач: ' + a.tasks : '')]]) +
+        vCard('Разделы', (a.areas || []).map(function (x) { return '<div class="cfar"><span>' + esc(x.area) + (x.findings ? ' · ' + x.findings : '') + '</span>' + cfBar(x.score, x.score < 70 ? 'var(--red)' : x.score < 85 ? 'var(--gold)' : 'var(--green)') + '</div>'; }).join('')) +
+        vCard('Находки', vTable([{ l: 'Важность', html: true, f: function (f) { return vChip(f.sevRu, st[f.sev]); } }, { k: 'area', l: 'Раздел' }, { l: 'Находка', html: true, f: function (f) { return '<b>' + esc(f.title) + '</b>' + (f.detail ? '<div class="sub">' + esc(f.detail) + '</div>' : ''); } },
+          { k: 'todo', l: 'Что сделать' }, { l: 'Сумма', t: 'num', f: function (f) { return f.sum === null || f.sum === undefined ? '' : vNum(f.sum, 2) + ' ₽'; } }], a.findings || [], function (f, i) { return f.go ? vBtn('Открыть', 'go', i) : ''; }, 'Находок нет — всё в порядке'));
+    },
+    run: function (a, btn) {
+      vDo(btn, 'mcCafeAuditRun', [JSON.stringify({ days: vV('ad'), tasks: vV('at') })], function (d) { return 'Аудит проведён: балл ' + d.score + ' (' + d.grade + '), находок ' + d.findings.length + (d.tasks ? ', задач поставлено ' + d.tasks : ''); },
+        function (d) { var box = document.getElementById('cfar'); if (box) box.innerHTML = VIEWS.cafeaudit.h._res(d); });
+    },
+    go: function (i) { var f = (VIEWS.cafeaudit._f || [])[Number(i)]; if (f && f.go) goTo(f.go); }
   }
 };
 

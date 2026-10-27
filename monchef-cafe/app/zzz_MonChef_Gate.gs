@@ -59,6 +59,16 @@ function _mcGateRole_(s) { _MC_GATE_DEPTH++; try { var r = getRolePermissions(s.
 // Сессия текущего вызова из интерфейса (null — запуск по расписанию/из редактора)
 function mcGateSession_() { return _MC_GATE_SESSION; }
 
+// MON CHEF · Кафе: функции модулей кафе (MonChef_ZCafe_*.gs, список MC_CAFE_GATE_) — в те же списки шлюза:
+// право (MC_GATE_NEED_), вызов из интерфейса, запись (защита от двойного нажатия), запрет технического входа.
+if (typeof MC_CAFE_GATE_ !== 'undefined' && MC_CAFE_GATE_) Object.keys(MC_CAFE_GATE_).forEach(function (n) {
+  var c = MC_CAFE_GATE_[n], add = function (a) { if (a.indexOf(n) < 0) a.push(n); };
+  MC_GATE_NEED_[n] = c[0]; MC_GATE_PERM_[n] = c[0]; add(MC_GATE_CLIENT_);
+  if (c[1]) add(MC_GATE_MUT_);
+  if (c[2]) add(MC_GATE_DEVNO_);
+});
+if (typeof MC_CAFE_TRIGGERS_ !== 'undefined') MC_CAFE_TRIGGERS_.forEach(function (n) { if (MC_GATE_TRIGGER_.indexOf(n) < 0) MC_GATE_TRIGGER_.push(n); });
+
 (function (g) {
   var set = function (a) { var o = {}; a.forEach(function (n) { o[n] = true; }); return o; };
   var CL = set(MC_GATE_CLIENT_), MUT = set(MC_GATE_MUT_), DEVNO = set(MC_GATE_DEVNO_), NOOP = set(MC_GATE_NOOP_), NOAUD = set(MC_GATE_NOAUDIT_),

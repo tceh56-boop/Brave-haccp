@@ -339,7 +339,7 @@ function mcTaskData(json, token) {
     }).map(function (x) {
       var overdue = ['PLANNED', 'READY', 'IN_PROGRESS'].indexOf(String(x.Status)) >= 0 && isD(x.DueAt) && x.DueAt < now, e = ex[String(x.TaskID)] || {};
       var fmt = function (d) { return isD(d) ? Utilities.formatDate(d, tz, 'dd.MM.yyyy HH:mm') : ''; };
-      return { taskId: String(x.TaskID), source: String(x.SourceType) === 'MANUAL' ? 'вручную' : String(x.SourceType) === 'PRODUCTION_SCHEDULE' ? 'производство' : String(x.SourceType || ''),
+      return { taskId: String(x.TaskID), source: String(x.SourceType) === 'MANUAL' ? 'вручную' : String(x.SourceType) === 'PRODUCTION_SCHEDULE' ? 'производство' : String(x.SourceType) === 'CAFE_STOCK' ? 'остатки' : String(x.SourceType) === 'CAFE_AUDIT' ? 'аудит' : String(x.SourceType || ''),
         title: String(x.Title || ''), description: String(x.Description || ''), due: fmt(x.DueAt), dueTs: isD(x.DueAt) ? x.DueAt.getTime() : 0,
         assignedTo: String(x.AssignedTo || ''), priority: String(x.Priority || 'NORMAL'), priorityRu: MC_LB_PRIO_RU_[String(x.Priority)] || String(x.Priority || ''),
         status: overdue ? 'OVERDUE' : String(x.Status), statusRu: MC_LB_TSTATUS_RU_[overdue ? 'OVERDUE' : String(x.Status)] || String(x.Status), createdBy: String(x.CreatedBy || ''),
