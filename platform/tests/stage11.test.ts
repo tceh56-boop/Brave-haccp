@@ -194,3 +194,17 @@ describe('Аллергены при ошибке данных', () => {
     expect(c.allergens.complete).toBe(false);
   });
 });
+
+describe('Правка черновика ТТК', () => {
+  it('частичное сохранение не стирает остальные поля карты', async () => {
+    const d = await createDish(chef.id, orgId, { name: 'Тефтели частично' });
+    const v = (await getDish(chef.id, orgId, d.id)).current!.version.id;
+    await updateVersion(chef.id, orgId, v, { yieldG: 1655, technology: 'Тушат в пароконвектомате.', storageConditions: 'не ниже +65 °C', shelfLife: '3 часа' });
+    await updateVersion(chef.id, orgId, v, { portionG: 1655 });
+    const x = (await getDish(chef.id, orgId, d.id)).current!.version;
+    expect(x).toMatchObject({ technology: 'Тушат в пароконвектомате.', storage_conditions: 'не ниже +65 °C', shelf_life: '3 часа' });
+    expect(Number(x.yield_g)).toBe(1655); expect(Number(x.portion_g)).toBe(1655);
+    await updateVersion(chef.id, orgId, v, { shelfLife: '' });   // явная очистка
+    expect((await getDish(chef.id, orgId, d.id)).current!.version.shelf_life).toBeNull();
+  });
+});

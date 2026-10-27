@@ -431,16 +431,23 @@ export async function scaleVersion(userId: string, orgId: string, versionId: str
   });
 }
 
+/** Правка черновика: меняются только переданные поля (отсутствующий ключ — значение не трогать, null/'' — очистить). */
 export async function updateVersion(userId: string, orgId: string, versionId: string, input: unknown) {
   const d = parse(VersionInput, input);
+  const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const COLS: [keyof typeof d, string, (x: unknown) => unknown][] = [
+    ['yieldG', 'yield_g', (x) => x ?? null], ['portionG', 'portion_g', (x) => x ?? null], ['technology', 'technology', (x) => x ?? null],
+    ['storageConditions', 'storage_conditions', (x) => x ?? null], ['shelfLife', 'shelf_life', (x) => x ?? null], ['quality', 'quality', (x) => x ?? null],
+    ['allergens', 'allergens', (x) => x ?? null], ['shelfLifeHours', 'shelf_life_hours', (x) => x ?? null], ['semiYieldG', 'semi_yield_g', (x) => x ?? null],
+    ['serving', 'serving', (x) => x ?? null], ['menuDescription', 'menu_description', (x) => x ?? null],
+  ];
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const v = await draftVersion(tx, orgId, versionId);
-    await tx.query(`update ttk_versions set yield_g = $2, portion_g = $3, technology = $4, storage_conditions = $5, shelf_life = $6, quality = $7, allergens = $8, shelf_life_hours = $9, return_note = null,
-        card_date = coalesce($10, card_date), semi_yield_g = case when $11::boolean then $12 else semi_yield_g end, organoleptic = coalesce($13, organoleptic),
-        serving = case when $14::boolean then $15 else serving end, menu_description = case when $16::boolean then $17 else menu_description end where id = $1`,
-      [versionId, d.yieldG ?? null, d.portionG ?? null, d.technology, d.storageConditions, d.shelfLife, d.quality, d.allergens, d.shelfLifeHours ?? null,
-        d.cardDate || null, d.semiYieldG !== undefined, d.semiYieldG ?? null, d.organoleptic ? JSON.stringify(d.organoleptic) : null,
-        d.serving !== undefined, d.serving ?? null, d.menuDescription !== undefined, d.menuDescription ?? null]);
+    const sets: string[] = ['return_note = null'], args: unknown[] = [versionId];
+    for (const [k, col, f] of COLS) if (k in raw) { args.push(f(d[k])); sets.push(`${col} = $${args.length}`); }
+    if (d.cardDate) { args.push(d.cardDate); sets.push(`card_date = $${args.length}`); }
+    if (d.organoleptic) { args.push(JSON.stringify(d.organoleptic)); sets.push(`organoleptic = $${args.length}`); }
+    await tx.query(`update ttk_versions set ${sets.join(', ')} where id = $1`, args);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.update', entityType: 'ttk_version', entityId: versionId,
       before: { yield_g: v.yield_g, portion_g: v.portion_g, shelf_life: v.shelf_life }, after: d });
     return { ok: true };
