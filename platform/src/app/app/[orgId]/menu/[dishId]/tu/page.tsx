@@ -6,6 +6,7 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
 import { Ingredients, type Prod } from '@/components/IngredientData';
+import { MicroPicker } from '@/components/MicroPicker';
 
 /**
  * Технические условия блюда/п/ф: расчёт из утверждённой ТТК (КБЖУ с потерями, физико-химия, рецептура на 100 кг,
@@ -21,10 +22,11 @@ export interface TuCalc {
   recipe: { name: string; kind: string; netto_g: number | null; per_1kg_g: number | null; per_100kg_kg: number | null }[];
   allergens: { contains: { code: string; label: string; sources: string[] }[]; suggest: { code: string; label: string; sources: string[] }[]; no_profile: string[]; complete: boolean };
   storage: { conditions: string | null; shelf_life: string | null };
-  micro: { group: string; indicators: { code: string; name: string; method: string; norm: string | null }[] };
+  micro: { mode?: string; code: string | null; group: string | null; confirmed: boolean; index: string | null; note: string | null; suggested: { code: string; name: string } | null;
+    indicators: { code: string; name: string; method: string; norm: string | null; basis: string | null }[] };
   organoleptic: string; channel: string;
   normative: { code: string; title: string; use: string; state: string }[];
-  designation: string; status: string; warnings: string[]; generated_at: string;
+  designation: string; status: string; errors?: string[]; warnings: string[]; generated_at: string;
 }
 interface Data { params: Record<string, unknown> & { micro?: Record<string, string> }; calc: TuCalc; products: Prod[];
   versions: { version: number; designation: string; lab_protocol: string; approved_at: string; approved_by_name: string; ttk_version: number }[];
@@ -44,9 +46,10 @@ export default function TuPage({ params }: { params: Promise<{ dishId: string }>
     <>
       <p className="small"><Link href={`/app/${org.id}/menu/${dishId}`}>← {c.object.name}</Link></p>
       <h1 style={{ marginBottom: 4 }}>Технические условия</h1>
-      <p className="row" style={{ marginTop: 0 }}><span className={`badge ${c.status === 'ready' ? 'ok' : 'warn'}`}>{c.status === 'ready' ? 'Готов к испытаниям' : 'Проект'}</span><span className="small muted">{c.designation} · по ТТК v{c.object.ttk_version}</span></p>
+      <p className="row" style={{ marginTop: 0 }}><span className={`badge ${c.status === 'ready' ? 'ok' : c.status === 'error' ? 'crit' : 'warn'}`}>{c.status === 'ready' ? 'Готов к испытаниям' : c.status === 'error' ? 'Ошибка в данных' : 'Проект'}</span><span className="small muted">{c.designation} · по ТТК v{c.object.ttk_version}</span></p>
       <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/tu/print`}>Документ ТУ (печать, PDF)</Link>
       {error && <div className="err" role="alert">{error}</div>}
+      {(c.errors || []).length > 0 && <div className="err"><b>Ошибки в данных — ТУ с ними выпускать нельзя:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{(c.errors || []).map((w) => <li key={w} className="small">{w}</li>)}</ul></div>}
       {c.warnings.length > 0 && <div className="note"><b>Чтобы ТУ стали «готовы к испытаниям»:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{c.warnings.map((w) => <li key={w} className="small">{w}</li>)}</ul></div>}
 
       <div className="card">
@@ -110,8 +113,9 @@ function Params({ data, dishId, onDone }: { data: Data; dishId: string; onDone: 
   const { org } = useOrg();
   const p = data.params;
   const s = (k: string) => (p[k] === null || p[k] === undefined ? '' : String(p[k]));
-  const [f, setF] = useState({ processing: s('processing'), tolerance: p.tolerance != null ? String(Math.round(Number(p.tolerance) * 100)) : '10', microGroup: s('microGroup'), organoleptic: s('organoleptic'),
+  const [f, setF] = useState({ processing: s('processing'), tolerance: p.tolerance != null ? String(Math.round(Number(p.tolerance) * 100)) : '10', organoleptic: s('organoleptic'),
     channel: s('channel'), okpd2: s('okpd2'), seq: s('seq'), okpo: s('okpo'), micro: { ...(p.micro || {}) } as Record<string, string> });
+  const [mv, setMv] = useState({ microGroupCode: s('microGroupCode'), micro: { ...(p.micro || {}) } as Record<string, string>, microIndex: s('microIndex') });
   const { busy, error, run } = useSubmit();
   const [saved, setSaved] = useState(false);
   return (
@@ -119,7 +123,8 @@ function Params({ data, dishId, onDone }: { data: Data; dishId: string; onDone: 
       <h2>Параметры ТУ</h2>
       <form onSubmit={(e) => { e.preventDefault(); run(async () => {
         await api(`/orgs/${org.id}/dishes/${dishId}/tu`, { method: 'PUT', body: { ...f, processing: f.processing || null, tolerance: Number(f.tolerance.replace(',', '.')) / 100,
-          microGroup: f.microGroup || null, organoleptic: f.organoleptic || null, channel: f.channel || null } }); setSaved(true); onDone();
+          microGroupCode: mv.microGroupCode || null, micro: mv.microGroupCode === 'custom' ? mv.micro : {}, microIndex: mv.microGroupCode === 'custom' ? mv.microIndex || null : null,
+          organoleptic: f.organoleptic || null, channel: f.channel || null } }); setSaved(true); onDone();
       }); }}>
         <div className="grid2">
           <div><label htmlFor="tp">Обработка</label><select id="tp" value={f.processing} onChange={(e) => setF({ ...f, processing: e.target.value })}>
@@ -128,15 +133,11 @@ function Params({ data, dishId, onDone }: { data: Data; dishId: string; onDone: 
           <div><label htmlFor="to">ОКПД2 продукции</label><input id="to" value={f.okpd2} onChange={(e) => setF({ ...f, okpd2: e.target.value })} placeholder="10.85.19" /></div>
           <div><label htmlFor="tk">ОКПО предприятия</label><input id="tk" inputMode="numeric" value={f.okpo} onChange={(e) => setF({ ...f, okpo: e.target.value })} /></div>
           <div><label htmlFor="ts">Порядковый номер ТУ</label><input id="ts" inputMode="numeric" value={f.seq} onChange={(e) => setF({ ...f, seq: e.target.value })} placeholder="001" /></div>
-          <div><label htmlFor="tg">Группа продукции (микробиология)</label><input id="tg" value={f.microGroup} onChange={(e) => setF({ ...f, microGroup: e.target.value })} placeholder={data.calc.micro.group} /></div>
         </div>
         <label htmlFor="tc">Реализация</label><input id="tc" value={f.channel} onChange={(e) => setF({ ...f, channel: e.target.value })} placeholder={data.calc.channel} />
         <label htmlFor="tl">Органолептические показатели</label><textarea id="tl" rows={2} value={f.organoleptic} onChange={(e) => setF({ ...f, organoleptic: e.target.value })} placeholder={data.calc.organoleptic} />
         <h3 style={{ marginTop: 12 }}>Микробиологические нормативы (ТР ТС 021/2011)</h3>
-        <p className="small muted">Значения для группы продукции — из текста регламента. Система их не подставляет. Не нормируется для группы — так и напишите.</p>
-        {data.calc.micro.indicators.map((m) => (
-          <div key={m.code}><label htmlFor={`m-${m.code}`}>{m.name} <span className="muted">· {m.method}</span></label>
-            <input id={`m-${m.code}`} value={f.micro[m.code] || ''} onChange={(e) => setF({ ...f, micro: { ...f.micro, [m.code]: e.target.value } })} /></div>))}
+        <MicroPicker value={mv} onChange={setMv} dishName={data.calc.object.name} />
         {error && <div className="err">{error}</div>}
         {saved && !error && <div className="okbox">Сохранено, расчёт обновлён.</div>}
         <button className="btn block secondary" disabled={busy}>Сохранить параметры</button>

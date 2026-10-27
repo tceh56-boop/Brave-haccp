@@ -51,7 +51,7 @@ describe('Расчёт ТУ по утверждённой ТТК', () => {
     await expect(getTechSpec(stranger.id, orgId, sauce)).rejects.toMatchObject({ code: expect.stringMatching(/FORBIDDEN|NOT_FOUND/) });
   });
 
-  it('без данных — проект: нет пищевой ценности, профилей аллергенов, микробиологии и санитарных правил; подсказка аллергенов по названию', async () => {
+  it('без данных — проект: нет пищевой ценности, профилей аллергенов, не подтверждена группа микробиологии; подсказка аллергенов по названию', async () => {
     const t = await getTechSpec(cook.id, orgId, sauce);
     expect(t.calc.status).toBe('project');
     expect(t.calc.nutrition.coverage_pct).toBe(0);
@@ -61,8 +61,7 @@ describe('Расчёт ТУ по утверждённой ТТК', () => {
     const w = t.calc.warnings.join(' ');
     expect(w).toMatch(/Нет пищевой ценности: .*Молоко 3,2%/);
     expect(w).toMatch(/Нет профиля аллергенов/);
-    expect(w).toMatch(/Микробиологические нормативы не заполнены/);
-    expect(w).toMatch(/нет утверждённых действующих санитарных правил/);
+    expect(w).toMatch(/Группа продукции по ТР ТС 021\/2011 не подтверждена: система предлагает «Соусы и заправки для вторых блюд»/);
     expect(t.calc.allergens.contains).toEqual([]);
     expect(t.calc.allergens.suggest.map((a: { code: string }) => a.code).sort()).toEqual(['gluten', 'milk']);   // подсказка, не вывод
     expect(t.products.map((p: { name: string }) => p.name)).toEqual(['Масло сливочное 82,5%', 'Молоко 3,2%', 'Мука пшеничная', 'Соль поваренная']);
@@ -128,8 +127,7 @@ describe('Параметры и утверждение ТУ', () => {
   });
 
   it('полные проверенные данные + санитарные правила в реестре → «готов к испытаниям»; утверждение с протоколом — неизменяемый снимок', async () => {
-    const micro = Object.fromEntries(MICRO.map((m) => [m.code, m.code === 'YEAST_MOLD' ? 'не нормируется' : m.code === 'KMAFANM' ? '1×10⁴' : '1,0']));
-    await saveTechSpecParams(tech.id, orgId, sauce, { okpd2: '10.85.19', seq: '7', okpo: '12345678', micro, tolerance: 0.1 });
+    await saveTechSpecParams(tech.id, orgId, sauce, { okpd2: '10.85.19', seq: '7', okpo: '12345678', microGroupCode: 'sauce', tolerance: 0.1 });
     // санитарные правила: утверждённая действующая редакция в реестре предприятия
     await withSystem(async (tx) => {
       const s = (await tx.query(`insert into reg_sources (organization_id, code, kind, title, binding) values ($1, 'СанПиН 2.3/2.4.4282-26', 'СанПиН', 'СанПиН 2.3/2.4.4282-26 (санитарные требования к организациям общественного питания)', 'mandatory') returning id`, [orgId])).rows[0];
@@ -140,7 +138,7 @@ describe('Параметры и утверждение ТУ', () => {
     expect(t.calc.warnings).toEqual([]);
     expect(t.calc.status).toBe('ready');
     expect(t.calc.designation).toBe(`ТУ 10.85.19-007-12345678-${new Date().getFullYear()}`);
-    expect(t.calc.normative.find((n: { code: string }) => n.code === 'СанПиН 2.3/2.4.4282-26')).toMatchObject({ state: 'действует' });
+    expect(t.calc.normative.find((n: { code: string }) => n.code === 'СанПиН 2.3/2.4.4282-26')).toMatchObject({ state: 'действует, текст в нормативной базе' });
     await expect(approveTechSpec(cook.id, orgId, sauce, { labProtocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(approveTechSpec(chef.id, orgId, sauce, { labProtocol: '№ 15' })).rejects.toThrow(/протокол испытаний/);
     const v = await approveTechSpec(chef.id, orgId, sauce, { labProtocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' });
@@ -150,5 +148,35 @@ describe('Параметры и утверждение ТУ', () => {
     expect(got).toMatchObject({ designation: t.calc.designation, lab_protocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' });
     await expect(withSystem((tx) => tx.query(`update tech_spec_versions set lab_protocol = 'x' where dish_id = $1`, [sauce]))).rejects.toThrow(/не изменяются/);
     expect((await getTechSpec(cook.id, orgId, sauce)).versions).toEqual([expect.objectContaining({ version: 1 })]);
+  });
+});
+
+describe('ТУ по нормативной базе: микробиология ТР ТС 021 и невозможные данные', () => {
+  it('группа «Соусы и заправки для вторых блюд» — значения регламента с основанием; чего регламент не устанавливает — «не нормируется»', async () => {
+    const m = (await getTechSpec(chef.id, orgId, sauce)).calc.micro;
+    expect(m).toMatchObject({ mode: 'law', code: 'sauce', confirmed: true });
+    const by = (c: string) => m.indicators.find((i: { code: string }) => i.code === c)!;
+    expect(by('KMAFANM').norm).toBe('5×10³');
+    expect(by('BGKP').norm).toBe('1,0');
+    expect(by('SALMONELLA').norm).toBe('25');
+    expect(by('LISTERIA').norm).toBeNull();
+    expect(by('KMAFANM').basis).toMatch(/ТР ТС 021\/2011, прил\. 2, табл\. 1, п\. 1\.8/);
+    await expect(saveTechSpecParams(tech.id, orgId, sauce, { microGroupCode: 'нет-такой' })).rejects.toThrow(/Нет такой группы/);
+  });
+
+  it('ссылки — на встроенную нормативную базу: СанПиН 2.3/2.4.4282-26 действует, ГОСТ без текста помечен', async () => {
+    const n = (await getTechSpec(chef.id, orgId, sauce)).calc.normative;
+    expect(n.find((d: { code: string }) => d.code === 'СанПиН 2.3/2.4.4282-26')!.state).toBe('действует, текст в нормативной базе');
+    expect(n.find((d: { code: string }) => d.code === 'ГОСТ 30390-2013')!.state).toBe('текст в нормативную базу не загружен');
+  });
+
+  it('выход больше закладки — ошибка: ТУ не готовы и не утверждаются; «не менее 0» в показатели не попадает', async () => {
+    const bad = await withTtk('Соус ошибочный', 'semi', 1000, 'Варить 5 минут.', [{ productId: P.salt, unit: 'г', brutto: 100, netto: 100 }]);
+    await saveTechSpecParams(tech.id, orgId, bad, { microGroupCode: 'sauce' });
+    const c = (await getTechSpec(chef.id, orgId, bad)).calc;
+    expect(c.status).toBe('error');
+    expect(c.errors.join(' ')).toMatch(/больше закладки нетто/);
+    expect(c.physico.every((x: { norm: number | string }) => typeof x.norm !== 'number' || x.norm > 0)).toBe(true);
+    await expect(approveTechSpec(chef.id, orgId, bad, { labProtocol: 'Протокол № 1 от 01.10.2026, ИЛЦ «Тест»' })).rejects.toThrow(/больше закладки/);
   });
 });

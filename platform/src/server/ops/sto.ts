@@ -56,7 +56,7 @@ export async function calcSto(tx: Tx, orgId: string, sto: Record<string, any>) {
       cur.dishes.add(dish.name); rawMap.set(r.id, cur);
     }
     if (doc.missing.nutrition.length) warnings.push(`«${dish.name}»: пищевая ценность рассчитана не полностью (${doc.missing.nutrition.join('; ')}).`);
-    if (!doc.micro.some((m) => m.norm)) warnings.push(`«${dish.name}»: не заполнены микробиологические показатели (Документы ТТК).`);
+    if (!doc.micro_group.confirmed) warnings.push(`«${dish.name}»: не подтверждена группа продукции по ТР ТС 021/2011 для микробиологических показателей (Документы ТТК).`);
     if (!Object.values(doc.version.organoleptic || {}).some(Boolean)) warnings.push(`«${dish.name}»: не заполнены органолептические показатели.`);
     dishes.push({ id, name: dish.name, card_no: dish.card_no, ttk_version: doc.version.version, card_date: doc.version.card_date, kind: doc.dish.kind,
       out_g: doc.out_g, out_label: doc.out_label, semi_yield_g: semi === null || semi === undefined ? null : Number(semi), sections: doc.sections,

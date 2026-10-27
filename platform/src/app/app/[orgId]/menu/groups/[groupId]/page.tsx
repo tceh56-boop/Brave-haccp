@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
+import { MicroPicker } from '@/components/MicroPicker';
 import { GroupSelect, type Group } from '@/components/GroupSelect';
 
 type Rules = { physNormed?: { dry?: boolean; fat?: boolean; sugar?: boolean; salt?: boolean }; gerberPct?: number | null; saltMaxPct?: number | null; dryCoef?: number | null; sugarCoef?: number | null;
-  physBasis?: string | null; microIndex?: string | null; microNote?: string | null; microGroup?: string | null; micro?: Record<string, string>;
+  physBasis?: string | null; microIndex?: string | null; microNote?: string | null; microGroup?: string | null; microGroupCode?: string | null; micro?: Record<string, string>;
   organoleptic?: { appearance?: string | null; color?: string | null; consistency?: string | null; taste?: string | null } };
 interface Data { group: { id: string; name: string; parent_id: string | null; params: Rules }; path: { id: string; name: string }[];
   inherited: { params: Rules; from: Record<string, string> }; dishes: { id: string; name: string; kind: string; approved: number | null }[];
@@ -65,7 +66,7 @@ const s = (v: unknown) => (v === null || v === undefined ? '' : String(v).replac
 
 function RulesView({ d }: { d: Data }) {
   const r = { ...d.inherited.params, ...d.group.params };
-  return <div className="card"><h2>Правила папки</h2><p className="small">Соль не более: {s(r.saltMaxPct) || '—'} %; коэффициент сухих веществ: {s(r.dryCoef) || '—'}; Гербер: {s(r.gerberPct) || '—'} %; микробиология: {r.microIndex || '—'}.</p></div>;
+  return <div className="card"><h2>Правила папки</h2><p className="small">Соль не более: {s(r.saltMaxPct) || '—'} %; коэффициент сухих веществ: {s(r.dryCoef) || '—'}; Гербер: {s(r.gerberPct) || '—'} %; микробиология: {r.microGroupCode ? (r.microGroupCode === 'custom' ? r.microIndex || 'своя группа' : `группа ТР ТС 021 (${r.microGroupCode})`) : r.microIndex || '—'}.</p></div>;
 }
 
 function RulesForm({ d, onDone }: { d: Data; onDone: () => void }) {
@@ -75,6 +76,7 @@ function RulesForm({ d, onDone }: { d: Data; onDone: () => void }) {
     gerberPct: s(p.gerberPct), saltMaxPct: s(p.saltMaxPct), dryCoef: s(p.dryCoef), sugarCoef: s(p.sugarCoef), physBasis: p.physBasis || '', microIndex: p.microIndex || '', microNote: p.microNote || '',
     micro: { ...(p.micro || {}) } as Record<string, string>,
     appearance: p.organoleptic?.appearance || '', color: p.organoleptic?.color || '', consistency: p.organoleptic?.consistency || '', taste: p.organoleptic?.taste || '' });
+  const [mv, setMv] = useState({ microGroupCode: p.microGroupCode || '', micro: { ...(p.micro || {}) } as Record<string, string>, microIndex: p.microIndex || '' });
   const [saved, setSaved] = useState(false);
   const { busy, error, run } = useSubmit();
   const num = (x: string) => (x.trim() ? Number(x.replace(',', '.')) : null);
@@ -90,13 +92,14 @@ function RulesForm({ d, onDone }: { d: Data; onDone: () => void }) {
       await api(`/orgs/${org.id}/dish-groups/${d.group.id}`, { method: 'PATCH', body: { rules: {
         physNormed: f.normedOwn ? { dry: f.dry, fat: f.fat, sugar: f.sugar, salt: f.salt } : undefined,
         gerberPct: num(f.gerberPct), saltMaxPct: num(f.saltMaxPct), dryCoef: num(f.dryCoef), sugarCoef: num(f.sugarCoef),
-        physBasis: f.physBasis || null, microIndex: f.microIndex || null, microNote: f.microNote || null, micro: f.micro,
+        physBasis: f.physBasis || null, microNote: f.microNote || null,
+        microGroupCode: mv.microGroupCode || null, micro: mv.microGroupCode === 'custom' ? mv.micro : {}, microIndex: mv.microGroupCode === 'custom' ? mv.microIndex || null : null,
         organoleptic: { appearance: f.appearance || null, color: f.color || null, consistency: f.consistency || null, taste: f.taste || null } } } });
       setSaved(true); onDone();
     }); }}>
       <h2>Правила папки</h2>
       <p className="small muted">Действуют для всех блюд папки и вложенных папок. Пустое поле — значение из папки выше (показано серым); у блюда своё значение сильнее.
-        Значения — из Методических указаний по лабораторному контролю (1997) и ТР ТС 021/2011; система их не подставляет.</p>
+        Физико-химия — из Методических указаний по лабораторному контролю (1997), вводит технолог; микробиология — группа ТР ТС 021/2011, значения подставляются из регламента.</p>
       <h3>Нормируемые физико-химические показатели</h3>
       <label className="row" style={{ fontWeight: 400 }}><input type="checkbox" style={{ width: 22, minHeight: 22 }} checked={f.normedOwn} onChange={(e) => setF({ ...f, normedOwn: e.target.checked })} />
         <span style={{ flex: 1 }}>Задать для этой папки{!f.normedOwn && inh.physNormed ? ` (сейчас из папки «${from.physNormed}»: ${Object.entries(inh.physNormed).filter(([, v]) => v).map(([k]) => ({ dry: 'сухие в-ва', fat: 'жир', sugar: 'сахар', salt: 'соль' } as Record<string, string>)[k]).join(', ') || 'ничего'})` : ''}</span></label>
@@ -106,10 +109,7 @@ function RulesForm({ d, onDone }: { d: Data; onDone: () => void }) {
       </div>
       {inp('physBasis', 'Основание')}
       <h3 style={{ marginTop: 10 }}>Микробиология</h3>
-      {inp('microIndex', 'Документ и группа (индекс)')}
-      {d.micro_list.map((m) => (
-        <div key={m.code}><label htmlFor={`gm-${m.code}`}>{m.name}</label>
-          <input id={`gm-${m.code}`} value={f.micro[m.code] || ''} onChange={(e) => setF({ ...f, micro: { ...f.micro, [m.code]: e.target.value } })} placeholder={hint(`micro.${m.code}`, inh.micro?.[m.code])} /></div>))}
+      <MicroPicker value={mv} onChange={setMv} inherited={inh.microGroupCode ? { code: inh.microGroupCode, from: from.microGroupCode } : null} />
       {inp('microNote', 'Примечание')}
       <h3 style={{ marginTop: 10 }}>Органолептика по умолчанию</h3>
       <div className="grid2">{org5('appearance', 'Внешний вид')}{org5('color', 'Цвет')}{org5('consistency', 'Консистенция')}{org5('taste', 'Вкус и запах')}</div>

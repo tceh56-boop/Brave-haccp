@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
+import { MicroPicker } from '@/components/MicroPicker';
 import { Ingredients, type Prod } from '@/components/IngredientData';
 import { fx, type TtkDoc } from '@/lib/ttkdoc';
 
@@ -70,6 +71,7 @@ function QualityParams({ d, dishId, onDone }: { d: Data; dishId: string; onDone:
   const [f, setF] = useState({ dry: !!p.physNormed.dry, fat: !!p.physNormed.fat, sugar: !!p.physNormed.sugar, salt: !!p.physNormed.salt,
     gerberPct: s(p.gerberPct), saltMaxPct: s(p.saltMaxPct), dryCoef: s(p.dryCoef), sugarCoef: s(p.sugarCoef), physBasis: p.physBasis || '', microIndex: p.microIndex || '', microNote: p.microNote || '',
     micro: { ...p.micro } as Record<string, string> });
+  const [mv, setMv] = useState({ microGroupCode: String((own as Record<string, unknown>).microGroupCode || ''), micro: { ...p.micro } as Record<string, string>, microIndex: p.microIndex || '' });
   const [saved, setSaved] = useState(false);
   const { busy, error, run } = useSubmit();
   const num = (x: string) => (x.trim() ? Number(x.replace(',', '.')) : null);
@@ -78,12 +80,13 @@ function QualityParams({ d, dishId, onDone }: { d: Data; dishId: string; onDone:
   return (
     <form className="card" onSubmit={(e) => { e.preventDefault(); run(async () => {
       await api(`/orgs/${org.id}/dishes/${dishId}/tu`, { method: 'PUT', body: { physNormed: f.dry || f.fat || f.sugar || f.salt || own.physNormed ? { dry: f.dry, fat: f.fat, sugar: f.sugar, salt: f.salt } : null, gerberPct: num(f.gerberPct), saltMaxPct: num(f.saltMaxPct),
-        dryCoef: num(f.dryCoef), sugarCoef: num(f.sugarCoef), physBasis: f.physBasis || null, microIndex: f.microIndex || null, microNote: f.microNote || null, micro: f.micro } });
+        dryCoef: num(f.dryCoef), sugarCoef: num(f.sugarCoef), physBasis: f.physBasis || null, microNote: f.microNote || null,
+        microGroupCode: mv.microGroupCode || null, micro: mv.microGroupCode === 'custom' ? mv.micro : {}, microIndex: mv.microGroupCode === 'custom' ? mv.microIndex || null : null } });
       setSaved(true); onDone();
     }); }}>
       <h2>Показатели качества и безопасности</h2>
-      <p className="small muted">Что нормируется для этой группы блюд — по приложению 2 Методических указаний по лабораторному контролю качества продукции общественного питания (1997);
-        коэффициенты и предельные значения вводит технолог по этому документу. Система их не подставляет.</p>
+      <p className="small muted">Физико-химия: что нормируется и коэффициенты — по приложению 2 Методических указаний по лабораторному контролю качества продукции общественного питания (1997), вводит технолог.
+        Микробиология — выберите группу продукции: нормативы подставятся из ТР ТС 021/2011.</p>
       <h3>Нормируемые физико-химические показатели</h3>
       {inh.physNormed && !own.physNormed && <p className="small muted">Сейчас — по правилам папки «{inh.physNormed}». Отметки ниже заменят их для этого блюда.</p>}
       {box('dry', 'Массовая доля сухих веществ')}{box('fat', 'Массовая доля жира')}{box('sugar', 'Массовая доля сахара')}{box('salt', 'Массовая доля поваренной соли')}
@@ -95,10 +98,8 @@ function QualityParams({ d, dishId, onDone }: { d: Data; dishId: string; onDone:
       </div>
       <label htmlFor="qb">Основание</label><input id="qb" value={f.physBasis} onChange={(e) => setF({ ...f, physBasis: e.target.value })} placeholder={ph('physBasis', d.params.physBasis, 'МУ по лабораторному контролю, 1997 (письмо № 1-40/3805), прил. 2, табл. 8')} />
       <h3 style={{ marginTop: 12 }}>Микробиологические показатели</h3>
-      <label htmlFor="qmi">Документ и группа (индекс)</label><input id="qmi" value={f.microIndex} onChange={(e) => setF({ ...f, microIndex: e.target.value })} placeholder={ph('microIndex', d.params.microIndex, 'ТР ТС 021/2011, прил. 1, п. …')} />
-      {d.micro.map((m) => (
-        <div key={m.code}><label htmlFor={`qm-${m.code}`}>{m.name}</label>
-          <input id={`qm-${m.code}`} value={f.micro[m.code] || ''} onChange={(e) => setF({ ...f, micro: { ...f.micro, [m.code]: e.target.value } })} placeholder={ph(`micro.${m.code}`, d.params.micro[m.code], 'значение из регламента или «не нормируется»')} /></div>))}
+      <MicroPicker value={mv} onChange={setMv} dishName={d.dish.name}
+        inherited={inh.microGroupCode ? { code: String((d.params as Record<string, unknown>).microGroupCode || ''), from: inh.microGroupCode } : null} />
       <label htmlFor="qmn">Примечание</label><input id="qmn" value={f.microNote} onChange={(e) => setF({ ...f, microNote: e.target.value })} placeholder="например, плесени — не более 50 КОЕ/г" />
       {error && <div className="err">{error}</div>}
       {saved && !error && <div className="okbox">Сохранено. Микробиология общая с ТУ.</div>}

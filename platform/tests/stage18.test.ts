@@ -466,7 +466,7 @@ describe('СТО на группу блюд: из утверждённых ТТ�
     expect(g.calc.dishes.map((d: any) => d.name)).toEqual(['Салат из огурцов']);
     const w = g.calc.warnings.join(' ');
     expect(w).toMatch(/«Салат без ТТК»: нет утверждённой ТТК/);
-    expect(w).toMatch(/область применения/); expect(w).toMatch(/микробиологические/);
+    expect(w).toMatch(/область применения/); expect(w).toMatch(/не подтверждена группа продукции по ТР ТС 021/);
     // ОКПО подхвачен из параметров ТУ/ТИ; НД на сырьё — из ТИ блюда
     expect(g.calc.designation).toMatch(/^СТО 12345678-\d{3}-\d{4}$/);
     expect(g.calc.raw.find((r: any) => r.name === 'Огурцы грунтовые')!.doc).toBe('Тест: ГОСТ изготовителя');
@@ -476,7 +476,7 @@ describe('СТО на группу блюд: из утверждённых ТТ�
   it('руководитель утверждает; технолог — нет; задача актуализации через год; снимок неизменяем', async () => {
     const draftDish = (await withSystem((tx) => tx.query(`select id from dishes where organization_id = $1 and name = 'Салат без ТТК'`, [orgId]))).rows[0].id;
     await updateSto(tech.id, orgId, stoId, { dishIds: [dId], scope: 'Салаты, изготавливаемые и реализуемые на предприятии.', packaging: 'Реализуется в зале на тарелке.' });
-    await saveTechSpecParams(tech.id, orgId, dId, { micro: { KMAFANM: 'Тест: 5×10^4', BGKP: 'Тест: 0,1' } });
+    await saveTechSpecParams(tech.id, orgId, dId, { microGroupCode: 'salad_raw' });
     await setProductNutrition(tech.id, orgId, rice, { kcal: 330, protein: 7, fat: 1, carbs: 74, basis: 'Тест: маркировка' });
     const g = await getSto(cook.id, orgId, stoId);
     expect(g.calc.warnings).toEqual([]);

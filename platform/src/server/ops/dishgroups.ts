@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { MICRO_GROUPS } from '../norms/micro';
+const MicroGroupCode = z.string().refine((c) => c === 'custom' || MICRO_GROUPS.some((g) => g.code === c), 'Нет такой группы ТР ТС 021.').nullable().optional();
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
@@ -12,7 +14,7 @@ import { MICRO, type TuParams } from './techspec';
  * система их не подставляет.
  */
 
-export const GROUP_KEYS = ['physNormed', 'gerberPct', 'saltMaxPct', 'dryCoef', 'sugarCoef', 'physBasis', 'microIndex', 'microNote', 'microGroup'] as const;
+export const GROUP_KEYS = ['physNormed', 'gerberPct', 'saltMaxPct', 'dryCoef', 'sugarCoef', 'physBasis', 'microIndex', 'microNote', 'microGroup', 'microGroupCode'] as const;
 export interface GroupParams extends Pick<TuParams, typeof GROUP_KEYS[number] | 'micro'> {
   organoleptic?: { appearance?: string | null; color?: string | null; consistency?: string | null; taste?: string | null };
 }
@@ -88,7 +90,7 @@ const pct = z.coerce.number().min(0).max(100).nullable().optional();
 const RulesInput = z.object({
   physNormed: z.object({ dry: z.boolean(), fat: z.boolean(), sugar: z.boolean(), salt: z.boolean() }).partial().optional(),
   gerberPct: pct, saltMaxPct: z.coerce.number().min(0).max(20).nullable().optional(), dryCoef: z.coerce.number().min(0).max(1).nullable().optional(),
-  sugarCoef: z.coerce.number().min(0).max(1).nullable().optional(), physBasis: optText(500), microIndex: optText(300), microNote: optText(1000), microGroup: optText(200),
+  sugarCoef: z.coerce.number().min(0).max(1).nullable().optional(), physBasis: optText(500), microIndex: optText(300), microNote: optText(1000), microGroup: optText(200), microGroupCode: MicroGroupCode,
   micro: z.record(z.string(), z.string().trim().max(200)).optional(),
   organoleptic: z.object({ appearance: optText(1000), color: optText(1000), consistency: optText(1000), taste: optText(1000) }).optional(),
 });

@@ -5,7 +5,8 @@ import { inOrg, parse } from './common';
 import { calcVersion, convertUnits } from './recipes';
 import { semiGrams } from './bom';
 import { versionSteps } from './processing';
-import { nutritionOf, allergenProfile, suggestAllergens, ALLERGENS, MICRO } from './techspec';
+import { nutritionOf, allergenProfile, suggestAllergens, ALLERGENS } from './techspec';
+import { resolveMicro } from '../norms/micro';
 import { stages, retention } from '../recipes/chain';
 import { effectiveParams } from './dishgroups';
 
@@ -130,7 +131,8 @@ export async function buildTtkDoc(tx: Tx, orgId: string, dishId: string, version
     salt: !pn.salt ? { normed: false as const } : { normed: true as const, value: saltMax, missing: saltMax == null ? ['не задано максимальное содержание соли'] : [] },
     basis: params.physBasis || null,
   };
-  const micro = MICRO.map((m) => ({ ...m, norm: (params.micro || {})[m.code]?.trim() || null }));
+  const mr = resolveMicro(params, dish.name);
+  const micro = mr.indicators;
   const sections = rows.some((l) => l.kind === 'heading');
   // сырьё карты — для ввода данных по документу (пищевая ценность, сухие вещества, сахароза, жир, аллергены)
   const products = [];
@@ -142,10 +144,11 @@ export async function buildTtkDoc(tx: Tx, orgId: string, dishId: string, version
     version: { id: v.id, version: v.version, status: v.status, card_date: v.card_date, yield_g: v.yield_g === null ? null : Number(v.yield_g), portion_g: v.portion_g === null ? null : Number(v.portion_g),
       technology: v.technology, serving: v.serving, storage_conditions: v.storage_conditions, shelf_life: v.shelf_life, organoleptic: { ...Object.fromEntries(Object.entries(params.organolepticDefault || {}).filter(([, x]) => x)), ...Object.fromEntries(Object.entries(v.organoleptic || {}).filter(([, x]) => x)) }, menu_description: v.menu_description, source: v.source },
     out_g: outG, out_label: isDish ? `на 1 порцию (${outG} г)` : `на выход ${outG} г`, sections,
-    lines, nutrition, physico, micro, micro_index: params.microIndex || null, micro_note: params.microNote || null,
+    lines, nutrition, physico, micro, micro_index: mr.mode === 'none' ? null : mr.index, micro_note: params.microNote || mr.note || null,
+    micro_group: { mode: mr.mode, code: mr.code, name: mr.group, confirmed: mr.confirmed, suggested: mr.suggested },
     missing: { nutrition: [...missing.nutrition] }, products, allergen_list: Object.entries(ALLERGENS).map(([code, a]) => ({ code, label: a.label })),
     params: { physNormed: params.physNormed || {}, gerberPct: params.gerberPct ?? null, saltMaxPct: params.saltMaxPct ?? null, dryCoef: params.dryCoef ?? null, sugarCoef: params.sugarCoef ?? null,
-      physBasis: params.physBasis ?? null, microIndex: params.microIndex ?? null, microNote: params.microNote ?? null, micro: params.micro || {} },
+      physBasis: params.physBasis ?? null, microIndex: params.microIndex ?? null, microNote: params.microNote ?? null, micro: params.micro || {}, microGroupCode: params.microGroupCode ?? null },
     inherited: params.inherited,
     own_params: (await tx.query(`select params from tech_specs where dish_id = $1`, [dishId])).rows[0]?.params || {},
   };
