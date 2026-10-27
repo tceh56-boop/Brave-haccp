@@ -77,10 +77,10 @@ def parse_terms(s):
     """Сроки из п. 5 карты: {'chill': ч или None, 'frozen': сут или None, 'immediate': bool, 'dressed': ч заправленного салата}."""
     out = {'chill': None, 'frozen': None, 'immediate': bool(re.search(r'сразу|хранение не допускается', s, re.I)), 'dressed': None}
     mode = 'chill'
-    tok = re.finditer(r'(−\s?18|-\s?18|заморож|\+\s?\d+|(\d+(?:[.,]\d+)?)\s*(?:[–-]\s*(\d+)\s*)?(ч\b|час|сут|дн))', s)
+    tok = re.finditer(r'([−-]\s?\d+\s*°|заморож|\+\s?\d+|(\d+(?:[.,]\d+)?)\s*(?:[–-]\s*(\d+)\s*)?(ч\b|час(?:а|ов)?\b|сут|дн))', s)
     for t in tok:
         g = t.group(0)
-        if re.match(r'[−-]\s?18|заморож', g): mode = 'frozen'; continue
+        if re.match(r'[−-]\s?\d|заморож', g): mode = 'frozen'; continue
         if g.startswith('+'):
             mode = 'chill'; continue
         v = float((t.group(3) or t.group(2)).replace(',', '.'))
@@ -111,6 +111,9 @@ def verdict(f, c):
     if f['kind'] == 'dish':
         if not t['immediate']:
             issues.append('в карте не указано «реализуют сразу, хранение не допускается»')
+        if (t['chill'] or 0) > 6 or t['frozen']:
+            issues.append('в карте блюда указано хранение заготовки (%s%s) — заготовку оформить отдельной картой полуфабриката в папке 02 и хранить по её СТО' %
+                          ('охл. ' + fmt_h(t['chill']) if t['chill'] else '', ('; зам. %d сут' % t['frozen']) if t['frozen'] else ''))
     else:
         if t['chill'] is not None and r['hours'] is not None and t['chill'] > r['hours'] + 0.01:
             issues.append('срок охлаждённого %s больше нормы СТО %s' % (fmt_h(t['chill']), fmt_h(r['hours'])))
@@ -127,7 +130,7 @@ def verdict(f, c):
         todo = 'привести срок в карте к норме СТО либо обосновать больший срок лабораторными исследованиями (МУК 4.2.1847-04) и внести изменение в СТО'
         if any('заправленн' in x for x in issues): todo = 'исправить п. 5 карты: заправлять перед подачей, хранить только незаправленную заготовку'
         if any('не указан' in x for x in issues): todo = 'указать в п. 5 карты условия и срок по СТО папки'
-        if f['kind'] == 'dish': todo = 'дописать в п. 5 карты: блюдо собирают по заказу и реализуют сразу; покупные компоненты хранят по условиям изготовителя, собственные п/ф — по СТО их папок'
+        if f['kind'] == 'dish': todo = 'п. 5 карты: блюдо готовят по заказу и реализуют сразу; заготовки — отдельными картами п/ф по СТО их папок (02.xx), покупные компоненты — по условиям изготовителя'
     else:
         todo = ''
     return r, issues, todo
