@@ -54,7 +54,7 @@ const g = S.g;
   for (const [sec, re] of [['cafesales', /Позиции за месяц/], ['cafeplan', /Остатки и нормы/], ['economics', /Прибыли и убытки/], ['entaudit', /Находки/]]) {
     await page.evaluate(s => openSec(s), sec); await waitBody(page, re); ok(true, 'раздел ' + sec); await shot(page, '02_' + sec);
   }
-  for (const [v, re] of [['cafesale', /Позиции меню/], ['cafeprices', /Сохранить прайс/], ['cafegaps', /Расхождени/], ['cafenorms', /Прогноз на завтра/], ['cafeexpenses', /Статьи расходов/], ['cafepnl', /Меню-инжиниринг/], ['cafeaudit', /Разделы/]]) {
+  for (const [v, re] of [['cafesale', /Позиции меню/], ['cafeprices', /Сохранить прайс/], ['cafegaps', /Расхождени/], ['cafenorms', /Прогноз на завтра/], ['cafeexpenses', /Статьи расходов/], ['cafepnl', /Меню-инжиниринг/], ['cafeaudit', /Разделы/], ['cafettk', /Отклонения карт от СТО/]]) {
     await page.evaluate(x => openView(x), v); await waitBody(page, re); ok(true, 'экран ' + v); await shot(page, '03_' + v);
   }
   // расход через форму

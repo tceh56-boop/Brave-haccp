@@ -85,7 +85,7 @@ var MC_UI_VIEWS_ = ['fulfillment', 'closure', 'weekly', 'dispatcher', 'productio
   'haccptasks', 'sanitationauto', 'disinfectants', 'productunits', 'ttkmaster', 'ttkppk', 'ppkbuilder', 'compliance', 'normative', 'procurement', 'productionrelease'];
 // новые экраны (бывшие возможности старого интерфейса) — тоже по адресу ?экран=1; ?shift=1 (удалённая страница «Смена») → «Моя смена»
 MC_UI_VIEWS_ = MC_UI_VIEWS_.concat(['myshift', 'kanban', 'printqueue', 'checklists', 'minstock', 'nutrition', 'wastenorms', 'lamps', 'journaltriggers', 'prices', 'brakerage', 'haccpevents', 'writeoff', 'pfincome', 'checklistrun', 'stockops', 'tasks', 'labels', 'haccpcontour', 'sales',
-  'cafesale', 'cafeprices', 'cafegaps', 'cafenorms', 'cafeexpenses', 'cafepnl', 'cafeaudit']);   // MON CHEF · Кафе
+  'cafesale', 'cafeprices', 'cafegaps', 'cafenorms', 'cafeexpenses', 'cafepnl', 'cafeaudit', 'cafettk']);   // MON CHEF · Кафе
 function _mcViewOfParams_(params) { if (params.shift === '1') return 'myshift'; for (var i = 0; i < MC_UI_VIEWS_.length; i++) if (params[MC_UI_VIEWS_[i]] === '1') return MC_UI_VIEWS_[i]; return ''; }
 function _doGetRaw_(e) {
  var params = (e && e.parameter) || {};

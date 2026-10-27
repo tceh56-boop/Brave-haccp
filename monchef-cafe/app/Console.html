@@ -4383,6 +4383,42 @@ VIEWS.cafeaudit = {
   }
 };
 
+/* ---------- Дерево папок ТТК и СТО ---------- */
+VIEWS.cafettk = {
+  fns: { mk: 'mcCafeTtkTreeInstall', rules: 'mcCafeTtkTreeInstall', appr: 'mcCafeTtkTreeInstall' },
+  title: 'Дерево папок ТТК и СТО', sub: 'Папка — группа продукции с одним стандартом организации (СТО): условия и сроки хранения, реализация. Карта в папке подчиняется СТО папки; новая карта получает его срок сразу.',
+  acts: [['Обновить', 'load']],
+  open: function () { this.h.load(); },
+  h: {
+    load: function () {
+      var S = VIEWS.cafettk; vLoading();
+      vCall('mcCafeTtkTreeData', []).then(function (r) {
+        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = S._d = vData(r) || {}, rl = d.rules || {}, dr = d.drive || null;
+        var h = vKpis([['Папок', (d.folders || []).length], ['Карт', (d.folders || []).reduce(function (a, f) { return a + f.cards; }, 0)], ['Отклонений от СТО', (d.deviations || []).length, (d.deviations || []).length ? 'red' : 'green', 'срок в карте больше нормы'],
+          ['Правила сроков', rl.approved + ' / ' + rl.total, rl.approved === rl.total ? 'green' : 'gold', rl.approved === rl.total ? 'в действии' : rl.loaded ? 'черновики — ждут утверждения' : 'не загружены']]);
+        if (d.canInstall) h += vCard('Google Диск и правила сроков', '<div class="dnote">Папки создаются в указанной папке Диска: «' + esc(d.root) + '» и всё дерево. Существующие папки и файлы не трогаются. Карты (.docx из архива «' + esc(d.root) + '.zip») раскладываются по папкам вручную или распаковкой архива.</div>' +
+          vForm([['tr', 'Папка на Диске (ссылка или ID)', 'text', d.rootId || '', 'https://drive.google.com/drive/folders/…']]) +
+          (dr ? '<div class="sub">' + (dr.error ? esc(dr.error) : 'На Диске: папок есть ' + dr.exists + (dr.missing && dr.missing.length ? ', нет ' + dr.missing.length : ', дерево полное') + (dr.url ? ' · <a href="' + esc(dr.url) + '" target="_blank">открыть</a>' : '')) + '</div>' : '') +
+          '<div class="mvbar">' + vBtn('Создать папки на Диске', 'mk', '', true) + vBtn('Загрузить СТО в правила сроков (черновики)', 'rules') + (d.canApprove ? vBtn('Ввести правила СТО в действие', 'appr') : '') + '</div>');
+        (d.folders || []).forEach(function (f) {
+          h += vCard(f.code + ' ' + f.name + ' · ' + f.sto, '<div class="sub">' + esc(f.top + ' / ' + f.dir) + ' · ' + esc(f.shops) + ' · карт: ' + f.cards + '</div>' +
+            vTable(f.kind === 'dish' ? [{ k: 'what', l: 'Вид' }, { k: 'temp', l: 'Температура при отпуске' }, { k: 'note', l: 'Реализация' }] :
+              [{ l: 'Режим', f: function (x) { return x.id + '. ' + x.what; } }, { k: 'temp', l: 'Условия' }, { k: 'chilled', l: 'Охлаждённый' }, { k: 'frozen', l: 'Замороженный' }, { l: 'Карты', f: function (x) { return x.cards.length + ': ' + x.cards.slice(0, 6).join('; ') + (x.cards.length > 6 ? '…' : ''); } }],
+              f.regimes, null, ''));
+        });
+        h += vCard('Отклонения карт от СТО', vTable([{ k: 'n', l: '№ ТТК', t: 'num' }, { k: 'name', l: 'Карта' }, { k: 'folder', l: 'Папка' }, { l: 'Отклонение', f: function (x) { return x.issues.join('; '); } }], d.deviations || [], null, 'Все карты соответствуют СТО своих папок') +
+          '<div class="dnote">Срок больше нормы СТО: исправить п. 5 карты либо обосновать лабораторно (МУК 4.2.1847-04) и внести режим в СТО.</div>');
+        vBody(h);
+      });
+    },
+    _go: function (btn, p, txt) { vDo(btn, 'mcCafeTtkTreeInstall', [JSON.stringify(p)], txt, function () { VIEWS.cafettk.h.load(); }); },
+    mk: function (a, btn) { VIEWS.cafettk.h._go(btn, { folders: true, rootId: vV('tr') }, function (d) { return 'Папки: создано ' + d.drive.created + ', уже были ' + d.drive.exists; }); },
+    rules: function (a, btn) { VIEWS.cafettk.h._go(btn, { rules: true }, function (d) { return 'Правила СТО: добавлено ' + d.rules.added + ', обновлено ' + d.rules.updated + ' (черновики)'; }); },
+    appr: function (a, btn) { VIEWS.cafettk.h._go(btn, { approve: true }, function (d) { return 'Правила СТО введены в действие: ' + (d.rules.added + d.rules.updated); }); }
+  }
+};
+
 // заставка при входе: после ПИН и при первом открытии приложения в этой вкладке
 function mcxIntro() { try { sessionStorage.setItem('mc_intro', '1'); } catch (e) {} if (typeof mcxShowLoader === 'function') mcxShowLoader(); }
 if (TOKEN) { var _seen = null; try { _seen = sessionStorage.getItem('mc_intro'); } catch (e) {} if (!_seen) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mcxIntro); else mcxIntro(); } start(null); }
