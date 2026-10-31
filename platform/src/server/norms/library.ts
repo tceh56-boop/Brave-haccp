@@ -25,7 +25,11 @@
  *    органа надзора; хранится отдельно (kind 'Разъяснение') и показывается рядом с пунктом, к которому относится.
  */
 
-export interface NormDoc { code: string; kind: 'СанПиН' | 'СП' | 'ГОСТ' | 'ТР ТС' | 'Разъяснение'; title: string; issued: string; effectiveFrom: string | null; effectiveTo: string | null; edition: string }
+export interface NormDoc {
+  code: string; kind: 'СанПиН' | 'СП' | 'ГОСТ' | 'ТР ТС' | 'Разъяснение'; title: string; issued: string; effectiveFrom: string | null; effectiveTo: string | null; edition: string;
+  /** Территориальный источник: субъект РФ и орган. Применяется только к предприятиям этого субъекта, и только как справочный. */
+  region?: { subject: string; match: RegExp; authority: string; binding: 'advisory' } | null;
+}
 
 export const DOCS: Record<string, NormDoc> = {
   sanpin4282: {
@@ -73,6 +77,7 @@ export const DOCS: Record<string, NormDoc> = {
   rpn_tula_2026: {
     code: 'Разъяснение Роспотребнадзора от 29.07.2026', kind: 'Разъяснение', title: 'О СанПиН 2.3/2.4.4282-26 (Ефремовский территориальный отдел Управления Роспотребнадзора по Тульской области)',
     issued: 'новость на сайте администрации, 29.07.2026', effectiveFrom: '2026-09-01', effectiveTo: null, edition: 'efremovskij-r71.gosweb.gosuslugi.ru',
+    region: { subject: 'Тульская область', match: /тульск|тула|ефремов/i, authority: 'Ефремовский территориальный отдел Управления Роспотребнадзора по Тульской области', binding: 'advisory' },
   },
 };
 
@@ -82,6 +87,7 @@ export interface NormProfile {
   salesModes: string[];    // hall, takeaway, delivery, catering
   seats: number | null;    // посадочных мест (null — не указано)
   features: string[];      // fryer — фритюр; outside_sales — реализация вне предприятия без услуг; social — стационарное соцобслуживание; children — питание детей
+  region?: string | null;  // субъект РФ предприятия (для территориальных разъяснений)
 }
 
 export const FEATURES: Record<string, string> = {
@@ -257,7 +263,9 @@ export const CLAUSES: Clause[] = [
 ];
 
 export const clauseById = new Map(CLAUSES.map((c) => [c.id, c]));
-export const applies = (c: Clause, p: NormProfile) => !c.applies || c.applies(p);
+/** Территориальное разъяснение — только для предприятий своего субъекта (иначе не применяется, даже справочно). */
+export const regionOk = (c: Clause, p: NormProfile) => { const r = DOCS[c.doc].region; return !r || (!!p.region && r.match.test(p.region)); };
+export const applies = (c: Clause, p: NormProfile) => regionOk(c, p) && (!c.applies || c.applies(p));
 
 /** Обязательна ли суточная проба по СанПиН 2.3/2.4.4282-26 (п. 56 пп. 4 — мед. и соц. организации, п. 59 пп. 10 — дети). */
 export function samplesRequired(p: NormProfile) {
@@ -267,5 +275,6 @@ export const SAMPLE_BASIS = 'СанПиН 2.3/2.4.4282-26, п. 56 пп. 4 и п.
 
 export async function profileOf(tx: { query: (q: string, a: unknown[]) => Promise<{ rows: Record<string, any>[] }> }, orgId: string): Promise<NormProfile> {
   const pr = (await tx.query(`select object_types, sales_modes, seats, features from org_regulatory_profiles where organization_id = $1`, [orgId])).rows[0];
-  return { objectTypes: pr?.object_types || [], salesModes: pr?.sales_modes || [], seats: pr?.seats ?? null, features: pr?.features || [] };
+  const org = (await tx.query(`select region from organizations where id = $1`, [orgId])).rows[0];
+  return { objectTypes: pr?.object_types || [], salesModes: pr?.sales_modes || [], seats: pr?.seats ?? null, features: pr?.features || [], region: org?.region || null };
 }

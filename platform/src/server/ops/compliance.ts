@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { inOrg, parse, getSite, assertSiteAccess } from './common';
 import { CLAUSES, DOCS, FEATURES, applies, type NormProfile } from '../norms/library';
 import { runCheck, type CheckStatus } from '../norms/checks';
+import { contextFor } from '../readiness/engine';
 
 /**
  * «Готов ли я к проверке»: все требования встроенной нормативной библиотеки, применимые к предприятию по его профилю,
@@ -16,18 +17,17 @@ export async function getCompliance(userId: string, orgId: string, siteIdInput?:
   const siteId = siteIdInput ? parse(z.uuid(), siteIdInput) : null;
   return inOrg(userId, orgId, 'org.read', async (tx, m) => {
     if (siteId) { await getSite(tx, orgId, siteId); assertSiteAccess(m, siteId); }
-    const org = (await tx.query(`select timezone from organizations where id = $1`, [orgId])).rows[0];
-    await tx.query(`select set_config('timezone', $1, true)`, [org.timezone || 'Europe/Moscow']);
-    const today = (await tx.query(`select current_date::text as d`)).rows[0].d as string;
     const sites = (await tx.query(`select id from sites where organization_id = $1 and status = 'active' and ($2::uuid is null or id = $2)`, [orgId, siteId])).rows
       .map((s) => s.id).filter((id) => !m.site_ids.length || m.site_ids.includes(id));
-    const pr = (await tx.query(`select * from org_regulatory_profiles where organization_id = $1`, [orgId])).rows[0];
-    const profile: NormProfile = { objectTypes: pr?.object_types || [], salesModes: pr?.sales_modes || [], seats: pr?.seats ?? null, features: pr?.features || [] };
-    const ctx = { tx, orgId, siteIds: sites, today, base: `/app/${orgId}` };
+    const pr = (await tx.query(`select 1 from org_regulatory_profiles where organization_id = $1`, [orgId])).rows[0];
+    const ctx = await contextFor(tx, orgId, sites);
+    const { today, profile } = ctx;
     const items: Item[] = [];
     const notApplicable: Omit<Item, 'status' | 'detail'>[] = [];
     for (const c of CLAUSES) {
-      const head = { id: c.id, doc: DOCS[c.doc].code, doc_kind: DOCS[c.doc].kind, clause: c.clause, title: c.title, text: c.text, applies_note: c.appliesNote || null };
+      const reg = DOCS[c.doc].region;
+      const note = [c.appliesNote, reg && `территориальное разъяснение (${reg.subject}) — справочно, только для предприятий этого субъекта`].filter(Boolean).join('; ');
+      const head = { id: c.id, doc: DOCS[c.doc].code, doc_kind: DOCS[c.doc].kind, clause: c.clause, title: c.title, text: c.text, applies_note: note || null };
       if (!applies(c, profile)) { notApplicable.push(head); continue; }
       if (!c.check) { items.push({ ...head, status: 'onsite' as ItemStatus, detail: 'Проверяется на месте: по записям системы не подтвердить. Проверьте сами и устраните, если не выполнено.' }); continue; }
       const r = await runCheck(c.check, ctx);

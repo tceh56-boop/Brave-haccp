@@ -92,8 +92,15 @@ describe('Нормативная библиотека', () => {
     await saveProfile(owner.id, orgId, { objectTypes: ['cafe'], features: [] });
   });
 
-  it('разъяснение Роспотребнадзора о декларировании — только при доставке, выносе, кейтеринге', async () => {
-    expect(await item('rpn:declaration')).toBeUndefined();
+  it('территориальное разъяснение Роспотребнадзора — только для своего субъекта и только при доставке, выносе, кейтеринге', async () => {
+    await saveProfile(owner.id, orgId, { objectTypes: ['cafe'], salesModes: ['hall', 'delivery'] });
+    await withSystem((tx) => tx.query(`update organizations set region = 'Оренбургская область' where id = $1`, [orgId]));
+    const c = await getCompliance(owner.id, orgId);
+    expect(c.items.find((i) => i.id === 'rpn:declaration')).toBeUndefined();   // другой регион — не применяется
+    expect(c.not_applicable.find((i) => i.id === 'rpn:declaration')!.applies_note).toMatch(/Тульская область.*справочно/);
+    await withSystem((tx) => tx.query(`update organizations set region = 'Тульская область' where id = $1`, [orgId]));
+    await saveProfile(owner.id, orgId, { objectTypes: ['cafe'], salesModes: ['hall'] });
+    expect(await item('rpn:declaration')).toBeUndefined();                      // зал без выноса — не применяется
     await saveProfile(owner.id, orgId, { objectTypes: ['cafe'], salesModes: ['hall', 'delivery'] });
     const i = (await item('rpn:declaration'))!;
     expect(i.doc_kind).toBe('Разъяснение');

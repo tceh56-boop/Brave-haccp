@@ -72,7 +72,7 @@ describe('Программа производственного контроля
   it('с пробелами утвердить нельзя; в «Готов ли я к проверке» — нарушение', async () => {
     await expect(approvePpk(owner.id, orgId, { changeNote: 'Введена впервые' })).rejects.toThrow(/утвердить нельзя/);
     const c = await getCompliance(owner.id, orgId);
-    expect(c.items.find((i) => i.id === 'rpn:ppk_update')!.status).toBe('fail');
+    expect(c.items.find((i) => i.id === 'sp4285:4')!.status).toBe('fail');
   });
 
   it('ответственный — только сотрудник предприятия; повар не может менять реквизиты', async () => {
@@ -97,18 +97,32 @@ describe('Программа производственного контроля
     expect((await getPpk(owner.id, orgId)).current).toBe(true);
     await expect(approvePpk(owner.id, orgId, { changeNote: 'Ещё раз' })).rejects.toThrow(/не изменились/);
     const c = await getCompliance(owner.id, orgId);
-    expect(c.items.find((i) => i.id === 'rpn:ppk_update')!.status).toBe('ok');
+    expect(c.items.find((i) => i.id === 'sp4285:4')!.status).toBe('ok');
   });
 
   it('изменились данные — система требует пересмотра; утверждённый снимок неизменен', async () => {
     await sys(`insert into control_objects (organization_id, site_id, name, kind, code) values ($1, $2, 'Морозильник', 'freezer', 'X2')`, [orgId, siteId]);
     const r = await getPpk(owner.id, orgId);
     expect(r.current).toBe(false);
-    expect(r.doc.gaps.map((g) => g.text).join()).toMatch(/Морозильник.*диапазон/);
+    expect(r.doc.gaps.map((g) => g.text).join()).toMatch(/Объекты без утверждённого диапазона: 1 из 2. Морозильник/);
     const c = await getCompliance(owner.id, orgId);
-    expect(c.items.find((i) => i.id === 'rpn:ppk_update')!.status).toBe('warn');
+    expect(c.items.find((i) => i.id === 'sp4285:4')!.status).toBe('warn');
     const v1 = await getPpkVersion(owner.id, orgId, 1);
     expect(JSON.stringify(v1.snapshot)).not.toMatch(/Морозильник/);
     await expect(sys(`update ppk_versions set change_note = 'x' where organization_id = $1`, [orgId])).rejects.toThrow();
+  });
+});
+
+describe('ППК на едином движке готовности', () => {
+  it('истёкший медосмотр и истёкшая поверка не засчитываются — утверждение блокируется', async () => {
+    const r0 = await getPpk(owner.id, orgId);
+    const g0 = r0.doc.gaps.map((g) => g.text).join(' | ');
+    expect(g0).not.toMatch(/медосмотр/);
+    await sys(`insert into staff_medical (organization_id, user_id, exam_due, hygiene_due, recorded_by) values ($1, $2, current_date - 1, current_date + 300, $3)`, [orgId, cook.id, owner.id]);
+    await sys(`insert into equipment (organization_id, site_id, name, kind, measuring, calibration_due, created_by) values ($1, $2, 'Термометр контрольный', 'instrument', true, current_date - 3, $3)`, [orgId, siteId, owner.id]);
+    const g = (await getPpk(owner.id, orgId)).doc.gaps.map((x) => x.text).join(' | ');
+    expect(g).toMatch(/Медосмотр истёк: 1 из 1\. Петров Пётр: истёк/);
+    expect(g).toMatch(/Поверка истекла: 1 из 1/);
+    await expect(approvePpk(owner.id, orgId, { changeNote: 'Пересмотр' })).rejects.toThrow(/утвердить нельзя/);
   });
 });

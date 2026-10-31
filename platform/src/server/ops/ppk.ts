@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Tx } from '../db/pool';
+import { withSystem } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { ROLES } from '../access/roles';
@@ -8,6 +9,7 @@ import { CLAUSES, DOCS, applies, clauseById, samplesRequired, type NormProfile }
 import { KIND_LABEL, requiredContractsState, stateOf } from './contracts';
 import { OBJECT_TYPES } from './regulatory';
 import { inOrg, parse, optText } from './common';
+import { validateEnterpriseReadiness, isBad, registerNormRefs } from '../readiness/engine';
 
 /**
  * Программа производственного контроля, собранная системой. Пользователь не выбирает СанПиН: применимость пунктов
@@ -34,6 +36,7 @@ export interface PpkDoc {
   docs: { code: string; title: string; issued: string; effective_to: string | null }[];
   basis: { id: string; doc: string; clause: string; text: string }[];
   gaps: { section: string; text: string; href: string | null }[];
+  unknown_refs?: string[];
 }
 
 const Params = z.object({
@@ -82,7 +85,17 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
   const params = await loadParams(tx, orgId);
   const base = `/app/${orgId}`;
   const on = (id: string) => { const c = clauseById.get(id); return !!c && applies(c, profile); };
-  const B = (...ids: string[]) => ids.filter(on);
+  // ссылки на пункты: неизвестный id не отбрасывается молча — техническое несоответствие, утверждение блокируется
+  const unknownRefs = new Set<string>();
+  const B = (...ids: string[]) => { for (const id of ids) if (!clauseById.has(id)) unknownRefs.add(id); return ids.filter(on); };
+  // проверки — единым движком готовности (ППК сам себя не проверяет)
+  const ready = await validateEnterpriseReadiness(tx, orgId, null, { siteIds, exclude: ['ppk_update'] });
+  const R = new Map(ready.items.map((i) => [i.key, i]));
+  const ok = (...keys: string[]) => keys.every((k) => !isBad(R.get(k)!.status));
+  const gapOf = (keys: string[], basis: string[] = []): PpkLine => {
+    const bad = keys.map((k) => R.get(k)!).filter((i) => isBad(i.status));
+    return { text: bad[0].title, basis, gap: bad.map((i) => `${i.detail}${i.items?.length ? ` ${i.items.join('; ')}.` : ''}`).join(' '), href: bad[0].href || null };
+  };
   const sections: PpkSection[] = [];
   const sec = (title: string, lines: PpkLine[], table?: PpkTable | null) => sections.push({ no: sections.length + 1, title, lines: lines.filter((l) => l.basis.length || l.gap), table: table || null });
 
@@ -96,8 +109,8 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
   ].filter(Boolean).join('; ');
   sec('Общие положения', [
     { text: 'Программа устанавливает порядок и периодичность производственного контроля предприятия общественного питания, включая организационные мероприятия, лабораторные исследования и испытания.', basis: B('sanpin4282:4') },
-    plan ? { text: `Производственный контроль основан на принципах ХАССП: опасные факторы, критические контрольные точки, их предельные значения, мониторинг и действия при отклонениях установлены планом ХАССП (версия ${plan.version}, утверждён ${ddmm(plan.d)}).`, basis: B('trts021:10.3', 'sanpin4282:4') }
-      : { text: 'Производственный контроль основан на принципах ХАССП.', basis: B('trts021:10.3'), gap: 'Нет утверждённого плана ХАССП.', href: `${base}/haccp` },
+    ok('haccp_plan') && plan ? { text: `Производственный контроль основан на принципах ХАССП: опасные факторы, критические контрольные точки, их предельные значения, мониторинг и действия при отклонениях установлены планом ХАССП (версия ${plan.version}, утверждён ${ddmm(plan.d)}).`, basis: B('trts021:10.3', 'sanpin4282:4') }
+      : gapOf(['haccp_plan'], B('trts021:10.3')),
     { text: 'Программа включает производственный контроль за условиями труда: перечень должностных лиц, факторы и объекты лабораторного контроля, места отбора проб и периодичность исследований.', basis: B('sp4285:4') },
     profile.objectTypes.length ? { text: `Профиль предприятия: ${profileText}.`, basis: B('sanpin4282:4') }
       : { text: 'Профиль предприятия.', basis: [], gap: 'Не указан тип предприятия — система не может определить применимые требования.', href: `${base}/compliance` },
@@ -121,31 +134,28 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
       from haccp_hazards h join haccp_steps st on st.id = h.step_id left join haccp_monitoring m on m.hazard_id = h.id
       where h.plan_id = $1 and h.class in ('ccp', 'oprp') order by st.position, h.code`, [plan.id]) : [];
   sec('Критические контрольные точки и действия при отклонениях', [
-    plan && ccp.length ? { text: 'Контроль в критических контрольных точках — по таблице: параметр, предельное значение, способ и периодичность мониторинга, ответственный, форма записи и действия при отклонении.', basis: B('trts021:11.3') }
-      : { text: 'Критические контрольные точки.', basis: [], gap: plan ? 'В утверждённом плане ХАССП нет ККТ или ОПРП.' : 'Нет утверждённого плана ХАССП.', href: `${base}/haccp` },
-    ...ccp.filter((c) => !c.critical_limit || !c.corrective_action).map((c) => ({ text: `${c.code}`, basis: [], gap: `${c.code} «${c.step}»: не задан ${!c.critical_limit ? 'критический предел' : 'порядок действий при отклонении'}.`, href: `${base}/haccp` })),
+    ok('haccp_ccp') ? { text: 'Контроль в критических контрольных точках — по таблице: параметр, предельное значение, способ и периодичность мониторинга, ответственный, форма записи и действия при отклонении.', basis: B('trts021:11.3') }
+      : gapOf(['haccp_ccp'], B('trts021:11.3')),
     { text: 'Продукция, не соответствующая требованиям, а также продукция с истёкшим сроком годности изымается из оборота и утилизируется; факт фиксируется в журнале корректирующих действий.', basis: B('trts021:18', 'sanpin4282:6') },
   ], ccp.length ? { head: ['Этап', 'Опасность', 'Предел', 'Мониторинг', 'Ответственный', 'Запись', 'При отклонении'],
     rows: ccp.map((c) => [`${c.position}. ${c.step}`, `${c.code}: ${c.description}`, c.critical_limit || '—', [c.what, c.method, c.frequency].filter(Boolean).join('; ') || '—', roleName(c.responsible_role), c.record_form || '—', c.corrective_action || '—']) } : null);
 
   // 4. Контроль сырья и продукции
   const ttk = Number((await q(`select count(distinct d.id) from dishes d join ttk_versions v on v.dish_id = d.id and v.status = 'approved' where d.organization_id = $1 and d.status = 'active'`))[0].count);
-  const dishes = Number((await q(`select count(*) from dishes where organization_id = $1 and status = 'active'`))[0].count);
   const samples = samplesRequired(profile);
-  const sampleSet = (await q(`select 1 from sample_settings where organization_id = $1`)).length > 0;
   sec('Контроль сырья, полуфабрикатов и готовой продукции', [
     { text: 'Приёмка сырья и пищевой продукции — только при наличии маркировки и документов, подтверждающих безопасность и качество; входной контроль регистрируется при каждой приёмке.', basis: B('sanpin4282:5') },
     { text: 'Документы, подтверждающие безопасность сырья животного происхождения, хранятся не менее 3 лет.', basis: B('trts021:11.4') },
     { text: 'Ежедневный контроль сроков годности и условий хранения; продукция с истёкшим сроком годности утилизируется.', basis: B('sanpin4282:6', 'trts021:17.7') },
-    dishes && ttk >= dishes ? { text: `Продукция изготавливается по утверждённым технологическим документам: ${ttk} ТТК.`, basis: B('sanpin4282:11', 'gost31987:4') }
-      : { text: 'Продукция изготавливается по утверждённым технологическим документам.', basis: B('sanpin4282:11'), gap: dishes ? `Не утверждены ТТК: ${dishes - ttk} из ${dishes} блюд.` : 'Нет ни одного блюда с ТТК.', href: `${base}/menu` },
+    ok('tech_docs') ? { text: `Продукция изготавливается по утверждённым технологическим документам: ${ttk} ТТК.`, basis: B('sanpin4282:11', 'gost31987:4') }
+      : gapOf(['tech_docs'], B('sanpin4282:11')),
     { text: 'Готовые блюда находятся на раздаче не более 3 часов; не реализуются на следующий день и не замораживаются.', basis: B('sanpin4282:32') },
     { text: 'Потребитель информируется о наличии аллергенов в продукции.', basis: B('sanpin4282:43') },
     ...(on('sanpin4282:44') ? [{ text: 'Фритюрные жиры контролируются ежедневно перед началом и в процессе жарки; замена и утилизация — с записью в журнал, учёт хранится 3 месяца.', basis: B('sanpin4282:44') }] : []),
     ...(on('sanpin4282:7') ? [{ text: 'Продукция, реализуемая вне предприятия, сопровождается декларацией о соответствии или свидетельством о государственной регистрации; упакованная продукция маркируется.', basis: B('sanpin4282:7', 'rpn:declaration', 'trts022:1.2') }] : []),
     ...(on('sanpin4282:52') ? [{ text: 'Кейтеринг: комплектование не ранее чем за 3 часа до доставки, изотермические ёмкости с ярлыком, горячие блюда реализуются не более 3 часов; обеспечивается прослеживаемость.', basis: B('sanpin4282:52', 'sanpin4282:54', 'sanpin4282:55') }] : []),
-    ...(samples ? [sampleSet ? { text: 'Суточная проба отбирается от каждой партии готовых блюд и хранится по утверждённым параметрам.', basis: B('sanpin4282:56.4', 'sanpin4282:59.10') }
-      : { text: 'Суточная проба.', basis: B('sanpin4282:56.4', 'sanpin4282:59.10'), gap: 'Параметры суточной пробы не утверждены.', href: `${base}/lab` }] : []),
+    ...(samples ? [ok('daily_samples') ? { text: 'Суточная проба отбирается от каждой партии готовых блюд и хранится по утверждённым параметрам.', basis: B('sanpin4282:56.4', 'sanpin4282:59.10') }
+      : gapOf(['daily_samples'], B('sanpin4282:56.4', 'sanpin4282:59.10'))] : []),
   ]);
 
   // 5. Условия хранения
@@ -153,9 +163,8 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
     from control_objects o join sites s on s.id = o.site_id where o.organization_id = $1 and o.status = 'active' order by s.name, o.name`);
   const KIND: Record<string, string> = { fridge: 'холодильник', freezer: 'морозильник', room: 'склад / помещение', storage: 'склад', hot: 'тепловое оборудование' };
   sec('Контроль условий хранения', [
-    objs.length ? { text: 'Ежедневная регистрация температуры в холодильном оборудовании и складских помещениях, влажности — в складских помещениях; объекты — по таблице.', basis: B('sanpin4282:35') }
-      : { text: 'Ежедневная регистрация температуры и влажности.', basis: B('sanpin4282:35'), gap: 'Не внесены объекты контроля (холодильники, склады).', href: `${base}/objects` },
-    ...objs.filter((o) => !o.rules).map((o) => ({ text: o.name, basis: [], gap: `«${o.name}»: не утверждён допустимый диапазон.`, href: `${base}/objects` })),
+    ok('storage_objects') ? { text: 'Ежедневная регистрация температуры в холодильном оборудовании и складских помещениях, влажности — в складских помещениях; объекты — по таблице.', basis: B('sanpin4282:35') }
+      : gapOf(['storage_objects'], B('sanpin4282:35')),
     { text: 'Холодильное оборудование оснащается термометрами, складские помещения — гигрометрами; ртутные термометры не используются.', basis: B('sanpin4282:40', 'sanpin4282:48') },
   ], objs.length ? { head: ['Площадка', 'Объект', 'Вид', 'Периодичность'], rows: objs.map((o) => [o.site, o.name, KIND[o.kind] || o.kind, 'ежедневно']) } : null);
 
@@ -171,16 +180,15 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
   // 6. Лабораторный контроль
   const lab = await q(`select l.test_type, l.target, l.period_days, l.basis, l.responsible_role, s.name as site from lab_programs l join sites s on s.id = l.site_id
     where l.organization_id = $1 and l.status = 'active' order by s.name, l.test_type, l.target`);
-  const has = (re: RegExp) => lab.some((l) => re.test(`${l.test_type} ${l.target}`));
   sec('Лабораторные исследования и измерения', [
-    lab.length ? { text: 'Лабораторные исследования проводятся по таблице: показатель, объект (место отбора проб), периодичность.', basis: B('sp4285:4', 'sp4284:3', 'sanpin4282:4') }
-      : { text: 'Лабораторные исследования.', basis: B('sanpin4282:4'), gap: 'Не внесена программа лабораторных исследований.', href: `${base}/lab` },
-    has(/вод/i) ? { text: 'Качество питьевой воды (в том числе горячей) подтверждается лабораторными исследованиями по гигиеническим нормативам.', basis: B('sanpin4282:13', 'trts021:12', 'sanpin3685:t3.5') }
-      : { text: 'Исследование питьевой воды.', basis: B('sanpin4282:13'), gap: 'В программе нет исследования воды.', href: `${base}/lab` },
-    has(/микроклим/i) ? { text: 'Параметры микроклимата рабочих мест контролируются не реже 1 раза в год по допустимым величинам для категории работ.', basis: B('sp4285:15', 'sanpin3685:t5.2') }
-      : { text: 'Микроклимат рабочих мест.', basis: B('sp4285:15'), gap: 'В программе нет измерения микроклимата не реже раза в год.', href: `${base}/lab` },
-    okCtr('lab') ? { text: `Исследования выполняет аккредитованная лаборатория по договору: ${okCtr('lab')!.counterparty}.`, basis: B('sp4284:3', 'sanpin4282:4') }
-      : { text: 'Аккредитованная лаборатория.', basis: B('sanpin4282:4'), gap: `Договор с лабораторией: ${ctr('lab').detail}.`, href: `${base}/contracts` },
+    ok('lab_program') ? { text: 'Лабораторные исследования проводятся по таблице: показатель, объект (место отбора проб), периодичность.', basis: B('sp4285:4', 'sp4284:3', 'sanpin4282:4') }
+      : gapOf(['lab_program'], B('sanpin4282:4')),
+    ok('water_lab') ? { text: 'Качество питьевой воды (в том числе горячей) подтверждается лабораторными исследованиями по гигиеническим нормативам.', basis: B('sanpin4282:13', 'trts021:12', 'sanpin3685:t3.5') }
+      : gapOf(['water_lab'], B('sanpin4282:13')),
+    ok('microclimate_lab') ? { text: 'Параметры микроклимата рабочих мест контролируются не реже 1 раза в год по допустимым величинам для категории работ.', basis: B('sp4285:15', 'sanpin3685:t5.2') }
+      : gapOf(['microclimate_lab'], B('sp4285:15')),
+    ok('contract_lab') ? { text: `Исследования выполняет аккредитованная лаборатория по договору: ${okCtr('lab')?.counterparty || ctr('lab').detail}.`, basis: B('sp4284:3', 'sanpin4282:4') }
+      : gapOf(['contract_lab'], B('sanpin4282:4')),
   ], lab.length ? { head: ['Площадка', 'Исследование', 'Объект / место отбора', 'Периодичность', 'Ответственный'], rows: lab.map((l) => [l.site, l.test_type, l.target, period(l.period_days), roleName(l.responsible_role)]) } : null);
 
   // 7. Санитарно-противоэпидемические мероприятия
@@ -188,25 +196,22 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
     where p.organization_id = $1 and p.status = 'active' order by p.period_days, p.area, p.work`);
   const dis = await q(`select name, purpose, concentration_min, concentration_max, exposure from disinfectants where organization_id = $1 and status = 'approved' order by name`);
   sec('Санитарно-противоэпидемические мероприятия', [
-    san.some((p) => p.period_days === 1 && p.dis) ? { text: 'Ежедневная влажная уборка производственных помещений с применением моющих и дезинфицирующих средств; уборки и дезинфекция — по графику (таблица).', basis: B('sanpin4282:21') }
-      : { text: 'Ежедневная влажная уборка.', basis: B('sanpin4282:21'), gap: 'В плане санитарии нет ежедневной уборки с дезинфицирующим средством.', href: `${base}/sanitation` },
+    ok('daily_cleaning') ? { text: 'Ежедневная влажная уборка производственных помещений с применением моющих и дезинфицирующих средств; уборки и дезинфекция — по графику (таблица).', basis: B('sanpin4282:21') }
+      : gapOf(['daily_cleaning'], B('sanpin4282:21')),
     { text: 'Уборочный инвентарь — отдельный для каждого помещения, промаркирован; посуда и инвентарь в конце дня моются с дезинфекцией.', basis: B('sanpin4282:22', 'sanpin4282:37', 'sanpin4282:29') },
-    dis.length ? { text: `Моющие и дезинфицирующие средства применяются по инструкции изготовителя: ${dis.map((d) => d.name).join(', ')}.`, basis: B('sanpin4282:46') }
-      : { text: 'Дезинфицирующие средства.', basis: B('sanpin4282:46'), gap: 'Нет утверждённых дезинфицирующих средств с режимами.', href: `${base}/sanitation` },
-    san.some((p) => p.check_concentration) ? { text: 'Ёмкости с рабочими растворами маркируются; содержание действующих веществ контролируется по плану санитарии с записью в журнал.', basis: B('sanpin4282:47') }
-      : { text: 'Контроль концентрации рабочих растворов.', basis: B('sanpin4282:47'), gap: 'Ни в одном плане санитарии нет контроля концентрации.', href: `${base}/sanitation` },
-    okCtr('pest_control') ? { text: `Дезинсекция и дератизация — по договору с ${okCtr('pest_control')?.counterparty}, в отсутствие продукции, работников и потребителей.`, basis: B('sanpin4282:26', 'sanpin4282:45', 'sp4284:14') }
-      : { text: 'Дезинсекция и дератизация.', basis: B('sanpin4282:26'), gap: `Договор на дезинсекцию и дератизацию: ${ctr('pest_control').detail}.`, href: `${base}/contracts` },
-    okCtr('waste') ? { text: `Отходы удаляются регулярно, раздельно, в маркированные закрываемые ёмкости; вывоз — по договору с ${okCtr('waste')?.counterparty}.`, basis: B('sanpin4282:20', 'trts021:16.3', 'sp4284:11') }
-      : { text: 'Вывоз отходов.', basis: B('sanpin4282:20'), gap: `Договор на вывоз отходов: ${ctr('waste').detail}.`, href: `${base}/contracts` },
+    ok('disinfectants') ? { text: `Моющие и дезинфицирующие средства применяются по инструкции изготовителя: ${dis.map((d) => d.name).join(', ')}.`, basis: B('sanpin4282:46') }
+      : gapOf(['disinfectants'], B('sanpin4282:46')),
+    ok('concentration') ? { text: 'Ёмкости с рабочими растворами маркируются; содержание действующих веществ контролируется по плану санитарии с записью в журнал.', basis: B('sanpin4282:47') }
+      : gapOf(['concentration'], B('sanpin4282:47')),
+    ok('contract_pest') ? { text: `Дезинсекция и дератизация — по договору с ${okCtr('pest_control')?.counterparty || ctr('pest_control').detail}, в отсутствие продукции, работников и потребителей.`, basis: B('sanpin4282:26', 'sanpin4282:45', 'sp4284:14') }
+      : gapOf(['contract_pest'], B('sanpin4282:26')),
+    ok('contract_waste') ? { text: `Отходы удаляются регулярно, раздельно, в маркированные закрываемые ёмкости; вывоз — по договору с ${okCtr('waste')?.counterparty || ctr('waste').detail}.`, basis: B('sanpin4282:20', 'trts021:16.3', 'sp4284:11') }
+      : gapOf(['contract_waste'], B('sanpin4282:20')),
   ], san.length ? { head: ['Помещение', 'Работа', 'Периодичность', 'Средство', 'Ответственный'], rows: san.map((p) => [p.area, p.work + (p.check_concentration ? ' (контроль концентрации)' : ''), period(p.period_days), p.dis || '—', roleName(p.responsible_role)]) } : null);
 
   // 8. Персонал
-  const food = staff.filter((s) => ['line_staff', 'chef', 'storekeeper'].includes(s.role));
-  const med = await q(`select distinct on (user_id) user_id from staff_medical where organization_id = $1 order by user_id, recorded_at desc`);
-  const noMed = food.filter((s) => !med.some((r) => r.user_id === s.id));
   sec('Работники: медицинские осмотры, гигиеническая подготовка, допуск', [
-    noMed.length ? { text: 'Медицинские осмотры и гигиеническая аттестация.', basis: B('sanpin4282:24'), gap: `Нет данных о медосмотре: ${noMed.map((s) => s.full_name).join(', ')}.`, href: `${base}/staff` }
+    !ok('staff_medical', 'staff_hygiene') ? gapOf(['staff_medical', 'staff_hygiene'], B('sanpin4282:24'))
       : { text: 'Работники проходят предварительные и периодические медицинские осмотры, профессиональную гигиеническую подготовку и аттестацию; сроки контролируются системой.', basis: B('sanpin4282:24', 'trts021:11.6') },
     { text: 'Перед началом смены — осмотр работников с записью в гигиенический журнал; лица с признаками заболеваний и повреждениями кожи к работе не допускаются.', basis: B('sanpin4282:25', 'trts021:11.6') },
     { text: 'Приём пищи в производственных помещениях не допускается; рабочая и личная одежда хранятся раздельно.', basis: B('trts021:11.5', 'sp4285:88') },
@@ -214,10 +219,9 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
 
   // 9. Оборудование и средства измерений
   const eq = await q(`select e.name, e.calibration_due::text as due from equipment e where e.organization_id = $1 and e.status = 'active' and e.measuring order by e.name`);
-  const noCal = eq.filter((e) => !e.due);
   sec('Технологическое оборудование и средства измерений', [
     { text: 'Технологическое оборудование оснащено контрольными приборами; неисправности и ремонт фиксируются.', basis: B('trts021:15.2') },
-    ...(eq.length ? [noCal.length ? { text: 'Поверка средств измерений.', basis: B('trts021:15.2'), gap: `Не указан срок поверки/калибровки: ${noCal.map((e) => e.name).join(', ')}.`, href: `${base}/equipment` }
+    ...(eq.length ? [!ok('instruments') ? gapOf(['instruments'], B('trts021:15.2'))
       : { text: `Средства измерений (${eq.length}) поверяются или калибруются в установленные сроки.`, basis: B('trts021:15.2') }] : []),
     { text: 'Над источниками тепла, влаги и газов — местные вытяжные системы.', basis: B('sanpin4282:16', 'trts021:14.2') },
   ]);
@@ -240,17 +244,23 @@ export async function buildPpk(tx: Tx, orgId: string): Promise<PpkDoc> {
   const cited = new Set(sections.flatMap((s) => s.lines.flatMap((l) => l.basis)).concat(jr.flatMap((j) => j.basis)));
   const basis = CLAUSES.filter((c) => cited.has(c.id)).map((c) => ({ id: c.id, doc: DOCS[c.doc].code, clause: c.clause, text: c.text }));
   const docKeys = new Set(CLAUSES.filter((c) => cited.has(c.id)).map((c) => c.doc));
+  // нормативная основа: истёкшие документы и неизвестные ссылки — техническое несоответствие (fail-closed)
+  registerNormRefs('ppk', [...unknownRefs, ...sections.flatMap((x) => x.lines.flatMap((l) => l.basis))]);
+  const normGaps: PpkLine[] = [];
+  for (const k of ['norm_refs', 'doc_expiry']) if (!ok(k)) normGaps.push(gapOf([k]));
+  if (unknownRefs.size) normGaps.push({ text: 'Ссылки на нормативную базу', basis: [], gap: `Программа ссылается на пункты, которых нет в нормативной базе (модуль ППК): ${[...unknownRefs].join(', ')}.`, href: null });
+  if (normGaps.length) sections[0].lines.push(...normGaps);
   const gaps = sections.flatMap((s) => s.lines.filter((l) => l.gap).map((l) => ({ section: `${s.no}. ${s.title}`, text: l.gap!, href: l.href || null })));
   return {
     org: { name: org.name, legal_form: org.legal_form, inn: org.inn, region: org.region },
     sites: sites.map((s) => ({ name: s.name, address: s.address })), profile, profile_text: profileText, params,
     responsible: resp ? { name: resp.full_name, position: resp.position } : null,
     sections, docs: Object.entries(DOCS).filter(([k]) => docKeys.has(k)).map(([, d]) => ({ code: d.code, title: d.title, issued: d.issued, effective_to: d.effectiveTo })),
-    basis, gaps,
+    basis, gaps, unknown_refs: [...unknownRefs],
   };
 }
 
-export const ppkHash = (d: PpkDoc) => createHash('sha256').update(JSON.stringify({ ...d, gaps: undefined })).digest('hex');
+export const ppkHash = (d: PpkDoc) => createHash('sha256').update(JSON.stringify({ ...d, gaps: undefined, unknown_refs: undefined })).digest('hex');
 
 async function versions(tx: Tx, orgId: string) {
   return (await tx.query(`select v.version, v.change_note, v.approved_at, v.data_hash, u.full_name as approved_by_name from ppk_versions v join users u on u.id = v.approved_by
@@ -300,6 +310,8 @@ export async function approvePpk(userId: string, orgId: string, input: unknown) 
   return inOrg(userId, orgId, 'haccp.approve', async (tx) => {
     await tx.query(`select 1 from organizations where id = $1 for update`, [orgId]);
     const doc = await buildPpk(tx, orgId);
+    // запись о техническом несоответствии сохраняется отдельно: отказ в утверждении откатывает транзакцию
+    if (doc.unknown_refs?.length) await withSystem((t) => audit.record(t, { organizationId: orgId, actorUserId: userId, action: 'ppk.norm_ref_unknown', entityType: 'ppk', entityId: orgId, after: { module: 'ppk', ids: doc.unknown_refs } }));
     if (doc.gaps.length) throw Errors.conflict(`Программу утвердить нельзя — не хватает данных (${doc.gaps.length}): ${doc.gaps.map((g) => g.text).join(' ')}`);
     const hash = ppkHash(doc);
     const last = (await tx.query(`select data_hash from ppk_versions where organization_id = $1 order by version desc limit 1`, [orgId])).rows[0];
