@@ -19,9 +19,10 @@ import { assertLotUsable, expiryState, EXPIRY_LABEL, LOT_STATUS_LABEL } from './
  */
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // без I, O, 0, 1 — не путаются при ручном вводе
-const newCode = () => Array.from({ length: 8 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
+export const newLabelCode = () => Array.from({ length: 8 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
 
-export const LABEL_FORMATS = { '58x40': 'Термоэтикетка 58×40 мм', '58x30': 'Термоэтикетка 58×30 мм', a4: 'Лист A4, 24 наклейки 70×37 мм' } as const;
+export const LABEL_FORMATS = { '58x40': 'Термоэтикетка 58×40 мм', '58x30': 'Термоэтикетка 58×30 мм', a4: 'Лист A4, 24 наклейки 70×37 мм',
+  '58x60': 'Потребительская 58×60 мм', '100x70': 'Потребительская 100×70 мм' } as const;
 
 const num = z.union([z.number(), z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Введите число.').transform((s) => Number(s.replace(',', '.')))])
   .refine((v) => Number.isFinite(v) && v > 0, 'Значение больше нуля.');
@@ -61,7 +62,7 @@ async function makeLabel(tx: Tx, orgId: string, userId: string, l: LotRow) {
   const last = (await tx.query(`select id, code, payload from labels where lot_id = $1 order by created_at desc limit 1`, [l.id])).rows[0];
   if (last && sameLabel(last.payload, payload)) return { id: last.id as string, code: last.code as string, reused: true };
   for (let i = 0; i < 5; i++) {
-    const code = newCode();
+    const code = newLabelCode();
     const r = await tx.query(`insert into labels (organization_id, site_id, lot_id, code, kind, payload, created_by) values ($1, $2, $3, $4, $5, $6, $7)
       on conflict (code) do nothing returning id, code`, [orgId, l.site_id, l.id, code, l.opened_at ? 'opened' : 'lot', JSON.stringify(payload), userId]);
     if (r.rows[0]) return { ...r.rows[0], reused: false } as { id: string; code: string; reused: boolean };

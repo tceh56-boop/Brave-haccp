@@ -106,6 +106,7 @@ function Marking({ c, onDone }: { c: LotCard; onDone: () => void }) {
         {alive && can('label.print') && <button className="btn small" disabled={busy} onClick={() => run(async () => {
           const [lb] = await api<{ id: string }[]>(`/orgs/${org.id}/labels`, { body: { lotIds: [l.id] } }); print([lb.id]);
         })}>Этикетка</button>}
+        <Link className="btn small secondary" href={`/app/${org.id}/lots/${l.id}/consumer-label`}>Потребительская этикетка</Link>
       </div>
       <p className="small muted" style={{ marginBottom: 0 }}>{c.label ? `Последняя этикетка ${c.label.code} от ${dt(c.label.created_at, tz)}, напечатано: ${c.label.printed}.` : 'Этикетка ещё не печаталась.'}</p>
       {c.opened.length > 0 && <ul className="list" style={{ marginTop: 8 }}>{c.opened.map((o) => (
