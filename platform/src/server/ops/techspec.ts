@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertSnapshotIntact } from './integrity';
 import { MICRO_GROUPS } from '../norms/micro';
 const MicroGroupCode = z.string().refine((c) => c === 'custom' || MICRO_GROUPS.some((g) => g.code === c), 'Нет такой группы ТР ТС 021.').nullable().optional();
 import type { Tx } from '../db/pool';
@@ -386,7 +387,7 @@ export async function getTechSpecVersion(userId: string, orgId: string, dishId: 
     const v = (await tx.query(`select v.*, u.full_name as approved_by_name from tech_spec_versions v join users u on u.id = v.approved_by
       where v.dish_id = $1 and v.organization_id = $2 and v.version = $3`, [dishId, orgId, version])).rows[0];
     if (!v) throw Errors.notFound('Версия ТУ не найдена.');
-    return v;
+    return { ...v, integrity: await assertSnapshotIntact(tx, 'tech_spec_versions', v.id, { orgId, userId }) };
   });
 }
 

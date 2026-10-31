@@ -126,3 +126,17 @@ describe('ППК на едином движке готовности', () => {
     await expect(approvePpk(owner.id, orgId, { changeNote: 'Пересмотр' })).rejects.toThrow(/утвердить нельзя/);
   });
 });
+
+describe('Целостность утверждённой программы', () => {
+  it('снимок с хешем; подмена содержимого обнаруживается — документ не выдаётся, событие в аудите', async () => {
+    const v1 = await getPpkVersion(owner.id, orgId, 1);
+    expect(v1.integrity.content_hash).toMatch(/^[0-9a-f]{64}$/);
+    // подмена в обход приложения (владелец БД снимает защиту)
+    await sys(`alter table ppk_versions disable trigger user`, []);
+    await sys(`update ppk_versions set snapshot = jsonb_set(snapshot, '{params,city}', '"Подмена"') where organization_id = $1 and version = 1`, [orgId]);
+    await sys(`alter table ppk_versions enable trigger user`, []);
+    await expect(getPpkVersion(owner.id, orgId, 1)).rejects.toThrow(/не прошёл проверку целостности/);
+    const ev = (await sys(`select count(*)::int as n from audit_events where organization_id = $1 and action = 'security.snapshot_mismatch'`, [orgId])).rows[0].n;
+    expect(ev).toBe(1);
+  });
+});

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertSnapshotIntact } from './integrity';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
@@ -174,6 +175,7 @@ export async function getStoVersion(userId: string, orgId: string, stoId: string
     const s = await loadSto(tx, orgId, stoId);
     const v = (await tx.query(`select v.*, v.review_due::text as review_due, u.full_name as approved_by_name from sto_versions v join users u on u.id = v.approved_by where v.sto_id = $1 and v.version = $2`, [s.id, version])).rows[0];
     if (!v) throw Errors.notFound('Версия СТО не найдена.');
+    v.integrity = await assertSnapshotIntact(tx, 'sto_versions', v.id, { orgId, userId });
     const all = (await tx.query(`select v.version, v.designation, v.change_note, v.approved_at, u.full_name as approved_by_name from sto_versions v join users u on u.id = v.approved_by
       where v.sto_id = $1 and v.version <= $2 order by v.version`, [s.id, version])).rows;
     return { ...v, versions: all };

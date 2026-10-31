@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertSnapshotIntact } from './integrity';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
@@ -138,6 +139,7 @@ export async function getTiVersion(userId: string, orgId: string, dishId: string
     const v = (await tx.query(`select v.*, u.full_name as approved_by_name from ti_versions v join users u on u.id = v.approved_by where v.dish_id = $1 and v.organization_id = $2 and v.version = $3`,
       [parse(z.uuid(), dishId), orgId, version])).rows[0];
     if (!v) throw Errors.notFound('Версия ТИ не найдена.');
+    v.integrity = await assertSnapshotIntact(tx, 'ti_versions', v.id, { orgId, userId });
     const all = (await tx.query(`select version, designation, change_note, approved_at, u.full_name as approved_by_name from ti_versions v join users u on u.id = v.approved_by
       where v.dish_id = $1 and v.version <= $2 order by version`, [dishId, version])).rows;
     return { ...v, versions: all };

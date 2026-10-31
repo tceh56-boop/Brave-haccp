@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { assertSnapshotIntact } from './integrity';
 import type { Tx } from '../db/pool';
 import { withSystem } from '../db/pool';
 import { audit } from '../audit/audit';
@@ -326,10 +327,11 @@ export async function approvePpk(userId: string, orgId: string, input: unknown) 
 
 export async function getPpkVersion(userId: string, orgId: string, version: number) {
   return inOrg(userId, orgId, 'haccp.read', async (tx) => {
-    const v = (await tx.query(`select v.version, v.snapshot, v.change_note, v.approved_at, u.full_name as approved_by_name from ppk_versions v join users u on u.id = v.approved_by
+    const v = (await tx.query(`select v.id, v.version, v.snapshot, v.change_note, v.approved_at, u.full_name as approved_by_name from ppk_versions v join users u on u.id = v.approved_by
       where v.organization_id = $1 and v.version = $2`, [orgId, version])).rows[0];
     if (!v) throw Errors.notFound('Версия программы не найдена.');
+    const integrity = await assertSnapshotIntact(tx, 'ppk_versions', v.id, { orgId, userId });
     const all = (await versions(tx, orgId)).filter((x) => x.version <= version).map(({ data_hash, ...x }) => x);
-    return { ...v, versions: all };
+    return { ...v, versions: all, integrity };
   });
 }
