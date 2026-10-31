@@ -9,10 +9,12 @@ var INTEGR_DEMO_MODE = false; // true только при заполнении �
 var Integr = {
   now: function () { return new Date().toISOString(); },
 
-  /* GOOGLE: аккаунт Workspace (Web App «Выполнять от имени: я», «Доступ: пользователи домена»).
-     PIN: токен сессии из CacheService после Auth.login. */
+  /* Сессия по PIN (токен из CacheService после Auth.login) действует в любом режиме:
+     без Google Workspace сотрудник входит по PIN, даже если AUTH_MODE = GOOGLE.
+     GOOGLE: аккаунт Workspace (Web App «Выполнять от имени: я», «Доступ: пользователи домена»). */
   currentEmail: function (token, mode) {
-    if (mode === 'PIN') return token ? (CacheService.getScriptCache().get('sess_' + token) || '') : '';
+    var sess = token ? (CacheService.getScriptCache().get('sess_' + token) || '') : '';
+    if (sess || mode === 'PIN') return sess;
     return Session.getActiveUser().getEmail();
   },
 

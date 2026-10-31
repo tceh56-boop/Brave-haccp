@@ -1,25 +1,24 @@
 {
- "seed_ms": 0,
+ "seed_ms": 444,
  "stats": {
-  "Employees": 9,
-  "Teams": 0,
-  "Clients": 6,
-  "Sites": 7,
-  "Contracts": 6,
-  "Services": 5,
-  "Visits": 27,
+  "Employees": 8,
+  "AuditLog": 1602,
   "Checklists": 3,
   "ChecklistItems": 30,
-  "VisitResults": 188,
-  "Reports": 18,
-  "LabSamples": 13,
-  "Tasks": 36,
-  "Documents": 116,
-  "Finance": 58,
-  "AuditLog": 723,
-  "Settings": 24,
-  "Notifications": 92,
-  "SystemErrors": 0
+  "Services": 5,
+  "Clients": 6,
+  "Contracts": 6,
+  "Sites": 7,
+  "Visits": 49,
+  "Settings": 0,
+  "Notifications": 210,
+  "VisitResults": 436,
+  "Documents": 291,
+  "Reports": 43,
+  "LabSamples": 29,
+  "Tasks": 80,
+  "SystemErrors": 1,
+  "Finance": 84
  },
  "results": [
   {
@@ -32,7 +31,7 @@
    "id": "AT-02",
    "name": "Назначить выезд",
    "ok": true,
-   "note": "VIS-000028, событие ev245"
+   "note": "VIS-000050, событие EV340"
   },
   {
    "id": "AT-03",
@@ -44,7 +43,7 @@
    "id": "AT-04",
    "name": "Начать и завершить выезд",
    "ok": true,
-   "note": "начало 2026-10-20T16:34:02.491Z"
+   "note": "начало 2026-10-31T06:34:23.720Z"
   },
   {
    "id": "AT-05",
@@ -56,55 +55,55 @@
    "id": "AT-06",
    "name": "Повторить запрос старта",
    "ok": true,
-   "note": "VIS-000018: 3 запроса → 1 старт"
+   "note": "VIS-000040: 3 запроса → 1 старт"
   },
   {
    "id": "AT-07",
    "name": "Вернуть отчёт",
    "ok": true,
-   "note": "v1 возвращён → задача TSK-000038 → v2"
+   "note": "v1 возвращён → задача TSK-000082 → v2"
   },
   {
    "id": "AT-08",
    "name": "Утвердить отчёт",
    "ok": true,
-   "note": "VIS-000028_2026-10-20_Report_v02.pdf, выезд закрыт"
+   "note": "VIS-000050_2026-10-31_Report_v02.pdf, выезд закрыт"
   },
   {
    "id": "AT-09",
    "name": "Создать пробу с дедлайном",
    "ok": true,
-   "note": "LAB-000014: уведомлений 2"
+   "note": "LAB-000030: уведомлений 1"
   },
   {
    "id": "AT-10",
    "name": "Закрыть критическую задачу без проверки",
    "ok": true,
-   "note": "TSK-000040: закрыта только после проверки"
+   "note": "TSK-000084: закрыта только после проверки"
   },
   {
    "id": "AT-11",
    "name": "Частично оплатить счёт",
    "ok": true,
-   "note": "СЧ-2026-0013: 30 000 → 10 000 → остаток 20 000 → оплачен"
+   "note": "СЧ-2026-0017: 30 000 → 10 000 → остаток 20 000 → оплачен"
   },
   {
    "id": "AT-12",
    "name": "Отключить пользователя",
    "ok": true,
-   "note": "история: 107 записей сохранено"
+   "note": "история: 252 записей сохранено"
   },
   {
    "id": "AT-13",
    "name": "Ошибка Calendar",
    "ok": true,
-   "note": "VIS-000029: ошибка → повтор → 1 событие"
+   "note": "VIS-000051: ошибка → повтор → 1 событие"
   },
   {
    "id": "AT-14",
    "name": "Восстановить резервную копию",
    "ok": true,
-   "note": "backupNow → restoreFromBackup: клиентов 7, ID после восстановления CLI-000009"
+   "note": "листов: 19; в GAS — копия файла, см. README"
   },
   {
    "id": "AT-15",
@@ -116,7 +115,7 @@
    "id": "EXTRA",
    "name": "Права ролей и панели",
    "ok": true,
-   "note": "панель руководителя за 8 мс"
+   "note": "панель руководителя за 4 мс"
   }
  ]
 }

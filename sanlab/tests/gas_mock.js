@@ -25,6 +25,7 @@ module.exports = function () {
     sh.getLastColumn = function () { var m = 0; sh._d.forEach(function (r) { if (r) for (var j = r.length - 1; j >= 0; j--) if (r[j] !== '' && r[j] !== undefined) { m = Math.max(m, j + 1); break; } }); return m; };
     sh.getRange = function (r, c, nr, nc) { return Range(sh, r, c, nr || 1, nc || 1); };
     sh.setFrozenRows = function () { };
+    sh.hideColumns = function (c) { sh.hiddenCols = (sh.hiddenCols || []).concat([c]); };
     sh.getMaxRows = function () { return 1000; };
     sh.getProtections = function () { return sh._prot; };
     sh.protect = function () { var p = { setDescription: function () { return p; }, removeEditors: function () { return p; }, getEditors: function () { return []; }, canDomainEdit: function () { return false; }, setDomainEdit: function () { return p; } }; sh._prot.push(p); return p; };

@@ -3548,7 +3548,8 @@ function call(action, payload, opts) {
     return transport(action, payload || {}, rid).then(function (res) {
       if (res.ok) return res.data;
       var err = { code: res.code, message: res.message, details: res.details, request_id: res.request_id };
-      if (res.code === 'ACCOUNT_DISABLED' || res.code === 'AUTH_REQUIRED') { setTimeout(function () { boot(true); }, 50); }
+      /* Сессия истекла во время работы — на экран входа. На самом экране входа не перезапускаемся, иначе ввод сбрасывается */
+      if ((res.code === 'ACCOUNT_DISABLED' || res.code === 'AUTH_REQUIRED') && S.me) { setTimeout(function () { boot(true); }, 50); }
       throw err;
     }, function (e) {
       if (n < 1) return attempt(n + 1);
@@ -3945,9 +3946,10 @@ function boot(force) {
   var th = lsGet('theme'); if (th) document.documentElement.setAttribute('data-theme', th);
   var root = $('#app');
   if (window.SANLAB_DEMO && (force || !S.token)) return window.SANLAB_DEMO.login(root);
-  if (!window.SANLAB_DEMO && force) { S.token = ''; try { sessionStorage.removeItem('sanlab_token'); } catch (e) { } }
+  if (!window.SANLAB_DEMO && force) { S.me = null; S.token = ''; try { sessionStorage.removeItem('sanlab_token'); } catch (e) { } }
+  if (!window.SANLAB_DEMO && !S.token) { try { S.token = sessionStorage.getItem('sanlab_token') || ''; } catch (e) { } }
   call('auth.mode').then(function (m) {
-    if (!window.SANLAB_DEMO && m.mode === 'PIN' && !S.token) { try { S.token = sessionStorage.getItem('sanlab_token') || ''; } catch (e) { } if (!S.token) return pinLogin(root, m); }
+    if (!window.SANLAB_DEMO && m.mode === 'PIN' && !S.token) return pinLogin(root, m);
     return Promise.all([call('auth.me'), call('lookups.get')]).then(function (r) {
       S.me = r[0]; S.lk = r[1]; S.stack = [];
       root.innerHTML = shellHtml();
@@ -3963,15 +3965,16 @@ function boot(force) {
 }
 function pinLogin(root, m) {
   root.innerHTML = '<div class="login"><div class="box" style="max-width:420px"><div class="logo">' + LOGO_MARK.replace('<svg', '<svg style="width:52px;height:58px"') + '<b>San<i>.</i>Lab</b></div>' +
-    '<div class="merr"></div>' + formHtml([{ name: 'email', label: 'Рабочий e-mail', type: 'email', full: true, required: true }, { name: 'pin', label: 'PIN-код', type: 'password', inputmode: 'numeric', full: true, required: true }]) +
+    '<div class="merr"></div>' + formHtml([{ name: 'email', label: 'Рабочий e-mail', type: 'email', full: true, required: true, value: lsGet('login_email') || '' }, { name: 'pin', label: 'PIN-код', type: 'password', inputmode: 'numeric', full: true, required: true }]) +
     '<button class="btn pri big" data-a="pinGo">Войти</button></div></div>';
 }
 A.pinGo = function (el) {
   var box = el.closest('.box'), v;
   try { v = readForm(box, [{ name: 'email', label: 'E-mail', required: true }, { name: 'pin', label: 'PIN', required: true }]); } catch (e) { $('.merr', box).innerHTML = '<div class="alert bad">' + esc(e.message) + '</div>'; return; }
   el.classList.add('busy');
+  lsSet('login_email', v.email);
   call('auth.login', { email: v.email, pin: v.pin }).then(function (r) { S.token = r.token; try { sessionStorage.setItem('sanlab_token', r.token); } catch (e) { } boot(); },
-    function (e) { el.classList.remove('busy'); $('.merr', box).innerHTML = '<div class="alert bad">' + esc(e.message) + '</div>'; });
+    function (e) { el.classList.remove('busy'); $('.merr', box).innerHTML = '<div class="alert bad">' + esc(e.message) + '</div>'; var pf = $('[name=pin]', box); if (pf) { pf.value = ''; pf.focus(); } });
 };
 A.logout = function () {
   S.token = ''; try { sessionStorage.removeItem('sanlab_token'); } catch (e) { }

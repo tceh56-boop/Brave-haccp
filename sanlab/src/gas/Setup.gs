@@ -58,6 +58,13 @@ function setup() {
       if (isDateColumn(c)) sh.getRange(2, i + 1, Math.max(sh.getMaxRows() - 1, 1), 1).setNumberFormat('dd.MM.yyyy HH:mm');
     });
   });
+  /* Хеш PIN — служебная колонка: скрываем, чтобы длинный код не путали с PIN */
+  var empSh = ss.getSheetByName('Employees');
+  if (empSh) {
+    var empHead = empSh.getRange(1, 1, 1, empSh.getLastColumn()).getValues()[0];
+    var pinCol = empHead.indexOf('pin_hash') + 1;
+    if (pinCol) empSh.hideColumns(pinCol);
+  }
   var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Лист1');
   if (def && ss.getSheets().length > 1) ss.deleteSheet(def);
   /* Защита: прямое редактирование только владельцем скрипта (сотрудники работают через интерфейс) */

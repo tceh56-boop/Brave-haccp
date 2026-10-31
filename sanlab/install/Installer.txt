@@ -19,6 +19,10 @@
  *
  * 4. Сохраните, выберите функцию install → «Выполнить» → выдайте разрешения заново.
  * 5. В журнале появится ссылка на созданный проект. Откройте его и продолжайте по README (setup → развёртывание).
+ *
+ * Обновление уже установленной системы: выберите функцию update → «Выполнить».
+ * Код проекта «San.Lab CRM» заменится новой сборкой; база, папки, настройки и триггеры не меняются.
+ * После обновления: в проекте San.Lab CRM «Развернуть» → «Управление развёртываниями» → ✎ → Версия: «Новая версия» → «Развернуть».
  */
 
 var SANLAB_SOURCE = 'https://raw.githubusercontent.com/tceh56-boop/Brave-haccp/claude/awesome-clarke-gz52h1/sanlab/install/project.json';
@@ -55,4 +59,28 @@ function install() {
   var id = JSON.parse(res.getContentText()).id;
   Logger.log('Готово. Проект создан: https://script.google.com/d/' + id + '/edit');
   Logger.log('Дальше: откройте проект → функция setup → «Выполнить» → «Развернуть» → «Веб-приложение».');
+}
+
+function update() {
+  var resp = UrlFetchApp.fetch(SANLAB_SOURCE, { muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error('Не удалось скачать сборку: HTTP ' + resp.getResponseCode());
+  var json = resp.getContentText('UTF-8');
+  Logger.log('Скачано файлов проекта: ' + JSON.parse(json).files.length);
+
+  var it = SANLAB_FOLDER_ID ? DriveApp.getFolderById(SANLAB_FOLDER_ID).getFilesByType('application/vnd.google-apps.script')
+                            : DriveApp.getFilesByType('application/vnd.google-apps.script');
+  var target = null;
+  while (it.hasNext()) { var f = it.next(); if (f.getName() === SANLAB_PROJECT_NAME && !f.isTrashed()) { target = f; break; } }
+  if (!target) throw new Error('Проект «' + SANLAB_PROJECT_NAME + '» не найден. Сначала выполните install.');
+
+  var res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files/' + target.getId() + '?uploadType=media', {
+    method: 'patch',
+    contentType: 'application/vnd.google-apps.script+json',
+    payload: Utilities.newBlob(json).getBytes(),
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) throw new Error('Drive отказал в обновлении проекта: ' + res.getContentText());
+  Logger.log('Готово. Проект обновлён: https://script.google.com/d/' + target.getId() + '/edit');
+  Logger.log('Теперь в проекте San.Lab CRM: «Развернуть» → «Управление развёртываниями» → ✎ → Версия: «Новая версия» → «Развернуть». Ссылка для сотрудников не изменится.');
 }
