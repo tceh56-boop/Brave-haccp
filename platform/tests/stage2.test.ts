@@ -221,7 +221,9 @@ describe('Дашборд проблем (ТЗ v2 §2, AT-06)', () => {
     expect(() => assertLotUsable({ status: 'available', expires_at: new Date(Date.now() - 1000), expiry_basis: 'маркировка' })).toThrow(/истёк/);
     const prio = cards.map((c) => c.priority);
     expect(prio).toEqual([...prio].sort((a, b) => a - b));
-    for (const c of cards) expect(c.href).toMatch(new RegExp(`^/app/${orgId}/(objects|lots|incidents|tasks|staff)`));
+    // пункты движка готовности ведут в раздел; остальные — на конкретный объект
+    for (const c of cards.filter((x) => x.key.startsWith('ready:'))) expect(c.href).toMatch(new RegExp(`^/app/${orgId}/`));
+    for (const c of cards.filter((x) => !x.key.startsWith('ready:'))) expect(c.href).toMatch(new RegExp(`^/app/${orgId}/(objects|lots|incidents|tasks|staff)`));
 
     // Повторное открытие дашборда не создаёт второго отклонения по той же партии.
     await getProblems(chef.id, orgId, siteId);

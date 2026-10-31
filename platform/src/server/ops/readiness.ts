@@ -7,6 +7,7 @@ import { securityChecks } from './security';
 import { lastVerifiedBackup } from './backup';
 import { mailHealth } from '../mail/sender';
 import { requiredContractsState } from './contracts';
+import { validateEnterpriseReadiness, isBad } from '../readiness/engine';
 
 /**
  * Готовность к пилоту и решение Go/No-Go (этап 8 ТЗ v2, раздел 16 «Definition of Done»).
@@ -112,6 +113,15 @@ export async function getReadiness(userId: string, orgId: string, siteIdInput?: 
     const chain = await audit.verifyChain(tx, orgId);
     add({ key: 'audit_chain', group: 'Надёжность и безопасность', title: 'Журнал аудита организации не нарушен', status: chain.ok ? 'pass' : 'fail',
       detail: chain.ok ? `записей: ${chain.checked}` : `цепочка нарушена на записи ${chain.brokenAt}` });
+
+    // Санитарная готовность — единым движком (ТЗ доработки, P0): то же, что видит конструктор ППК и инспекционный пакет.
+    // Невыполненный пункт — «не готово» к проверке, но запуск пилота не запрещает (решение — за руководителем).
+    const ready = await validateEnterpriseReadiness(tx, orgId, null, { siteIds });
+    for (const i of ready.items) {
+      if (i.status === 'not_applicable') continue;
+      add({ key: `ready_${i.key}`, group: `Готовность к проверке: ${i.group}`, title: i.title, status: isBad(i.status) ? 'warn' : i.status === 'ok' ? 'pass' : 'warn',
+        detail: [i.detail, ...(i.items || []).slice(0, 5)].filter(Boolean).join(' · ') + (i.basis.length ? ` Основание: ${i.basis.join(', ')}.` : ''), href: i.href || undefined });
+    }
 
     // Ручные подтверждения
     const conf = (await tx.query(`select distinct on (c.key) c.key, c.confirmed, c.evidence, c.created_at, u.full_name from pilot_confirmations c join users u on u.id = c.user_id

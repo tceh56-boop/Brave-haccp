@@ -9,6 +9,10 @@ import { approvedPlan } from './haccp';
 import { CAPA_STATUS } from './capa';
 import { STATUS_LABEL as INC_STATUS, SEVERITY_LABEL } from './incidents';
 import { ENTITY_LABEL } from './evidence';
+import { validateEnterpriseReadiness, isBad, type RStatus } from '../readiness/engine';
+
+export const R_STATUS: Record<RStatus, string> = { ok: 'выполнено', not_checked: 'не проверено', not_applicable: 'не применимо', missing: 'отсутствует', overdue: 'просрочено',
+  expired: 'истёк срок', warning: 'предупреждение', incomplete: 'неполно', blocked: 'заблокировано' };
 
 /**
  * Пакет для проверки (этап 5 ТЗ v2): один ZIP за период по площадке — сводка, журналы (CSV и печатный вид)
@@ -99,7 +103,9 @@ export async function buildPack(userId: string, orgId: string, input: unknown) {
     if (total > MAX_EVIDENCE_BYTES) throw Errors.validation('Доказательств за период больше 100 МБ — выберите период короче.');
     const contents = new Map<string, Buffer>();
     for (const f of evidence) contents.set(f.id, (await tx.query(`select content from evidence_files where id = $1`, [f.id])).rows[0].content);
-    return { plan, incidents, capas, reqs, evidence, contents };
+    // Готовность предприятия на конец периода — тем же движком, что ППК и главный экран (ТЗ доработки, P0).
+    const ready = await validateEnterpriseReadiness(tx, orgId, p.to, { siteIds: [p.siteId] });
+    return { plan, incidents, capas, reqs, evidence, contents, ready };
   }, p.siteId);
 
   for (const f of data.evidence) files.push({ name: `evidence/${f.entity_type}/${f.id.slice(0, 8)}_${safe(f.filename)}`, data: data.contents.get(f.id)! });
@@ -139,7 +145,13 @@ ${data.capas.map((c) => `<tr><td>${e(c.title)}</td><td>${e(c.root_cause || 'не
 ${data.reqs.length ? `<table><tr><th>Источник, пункт</th><th>Требование</th><th>Редакция</th><th>Обоснование применимости</th></tr>
 ${data.reqs.map((r) => `<tr><td>${e(r.code)}, ${e(r.clause)}</td><td>${e(r.text)}</td><td>${e(r.edition)}${r.workflow_status !== 'approved' ? ' (не утверждена)' : ''}</td><td>${e(r.rationale || '')}</td></tr>`).join('\n')}</table>` : '<p>Применимость требований не определена.</p>'}
 
-<h2>6. Доказательства за период</h2>
+<h2>6. Готовность предприятия на ${e(data.ready.as_of.split('-').reverse().join('.'))}</h2>
+<p class="muted">Проверки единого движка готовности; каждая — с пунктами нормативной базы. Не выполнено: ${data.ready.items.filter((i) => isBad(i.status)).length} из ${data.ready.items.length}.</p>
+<table><tr><th>Группа</th><th>Проверка</th><th>Статус</th><th>Подробно</th><th>Основание</th></tr>
+${data.ready.items.map((i) => `<tr><td>${e(i.group)}</td><td>${e(i.title)}</td><td>${isBad(i.status) ? '<b>' : ''}${e(R_STATUS[i.status])}${isBad(i.status) ? '</b>' : ''}</td><td>${e(i.detail)}${i.items?.length ? `<div class="muted">${i.items.map(e).join('; ')}</div>` : ''}</td><td>${e(i.basis.join(', ') || '—')}</td></tr>`).join('\n')}
+</table>
+
+<h2>7. Доказательства за период</h2>
 ${data.evidence.length ? `<table><tr><th>Файл</th><th>К записи</th><th>Загружено</th><th>SHA-256</th></tr>
 ${data.evidence.map((f) => `<tr><td><a href="evidence/${e(f.entity_type)}/${f.id.slice(0, 8)}_${e(safe(f.filename))}">${e(f.filename)}</a>${f.note ? `<div class="muted">${e(f.note)}</div>` : ''}</td>
 <td>${e(ENTITY_LABEL[f.entity_type] || f.entity_type)} ${e(f.entity_id.slice(0, 8))}</td><td>${e(fmt(f.uploaded_at))}, ${e(f.uploaded_by)}</td><td><code>${f.sha256}</code></td></tr>`).join('\n')}</table>` : '<p>Доказательств за период нет.</p>'}

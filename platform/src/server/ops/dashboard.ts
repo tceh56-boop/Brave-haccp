@@ -6,6 +6,7 @@ import { SEVERITY_LABEL, STATUS_LABEL } from './incidents';
 import { taskHref } from './tasks';
 import { staffProblems } from './staff';
 import { ROLES, roleHas, type Role } from '../access/roles';
+import { validateEnterpriseReadiness, isBad } from '../readiness/engine';
 
 /**
  * Дашборд проблем (ТЗ v2 §2, AT-06): «обнаружил → открыл → исправил». Порядок:
@@ -144,6 +145,19 @@ export async function getProblems(userId: string, orgId: string, siteId?: string
         left join users u on u.id = v.owner_user_id where v.organization_id = $1 and v.workflow_status = 'approved' and v.next_check_at <= current_date`, [orgId])).rows;
       for (const v of due) cards.push({ key: `reg:${v.id}`, priority: 7, tone: 'warn', title: `Пора проверить актуальность: ${v.code}`, what: `Редакция «${v.edition}» — плановая проверка по официальному источнику.`,
         where: 'Нормативный реестр', at: null, risk: 'Предупреждение', responsible: v.owner, due_at: v.next_check_at, source: null, action: 'Проверить редакцию', href: `/app/${orgId}/regulatory/${v.source_id}` });
+    }
+
+    // Единый движок готовности (ТЗ доработки, P0): невыполненные пункты, которых нет среди карточек выше.
+    if (roleHas(m.role, 'haccp.read')) {
+      const COVERED = new Set(['staff_medical', 'staff_hygiene', 'health_checks', 'instruments', 'expired_lots', 'quarantine_lots', 'storage_expiry', 'lab_program', 'daily_samples', 'daily_cleaning']);
+      const r = await validateEnterpriseReadiness(tx, orgId, null, { siteIds });
+      for (const i of r.items) {
+        if (!isBad(i.status) || COVERED.has(i.key)) continue;
+        const hard = ['expired', 'overdue', 'blocked'].includes(i.status);
+        cards.push({ key: `ready:${i.key}`, priority: hard ? 6 : 7, tone: 'warn', title: i.title, what: [i.detail, ...(i.items || []).slice(0, 3)].filter(Boolean).join(' · '),
+          where: i.group, at: null, risk: i.blocks.includes('ppk_approve') ? 'Блокирует утверждение ППК' : 'Готовность к проверке', responsible: i.owner, due_at: null,
+          source: i.basis.join(', ') || null, action: 'Открыть и исправить', href: i.href || `/app/${orgId}/compliance` });
+      }
     }
 
     cards.sort((a, b) => a.priority - b.priority || String(a.at || '').localeCompare(String(b.at || '')));

@@ -9,6 +9,10 @@ import { clauseById } from '../src/server/norms/library';
 import { CHECK_KEYS } from '../src/server/norms/checks';
 import { CLAUSES } from '../src/server/norms/library';
 import { makeUser } from './helpers';
+import { getProblems } from '../src/server/ops/dashboard';
+import { getReadiness } from '../src/server/ops/readiness';
+import { buildPack } from '../src/server/ops/pack';
+import { inflateRawSync } from 'node:zlib';
 
 /** Единый движок готовности (ТЗ доработки, этап 1) и fail-closed для нормативных ссылок. */
 
@@ -102,3 +106,35 @@ describe('Статусы пунктов: пустое не считается в
     expect(r.blocking_ppk.every((i) => i.blocks.includes('ppk_approve'))).toBe(true);
   });
 });
+
+describe('Один движок — во всех местах (главный экран, пакет проверки, отчёт руководителя)', () => {
+  it('невыполненный пункт виден одинаково на главном экране, в готовности и в пакете', async () => {
+    const plan = await st('haccp_plan');
+    expect(plan.status).toBe('missing');
+    const { cards } = await getProblems(owner.id, orgId, siteId);
+    expect(cards.find((c) => c.key === 'ready:haccp_plan')).toMatchObject({ title: plan.title, risk: 'Блокирует утверждение ППК' });
+    // пункты, у которых есть своя карточка на главном экране, не дублируются
+    expect(cards.some((c) => c.key === 'ready:staff_medical')).toBe(false);
+    const r = await getReadiness(owner.id, orgId);
+    expect(r.checks.find((c) => c.key === 'ready_haccp_plan')).toMatchObject({ status: 'warn', title: plan.title });
+    expect(r.checks.some((c) => c.key === 'ready_fryer')).toBe(false);   // не применяется по профилю — не показывается
+    const today = new Date().toISOString().slice(0, 10);
+    const pack = await buildPack(owner.id, orgId, { siteId, from: today, to: today });
+    const idx = unzipEntry(pack.archive, 'index.html');
+    expect(idx).toContain('Готовность предприятия на');
+    expect(idx).toContain(plan.title);
+  });
+});
+
+/** Достаёт файл из zip (локальные заголовки; deflate или store). */
+function unzipEntry(buf: Buffer, name: string): string {
+  let o = 0;
+  while (buf.readUInt32LE(o) === 0x04034b50) {
+    const method = buf.readUInt16LE(o + 8), size = buf.readUInt32LE(o + 18), nl = buf.readUInt16LE(o + 26), el = buf.readUInt16LE(o + 28);
+    const n = buf.subarray(o + 30, o + 30 + nl).toString('utf8'), start = o + 30 + nl + el;
+    const data = buf.subarray(start, start + size);
+    if (n === name) return (method === 8 ? inflateRawSync(data) : data).toString('utf8');
+    o = start + size;
+  }
+  throw new Error(`${name} нет в архиве`);
+}
