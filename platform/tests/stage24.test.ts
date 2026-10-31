@@ -54,6 +54,16 @@ beforeAll(async () => {
   brothLot = (await completeProduction(cook.id, orgId, o.id, { actualKg: 1, operationId: randomUUID() })).lot_id;
 });
 
+describe('Прослеживаемость партии полуфабриката', () => {
+  it('партия п/ф: своя партия, версия ТТК задания, связи с партиями сырья', async () => {
+    const o = (await withSystem((tx) => tx.query(`select o.ttk_version_id, v.status, v.dish_id from production_orders o join ttk_versions v on v.id = o.ttk_version_id where o.output_lot_id = $1`, [brothLot]))).rows[0];
+    expect(o).toMatchObject({ status: 'approved', dish_id: broth });
+    const parents = (await withSystem((tx) => tx.query(`select p.name from lot_links k join lots l on l.id = k.parent_lot_id join products p on p.id = l.product_id
+      where k.child_lot_id = $1 and k.kind = 'production' order by p.name`, [brothLot]))).rows.map((r) => r.name);
+    expect(parents).toEqual(['Говядина охлаждённая', 'Лук репчатый']);
+  });
+});
+
 describe('Потребительская этикетка', () => {
   it('покупной товар — не печатается: на нём маркировка изготовителя', async () => {
     await expect(previewConsumerLabel(owner.id, orgId, beefLot)).rejects.toThrow(/не продукция собственного изготовления/);
