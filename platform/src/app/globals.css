@@ -166,3 +166,13 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 @media print { .tu-doc { box-shadow: none; padding: 0; border-radius: 0; } @page { size: A4; margin: 15mm; } }
 .op1-head td { padding: 2px 5px; }
 .op1-code { width: 110px; border: 1px solid #111 !important; text-align: center; }
+
+/* ───── Декларация о соответствии (решение Коллегии ЕЭК N 293, A4) ───── */
+.dc { font: 11pt/1.4 'Times New Roman', serif; }
+.dc-head { text-align: center; font-weight: 700; font-size: 13pt; margin: 8px 0; }
+.dc-eac { font-weight: 700; font-size: 18pt; letter-spacing: 2px; border: 2px solid #111; display: inline-block; padding: 0 6px; margin: 0 0 10px; }
+.dc-row { margin: 6px 0; }
+.dc-l { font-weight: 700; margin-right: 6px; }
+.dc-v { white-space: pre-wrap; }
+.dc-sign { display: grid; grid-template-columns: 1fr 60px 2fr; gap: 12px; align-items: end; margin: 22px 0 14px; }
+.dc-line { border-bottom: 1px solid #111; min-height: 20px; text-align: center; }

@@ -159,16 +159,16 @@ function fullName(org: { name: string; legal_form: string | null }) {
 async function loadContext(tx: Tx, orgId: string, declId: string) {
   const d = (await tx.query(`select * from declarations where id = $1 and organization_id = $2`, [declId, orgId])).rows[0];
   if (!d) throw Errors.notFound('Декларация не найдена.');
-  const [org, site, dish, ttk, tu, acc, reg, term] = await Promise.all([
-    tx.query(`select * from organizations where id = $1`, [orgId]),
-    tx.query(`select id, name, address from sites where id = $1`, [d.site_id]),
-    tx.query(`select id, name, kind, product_id from dishes where id = $1`, [d.dish_id]),
-    tx.query(`select id, version, storage_conditions, shelf_life, approved_at, card_date from ttk_versions where dish_id = $1 and status = 'approved'`, [d.dish_id]),
-    tx.query(`select id, version, designation, snapshot->>'title' as title, snapshot->'storage' as storage, approved_at from tech_spec_versions where dish_id = $1 order by version desc limit 1`, [d.dish_id]),
-    tx.query(`select a.*, u.full_name as accepted_by_name from declaration_acceptances a join users u on u.id = a.accepted_by where a.declaration_id = $1`, [declId]),
-    tx.query(`select r.*, u.full_name as registered_by_name from declaration_registrations r join users u on u.id = r.registered_by where r.declaration_id = $1`, [declId]),
-    tx.query(`select * from declaration_terminations where declaration_id = $1`, [declId]),
-  ]);
+  const q = (sql: string, a: unknown[]) => tx.query(sql, a);   // по очереди: одна транзакция — один запрос за раз
+  const org = await q(`select * from organizations where id = $1`, [orgId]);
+  const site = await q(`select id, name, address from sites where id = $1`, [d.site_id]);
+  const dish = await q(`select id, name, kind, product_id from dishes where id = $1`, [d.dish_id]);
+  const ttk = await q(`select id, version, storage_conditions, shelf_life, approved_at, card_date from ttk_versions where dish_id = $1 and status = 'approved'`, [d.dish_id]);
+  const tu = await q(`select id, version, designation, snapshot->>'title' as title, snapshot->'storage' as storage, approved_at from tech_spec_versions where dish_id = $1 order by version desc limit 1`, [d.dish_id]);
+  const acc = await q(`select a.*, u.full_name as accepted_by_name from declaration_acceptances a join users u on u.id = a.accepted_by where a.declaration_id = $1`, [declId]);
+  const reg = await q(`select r.*, u.full_name as registered_by_name from declaration_registrations r join users u on u.id = r.registered_by where r.declaration_id = $1`, [declId]);
+  const term = await q(`select * from declaration_terminations where declaration_id = $1`, [declId]);
+
   return { d, org: org.rows[0], site: site.rows[0], dish: dish.rows[0], ttk: ttk.rows[0], tu: tu.rows[0], acceptance: acc.rows[0] || null, registration: reg.rows[0] || null, termination: term.rows[0] || null };
 }
 
@@ -321,10 +321,8 @@ export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
   const signer = ip ? (c.org.head_name || c.org.name.replace(/^ИП\s+/, '')) : c.org.head_name || '—';
 
   // ── комплект (ТР ТС 034 п. 138; решение N 44 п. 26) ──
-  const [ppk, haccp] = await Promise.all([
-    tx.query(`select version, approved_at from ppk_versions where organization_id = $1 order by version desc limit 1`, [orgId]),
-    tx.query(`select version, approved_at from haccp_plans where organization_id = $1 and status = 'approved' order by version desc limit 1`, [orgId]),
-  ]);
+  const ppk = await tx.query(`select version, approved_at from ppk_versions where organization_id = $1 order by version desc limit 1`, [orgId]);
+  const haccp = await tx.query(`select version, approved_at from haccp_plans where organization_id = $1 and status = 'approved' order by version desc limit 1`, [orgId]);
   const withFile = protocols.filter((p) => p.fileId && files.has(p.fileId)).length;
   const complect = [
     { item: 'Документы о государственной регистрации заявителя (выписка ЕГРЮЛ / ЕГРИП)', status: c.org.ogrn ? 'ok' : 'missing', detail: c.org.ogrn ? `${ip ? 'ОГРНИП' : 'ОГРН'} ${c.org.ogrn}; выписку приложите к комплекту` : 'нет ОГРН', basis: 'ТР ТС 034, п. 138 «а»; решение N 44, п. 26' },

@@ -5,7 +5,8 @@ import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 
-interface Org { id: string; name: string; legal_form: string | null; inn: string | null; phone: string | null; region: string | null; timezone: string; status: string }
+interface Org { id: string; name: string; legal_form: string | null; inn: string | null; phone: string | null; region: string | null; timezone: string; status: string;
+  ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null }
 interface Membership { role: string; role_label: string; site_ids: string[]; permissions: string[] }
 interface Site { id: string; name: string; address: string | null; status: string }
 interface Member { id: string; user_id: string; full_name: string; email: string; role: string; role_label: string; site_ids: string[]; position: string | null; status: string; blocked_reason: string | null }
@@ -259,14 +260,15 @@ function Audit({ orgId }: { orgId: string }) {
 }
 
 function OrgForm({ org, canEdit, onSaved }: { org: Org; canEdit: boolean; onSaved: (o: Org) => void }) {
-  const [f, setF] = useState({ name: org.name, legalForm: org.legal_form || 'ООО', inn: org.inn || '', phone: org.phone || '', region: org.region || '', timezone: org.timezone });
+  const [f, setF] = useState({ name: org.name, legalForm: org.legal_form || 'ООО', inn: org.inn || '', phone: org.phone || '', region: org.region || '', timezone: org.timezone,
+    ogrn: org.ogrn || '', legalAddress: org.legal_address || '', email: org.email || '', headPosition: org.head_position || '', headName: org.head_name || '', headBasis: org.head_basis || '', activityNotice: org.activity_notice || '' });
   const [saved, setSaved] = useState(false);
   const { busy, error, run } = useSubmit();
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => { setSaved(false); setF({ ...f, [k]: e.target.value }); };
   return (
     <div className="card">
       <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-        onSaved(await api<Org>(`/orgs/${org.id}`, { method: 'PATCH', body: { ...f, inn: f.inn || undefined, phone: f.phone || undefined, region: f.region || undefined } })); setSaved(true);
+        onSaved(await api<Org>(`/orgs/${org.id}`, { method: 'PATCH', body: Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v || undefined])) })); setSaved(true);
       }); }}>
         <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0 }}>
           <label htmlFor="on">Название</label><input id="on" value={f.name} onChange={set('name')} />
@@ -277,6 +279,20 @@ function OrgForm({ org, canEdit, onSaved }: { org: Org; canEdit: boolean; onSave
             <div><label htmlFor="org">Регион</label><input id="org" value={f.region} onChange={set('region')} /></div>
             <div><label htmlFor="otz">Часовой пояс</label><input id="otz" value={f.timezone} onChange={set('timezone')} /></div>
           </div>
+          <h3 style={{ marginTop: 14 }}>Реквизиты заявителя для декларации о соответствии</h3>
+          <p className="small muted">Поля 3–4 единой формы (решение Коллегии ЕЭК N 293) и сведения заявления о регистрации (приказ Минэкономразвития N 478, п. 7, 12).</p>
+          <div className="grid2">
+            <div><label htmlFor="ogrn">{f.legalForm === 'ИП' ? 'ОГРНИП' : 'ОГРН'}</label><input id="ogrn" inputMode="numeric" value={f.ogrn} onChange={set('ogrn')} /></div>
+            <div><label htmlFor="oem">Электронная почта</label><input id="oem" type="email" value={f.email} onChange={set('email')} /></div>
+          </div>
+          <label htmlFor="ola">{f.legalForm === 'ИП' ? 'Место жительства (по ЕГРИП)' : 'Место нахождения (адрес юридического лица)'}</label><input id="ola" value={f.legalAddress} onChange={set('legalAddress')} />
+          {f.legalForm !== 'ИП' && <div className="grid2">
+            <div><label htmlFor="ohp">Должность руководителя</label><input id="ohp" value={f.headPosition} onChange={set('headPosition')} placeholder="Генеральный директор" /></div>
+            <div><label htmlFor="ohn">ФИО руководителя</label><input id="ohn" value={f.headName} onChange={set('headName')} /></div>
+          </div>}
+          {f.legalForm === 'ИП' && <><label htmlFor="ohn2">ФИО индивидуального предпринимателя</label><input id="ohn2" value={f.headName} onChange={set('headName')} /></>}
+          {f.legalForm !== 'ИП' && <><label htmlFor="ohb">Основание полномочий (в родительном падеже)</label><input id="ohb" value={f.headBasis} onChange={set('headBasis')} placeholder="Устава / доверенности № … от …" /></>}
+          <label htmlFor="oan">Уведомление о начале предпринимательской деятельности (ПП РФ N 584)</label><input id="oan" value={f.activityNotice} onChange={set('activityNotice')} placeholder="№, дата, орган, принявший уведомление" />
         </fieldset>
         <p className="small muted">Статус предприятия: {org.status === 'DRAFT' ? 'черновик — паспорт ещё не заполнен' : org.status}. Соответствие требованиям система автоматически не присваивает.</p>
         {saved && <div className="okbox">Сохранено.</div>}

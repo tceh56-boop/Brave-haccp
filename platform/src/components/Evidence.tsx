@@ -7,15 +7,15 @@ import { dt } from '@/lib/fmt';
 interface File_ { id: string; filename: string; mime: string; size_bytes: number; sha256: string; note: string | null; uploaded_at: string; uploaded_by_name: string }
 
 /** Доказательства к записи: фото с телефона или PDF; файл не удаляется и не заменяется — только добавляется. */
-export function Evidence({ entityType, entityId, title = 'Доказательства', docs = false, readPerm = 'evidence.read', addPerm = 'evidence.add', hint }:
-  { entityType: string; entityId: string; title?: string; docs?: boolean; readPerm?: string; addPerm?: string; hint?: string }) {
+export function Evidence({ entityType, entityId, title = 'Доказательства', docs = false, readPerm = 'evidence.read', addPerm = 'evidence.add', hint, onChange }:
+  { entityType: string; entityId: string; title?: string; docs?: boolean; readPerm?: string; addPerm?: string; hint?: string; onChange?: (files: { id: string; filename: string }[]) => void }) {
   const { org, can } = useOrg();
   const [files, setFiles] = useState<File_[] | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  const load = useCallback(() => api<File_[]>(`/orgs/${org.id}/evidence?entityType=${entityType}&entityId=${entityId}`).then(setFiles).catch((e) => setErr(e.message)), [org.id, entityType, entityId]);
+  const load = useCallback(() => api<File_[]>(`/orgs/${org.id}/evidence?entityType=${entityType}&entityId=${entityId}`).then((x) => { setFiles(x); onChange?.(x); }).catch((e) => setErr(e.message)), [org.id, entityType, entityId, onChange]);
   const readable = can(readPerm);
   useEffect(() => { if (readable) load(); }, [load, readable]);
   if (!readable) return null;
