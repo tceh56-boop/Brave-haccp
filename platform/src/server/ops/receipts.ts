@@ -1,3 +1,4 @@
+import { assertFiscalNotDuplicate } from './integrations';
 import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
@@ -108,6 +109,7 @@ export async function removeReceiptLine(userId: string, orgId: string, receiptId
 export async function completeReceipt(userId: string, orgId: string, receiptId: string) {
   return inOrg(userId, orgId, 'receipt.record', async (tx, m) => {
     const r = await draftReceipt(tx, orgId, receiptId, m);
+    await assertFiscalNotDuplicate(tx, orgId, r.id);   // тот же кассовый чек уже проведён — повторной приёмки нет
     const lines = (await tx.query(`select l.*, p.name as product from receipt_lines l join products p on p.id = l.product_id where l.receipt_id = $1 order by l.created_at`, [r.id])).rows;
     if (!lines.length) throw Errors.validation('Добавьте хотя бы одну позицию.');
     const created = { lots: 0, quarantine: 0, rejected: 0, unconfirmed: 0, tasks: 0, incidents: 0 };

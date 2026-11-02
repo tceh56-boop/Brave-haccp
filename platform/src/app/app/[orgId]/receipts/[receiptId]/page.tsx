@@ -166,7 +166,32 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
           {!allOk && <p className="small muted">«Принять» доступно, когда все проверки — «Да».</p>}
         </div>
       )}
+      <FiscalQr receiptId={receiptId} />
       <Evidence entityType="receipt" entityId={receiptId} title="Накладная, сертификаты, фото" />
     </>
+  );
+}
+
+/** QR кассового чека поставщика: сверка с приёмкой (дата, сумма), повтор чека блокирует проводку. Строку QR вставляют или сканируют. */
+function FiscalQr({ receiptId }: { receiptId: string }) {
+  const { org, can } = useOrg();
+  const [list, setList] = useState<{ id: string; fiscal_at: string | null; total: string | null; fn: string | null; fd: string | null; match_status: string; warnings: string[]; who: string }[]>([]);
+  const [qr, setQr] = useState('');
+  const { busy, error, run } = useSubmit();
+  const load = useCallback(() => api<typeof list>(`/orgs/${org.id}/receipts/${receiptId}/fiscal-qr`).then(setList).catch(() => {}), [org.id, receiptId]);
+  useEffect(() => { load(); }, [load]);
+  const ST: Record<string, [string, string]> = { match: ['совпадает', 'ok'], partial: ['частично', 'warn'], conflict: ['расхождение', 'crit'], invalid: ['не чек', 'crit'], no_comparison: ['не сверялся', 'warn'], duplicate: ['повтор чека', 'crit'] };
+  return (
+    <div className="card">
+      <h2>QR кассового чека</h2>
+      <p className="small muted">Если поставщик дал кассовый чек — вставьте строку QR (t=…&s=…&fn=…&i=…&fp=…). Система сверит дату и сумму с приёмкой и не даст провести тот же чек дважды.</p>
+      {list.map((f) => <div key={f.id} className="small" style={{ marginBottom: 6 }}><span className={`badge ${ST[f.match_status]?.[1] || ''}`}>{ST[f.match_status]?.[0] || f.match_status}</span> ФН {f.fn || '—'}, ФД {f.fd || '—'}, {f.total ? `${n(Number(f.total))} ₽` : 'сумма —'}{f.fiscal_at ? `, ${f.fiscal_at.slice(0, 16).replace('T', ' ')}` : ''} · {f.who}
+        {f.warnings.length > 0 && <ul style={{ margin: '2px 0 0', paddingLeft: 18 }}>{f.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}</div>)}
+      {can('receipt.record') && <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/receipts/${receiptId}/fiscal-qr`, { body: { qr } }); setQr(''); await load(); }); }}>
+        <label htmlFor="fq">Строка QR</label><input id="fq" value={qr} onChange={(e) => setQr(e.target.value)} placeholder="t=20261101T1530&s=1050.00&fn=…&i=…&fp=…&n=1" />
+        {error && <div className="err">{error}</div>}
+        <button className="btn small" disabled={busy || qr.length < 5}>Сверить чек</button>
+      </form>}
+    </div>
   );
 }

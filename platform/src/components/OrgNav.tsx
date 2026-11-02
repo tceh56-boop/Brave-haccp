@@ -51,6 +51,7 @@ function useGroups(): [string, Item[]][] {
       { href: `${b}/contracts`, label: 'Договоры', show: can('contract.read') },
       { href: `${b}/declarations`, label: 'Декларации о соответствии', show: can('decl.read') },
       { href: `${b}/recognition`, label: 'Распознавание документов', show: can('recognition.manage') },
+      { href: `${b}/integrations`, label: 'Интеграции', show: can('integration.manage') },
       { href: `${b}/staff/me`, label: 'Мой допуск и инструктажи', show: true },
       { href: `${b}/guide`, label: 'Памятки по ролям', show: true },
       { href: '/app', label: 'Мои предприятия', show: true },

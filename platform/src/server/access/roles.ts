@@ -113,6 +113,8 @@ export const PERMISSIONS = {
   'decl.read': 'Декларации о соответствии: просмотр',
   'decl.manage': 'Декларации о соответствии: подготовка проекта и комплекта доказательств',
   'decl.accept': 'Декларации о соответствии: принятие от имени заявителя, внесение сведений о регистрации, прекращение',
+  // Интеграции (ТЗ доработки, P3): настройки и секреты внешних систем.
+  'integration.manage': 'Интеграции: подключение внешних систем, учётные данные (хранятся зашифрованными)',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -128,7 +130,7 @@ export const ROLES = {
   owner: { label: 'Владелец', summary: 'Настройки организации, экономика, приглашения, утверждение ключевых документов', permissions: ALL },
   enterprise_admin: { label: 'Администратор предприятия', summary: 'Площадки, роли, справочники, журналы, интеграции', permissions: ALL },
   director: { label: 'Директор / управляющий', summary: 'Операционные отчёты, задачи, контроль исполнения',
-    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'sto.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'expense.manage', 'ai.audit', 'pilot.read', 'pilot.confirm', 'purchase.read', 'purchase.manage', 'event.manage', 'equipment.manage', 'sanitation.verify', 'staff.read', 'staff.medical', 'staff.health_check', 'staff.brief', 'recognition.manage', 'contract.manage', 'decl.read', 'decl.manage', 'decl.accept'] },
+    permissions: [...READ_OPS, 'member.read', 'audit.read', 'task.work', 'incident.report', 'incident.work', 'incident.confirm', 'reg.approve', 'journal.sign', 'haccp.approve', 'capa.verify', 'ttk.approve', 'sto.approve', 'menu.price', 'cost.read', 'pos.sell', 'pos.refund', 'pos.stop', 'sales.manage', 'econ.read', 'expense.manage', 'ai.audit', 'pilot.read', 'pilot.confirm', 'purchase.read', 'purchase.manage', 'event.manage', 'equipment.manage', 'sanitation.verify', 'staff.read', 'staff.medical', 'staff.health_check', 'staff.brief', 'recognition.manage', 'contract.manage', 'decl.read', 'decl.manage', 'decl.accept', 'integration.manage'] },
   chef: { label: 'Шеф / су-шеф', summary: 'ТТК, рецептуры, производственные задания, выходы и списания',
     permissions: [...STAFF, 'member.read', 'dashboard.read', 'catalog.manage', 'receipt.decide', 'incident.work', 'incident.confirm', 'stock.write_off', 'stock.transfer', 'stock.count', 'trace.read', 'reg.read', 'journal.sign', 'haccp.read', 'capa.read', 'capa.manage', 'capa.verify', 'ttk.manage', 'ttk.approve', 'menu.price', 'cost.read', 'pos.stop', 'sales.manage', 'production.plan', 'purchase.read', 'purchase.manage', 'event.manage', 'lab.read', 'equipment.manage', 'sanitation.verify', 'sanitation.manage', 'staff.read', 'staff.health_check', 'staff.brief', 'contract.read', 'decl.read'] },
   technologist: { label: 'Технолог', summary: 'Технологические параметры, расчёты, документы',
