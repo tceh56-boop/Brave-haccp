@@ -142,7 +142,8 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           </div>
 
           <Lifecycle data={data} busy={busy} act={act} onNew={() => router.replace(`/app/${org.id}/menu/${dishId}`)} />
-          <Link className="btn block" href={`/app/${org.id}/menu/${dishId}/ttk-docs?v=${v.id}`}>Документы ТТК: карта по ГОСТ 31987, обоснование расчётов</Link>
+          <Link className="btn block" href={`/app/${org.id}/menu/${dishId}/card`}>Карточка продукта: документы, сроки, маркировка, ККТ, журналы</Link>
+          <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/ttk-docs?v=${v.id}`}>Документы ТТК: карта по ГОСТ 31987, обоснование расчётов</Link>
           <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/acts`}>Акты контрольной проработки</Link>
           {data.versions.some((x) => x.status === 'approved') && can('cost.read') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/costing`}>Калькуляционная карточка (ОП-1)</Link>}
           {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/tu`}>Технические условия (ТУ)</Link>}

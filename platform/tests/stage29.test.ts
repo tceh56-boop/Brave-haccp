@@ -172,3 +172,21 @@ describe('Печатная форма и пропуски журналов', () 
       expect(html).toContain(s);
   });
 });
+
+describe('Единая карточка продукта', () => {
+  it('ТТК, ККТ при выпуске, журналы, история; недостающее — в «требует внимания», не «ок»', async () => {
+    const { getProductCard } = await import('../src/server/ops/productCard');
+    const c = await getProductCard(owner.id, orgId, semi);
+    expect(c.ttk).toMatchObject({ version: 1 });
+    expect(c.ccp.map((x) => x.name)).toEqual(['Температура фарша']);
+    expect(c.journals.releases).toBe(1);
+    expect(c.history.map((h) => h.status)).toEqual(['approved']);
+    expect(c.documents.tu).toBeNull();
+    expect(c.labeling.eac).toBe(false);
+    expect(c.issues.join(' ')).toMatch(/Профиль аллергенов неполный/);
+    expect(c.issues.join(' ')).toMatch(/Не указан вид сырья/);
+    const stranger = await makeUser();
+    await createOrganization(stranger, { name: 'Чужое' });
+    await expect(getProductCard(stranger.id, orgId, semi)).rejects.toMatchObject({ code: expect.stringMatching(/FORBIDDEN|NOT_FOUND/) });
+  });
+});
