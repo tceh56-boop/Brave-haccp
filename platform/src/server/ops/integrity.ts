@@ -8,7 +8,7 @@ import { Errors } from '../http/errors';
  * утверждении. Расхождение — документ не выдаётся как достоверный: отказ, событие безопасности в аудите (пишется
  * отдельно, чтобы отказ его не откатил), экспорт и печать блокируются.
  */
-export const SNAPSHOT_TABLES = { ppk_versions: 'программа производственного контроля', tech_spec_versions: 'технические условия', sto_versions: 'стандарт организации', ti_versions: 'технологическая инструкция', declaration_acceptances: 'декларация о соответствии' } as const;
+export const SNAPSHOT_TABLES = { ppk_versions: 'программа производственного контроля', tech_spec_versions: 'технические условия', sto_versions: 'стандарт организации', ti_versions: 'технологическая инструкция', declaration_acceptances: 'декларация о соответствии', group_tech_spec_versions: 'групповые технические условия' } as const;
 
 export async function assertSnapshotIntact(tx: Tx, table: keyof typeof SNAPSHOT_TABLES, id: string, ctx: { orgId: string; userId: string }) {
   const r = (await tx.query(`select content_hash, snapshot_hash(snapshot) as actual, generator_version from ${table} where id = $1`, [id])).rows[0];

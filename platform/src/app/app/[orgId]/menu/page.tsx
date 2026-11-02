@@ -67,6 +67,7 @@ export default function MenuPage() {
           <Link className="tile" href={`/app/${org.id}/menu/archive`}>Архив ТТК<span className="sub">559 карт — импорт черновиками</span></Link>
           <Link className="tile" href={`/app/${org.id}/menu/processing`}>Обработка сырья<span className="sub">нормы отходов и потерь</span></Link>
           <Link className="tile" href={`/app/${org.id}/menu/sto`}>Стандарты организации<span className="sub">СТО на группы блюд</span></Link>
+          <Link className="tile" href={`/app/${org.id}/menu/group-tu`}>Групповые ТУ<span className="sub">ТУ на группу продукции с ассортиментом</span></Link>
           <Link className="tile" href={`/app/${org.id}/menu/reports`}>Отчёты по меню<span className="sub">инфолист, калорийность, закладки</span></Link>
           <Link className={`tile ${unmatched ? 'alert' : ''}`} href={`/app/${org.id}/menu/match`}>Сопоставить сырьё<span className="sub">{unmatched ? `строк без товара: ${unmatched}` : 'всё сопоставлено'}</span></Link>
         </div>
