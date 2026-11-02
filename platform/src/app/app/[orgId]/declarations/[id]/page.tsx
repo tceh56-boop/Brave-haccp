@@ -33,7 +33,12 @@ export default function DeclarationCard({ params }: { params: Promise<{ id: stri
   const { busy, error, run, setError } = useSubmit();
   const apply = (x: Decl) => { setD(x); setF({ ...x.input, protocols: x.input.protocols?.length ? x.input.protocols : [] }); };
   const load = useCallback(() => api<Decl>(`/orgs/${org.id}/declarations/${id}`).then(apply).catch((e) => setError(e.message)), [org.id, id, setError]);
-  useEffect(() => { load(); }, [load]);
+  // первичная загрузка: ответ, пришедший после размонтирования (двойной вызов эффекта в dev), не затирает ввод
+  useEffect(() => {
+    let live = true;
+    api<Decl>(`/orgs/${org.id}/declarations/${id}`).then((x) => { if (live) apply(x); }).catch((e) => { if (live) setError(e.message); });
+    return () => { live = false; };
+  }, [org.id, id, setError]);
   const onFiles = useCallback((x: { id: string; filename: string }[]) => setFiles(x), []);
   if (!d) return error ? <div className="err">{error}</div> : <p className="muted">Загрузка…</p>;
 

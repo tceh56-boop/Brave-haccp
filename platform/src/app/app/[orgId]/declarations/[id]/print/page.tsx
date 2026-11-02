@@ -39,7 +39,7 @@ export default function DeclarationPrint({ params }: { params: Promise<{ id: str
         {line('соответствует требованиям', f.f6)}
         {line('Декларация о соответствии принята на основании', f.f7)}
         {line('Дополнительная информация', f.f8)}
-        <div className="dc-row"><span className="dc-v">Декларация о соответствии действительна с даты регистрации по {f.f9 === 'срок не установлен' ? '' : f.f9} включительно{f.f9 === 'срок не установлен' ? ' — срок не установлен' : ''}.</span></div>
+        <div className="dc-row"><span className="dc-v">Декларация о соответствии действительна с даты регистрации по {f.f9 === 'срок не установлен' ? '' : f.f9 === '—' ? '____________' : f.f9} включительно{f.f9 === 'срок не установлен' ? ' — срок не установлен' : ''}.</span></div>
         <div className="dc-sign">
           <div><div className="dc-line" /><div className="tu-small tu-center">(подпись)</div></div>
           <div className="tu-center">М.П.</div>
