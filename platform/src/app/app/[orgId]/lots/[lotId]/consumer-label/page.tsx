@@ -1,4 +1,5 @@
 'use client';
+import { EacMark } from '@/components/EacMark';
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import QRCode from 'qrcode';
@@ -51,7 +52,7 @@ function ConsumerLabel({ p, code }: { p: Payload; code: string | null }) {
         <div style={{ flex: 1 }}>
           <p><b>Изготовитель:</b> {p.manufacturer}{p.address ? `, ${p.address}` : ''}.</p>
           {p.tu && <p>{p.tu}</p>}
-          {p.eac && <p className="cl-eac" title={p.declaration || ''}><b>ЕАС</b></p>}
+          {p.eac && <p title={p.declaration || ''}><EacMark sizeMm={7} /></p>}
           <p>Партия {p.lot_no || '—'}{code ? ` · ${code}` : ''}</p>
         </div>
         {url && <Qr text={url} />}

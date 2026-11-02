@@ -73,10 +73,17 @@ describe('Вид сырья и применимость регламентов',
     expect(v.regime.regulations).toContain('ТР ТС 034/2013 «О безопасности мяса и мясной продукции»');
   });
 
-  it('птица больше продуктов убоя — ТР ТС 034 не применяется, нужен регламент о мясе птицы (его в базе нет) — блок', async () => {
+  it('птица больше продуктов убоя и не меньше 5 % — ТР ЕАЭС 051/2021, схемы 3д/4д/6д, без ТР ТС 034', async () => {
     const d = await createDeclaration(owner.id, orgId, { dishId: D.chickenCutlet, siteId });
     const v = await getDeclaration(owner.id, orgId, d.id);
-    expect(v.errors.map((e) => e.text).join(' ')).toMatch(/Мясо птицы.*превышает.*ТР ЕАЭС 051\/2021/);
+    expect(v.regime).toMatchObject({ special: 'trts051', reg034: false, schemes: ['3д', '4д', '6д'], meat: { poultry_pct: 50, slaughter_pct: 10 } });
+    expect(v.regime.regulations).toContain('ТР ЕАЭС 051/2021 «О безопасности мяса птицы и продукции его переработки»');
+    expect(v.regime.regulations.join(' ')).not.toMatch(/034/);
+    const u = await updateDeclaration(owner.id, orgId, d.id, { channel: 'outside', scheme: '1д', noTerm: true });
+    const t = u.errors.map((e) => e.text).join(' | ');
+    expect(t).toMatch(/Схема 1д не установлена ТР ЕАЭС 051\/2021 \(п\. 130/);
+    expect(t).toMatch(/ТР ЕАЭС 051\/2021 устанавливает срок действия/);
+    expect(u.notes.join(' ')).toMatch(/п\. 115–116/);
   });
 
   it('мясных ингредиентов менее 5 % — ТР ТС 021, схемы 1д/2д/3д', async () => {

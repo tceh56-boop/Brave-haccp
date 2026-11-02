@@ -2,6 +2,7 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useOrg } from '@/lib/org';
+import { EacMark } from '@/components/EacMark';
 import { api } from '@/lib/api';
 import type { Decl } from '@/lib/declarations';
 
@@ -26,13 +27,13 @@ export default function DeclarationPrint({ params }: { params: Promise<{ id: str
       <div className="noprint">
         <p className="small"><Link href={`/app/${org.id}/declarations/${id}`}>← Декларация № {d.number}</Link></p>
         {draft && <div className="tu-warn">Проект: {d.errors.length ? `${d.errors.length} замечаний, ` : ''}не принят заявителем и не зарегистрирован — документом о соответствии не является.</div>}
-        <p className="small muted">Знак ЕАС (поле 2) печатается текстом; графическое изображение установлено решением Комиссии Таможенного союза от 15.07.2011 N 711. Декларация оформляется на русском языке, на белой бумаге A4 (разд. II п. 2–3); исправления не допускаются (п. 7). Подпись — собственноручная, факсимиле не допускается (п. 5 «к»).</p>
+        <p className="small muted">Знак ЕАС (поле 2) — по масштабной сетке Положения о едином знаке обращения (решение Комиссии ТС от 15.07.2011 N 711, рис. 3). Декларация оформляется на русском языке, на белой бумаге A4 (разд. II п. 2–3); исправления не допускаются (п. 7). Подпись — собственноручная, факсимиле не допускается (п. 5 «к»).</p>
         <button type="button" className="btn" onClick={() => window.print()}>Печать</button>
       </div>
       <div className="tu-doc dc">
         {draft && <div className="tu-center"><span className="tu-stamp">ПРОЕКТ</span></div>}
         <div className="dc-head">ЕВРАЗИЙСКИЙ ЭКОНОМИЧЕСКИЙ СОЮЗ<br />ДЕКЛАРАЦИЯ О СООТВЕТСТВИИ</div>
-        <div className="dc-eac">ЕАС</div>
+        <div className="dc-eac"><EacMark sizeMm={14} /></div>
         {line('Заявитель', f.f3)}
         {f.f4 ? line('в лице', f.f4) : null}
         {line('заявляет, что', f.f5)}

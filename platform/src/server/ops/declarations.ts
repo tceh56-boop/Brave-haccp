@@ -24,6 +24,7 @@ import { registerNormRefs } from '../readiness/engine';
  */
 
 export const DECL_REFS = ['trts021:21.3', 'trts021:23.1', 'trts021:23.4', 'trts021:23.10', 'trts034:4', 'trts034:132', 'trts034:135', 'trts034:138', 'trts034:141', 'trts034:109',
+  'trts051:5', 'trts051:128', 'trts051:132', 'trts051:135', 'trts051:115', 'eac711:3',
   'eec293:4', 'eec293:5', 'eec44:26', 'eec44:28', 'mer478:7', 'mer478:12', 'sanpin4282:7', 'rpn:declaration', 'trts022:1.2'] as const;
 registerNormRefs('declarations', [...DECL_REFS]);
 type Ref = (typeof DECL_REFS)[number];
@@ -51,6 +52,7 @@ const REGS = {
   trts021: 'ТР ТС 021/2011 «О безопасности пищевой продукции»',
   trts022: 'ТР ТС 022/2011 «Пищевая продукция в части ее маркировки»',
   trts034: 'ТР ТС 034/2013 «О безопасности мяса и мясной продукции»',
+  trts051: 'ТР ЕАЭС 051/2021 «О безопасности мяса птицы и продукции его переработки»',
 } as const;
 
 /* ───────────── Ввод ───────────── */
@@ -186,7 +188,7 @@ async function regimeOf(tx: Tx, orgId: string, input: DeclDraft, dishId: string)
     errors.push({ field: 'regime', text: 'Укажите, как реализуется продукция: от этого зависит, нужна ли декларация (ТР ТС 021/2011, ст. 21 ч. 3; ст. 23 ч. 1).', basis: ['trts021:21.3', 'trts021:23.1'] });
   } else if (input.channel === 'services') {
     decision = 'not_required'; basis.push('trts021:21.3');
-    errors.push({ field: 'regime', text: 'Продукция предприятия питания, реализуемая при оказании услуг, — оценка соответствия в форме государственного надзора, не декларирования (ТР ТС 021/2011, ст. 21 ч. 3; для мясной продукции — ТР ТС 034/2013, п. 4 «д»). Декларацию на неё не оформляют.', basis: ['trts021:21.3', 'trts034:4'] });
+    errors.push({ field: 'regime', text: 'Продукция предприятия питания, реализуемая при оказании услуг, — оценка соответствия в форме государственного надзора, не декларирования (ТР ТС 021/2011, ст. 21 ч. 3; для мясной продукции — ТР ТС 034/2013, п. 4 «д»; из мяса птицы — ТР ЕАЭС 051/2021, п. 5 «д»). Декларацию на неё не оформляют.', basis: ['trts021:21.3', 'trts034:4', 'trts051:5'] });
   } else if (input.channel === 'outside') {
     decision = 'required'; basis.push('sanpin4282:7', 'trts021:23.1');
   } else {
@@ -198,21 +200,26 @@ async function regimeOf(tx: Tx, orgId: string, input: DeclDraft, dishId: string)
   // какой регламент на продукцию
   const regs: (keyof typeof REGS)[] = ['trts021', 'trts022'];
   let schemes: Scheme[] = SCHEMES_021;
-  let reg034: boolean | null = null;
-  if (meat.problems.length) errors.push({ field: 'regime', text: `Состав по ТТК определить не удалось: ${meat.problems.join(' ')}`, basis: ['trts034:4'] });
-  if (meat.unknown.length) errors.push({ field: 'regime', text: `Не указан вид сырья (продукты убоя / мясо птицы / не мясное) — без этого не определить, распространяется ли ТР ТС 034/2013 (п. 4 «в», «е»): ${meat.unknown.map((x) => `«${x.name}»`).join(', ')}.`, basis: ['trts034:4'] });
+  // особый регламент на мясную продукцию: ТР ТС 034 (продукты убоя) или ТР ЕАЭС 051 (мясо птицы); null — только ТР ТС 021
+  let special: 'trts034' | 'trts051' | null | undefined;
+  if (meat.problems.length) errors.push({ field: 'regime', text: `Состав по ТТК определить не удалось: ${meat.problems.join(' ')}`, basis: ['trts034:4', 'trts051:5'] });
+  if (meat.unknown.length) errors.push({ field: 'regime', text: `Не указан вид сырья (продукты убоя / мясо птицы / не мясное) — без этого не определить, распространяется ли ТР ТС 034/2013 (п. 4 «в», «е») или ТР ЕАЭС 051/2021 (п. 5 «в», «е»): ${meat.unknown.map((x) => `«${x.name}»`).join(', ')}.`, basis: ['trts034:4', 'trts051:5'] });
   if (!meat.unknown.length && !meat.problems.length) {
-    const meatTotal = meat.slaughter_g + meat.poultry_g;
-    if (meat.meat_pct < 5) { reg034 = false; notes.push(`Мясных ингредиентов по рецептуре ${meat.meat_pct} % (< 5 %) — ТР ТС 034/2013 не применяется (п. 4 «е»).`); }
-    else if (meat.poultry_g > meat.slaughter_g) {
-      reg034 = false;
-      errors.push({ field: 'regime', text: `Мясо птицы (${meat.poultry_pct} %) по массе превышает продукты убоя (${meat.slaughter_pct} %) — ТР ТС 034/2013 не применяется (п. 4 «в»); такая продукция относится к регламенту о мясе птицы (ТР ЕАЭС 051/2021), текста которого в нормативной базе системы нет. Декларацию не готовим, пока документ не загружен и не проверен.`, basis: ['trts034:4'] });
-    } else if (meatTotal > 0) {
-      reg034 = true; regs.push('trts034'); schemes = SCHEMES_034; basis.push('trts034:132');
+    if (meat.poultry_g > meat.slaughter_g) {
+      // ТР ТС 034 п. 4 «в» — птица превышает продукты убоя; ТР ЕАЭС 051 п. 5 «в» — продукты убоя не 50 % и не больше птицы
+      if (meat.poultry_pct >= 5) {
+        special = 'trts051'; basis.push('trts051:128');
+        notes.push(`Мясо птицы ${meat.poultry_pct} % по рецептуре, продукты убоя ${meat.slaughter_pct} % — применяется ТР ЕАЭС 051/2021 (п. 5 «в», «е» — исключения не подходят), схемы только 3д, 4д, 6д (п. 130), исследования — в аккредитованной лаборатории из единого реестра (п. 129).`);
+      } else { special = null; notes.push(`Мясо птицы ${meat.poultry_pct} % (< 5 %) — ТР ЕАЭС 051/2021 не применяется (п. 5 «е»); ТР ТС 034/2013 тоже (п. 4 «в»).`); }
+    } else if (meat.meat_pct < 5) { special = null; notes.push(`Мясных ингредиентов по рецептуре ${meat.meat_pct} % (< 5 %) — ТР ТС 034/2013 не применяется (п. 4 «е»).`); }
+    else if (meat.slaughter_g > 0) {
+      special = 'trts034'; basis.push('trts034:132');
       notes.push(`Мясных ингредиентов по рецептуре ${meat.meat_pct} % — ${meat.group} продукт; применяется ТР ТС 034/2013, схемы только 3д, 4д, 6д (п. 134), испытания — в аккредитованной лаборатории (п. 133).`);
-    }
+    } else special = null;
   }
-  return { decision, basis, regs, schemes, reg034, meat, errors, notes };
+  if (special) { regs.push(special); schemes = SCHEMES_034; }
+  const reg034 = special === undefined ? null : special === 'trts034';
+  return { decision, basis, regs, schemes, reg034, special: special === undefined ? undefined : special, meat, errors, notes };
 }
 
 export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
@@ -253,9 +260,12 @@ export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
     }
   }
   // схема
-  if (!scheme) err('7', `Выберите схему декларирования: ${r.schemes.join(', ')}.`, r.reg034 ? 'trts034:132' : 'trts021:23.4');
+  const SREF: Ref = r.special === 'trts051' ? 'trts051:128' : r.special === 'trts034' ? 'trts034:132' : 'trts021:23.4';
+  const TREF: Ref = r.special === 'trts051' ? 'trts051:132' : 'trts034:135';
+  const SNAME = r.special === 'trts051' ? 'ТР ЕАЭС 051/2021' : 'ТР ТС 034/2013';
+  if (!scheme) err('7', `Выберите схему декларирования: ${r.schemes.join(', ')}.`, SREF);
   else {
-    if (!r.schemes.includes(scheme)) err('7', `Схема ${scheme} не установлена ${r.reg034 ? 'ТР ТС 034/2013 (п. 134: 3д, 4д, 6д)' : 'ТР ТС 021/2011 (ст. 23 ч. 4: 1д, 2д, 3д)'}.`, r.reg034 ? 'trts034:132' : 'trts021:23.4');
+    if (!r.schemes.includes(scheme)) err('7', `Схема ${scheme} не установлена ${r.special === 'trts034' ? 'ТР ТС 034/2013 (п. 134: 3д, 4д, 6д)' : r.special === 'trts051' ? 'ТР ЕАЭС 051/2021 (п. 130: 3д, 4д, 6д)' : 'ТР ТС 021/2011 (ст. 23 ч. 4: 1д, 2д, 3д)'}.`, SREF);
     if (SCHEMES[scheme].object !== objectKind) err('7', `Схема ${scheme} — для ${SCHEMES[scheme].object === 'serial' ? 'серийного выпуска' : 'партии'}; объект декларирования указан иначе.`, 'eec44:28');
   }
   // протоколы
@@ -279,20 +289,20 @@ export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
   if (!storage || !shelf) err('8', 'Нет условий хранения или срока годности в утверждённых ТУ / ТТК — сведения поля 8 и обязательные сведения маркировки (ТР ТС 022/2011, ст. 4.1 п. 1).', 'eec293:5', 'trts022:1.2');
   // поле 9 — срок действия
   let validTo = input.validTo || null;
-  if (scheme === '4д' && r.reg034) {
+  if (scheme === '4д' && r.special) {
     if (lot?.expires_at) {
       const exp = new Date(lot.expires_at).toISOString().slice(0, 10);
-      if (validTo && validTo !== exp) err('9', `Схема 4д: срок действия равен сроку годности партии (${dmy(exp)}) — ТР ТС 034/2013, п. 136.`, 'trts034:135');
+      if (validTo && validTo !== exp) err('9', `Схема 4д: срок действия равен сроку годности партии (${dmy(exp)}) — ${SNAME}.`, TREF);
       validTo = exp;
-    } else if (!validTo) err('9', 'Схема 4д: срок действия декларации соответствует сроку годности партии — выберите партию со сроком годности или укажите дату (ТР ТС 034/2013, п. 136).', 'trts034:135');
+    } else if (!validTo) err('9', `Схема 4д: срок действия декларации соответствует сроку годности партии — выберите партию со сроком годности или укажите дату (${SNAME}).`, TREF);
   }
   if (input.noTerm) {
-    if (r.reg034) err('9', 'ТР ТС 034/2013 устанавливает срок действия (п. 135–137) — запись «срок не установлен» недопустима.', 'trts034:135');
+    if (r.special) err('9', `${SNAME} устанавливает срок действия — запись «срок не установлен» недопустима.`, TREF);
     validTo = null;
-  } else if (!validTo) err('9', r.reg034 ? 'Укажите дату окончания действия декларации.' : 'Укажите дату окончания действия (срок устанавливает заявитель — ТР ТС 021/2011, ст. 23 ч. 10) или отметьте «срок не установлен».', r.reg034 ? 'trts034:135' : 'trts021:23.10');
+  } else if (!validTo) err('9', r.special ? 'Укажите дату окончания действия декларации.' : 'Укажите дату окончания действия (срок устанавливает заявитель — ТР ТС 021/2011, ст. 23 ч. 10) или отметьте «срок не установлен».', r.special ? TREF : 'trts021:23.10');
   if (validTo && validTo <= today) err('9', 'Дата окончания действия должна быть позже сегодняшней.', 'eec293:5');
-  if (validTo && r.reg034 && scheme === '3д' && validTo > addYears(today, 3)) err('9', 'Схема 3д (ТР ТС 034/2013, п. 135): срок действия — не более 3 лет.', 'trts034:135');
-  if (validTo && r.reg034 && scheme === '6д' && validTo > addYears(today, 5)) err('9', 'Схема 6д (ТР ТС 034/2013, п. 137): срок действия — не более 5 лет.', 'trts034:135');
+  if (validTo && r.special && scheme === '3д' && validTo > addYears(today, 3)) err('9', `Схема 3д (${SNAME}): срок действия — не более 3 лет.`, TREF);
+  if (validTo && r.special && scheme === '6д' && validTo > addYears(today, 5)) err('9', `Схема 6д (${SNAME}): срок действия — не более 5 лет.`, TREF);
 
   // ── поля формы ──
   const applicant = fullName(c.org);
@@ -325,7 +335,7 @@ export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
   const haccp = await tx.query(`select version, approved_at from haccp_plans where organization_id = $1 and status = 'approved' order by version desc limit 1`, [orgId]);
   const withFile = protocols.filter((p) => p.fileId && files.has(p.fileId)).length;
   const complect = [
-    { item: 'Документы о государственной регистрации заявителя (выписка ЕГРЮЛ / ЕГРИП)', status: c.org.ogrn ? 'ok' : 'missing', detail: c.org.ogrn ? `${ip ? 'ОГРНИП' : 'ОГРН'} ${c.org.ogrn}; выписку приложите к комплекту` : 'нет ОГРН', basis: 'ТР ТС 034, п. 138 «а»; решение N 44, п. 26' },
+    { item: 'Документы о государственной регистрации заявителя (выписка ЕГРЮЛ / ЕГРИП)', status: c.org.ogrn ? 'ok' : 'missing', detail: c.org.ogrn ? `${ip ? 'ОГРНИП' : 'ОГРН'} ${c.org.ogrn}; выписку приложите к комплекту` : 'нет ОГРН', basis: 'ТР ТС 034, п. 138 «а»; ТР ЕАЭС 051, п. 135 «а»; решение N 44, п. 26' },
     { item: 'Технические условия или документ, по которому изготовлена продукция', status: c.tu ? 'ok' : 'warning', detail: c.tu ? `${c.tu.designation}, версия ${c.tu.version}, утверждены ${dmy(c.tu.approved_at)}` : 'ТУ не утверждены (при наличии)', basis: 'ТР ТС 034, п. 138 «б»; решение N 44, п. 26 «а»' },
     { item: 'Перечень документов, по которым изготовлена продукция', status: c.ttk ? 'ok' : 'missing', detail: [c.tu ? c.tu.designation : null, c.ttk ? `ТТК «${c.dish.name}», версия ${c.ttk.version}` : null, input.standards].filter(Boolean).join('; ') || '—', basis: 'ТР ТС 034, п. 138 «в»' },
     { item: 'Сертификат системы менеджмента качества и безопасности', status: scheme === '6д' ? (input.sms?.number ? 'ok' : 'missing') : 'n/a', detail: scheme === '6д' ? (input.sms?.number ? `№ ${input.sms.number}` : 'не указан') : 'только для схемы 6д', basis: 'ТР ТС 034, п. 138 «г»' },
@@ -334,6 +344,7 @@ export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
     { item: 'Договор поставки / товаросопроводительные документы на партию', status: objectKind === 'batch' ? (input.batch?.shippingDoc ? 'ok' : 'missing') : 'n/a', detail: objectKind === 'batch' ? input.batch?.shippingDoc || 'не указаны' : 'только для партии', basis: 'ТР ТС 034, п. 138 «ж»; решение N 44, п. 26 «б»' },
     { item: 'Другие документы: ППК, план ХАССП', status: ppk.rows[0] && haccp.rows[0] ? 'ok' : 'warning', detail: [ppk.rows[0] ? `ППК, версия ${ppk.rows[0].version}` : 'ППК не утверждена', haccp.rows[0] ? `план ХАССП, версия ${haccp.rows[0].version}` : 'план ХАССП не утверждён'].join('; '), basis: 'ТР ТС 034, п. 138 «з»' },
   ];
+  if (r.special === 'trts051') notes.push('Маркировка продукции из мяса птицы: вид и возрастная группа птицы («из мяса кур», «из мяса индейки»), группа и вид полуфабриката, термическое состояние (ТР ЕАЭС 051/2021, п. 115–116).');
   if (r.reg034) notes.push('Комплект документов хранить не менее 5 лет: для серийного выпуска — со дня прекращения производства, для партии — со дня реализации партии (ТР ТС 034/2013, п. 142).');
 
   // ── сведения для заявления о регистрации (приказ N 478, п. 7.1) ──
@@ -353,7 +364,7 @@ export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
     f1: 'ЕВРАЗИЙСКИЙ ЭКОНОМИЧЕСКИЙ СОЮЗ\nДЕКЛАРАЦИЯ О СООТВЕТСТВИИ', f2: 'ЕАС', f3, f4, f5, f6, f7, f8, f9, f10: signer,
     f11: c.registration?.reg_number || null, f12: c.registration ? dmy(c.registration.reg_date) : null, f13: 'формируется в национальной части единого реестра (ФГИС Росаккредитации)',
   };
-  return { ctx: c, input, today, regime: { decision: r.decision, basis: r.basis, regulations: r.regs.map((k) => REGS[k]), schemes: r.schemes, reg034: r.reg034, meat: r.meat },
+  return { ctx: c, input, today, regime: { decision: r.decision, basis: r.basis, regulations: r.regs.map((k) => REGS[k]), schemes: r.schemes, reg034: r.reg034, special: r.special ?? null, meat: r.meat },
     fields, valid_to: validTo, scheme, object: objectKind, errors, notes, complect, application };
 }
 
@@ -497,8 +508,10 @@ export async function registerDeclaration(userId: string, orgId: string, id: str
     const s = c.acceptance.snapshot;
     const vt: string | null = s.valid_to || null;
     if (vt && vt <= d.regDate) throw Errors.validation('Срок действия декларации истекает до даты регистрации.');
-    if (vt && s.regime?.reg034 && s.scheme === '3д' && vt > addYears(d.regDate, 3)) throw Errors.conflict('Схема 3д: срок действия больше 3 лет от даты регистрации (ТР ТС 034/2013, п. 135).');
-    if (vt && s.regime?.reg034 && s.scheme === '6д' && vt > addYears(d.regDate, 5)) throw Errors.conflict('Схема 6д: срок действия больше 5 лет от даты регистрации (ТР ТС 034/2013, п. 137).');
+    const sp = s.regime?.special || (s.regime?.reg034 ? 'trts034' : null);
+    const spName = sp === 'trts051' ? 'ТР ЕАЭС 051/2021, п. 132–134' : 'ТР ТС 034/2013, п. 135–137';
+    if (vt && sp && s.scheme === '3д' && vt > addYears(d.regDate, 3)) throw Errors.conflict(`Схема 3д: срок действия больше 3 лет от даты регистрации (${spName}).`);
+    if (vt && sp && s.scheme === '6д' && vt > addYears(d.regDate, 5)) throw Errors.conflict(`Схема 6д: срок действия больше 5 лет от даты регистрации (${spName}).`);
     const r = (await tx.query(`insert into declaration_registrations (organization_id, declaration_id, reg_number, reg_date, valid_to, registered_by) values ($1, $2, $3, $4, $5, $6)
       on conflict (organization_id, reg_number) do nothing returning id`, [orgId, id, num, d.regDate, vt, userId])).rows[0];
     if (!r) throw Errors.conflict('Такой регистрационный номер уже внесён по другой декларации.');

@@ -170,7 +170,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 /* ───── Декларация о соответствии (решение Коллегии ЕЭК N 293, A4) ───── */
 .dc { font: 11pt/1.4 'Times New Roman', serif; }
 .dc-head { text-align: center; font-weight: 700; font-size: 13pt; margin: 8px 0; }
-.dc-eac { font-weight: 700; font-size: 18pt; letter-spacing: 2px; border: 2px solid #111; display: inline-block; padding: 0 6px; margin: 0 0 10px; }
+.dc-eac { margin: 0 0 10px; }
+.eac-mark { display: inline-block; vertical-align: middle; }
 .dc-row { margin: 6px 0; }
 .dc-l { font-weight: 700; margin-right: 6px; }
 .dc-v { white-space: pre-wrap; }
