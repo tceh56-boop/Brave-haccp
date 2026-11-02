@@ -132,3 +132,77 @@ export function ExpensesTab({ q }: { q: Q }) {
     </>
   );
 }
+
+/* ───────────── Управленческие отчёты (ТЗ доработки, 9.4–9.5) ───────────── */
+
+interface RCol { key: string; label: string; type?: 'text' | 'money' | 'num' | 'pct' }
+interface Report { table: { title: string; columns: RCol[]; rows: Record<string, unknown>[]; totals?: Record<string, unknown> | null; notes?: string[] }; subtitle: string; note: string; reports: Record<string, string> }
+const fv = (v: unknown, t?: RCol['type']) => (v === null || v === undefined || v === '' ? '—' : t === 'money' ? n(Math.round(Number(v) * 100) / 100) : t === 'pct' ? `${n(Number(v))} %` : t === 'num' ? n(Number(v)) : String(v));
+
+export function ReportsTab({ q }: { q: Q }) {
+  const { org, can } = useOrg();
+  const [kind, setKind] = useState('stock_value');
+  const [x, setX] = useState<Report | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const url = `/api/v1/orgs/${org.id}/finance/report?kind=${kind}&${qs(q)}`;
+  useEffect(() => { setX(null); api<Report>(`/orgs/${org.id}/finance/report?kind=${kind}&${qs(q)}`).then((r) => { setX(r); setErr(null); }).catch((e) => setErr(e.message)); }, [org.id, q, kind]);
+  return (
+    <>
+      <div className="card">
+        <label htmlFor="rk">Отчёт</label>
+        <select id="rk" value={kind} onChange={(e) => setKind(e.target.value)}>
+          {Object.entries(x?.reports || { stock_value: 'Остатки склада в рублях' }).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          <a className="btn small secondary" href={`${url}&format=xlsx`}>Excel (XLSX)</a>
+          <a className="btn small secondary" href={`${url}&format=csv`}>CSV</a>
+          <a className="btn small secondary" href={`${url}&format=html`} target="_blank" rel="noreferrer">Печатная форма / PDF</a>
+        </div>
+      </div>
+      {err && <div className="err">{err}</div>}
+      {!x ? !err && <p className="muted">Загрузка…</p> : (
+        <div className="card">
+          <h2>{x.table.title}</h2>
+          <p className="small muted">{x.subtitle}</p>
+          {(x.table.notes || []).map((t) => <div key={t} className="note small">{t}</div>)}
+          <div className="scroll"><table className="tbl small">
+            <thead><tr>{x.table.columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
+            <tbody>
+              {x.table.rows.length === 0 && <tr><td colSpan={x.table.columns.length} className="muted">Данных за период нет</td></tr>}
+              {x.table.rows.map((r, i) => <tr key={i}>{x.table.columns.map((c) => <td key={c.key} style={c.type && c.type !== 'text' ? { textAlign: 'right' } : undefined}>{fv(r[c.key], c.type)}</td>)}</tr>)}
+              {x.table.totals && <tr style={{ fontWeight: 700 }}>{x.table.columns.map((c) => <td key={c.key} style={c.type && c.type !== 'text' ? { textAlign: 'right' } : undefined}>{x.table.totals![c.key] === undefined ? '' : fv(x.table.totals![c.key], c.type)}</td>)}</tr>}
+            </tbody>
+          </table></div>
+          <p className="small"><b>{x.note}</b></p>
+        </div>)}
+      {kind === 'plan_fact' && can('expense.manage') && <BudgetForm />}
+    </>
+  );
+}
+
+function BudgetForm() {
+  const { org } = useOrg();
+  const [f, setF] = useState({ month: new Date().toISOString().slice(0, 7), item: 'revenue', amount: '' });
+  const [items, setItems] = useState<Record<string, string>>({ revenue: 'Чистая выручка' });
+  const [rows, setRows] = useState<{ item: string; amount: number; author: string }[]>([]);
+  const { busy, error, run } = useSubmit();
+  const load = useCallback(() => api<{ rows: { item: string; amount: number; author: string }[]; items: Record<string, string> }>(`/orgs/${org.id}/finance/budgets?month=${f.month}`)
+    .then((r) => { setRows(r.rows); setItems(r.items); }).catch(() => {}), [org.id, f.month]);
+  useEffect(() => { load(); }, [load]);
+  return (
+    <div className="card">
+      <h2>Бюджет на месяц (план)</h2>
+      <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/finance/budgets`, { body: { ...f, amount: f.amount.replace(',', '.') } }); setF({ ...f, amount: '' }); await load(); }); }}>
+        <div className="grid2">
+          <div><label htmlFor="bm">Месяц</label><input id="bm" type="month" value={f.month} onChange={(e) => setF({ ...f, month: e.target.value })} /></div>
+          <div><label htmlFor="bi">Статья</label><select id="bi" value={f.item} onChange={(e) => setF({ ...f, item: e.target.value })}>{Object.entries(items).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+          <div><label htmlFor="ba">Сумма, ₽</label><input id="ba" inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></div>
+        </div>
+        {error && <div className="err">{error}</div>}
+        <button className="btn" disabled={busy}>Записать план</button>
+        <p className="small muted">Новая запись по той же статье заменяет прежнюю; история сохраняется.</p>
+      </form>
+      {rows.length > 0 && <ul>{rows.map((r) => <li key={r.item} className="small">{items[r.item] || r.item}: {n(r.amount)} ₽ ({r.author})</li>)}</ul>}
+    </div>
+  );
+}
