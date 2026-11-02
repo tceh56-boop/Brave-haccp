@@ -68,7 +68,11 @@ describe('P&L и Prime Cost', () => {
     expect(x.profit).toBe(revenue - (4 * 900 + 24 * 450) - 89000);
     expect(x.prime_cost).toBe(4 * 900 + 24 * 450 + 56000);
     expect(x.complete).toBe(false);
-    expect(x.incomplete[0]).toMatch(/продаж без себестоимости: 1/);
+    expect(x.incomplete.join(' | ')).toMatch(/без списания по ТТК.*: 1/);
+    expect(x.incomplete.join(' | ')).toMatch(/итого продаж без себестоимости: 1 на 500 ₽/);
+    expect(x).toMatchObject({ status: 'incomplete', gross_revenue: revenue, returns: 0, note: expect.stringMatching(/^Отчет управленческий/) });
+    // фудкост — только по продажам с известной себестоимостью (без «Морса»)
+    expect(x.food_cost_pct).toBe(Math.round((4 * 900 + 24 * 450) / (revenue - 500) * 1000) / 10);
     await expect(pnl(chef.id, orgId, P)).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });

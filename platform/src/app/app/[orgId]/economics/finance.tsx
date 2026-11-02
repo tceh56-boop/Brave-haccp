@@ -11,9 +11,14 @@ type Q = { from: string; to: string; siteId: string };
 const qs = (q: Q) => `from=${q.from}&to=${q.to}${q.siteId ? `&siteId=${q.siteId}` : ''}`;
 const pc = (v: number | null) => (v === null ? '' : ` · ${n(v)} %`);
 
-interface Pnl { revenue: number; cogs: number; gross_margin: number; losses: number; expenses: Record<string, number>; opex: number; profit: number; prime_cost: number;
+interface Pnl { note: string; status: string; status_label: string; reasons: { code: string; text: string; affects: string }[];
+  gross_revenue: number; returns: number; revenue: number; orders: number; avg_check: number | null; cogs: number; costed_revenue: number;
+  food_cost_pct: number | null; markup_pct: number | null; margin_pct: number | null; gross_margin: number; losses: number; losses_unpriced: number;
+  payroll: number; prime_cost: number; expenses: Record<string, number>; opex: number; opex_other: number; profit: number;
   pct: Record<string, number | null>; categories: Record<string, string>; complete: boolean; incomplete: string[] }
+const STATUS_TONE: Record<string, string> = { full: 'ok', approximate: 'warn', unconfirmed: 'warn', incomplete: 'crit', estimated: 'warn' };
 
+/** Сводка руководителя и P&L (ТЗ доработки, 9.2–9.3): чистая выручка → валовая прибыль → управленческая прибыль. */
 export function PnlTab({ q }: { q: Q }) {
   const { org } = useOrg();
   const [x, setX] = useState<Pnl | null>(null);
@@ -21,21 +26,32 @@ export function PnlTab({ q }: { q: Q }) {
   useEffect(() => { api<Pnl>(`/orgs/${org.id}/finance/pnl?${qs(q)}`).then((r) => { setX(r); setErr(null); }).catch((e) => setErr(e.message)); }, [org.id, q]);
   if (err) return <div className="err">{err}</div>;
   if (!x) return <p className="muted">Загрузка…</p>;
+  const other = Object.entries(x.expenses).filter(([k]) => k !== 'payroll');
   return (
     <div className="card">
-      <h2>P&L (отчёт о прибылях и убытках)</h2>
+      <div className="between"><h2 style={{ margin: 0 }}>Сводка руководителя и P&L</h2><span className={`badge ${STATUS_TONE[x.status] || ''}`}>данные: {x.status_label}</span></div>
+      <p className="small"><b>{x.note}</b></p>
       <dl className="kv">
-        <dt>Выручка</dt><dd><b>{n(x.revenue)} ₽</b></dd>
+        <dt>Валовая выручка</dt><dd>{n(x.gross_revenue)} ₽</dd>
+        <dt>Возвраты</dt><dd>− {n(x.returns)} ₽</dd>
+        <dt>Чистая выручка</dt><dd><b>{n(x.revenue)} ₽</b></dd>
+        <dt>Заказов · средний чек</dt><dd>{x.orders} · {x.avg_check === null ? '—' : `${n(x.avg_check)} ₽`}</dd>
         <dt>Себестоимость продаж</dt><dd>− {n(x.cogs)} ₽{pc(x.pct.cogs)}</dd>
         <dt>Валовая прибыль</dt><dd><b>{n(x.gross_margin)} ₽</b>{pc(x.pct.gross)}</dd>
-        <dt>Потери (списания)</dt><dd>− {n(x.losses)} ₽{pc(x.pct.losses)}</dd>
-        {Object.entries(x.expenses).map(([k, v]) => <Fragment key={k}><dt>{x.categories[k]}</dt><dd>− {n(v)} ₽</dd></Fragment>)}
-        <dt>Расходы всего</dt><dd>− {n(x.opex)} ₽{pc(x.pct.opex)}</dd>
-        <dt>Прибыль</dt><dd><b style={x.profit < 0 ? { color: 'var(--crit, #b3261e)' } : undefined}>{n(x.profit)} ₽</b>{pc(x.pct.profit)}</dd>
+        <dt>Списания (подтверждённые потери)</dt><dd>− {n(x.losses)} ₽{pc(x.pct.losses)}{x.losses_unpriced ? <span className="small" style={{ color: 'var(--crit)' }}> + без цены: {x.losses_unpriced}</span> : null}</dd>
+        <dt>ФОТ</dt><dd>− {n(x.payroll)} ₽</dd>
+        {other.map(([k, v]) => <Fragment key={k}><dt>{x.categories[k]}</dt><dd>− {n(v)} ₽</dd></Fragment>)}
+        <dt>Управленческая прибыль</dt><dd><b style={x.profit < 0 ? { color: 'var(--crit, #b3261e)' } : undefined}>{n(x.profit)} ₽</b>{pc(x.pct.profit)}</dd>
         <dt>Prime Cost</dt><dd>{n(x.prime_cost)} ₽{pc(x.pct.prime)} <span className="small muted">(себестоимость + ФОТ)</span></dd>
       </dl>
-      {!x.complete && <div className="note"><b>Данные неполные:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{x.incomplete.map((t) => <li key={t} className="small">{t}</li>)}</ul></div>}
-      <p className="small muted">Ежемесячные расходы входят в период долей дней месяца; себестоимость — по фактически списанным партиям.</p>
+      <h3>По продажам с известной себестоимостью ({n(x.costed_revenue)} ₽)</h3>
+      <dl className="kv">
+        <dt>Фудкост</dt><dd>{x.food_cost_pct === null ? '—' : `${n(x.food_cost_pct)} %`}</dd>
+        <dt>Наценка</dt><dd>{x.markup_pct === null ? '—' : `${n(x.markup_pct)} %`}</dd>
+        <dt>Маржинальность</dt><dd>{x.margin_pct === null ? '—' : `${n(x.margin_pct)} %`}</dd>
+      </dl>
+      {x.reasons.length > 0 && <div className="note"><b>Почему данные «{x.status_label}»:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{x.reasons.map((t) => <li key={t.code} className="small">{t.text}</li>)}</ul></div>}
+      <p className="small muted">Ежемесячные расходы входят в период долей дней месяца; себестоимость — по фактически списанным партиям; неизвестная себестоимость нулём не считается.</p>
     </div>
   );
 }

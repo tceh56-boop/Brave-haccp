@@ -15,7 +15,10 @@ import { inOrg, parse, optText, assertSiteAccess, getSite } from './common';
  */
 
 export const EXPENSE_CATEGORY: Record<string, string> = { payroll: 'ФОТ (зарплата и взносы)', rent: 'Аренда', utilities: 'Коммунальные услуги', marketing: 'Маркетинг',
-  services: 'Услуги (связь, вывоз, обслуживание)', equipment: 'Оборудование и ремонт', taxes: 'Налоги и сборы', other: 'Прочее' };
+  services: 'Услуги (связь, вывоз, обслуживание)', equipment: 'Оборудование и ремонт', taxes: 'Налоги и сборы', acquiring: 'Эквайринг', delivery: 'Доставка', other: 'Прочее' };
+export const MGMT_NOTE = 'Отчет управленческий. Не является бухгалтерской или налоговой отчетностью.';
+/** Статус полноты цифр (ТЗ доработки, 9.1). */
+export const COMPLETENESS: Record<string, string> = { full: 'полный', incomplete: 'неполный', approximate: 'ориентировочный', estimated: 'расчетный', unconfirmed: 'есть неподтвержденные данные' };
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 const Period = z.object({ from: z.iso.date('Дата начала — ГГГГ-ММ-ДД.'), to: z.iso.date('Дата конца — ГГГГ-ММ-ДД.'), siteId: z.uuid().nullable().optional() })
@@ -88,6 +91,13 @@ export async function listExpenses(userId: string, orgId: string, input: unknown
 
 /* ───────────── P&L ───────────── */
 
+/**
+ * P&L и сводка руководителя (ТЗ доработки, 9.2–9.3):
+ *   чистая выручка (валовая − возвраты) − себестоимость продаж = валовая прибыль;
+ *   валовая прибыль − списания − ФОТ − операционные расходы = управленческая прибыль.
+ * Фудкост, наценка и маржинальность — только по продажам с известной себестоимостью; неизвестная себестоимость
+ * нулём не считается. Статус полноты — с перечнем причин (9.1).
+ */
 export async function pnl(userId: string, orgId: string, input: unknown) {
   const p = parse(Period, input);
   return inOrg(userId, orgId, 'econ.read', async (tx, m) => {
@@ -95,26 +105,67 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
     const tz = (await tx.query(`select timezone from organizations where id = $1`, [orgId])).rows[0].timezone;
     const per = `between (($2::date)::timestamp at time zone $4) and ((($3::date) + 1)::timestamp at time zone $4)`;
     const args = [orgId, p.from, p.to, tz, p.siteId || null];
-    const s = (await tx.query(`select coalesce(sum(amount), 0) as revenue, coalesce(sum(cost) filter (where fulfil_status = 'done' and cost is not null), 0) as cogs,
+    const s = (await tx.query(`select
+        coalesce(sum(amount) filter (where qty > 0), 0) as gross, coalesce(-sum(amount) filter (where qty < 0), 0) as returns,
+        count(distinct coalesce(order_id::text, source || ':' || external_id)) filter (where qty > 0)::int as orders,
+        coalesce(sum(cost) filter (where qty > 0 and fulfil_status = 'done' and cost is not null), 0) as cogs,
+        coalesce(sum(amount) filter (where qty > 0 and fulfil_status = 'done' and cost is not null), 0) as costed_revenue,
         count(*) filter (where qty > 0 and (fulfil_status <> 'done' or cost is null))::int as uncosted,
-        coalesce(sum(amount) filter (where qty > 0 and (fulfil_status <> 'done' or cost is null)), 0) as uncosted_amount
-      from sales where organization_id = $1 and ($5::uuid is null or site_id = $5) and sold_at ${per}`, args)).rows[0];
-    const w = (await tx.query(`select coalesce(sum(-m.quantity * l.unit_price), 0) as value, count(*) filter (where l.unit_price is null)::int as unpriced
+        coalesce(sum(amount) filter (where qty > 0 and (fulfil_status <> 'done' or cost is null)), 0) as uncosted_amount,
+        count(*) filter (where qty > 0 and fulfil_status in ('no_ttk', 'unmatched'))::int as no_ttk,
+        count(*) filter (where qty > 0 and fulfil_status in ('pending', 'failed'))::int as not_written_off,
+        count(*) filter (where qty > 0 and coalesce(price, 0) <= 0)::int as no_price,
+        count(*) filter (where source <> 'pos')::int as imported
+      from (select s.*, ol.order_id from sales s left join pos_order_lines ol on ol.id = s.order_line_id
+        where s.organization_id = $1 and ($5::uuid is null or s.site_id = $5) and s.sold_at ${per}) x`, args)).rows[0];
+    const w = (await tx.query(`select coalesce(sum(-m.quantity * l.unit_price) filter (where l.unit_price is not null), 0) as value,
+        count(*) filter (where l.unit_price is null)::int as unpriced
       from stock_movements m join lots l on l.id = m.lot_id where m.organization_id = $1 and ($5::uuid is null or m.site_id = $5) and m.kind = 'write_off' and m.created_at ${per}`, args)).rows[0];
+    const lotsNoPrice = Number((await tx.query(`select count(*) from lots where organization_id = $1 and ($5::uuid is null or site_id = $5) and unit_price is null and quantity > 0
+      and opened_at is null and coalesce(received_at, created_at) ${per}`, args)).rows[0].count);
+    const noDocs = Number((await tx.query(`select count(*) from receipts where organization_id = $1 and ($5::uuid is null or site_id = $5) and status <> 'draft'
+      and coalesce(document_no, '') = '' and completed_at ${per}`, args)).rows[0].count);
+    const card = Number((await tx.query(`select coalesce(sum(amount), 0) as c from pos_payments where organization_id = $1 and ($5::uuid is null or site_id = $5) and method = 'card' and created_at ${per}`, args)).rows[0].c);
     const ex = await expensesIn(tx, orgId, p.from, p.to, p.siteId || null);
     const byCat: Record<string, number> = {};
     for (const e of ex) if (e.in_period) byCat[e.category] = r2((byCat[e.category] || 0) + e.in_period);
-    const revenue = r2(Number(s.revenue)), cogs = r2(Number(s.cogs)), losses = r2(Number(w.value)), opex = r2(Object.values(byCat).reduce((a, b) => a + b, 0));
-    const gross = r2(revenue - cogs), profit = r2(gross - losses - opex), prime = r2(cogs + (byCat.payroll || 0));
-    const pct = (x: number) => (revenue > 0 ? Math.round(x / revenue * 1000) / 10 : null);
-    const incomplete: string[] = [];
-    if (Number(s.uncosted)) incomplete.push(`продаж без себестоимости: ${s.uncosted} на ${r2(Number(s.uncosted_amount))} ₽ (себестоимость занижена)`);
-    if (w.unpriced) incomplete.push(`списаний без цены партии: ${w.unpriced} (потери занижены)`);
-    if (!ex.some((e) => e.category === 'payroll' && e.in_period)) incomplete.push('нет расходов на ФОТ за период');
+
+    const gross = r2(Number(s.gross)), returns = r2(Number(s.returns)), revenue = r2(gross - returns);
+    const cogs = r2(Number(s.cogs)), costedRev = r2(Number(s.costed_revenue));
+    const losses = r2(Number(w.value)), payroll = byCat.payroll || 0;
+    const opexOther = r2(Object.entries(byCat).filter(([k]) => k !== 'payroll').reduce((a, [, v]) => a + v, 0));
+    const grossProfit = r2(revenue - cogs);
+    const profit = r2(grossProfit - losses - payroll - opexOther);
+    const prime = r2(cogs + payroll);
+    const pct = (x: number, base = revenue) => (base > 0 ? Math.round(x / base * 1000) / 10 : null);
+
+    // причины неполноты (9.1) и статус
+    const reasons: { code: string; text: string; affects: 'cost' | 'expenses' | 'confirmation' }[] = [];
+    if (s.no_ttk) reasons.push({ code: 'sales_no_ttk', affects: 'cost', text: `продажи без ТТК или без сопоставления с блюдом: ${s.no_ttk}` });
+    if (s.not_written_off) reasons.push({ code: 'sales_not_written_off', affects: 'cost', text: `продажи без списания по ТТК (в очереди или с ошибкой): ${s.not_written_off}` });
+    const noCost = Number(s.uncosted) - Number(s.no_ttk) - Number(s.not_written_off);
+    if (noCost > 0) reasons.push({ code: 'sales_no_cost', affects: 'cost', text: `продажи без себестоимости (у списанных партий нет цены): ${noCost}` });
+    if (Number(s.uncosted)) reasons.push({ code: 'uncosted_total', affects: 'cost', text: `итого продаж без себестоимости: ${s.uncosted} на ${r2(Number(s.uncosted_amount))} ₽ — фудкост и прибыль считаются только по продажам с известной себестоимостью` });
+    if (s.no_price) reasons.push({ code: 'sales_no_price', affects: 'cost', text: `продажи без цены: ${s.no_price}` });
+    if (lotsNoPrice) reasons.push({ code: 'lots_no_price', affects: 'cost', text: `партии без цены, поступившие в периоде: ${lotsNoPrice}` });
+    if (w.unpriced) reasons.push({ code: 'writeoffs_no_price', affects: 'cost', text: `списания без цены партии: ${w.unpriced} (потери занижены)` });
+    if (!payroll) reasons.push({ code: 'no_payroll', affects: 'expenses', text: 'неучтенный ФОТ: нет расходов на зарплату за период' });
+    const missingCats = ['rent', 'utilities'].filter((k) => !byCat[k]);
+    if (missingCats.length) reasons.push({ code: 'expenses_incomplete', affects: 'expenses', text: `неполные расходы: не внесены ${missingCats.map((k) => EXPENSE_CATEGORY[k].toLowerCase()).join(', ')}` });
+    if (card > 0 && !byCat.acquiring) reasons.push({ code: 'no_acquiring', affects: 'expenses', text: `оплаты картой ${r2(card)} ₽, а расходов на эквайринг нет` });
+    if (noDocs) reasons.push({ code: 'no_purchase_docs', affects: 'confirmation', text: `приёмки без номера закупочного документа: ${noDocs}` });
+    if (s.imported) reasons.push({ code: 'imported_sales', affects: 'confirmation', text: `продажи из внешней кассы (импорт): ${s.imported} — сверяются с ККТ вне системы` });
+    const status = reasons.some((r) => r.affects === 'cost') ? 'incomplete' : reasons.some((r) => r.affects === 'expenses') ? 'approximate'
+      : reasons.some((r) => r.affects === 'confirmation') ? 'unconfirmed' : 'full';
+
     return {
-      period: p, revenue, cogs, gross_margin: gross, losses, expenses: byCat, opex, profit, prime_cost: prime,
-      pct: { cogs: pct(cogs), gross: pct(gross), losses: pct(losses), opex: pct(opex), profit: pct(profit), prime: pct(prime) },
-      categories: EXPENSE_CATEGORY, complete: incomplete.length === 0, incomplete,
+      period: p, note: MGMT_NOTE, status, status_label: COMPLETENESS[status], reasons,
+      gross_revenue: gross, returns, revenue, orders: s.orders, avg_check: s.orders ? r2(revenue / s.orders) : null,
+      cogs, costed_revenue: costedRev, food_cost_pct: pct(cogs, costedRev), markup_pct: cogs > 0 ? Math.round((costedRev - cogs) / cogs * 1000) / 10 : null,
+      margin_pct: pct(costedRev - cogs, costedRev), gross_margin: grossProfit,
+      losses, losses_unpriced: w.unpriced, payroll, prime_cost: prime, expenses: byCat, opex: r2(payroll + opexOther), opex_other: opexOther, profit,
+      pct: { cogs: pct(cogs), gross: pct(grossProfit), losses: pct(losses), opex: pct(r2(payroll + opexOther)), profit: pct(profit), prime: pct(prime) },
+      categories: EXPENSE_CATEGORY, complete: status === 'full', incomplete: reasons.map((r) => r.text),
     };
   }, p.siteId || null);
 }
