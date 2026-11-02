@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText } from './common';
+import { inOrg, parse, optText, closeTasksFor } from './common';
 import { calcTechSpec } from './techspec';
 import { effectiveParams } from './dishgroups';
 import { assertSnapshotIntact } from './integrity';
@@ -184,6 +184,7 @@ export async function approveGroupTechSpec(userId: string, orgId: string, id: st
     const n = Number((await tx.query(`select coalesce(max(version), 0) + 1 as n from group_tech_spec_versions where spec_id = $1`, [s.id])).rows[0].n);
     const row = (await tx.query(`insert into group_tech_spec_versions (organization_id, spec_id, version, designation, snapshot, lab_protocol, approved_by)
       values ($1, $2, $3, $4, $5, $6, $7) returning id, version, approved_at, content_hash`, [orgId, s.id, n, calc.designation, JSON.stringify(calc), d.labProtocol, userId])).rows[0];
+    await closeTasksFor(tx, orgId, 'gtu_review', s.id, userId, `утверждена версия ${n}`);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'gtu.approve', entityType: 'group_tech_spec', entityId: s.id, after: { version: n, designation: calc.designation, items: calc.items.length } });
     return row as { id: string; version: number; approved_at: string; content_hash: string };
   });

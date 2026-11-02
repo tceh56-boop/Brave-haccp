@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
 import { chain, type From } from '@/server/recipes/chain';
 import { GroupSelect, type Group } from '@/components/GroupSelect';
+import { Evidence } from '@/components/Evidence';
 
 interface Line { id: string; position: number; name_raw: string; product_id: string | null; sub_dish_id: string | null; product_name: string | null; product_unit: string | null; sub_dish_name: string | null;
   kind: 'item' | 'heading'; unit: string; brutto: string | null; netto: string | null; ready: string | null; in_yield: boolean; calc_from: From | null; note: string | null; steps: Step[] }
@@ -21,7 +22,7 @@ interface Cost { total: number | null; known: number; complete: boolean; missing
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
 interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' }
 interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null; card_no: string | null; group_id: string | null };
-  versions: { id: string; version: number; status: string; status_label: string; approved_at: string | null; approved_by_name: string | null }[];
+  versions: { id: string; version: number; status: string; status_label: string; approved_at: string | null; approved_by_name: string | null; created_at: string; change_reason: string | null; source: string; author_name: string | null }[];
   current: { version: Version; lines: Line[]; blockers: string[]; warnings: string[]; cost: Cost | null; kbju: Kbju; output: { netto_g: number | null; ready_g: number | null; sections: { list: { title: string | null; ready_g: number | null }[]; label: string } | null } } | null;
   archive: { source_path: string; issues: string[]; yield_raw: string | null; yield_source: string | null } | null; canSeeCost: boolean }
 interface Product { id: string; name: string; unit: string }
@@ -128,7 +129,7 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
                   {cur.cost.food_cost_pct !== null && <><dt>Фудкост</dt><dd><b>{n(cur.cost.food_cost_pct)} %</b> от цены {n(data.dish.sale_price)} ₽</dd></>}
                 </dl>
               ) : (
-                <div className="note"><b>Себестоимость неполная</b> — известно {n(cur.cost.known)} ₽, но не хватает:<ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{cur.cost.missing.map((m) => <li key={m} className="small">{m}</li>)}</ul></div>
+                <div className="note"><b>Себестоимость неполная</b> — известно {n(cur.cost.known)} ₽, но не хватает:<ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{[...new Set(cur.cost.missing)].map((m) => <li key={m} className="small">{m}</li>)}</ul></div>
               )}
               <p className="small muted">Цена — средневзвешенная по партиям в остатке, иначе последняя закупка. Неизвестная цена не считается нулём.</p>
             </div>
@@ -140,6 +141,18 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
             {!cur.kbju.verified && <p className="small muted">Ориентировочно: по закладке нетто{cur.kbju.losses === 'all' ? ' с потерями нутриентов по нормам тепловой обработки' : cur.kbju.losses === 'partial' ? '; потери нутриентов при тепловой обработке заданы не для всех строк' : ' без потерь нутриентов при тепловой обработке'}{cur.kbju.missing.length ? '; учтено не всё сырьё' : ''}; данные справочника не проверены специалистом. Для маркировки не использовать.</p>}
             {cur.kbju.missing.length > 0 && <ul style={{ margin: 0, paddingLeft: 18 }}>{cur.kbju.missing.map((m) => <li key={m} className="small">{m}</li>)}</ul>}
           </div>
+
+          <Evidence entityType="ttk_version" entityId={v.id} title="Файл основания рецептуры" readPerm="menu.read" addPerm="ttk.manage"
+            hint="например: стр. 312, рецептура № 593" />
+
+          {data.versions.length > 0 && (
+            <div className="card">
+              <h2>Журнал изменений ТТК</h2>
+              <div className="scroll"><table className="tbl small"><thead><tr><th>Версия</th><th>Статус</th><th>Основание</th><th>Причина изменения</th><th>Автор</th><th>Утвердил</th></tr></thead>
+                <tbody>{data.versions.map((x) => <tr key={x.id}><td>v{x.version}</td><td>{x.status_label}</td><td>{x.source}</td><td>{x.change_reason || (x.version === 1 ? 'первая редакция' : '—')}</td>
+                  <td>{x.author_name || '—'}<br /><span className="muted">{dt(x.created_at, org.timezone)}</span></td><td>{x.approved_at ? <>{x.approved_by_name}<br /><span className="muted">{dt(x.approved_at, org.timezone)}</span></> : '—'}</td></tr>)}</tbody></table></div>
+              <p className="small muted">{/^собственн/i.test(v.source.trim()) ? 'Основание — собственная разработка: файл основания не обязателен, подтверждается актом контрольной проработки.' : `Основание — «${v.source}»: без файла основания (скан или фото страницы сборника) ТТК не отправить на согласование.`}{' '}После утверждения новой версии система ставит на пересмотр ТУ, ТИ, калькуляцию, декларацию и групповые ТУ этого блюда и блюда, в которые оно входит полуфабрикатом.</p>
+            </div>)}
 
           <Lifecycle data={data} busy={busy} act={act} onNew={() => router.replace(`/app/${org.id}/menu/${dishId}`)} />
           <Link className="btn block" href={`/app/${org.id}/menu/${dishId}/card`}>Карточка продукта: документы, сроки, маркировка, ККТ, журналы</Link>
@@ -216,7 +229,7 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
     shelfLife: v.shelf_life || '', quality: v.quality || '', allergens: v.allergens || '', shelfLifeHours: v.shelf_life_hours ? String(Number(v.shelf_life_hours)) : '',
     cardDate: v.card_date ? v.card_date.slice(0, 10) : '', semiYieldG: v.semi_yield_g ? String(Number(v.semi_yield_g)) : '',
     appearance: v.organoleptic?.appearance || '', color: v.organoleptic?.color || '', consistency: v.organoleptic?.consistency || '', taste: v.organoleptic?.taste || '',
-    serving: v.serving || '', menuDescription: v.menu_description || '' });
+    serving: v.serving || '', menuDescription: v.menu_description || '', recipeBasis: v.source || '' });
   const [f, setF] = useState(init);
   useEffect(() => { setF(init()); }, [v.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!editable) {
@@ -240,6 +253,7 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
       organoleptic: { appearance: f.appearance || null, color: f.color || null, consistency: f.consistency || null, taste: f.taste || null }, serving: f.serving || null, menuDescription: f.menuDescription || null }); }}>
       <div className="grid2">
         <div><label htmlFor="cd">Дата рецептуры</label><input id="cd" type="date" value={f.cardDate} onChange={(e) => setF({ ...f, cardDate: e.target.value })} /></div>
+        <div><label htmlFor="rb">Основание рецептуры</label><input id="rb" value={f.recipeBasis} onChange={(e) => setF({ ...f, recipeBasis: e.target.value })} placeholder="сборник, год, № рецептуры или «Собственная разработка»" /></div>
         <div><label htmlFor="syg">Выход п/ф, г</label><input id="syg" inputMode="decimal" value={f.semiYieldG} onChange={(e) => setF({ ...f, semiYieldG: e.target.value })} placeholder="0 — без п/ф" /></div>
         <div><label htmlFor="yg">Выход закладки, г</label><input id="yg" inputMode="decimal" value={f.yieldG} onChange={(e) => setF({ ...f, yieldG: e.target.value })} /></div>
         {kind === 'dish' && <div><label htmlFor="pg">Выход порции, г</label><input id="pg" inputMode="decimal" value={f.portionG} onChange={(e) => setF({ ...f, portionG: e.target.value })} /></div>}

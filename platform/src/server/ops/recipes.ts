@@ -193,8 +193,8 @@ export async function getDish(userId: string, orgId: string, dishId: string, ver
     if (!dish) throw Errors.notFound('Блюдо не найдено.');
     const seeCost = roleHas(m.role, 'cost.read');
     if (!seeCost && !roleHas(m.role, 'menu.price')) dish.sale_price = null;
-    const versions = (await tx.query(`select v.id, v.version, v.status, v.created_at, v.approved_at, v.change_reason, u.full_name as approved_by_name
-      from ttk_versions v left join users u on u.id = v.approved_by where v.dish_id = $1 order by v.version desc`, [dishId])).rows.map((v) => ({ ...v, status_label: TTK_STATUS[v.status] }));
+    const versions = (await tx.query(`select v.id, v.version, v.status, v.created_at, v.approved_at, v.change_reason, v.source, u.full_name as approved_by_name, a.full_name as author_name
+      from ttk_versions v left join users u on u.id = v.approved_by left join users a on a.id = v.created_by where v.dish_id = $1 order by v.version desc`, [dishId])).rows.map((v) => ({ ...v, status_label: TTK_STATUS[v.status] }));
     const id = versionId || versions.find((v) => v.status === 'draft' || v.status === 'review')?.id || versions.find((v) => v.status === 'approved')?.id || versions[0]?.id;
     const v = id ? await loadVersion(tx, orgId, id) : null;
     if (v && v.dish_id !== dishId) throw Errors.notFound('Версия не относится к блюду.');
@@ -380,6 +380,9 @@ async function versionBlockers(tx: Tx, orgId: string, v: Record<string, any>, di
   if (!v.storage_conditions) out.push('Укажите условия хранения.');
   if (!v.shelf_life) out.push('Укажите срок годности (реализации) — по утверждённому основанию.');
   if (!v.yield_g) out.push('Укажите выход.');
+  if (!v.source || v.source.trim().length < 3) out.push('Укажите основание рецептуры: сборник (название, год, номер рецептуры) или «Собственная разработка».');
+  else if (!/^собственн/i.test(v.source.trim()) && !(await tx.query(`select 1 from evidence_files where organization_id = $1 and entity_type = 'ttk_version' and entity_id = $2 limit 1`, [orgId, v.id])).rowCount)
+    out.push(`Приложите файл основания рецептуры (скан или фото страницы «${v.source.trim()}»).`);
   if (dish.kind === 'dish' && !v.portion_g) out.push('Укажите выход порции.');
   if (v.portion_g && v.yield_g && Number(v.portion_g) > Number(v.yield_g)) out.push('Порция больше выхода закладки.');
   if (!lines.some((l) => l.kind !== 'heading')) out.push('Нет состава.');
@@ -395,6 +398,7 @@ async function versionBlockers(tx: Tx, orgId: string, v: Record<string, any>, di
       else if ((await convert(tx, l.product_id, 1, l.unit, l.product_unit)) === null) out.push(`${n}: нет коэффициента «${l.unit} → ${l.product_unit}» — без него не списать со склада.`);
     } else {
       if (l.sub_dish_id === dish.id) out.push(`${n}: блюдо не может входить само в себя.`);
+      else if (await cyclePath(tx, l.sub_dish_id, dish.id)) out.push(`${n}: циклическая ссылка — полуфабрикат через свой состав содержит это блюдо.`);
       else if (!(await tx.query(`select 1 from ttk_versions where dish_id = $1 and status = 'approved'`, [l.sub_dish_id])).rowCount) out.push(`${n}: у полуфабриката нет утверждённой ТТК.`);
       else if ((await subGrams(tx, l.sub_dish_id, 1, l.unit)) === null) out.push(`${n}: у полуфабриката не указана порция — используйте г или кг.`);
     }
@@ -411,6 +415,7 @@ const VersionInput = z.object({
   cardDate: z.iso.date('Дата рецептуры — ГГГГ-ММ-ДД.').optional(), semiYieldG: z.coerce.number().min(0).nullable().optional(),
   organoleptic: z.object({ appearance: optText(1000), color: optText(1000), consistency: optText(1000), taste: optText(1000) }).optional(),
   serving: optText(2000), menuDescription: optText(2000),
+  recipeBasis: z.string().trim().min(3, 'Основание рецептуры: сборник, год, номер рецептуры или «Собственная разработка».').max(500).optional(),
 });
 
 /**
@@ -440,6 +445,7 @@ export async function updateVersion(userId: string, orgId: string, versionId: st
     ['storageConditions', 'storage_conditions', (x) => x ?? null], ['shelfLife', 'shelf_life', (x) => x ?? null], ['quality', 'quality', (x) => x ?? null],
     ['allergens', 'allergens', (x) => x ?? null], ['shelfLifeHours', 'shelf_life_hours', (x) => x ?? null], ['semiYieldG', 'semi_yield_g', (x) => x ?? null],
     ['serving', 'serving', (x) => x ?? null], ['menuDescription', 'menu_description', (x) => x ?? null],
+    ['recipeBasis', 'source', (x) => x],
   ];
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const v = await draftVersion(tx, orgId, versionId);
@@ -462,6 +468,28 @@ const LineInput = z.object({
   inYield: z.boolean().optional(),   // учитывать в выходе готового изделия
 });
 
+/**
+ * Путь от полуфабриката к блюду по составам (ТЗ доработки, 5.2: запрет циклических ссылок). Смотрит утверждённую ТТК и
+ * текущий черновик каждого п/ф: цикл не должен появиться ни сейчас, ни после утверждения черновика. null — цикла нет.
+ */
+export async function cyclePath(tx: Tx, fromDishId: string, targetDishId: string, seen = new Set<string>()): Promise<string[] | null> {
+  if (fromDishId === targetDishId) return [targetDishId];
+  if (seen.has(fromDishId) || seen.size > 200) return null;
+  seen.add(fromDishId);
+  const subs = (await tx.query(`select distinct l.sub_dish_id from ttk_lines l join ttk_versions v on v.id = l.version_id
+    where v.dish_id = $1 and v.status in ('approved', 'draft', 'review') and l.sub_dish_id is not null`, [fromDishId])).rows.map((r) => r.sub_dish_id as string);
+  for (const s of subs) { const p = await cyclePath(tx, s, targetDishId, seen); if (p) return [fromDishId, ...p]; }
+  return null;
+}
+async function assertNoCycle(tx: Tx, versionId: string, subDishId?: string | null) {
+  if (!subDishId) return;
+  const dishId = (await tx.query(`select dish_id from ttk_versions where id = $1`, [versionId])).rows[0].dish_id as string;
+  const path = await cyclePath(tx, subDishId, dishId);
+  if (!path) return;
+  const names = new Map((await tx.query(`select id, name from dishes where id = any($1::uuid[])`, [[dishId, ...path]])).rows.map((r) => [r.id, r.name]));
+  throw Errors.validation(`Циклическая ссылка на полуфабрикаты: ${[dishId, ...path].map((x) => `«${names.get(x)}»`).join(' → ')}. Полуфабрикат не может (даже через другие) содержать блюдо, в которое входит.`);
+}
+
 async function checkRefs(tx: Tx, orgId: string, productId?: string | null, subDishId?: string | null) {
   if (productId && subDishId) throw Errors.validation('Строка — либо товар, либо полуфабрикат.');
   if (productId && !(await tx.query(`select 1 from products where id = $1 and organization_id = $2`, [productId, orgId])).rowCount) throw Errors.validation('Товар не найден.');
@@ -473,6 +501,7 @@ export async function addLine(userId: string, orgId: string, versionId: string, 
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     await draftVersion(tx, orgId, versionId);
     await checkRefs(tx, orgId, d.productId, d.subDishId);
+    await assertNoCycle(tx, versionId, d.subDishId);
     let name = d.name;
     if (!name && d.productId) name = (await tx.query(`select name from products where id = $1`, [d.productId])).rows[0].name;
     if (!name && d.subDishId) name = (await tx.query(`select name from dishes where id = $1`, [d.subDishId])).rows[0].name;
@@ -498,6 +527,7 @@ export async function updateLine(userId: string, orgId: string, lineId: string, 
     if (l.kind === 'heading') throw Errors.validation('Это подзаголовок — у него нет сырья и количества.');
     await draftVersion(tx, orgId, l.version_id);
     await checkRefs(tx, orgId, d.productId, d.subDishId);
+    await assertNoCycle(tx, l.version_id, d.subDishId);
     let q = { brutto: d.brutto ?? null, netto: d.netto ?? null, ready: d.ready ?? null };
     // есть шаги обработки — величины считаются цепочкой от той, что изменил человек
     const ls = (await versionSteps(tx, l.version_id)).get(lineId) || [];
@@ -699,9 +729,43 @@ export async function approveVersion(userId: string, orgId: string, versionId: s
       await openTask(tx, { orgId, kind: 'haccp_review', title: `Проверить план ХАССП: новая ТТК «${dish.name}» v${v.version}`, details: 'Изменилась рецептура или технология — проверьте опасности, ККТ и пределы.',
         entityType: 'dish', entityId: dish.id, assigneeRole: 'haccp_lead', createdBy: userId });
     }
-    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.approve', entityType: 'ttk_version', entityId: versionId, after: { dish: dish.name, version: v.version } });
-    return { ok: true, version: v.version };
+    const reviews = await openDependentReviews(tx, orgId, userId, dish, v.version, v.change_reason);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.approve', entityType: 'ttk_version', entityId: versionId,
+      after: { dish: dish.name, version: v.version, change_reason: v.change_reason, author: v.created_by, reviews } });
+    return { ok: true, version: v.version, reviews };
   });
+}
+
+/**
+ * ТЗ доработки, 5.2: новая утверждённая ТТК ставит на пересмотр всё, что построено на прежней — ТУ, ТИ, калькуляцию,
+ * декларацию и групповые ТУ этого блюда, а также блюда, в которые оно входит полуфабрикатом. Система ничего не
+ * переутверждает сама: открывает задачи ответственным. Возвращает список поставленных на пересмотр документов.
+ */
+async function openDependentReviews(tx: Tx, orgId: string, userId: string, dish: { id: string; name: string }, version: number, reason: string | null) {
+  const out: string[] = [];
+  const why = `ТТК «${dish.name}» утверждена в версии ${version}${reason ? ` (причина: ${reason})` : ''}.`;
+  const has = async (sql: string) => Boolean((await tx.query(sql, [orgId, dish.id])).rowCount);
+  const task = async (kind: string, entityType: string, entityId: string, title: string, details: string, role = 'chef') => {
+    await openTask(tx, { orgId, kind, title, details: `${why} ${details}`, entityType, entityId, assigneeRole: role, createdBy: userId });
+    out.push(title);
+  };
+  if (await has(`select 1 from tech_spec_versions where organization_id = $1 and dish_id = $2 limit 1`))
+    await task('tu_review', 'dish', dish.id, `Пересмотреть ТУ «${dish.name}»`, 'Утверждённые ТУ построены на прежней ТТК: проверьте состав, пищевую ценность, сроки и выпустите новую версию ТУ.');
+  if (await has(`select 1 from ti_versions where organization_id = $1 and dish_id = $2 limit 1`))
+    await task('ti_review', 'dish', dish.id, `Пересмотреть ТИ «${dish.name}»`, 'Технологическая инструкция ссылается на прежнюю ТТК: внесите изменение в лист регистрации изменений.');
+  if (await has(`select 1 from costing_cards where organization_id = $1 and dish_id = $2 limit 1`))
+    await task('costing_review', 'dish', dish.id, `Пересчитать калькуляцию «${dish.name}»`, 'Калькуляционная карточка составлена по прежним нормам закладки: утвердите новую калькуляцию.');
+  if (await has(`select 1 from declarations d join declaration_registrations r on r.declaration_id = d.id
+      where d.organization_id = $1 and d.dish_id = $2 and not exists (select 1 from declaration_terminations t where t.declaration_id = d.id) limit 1`))
+    await task('decl_review', 'dish', dish.id, `Проверить декларацию о соответствии «${dish.name}»`, 'Изменились рецептура или технология: оцените, остаются ли в силе доказательные материалы и протоколы испытаний.', 'owner');
+  const groups = (await tx.query(`select g.id, g.title from group_tech_specs g where g.organization_id = $1 and $2 = any(g.dish_ids) and g.status = 'active'
+      and exists (select 1 from group_tech_spec_versions x where x.spec_id = g.id)`, [orgId, dish.id])).rows;
+  for (const g of groups) await task('gtu_review', 'group_tech_spec', g.id, `Пересмотреть групповые ТУ «${g.title}»`, `В ассортимент входит «${dish.name}».`);
+  const parents = (await tx.query(`select distinct d.id, d.name from ttk_lines l join ttk_versions v on v.id = l.version_id join dishes d on d.id = v.dish_id
+      where v.organization_id = $1 and l.sub_dish_id = $2 and v.status = 'approved' and d.id <> $2 order by d.name`, [orgId, dish.id])).rows;
+  for (const p of parents) await task('ttk_dependent_review', 'dish', p.id, `Проверить ТТК «${p.name}»: изменён полуфабрикат «${dish.name}»`,
+    'Блюдо содержит этот полуфабрикат: проверьте выход, пищевую ценность, аллергены, сроки, калькуляцию и ТУ блюда.');
+  return out;
 }
 
 /** Утверждённая ТТК блюда с составом на одну порцию (или на граммы выхода) — для списания при продаже и производстве. */

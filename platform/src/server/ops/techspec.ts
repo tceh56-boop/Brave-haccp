@@ -5,7 +5,7 @@ const MicroGroupCode = z.string().refine((c) => c === 'custom' || MICRO_GROUPS.s
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText } from './common';
+import { inOrg, parse, optText, closeTasksFor } from './common';
 import { convertUnits } from './recipes';
 import { semiGrams } from './bom';
 import { effectiveParams } from './dishgroups';
@@ -392,6 +392,7 @@ export async function approveTechSpec(userId: string, orgId: string, dishId: str
     const n = Number((await tx.query(`select coalesce(max(version), 0) as m from tech_spec_versions where dish_id = $1`, [dishId])).rows[0].m) + 1;
     const row = (await tx.query(`insert into tech_spec_versions (organization_id, dish_id, version, ttk_version_id, designation, snapshot, lab_protocol, approved_by)
       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, version, approved_at`, [orgId, dishId, n, calc.object.ttk_version_id, calc.designation, JSON.stringify(calc), d.labProtocol, userId])).rows[0];
+    await closeTasksFor(tx, orgId, 'tu_review', dishId, userId, `утверждена версия ${n}`);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'tu.approve', entityType: 'dish', entityId: dishId, after: { version: n, designation: calc.designation, lab_protocol: d.labProtocol } });
     return row;
   });

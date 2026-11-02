@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, assertSiteAccess, getSite } from './common';
+import { inOrg, parse, optText, assertSiteAccess, getSite, closeTasksFor } from './common';
 import { approvedRecipe, calcVersion, convertUnits, productPrice } from './recipes';
 import { semiGrams } from './bom';
 
@@ -99,6 +99,7 @@ export async function createCosting(userId: string, orgId: string, dishId: strin
       values ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10, $11, $12, $13, $14, $15, $16) returning id, seq`,
       [orgId, dishId, b.version.id, d.siteId || null, seq, b.dish.card_no, d.calcDate || today, b.basisLabel, JSON.stringify(b.lines), b.raw100, b.cost1, sale, markup(sale, b.cost1), b.yieldG,
         JSON.stringify(d.signers), userId])).rows[0];
+    await closeTasksFor(tx, orgId, 'costing_review', dishId, userId, `утверждена калькуляция № ${c.seq}`);
     await audit.record(tx, { organizationId: orgId, siteId: d.siteId || null, actorUserId: userId, action: 'costing.approve', entityType: 'dish', entityId: dishId,
       after: { seq, cost_1: b.cost1, sale_price: sale, manual_prices: d.prices.length } });
     return c;

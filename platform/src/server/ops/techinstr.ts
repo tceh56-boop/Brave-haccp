@@ -3,7 +3,7 @@ import { assertSnapshotIntact } from './integrity';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse } from './common';
+import { inOrg, parse, closeTasksFor } from './common';
 import { buildTtkDoc } from './ttkdoc';
 import { versionSteps } from './processing';
 import { PLAN_KIND } from './sanitation';
@@ -129,6 +129,7 @@ export async function approveTi(userId: string, orgId: string, dishId: string, i
     const n = Number((await tx.query(`select coalesce(max(version), 0) + 1 as n from ti_versions where dish_id = $1`, [id])).rows[0].n);
     const row = (await tx.query(`insert into ti_versions (organization_id, dish_id, version, ttk_version_id, designation, snapshot, change_note, approved_by) values ($1, $2, $3, $4, $5, $6, $7, $8) returning version, approved_at`,
       [orgId, id, n, calc.ttk.version_id, calc.designation, JSON.stringify(calc), d.changeNote, userId])).rows[0];
+    await closeTasksFor(tx, orgId, 'ti_review', id, userId, `утверждена версия ${n}`);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ti.approve', entityType: 'dish', entityId: id, after: { version: n, designation: calc.designation, note: d.changeNote } });
     return row;
   });
