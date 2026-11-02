@@ -11,7 +11,7 @@
  */
 
 export const MICRO_DOC = 'ТР ТС 021/2011';
-export type MicroCode = 'KMAFANM' | 'BGKP' | 'ECOLI' | 'SAUREUS' | 'PROTEUS' | 'CLOSTRIDIA' | 'SALMONELLA' | 'LISTERIA' | 'YEAST' | 'MOLD';
+export type MicroCode = 'KMAFANM' | 'BGKP' | 'ECOLI' | 'SAUREUS' | 'PROTEUS' | 'CLOSTRIDIA' | 'SALMONELLA' | 'LISTERIA' | 'YEAST' | 'MOLD' | 'ENTEROCOCCUS';
 
 export const MICRO_INDICATORS: { code: MicroCode; name: string; method: string; ref: string }[] = [
   { code: 'KMAFANM', name: 'КМАФАнМ, КОЕ/г, не более', method: 'ГОСТ 10444.15-94', ref: 'прил. 2, табл. 1, п. 1.8' },
@@ -24,12 +24,17 @@ export const MICRO_INDICATORS: { code: MicroCode; name: string; method: string; 
   { code: 'LISTERIA', name: 'L. monocytogenes, масса продукта (г), в которой не допускаются', method: 'ГОСТ 32031-2022', ref: 'прил. 1' },
   { code: 'YEAST', name: 'Дрожжи, КОЕ/г, не более', method: 'ГОСТ 10444.12-2013', ref: 'прил. 2, табл. 1, п. 1.8' },
   { code: 'MOLD', name: 'Плесени, КОЕ/г, не более', method: 'ГОСТ 10444.12-2013', ref: 'прил. 2, табл. 1, п. 1.8' },
+  { code: 'ENTEROCOCCUS', name: 'Бактерии рода Enterococcus, КОЕ/г, не более', method: 'ГОСТ 28566-90', ref: 'ТР ТС 034/2013, прил. 1' },
 ];
 
 type V = Partial<Record<MicroCode, string>>;
-export interface MicroGroup { code: string; name: string; keys: string[]; values: V; note?: string }
+/** doc/ref — документ и пункт группы (по умолчанию ТР ТС 021/2011, прил. 2, табл. 1, п. 1.8); refs — иное основание отдельного показателя. */
+export interface MicroGroup { code: string; name: string; keys: string[]; values: V; note?: string; doc?: string; ref?: string; refs?: Partial<Record<MicroCode, string>> }
 
 const S25 = { SALMONELLA: '25' };
+/** ТР ТС 021/2011, прил. 1: «Мясо и мясная продукция; субпродукты, шпик свиной и продукты из него» — патогенные 25 г; L. monocytogenes 25 г. */
+const MEAT_PATHOGENS = { SALMONELLA: '25', LISTERIA: '25' };
+const M034_PATHOGENS = { SALMONELLA: 'ТР ТС 021/2011, прил. 1 — «Мясо и мясная продукция»', LISTERIA: 'ТР ТС 021/2011, прил. 1 — «Мясо и мясная продукция»' };
 const HOT = { BGKP: '1,0', SAUREUS: '1,0', ...S25 };
 
 /** Группы продукции общественного питания (п. 1.8). keys — слова для подсказки группы по названию блюда. */
@@ -93,6 +98,60 @@ export const MICRO_GROUPS: MicroGroup[] = [
   { code: 'burgers', name: 'Гамбургеры, чизбургеры, сэндвичи готовые', keys: ['бургер', 'сэндвич', 'сендвич', 'бутерброд', 'шаурм', 'ролл'], values: { KMAFANM: '2×10⁴', BGKP: '0,1', ECOLI: '1,0', SAUREUS: '1,0', ...S25 } },
   { code: 'packaged', name: 'Готовые кулинарные изделия из мяса птицы, рыбы в потребительской таре, в т.ч. упакованные под вакуумом', keys: ['вакуум', 'в потребительской тар'],
     values: { KMAFANM: '1×10³', PROTEUS: '0,1', CLOSTRIDIA: '0,1', ...HOT } },
+  // ───── ТР ТС 034/2013, приложение 1 (ред. с изм. на 27.09.2023, действующая с 10.07.2024; степени КМАФАнМ сверены по с. 29–31, 36–37
+  // издания «Техэксперт»). Патогенные, в т. ч. сальмонеллы, и L. monocytogenes — ТР ТС 021/2011, прил. 1 «Мясо и мясная продукция» (п. 14 ТР ТС 034).
+  // Охлаждённые готовые кулинарные изделия в прил. 1 ТР ТС 034 не названы — для них остаются группы п. 1.8 ТР ТС 021 (продукция общественного питания).
+  { code: 'm034_4a', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 4 «а»', refs: M034_PATHOGENS, keys: [],
+    name: 'Полуфабрикаты мясные (мясосодержащие) бескостные (охлажденные, замороженные), в том числе в маринаде: крупнокусковые', values: { KMAFANM: '5×10⁵', BGKP: '0,001', ...MEAT_PATHOGENS } },
+  { code: 'm034_4b', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 4 «б»', refs: M034_PATHOGENS, keys: ['гуляш сыр', 'азу сыр', 'поджарка сыр'],
+    name: 'Полуфабрикаты мясные (мясосодержащие) бескостные (охлажденные, замороженные), в том числе в маринаде: мелкокусковые', values: { KMAFANM: '1×10⁶', BGKP: '0,001', ...MEAT_PATHOGENS } },
+  { code: 'm034_5a', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 5 «а»', refs: M034_PATHOGENS, keys: ['полуфабрикат котлет', 'котлеты сыр'],
+    name: 'Полуфабрикаты мясные (мясосодержащие) рубленые (охлажденные, замороженные): формованные, в том числе панированные', values: { KMAFANM: '5×10⁶', BGKP: '0,0001', MOLD: '500', ...MEAT_PATHOGENS },
+    note: 'Плесени — для полуфабрикатов панированных со сроком годности более 1 месяца.' },
+  { code: 'm034_5b', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 5 «б»', refs: M034_PATHOGENS, keys: ['пельмени сыр', 'манты сыр'],
+    name: 'Полуфабрикаты мясные (мясосодержащие) рубленые (охлажденные, замороженные): в тестовой оболочке, фаршированные', values: { KMAFANM: '2×10⁶', BGKP: '0,0001', MOLD: '500', ...MEAT_PATHOGENS },
+    note: 'Плесени — для полуфабрикатов со сроком годности более 1 месяца.' },
+  { code: 'm034_5c', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 5 «в»', refs: M034_PATHOGENS, keys: ['фарш'],
+    name: 'Полуфабрикаты мясные (мясосодержащие) рубленые (охлажденные, замороженные): фарш', values: { KMAFANM: '5×10⁶', BGKP: '0,0001', ...MEAT_PATHOGENS } },
+  { code: 'm034_6', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 6', refs: M034_PATHOGENS, keys: [],
+    name: 'Полуфабрикаты мясокостные (крупнокусковые, порционные, мелкокусковые)', values: { KMAFANM: '5×10⁶', BGKP: '0,0001', ...MEAT_PATHOGENS } },
+  { code: 'm034_22a', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 22 «а»', refs: M034_PATHOGENS, keys: [],
+    name: 'Кулинарные изделия мясные (мясосодержащие) замороженные: мясные', values: { KMAFANM: '1×10⁴', BGKP: '0,01', SAUREUS: '0,1', ENTEROCOCCUS: '1×10³', ...MEAT_PATHOGENS } },
+  { code: 'm034_22b', doc: 'ТР ТС 034/2013', ref: 'прил. 1, п. 22 «б»', refs: M034_PATHOGENS, keys: [],
+    name: 'Кулинарные изделия мясные (мясосодержащие) замороженные: мясосодержащие', values: { KMAFANM: '2×10⁴', BGKP: '0,01', SAUREUS: '0,1', ENTEROCOCCUS: '1×10³', ...MEAT_PATHOGENS } },
+
+  // ───── ТР ЕАЭС 051/2021, приложение 1 (ИС «Техэксперт»; степени КМАФАнМ сверены по с. 31–32, 36, 38–40). Патогенные и L. monocytogenes —
+  // в самой таблице регламента. Применяется к продукции, где мясо птицы по массе больше продуктов убоя и его не менее 5 % (п. 5 «в», «е»).
+  { code: 'p051_2a', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 2 «а»', keys: [],
+    name: 'Полуфабрикаты из мяса птицы кусковые (охлажденные, замороженные): мясокостные, бескостные без панировки', values: { KMAFANM: '1×10⁵', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_2b', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 2 «б»', keys: [],
+    name: 'Полуфабрикаты из мяса птицы кусковые (охлажденные, замороженные): мясокостные, бескостные в панировке, со специями, с соусом', values: { KMAFANM: '1×10⁶', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_2c', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 2 «в»', keys: ['курица маринов', 'филе маринов'],
+    name: 'Полуфабрикаты из мяса птицы кусковые (охлажденные, замороженные): мясокостные, бескостные маринованные', values: { KMAFANM: '1×10⁶', YEAST: '1×10³', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_3a', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 3 «а»', keys: [],
+    name: 'Полуфабрикаты из мяса птицы рубленые (охлажденные, замороженные): в тестовой оболочке', values: { KMAFANM: '1×10⁶', BGKP: '0,0001', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_3c', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 3 «в»', keys: [],
+    name: 'Полуфабрикаты из мяса птицы рубленые (охлажденные, замороженные): в панировке и без нее', values: { KMAFANM: '1×10⁶', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_3d', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 3 «г»', keys: ['фарш кур', 'фарш из кур', 'фарш индей'],
+    name: 'Полуфабрикаты из мяса птицы рубленые (охлажденные, замороженные): фарш из мяса птицы', values: { KMAFANM: '1×10⁶', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_5a', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 5 «а»', keys: [],
+    name: 'Готовые быстрозамороженные блюда из мяса птицы: жареные, отварные, запеченные', values: { KMAFANM: '1×10⁴', BGKP: '0,1', SAUREUS: '1,0', ENTEROCOCCUS: '1×10⁴', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_5b', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 5 «б»', keys: [],
+    name: 'Готовые быстрозамороженные блюда из мяса птицы: из рубленого мяса, в том числе фаршированные, и (или) в тестовой оболочке, и (или) с соусами, и (или) с гарниром', values: { KMAFANM: '2×10⁴', BGKP: '0,1', SAUREUS: '1,0', ENTEROCOCCUS: '1×10⁴', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_8b', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 8 «б»', keys: [],
+    name: 'Продукты кулинарные из мяса птицы: мясо птицы отварное, жареное, запеченое (без заправки и соуса)', values: { KMAFANM: '1×10⁴', BGKP: '1,0', SAUREUS: '1,0', PROTEUS: '0,1', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_8c', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 8 «в»', keys: [],
+    name: 'Продукты кулинарные из мяса птицы: блюда из птицы отварные, жареные, тушеные, запеченные, изделия из рубленого мяса птицы, пельмени и другие изделия в тесте или без него', values: { KMAFANM: '1×10³', BGKP: '1,0', SAUREUS: '1,0', PROTEUS: '0,1', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_8d', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 8 «г»', keys: [],
+    name: 'Продукты кулинарные из мяса птицы: готовые кулинарные изделия из мяса птицы в потребительской упаковке, в том числе упакованные под вакуумом', values: { KMAFANM: '1×10³', BGKP: '1,0', CLOSTRIDIA: '0,1', SAUREUS: '1,0', PROTEUS: '0,1', SALMONELLA: '25', LISTERIA: '25' },
+    note: 'КМАФАнМ (1×10³) — для упакованных под вакуумом (примечание регламента).' },
+  { code: 'p051_8e', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 8 «д»', keys: [],
+    name: 'Продукты кулинарные из мяса птицы: блюда из птицы промышленного изготовления охлажденные, упакованные в полимерные пленки: отварные, жареные, тушеные, запеченные изделия из рубленой птицы (котлеты и т.д.)', values: { KMAFANM: '1×10³', BGKP: '1,0', SAUREUS: '1,0', CLOSTRIDIA: '1,0', SALMONELLA: '25', LISTERIA: '25' } },
+  { code: 'p051_8f', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 8 «е»', keys: [],
+    name: 'Продукты кулинарные из мяса птицы: кулинарные полуфабрикаты из мяса птицы высокой степени готовности', values: { KMAFANM: '2×10³', CLOSTRIDIA: '0,1', BGKP: '0,1', MOLD: '500 (плесени и дрожжи суммарно)', SALMONELLA: '25', LISTERIA: '25' },
+    note: 'Плесени и дрожжи (500 КОЕ/г суммарно) — для кулинарных полуфабрикатов со сроком годности не более 1 месяца.' },
+  { code: 'p051_8g', doc: 'ТР ЕАЭС 051/2021', ref: 'прил. 1, п. 8 «ж»', keys: [],
+    name: 'Продукты кулинарные из мяса птицы: кулинарные изделия из мяса птицы вареные, жареные, запеченные', values: { KMAFANM: '1×10³', CLOSTRIDIA: '0,1', BGKP: '1,0', SAUREUS: '1,0', PROTEUS: '0,1', SALMONELLA: '25', LISTERIA: '25' } }
 ];
 
 export const microGroup = (code: string | null | undefined) => MICRO_GROUPS.find((g) => g.code === code) || null;
@@ -107,8 +166,9 @@ export function suggestMicroGroup(name: string): MicroGroup | null {
 
 /** Нормативы группы по всем показателям: значение регламента или «не нормируется». */
 export function microTable(g: MicroGroup) {
+  const doc = g.doc || MICRO_DOC;
   return MICRO_INDICATORS.map((i) => ({ ...i, norm: g.values[i.code] ?? null,
-    basis: g.values[i.code] ? `${MICRO_DOC}, ${i.ref}: «${g.name}»` : `${MICRO_DOC}: для группы «${g.name}» не устанавливается` }));
+    basis: g.values[i.code] ? (g.refs?.[i.code] || `${doc}, ${g.ref || i.ref}: «${g.name}»`) : `${doc}: для группы «${g.name}» не устанавливается` }));
 }
 
 export interface MicroParams { microGroupCode?: string | null; micro?: Record<string, string>; microIndex?: string | null }
@@ -132,7 +192,8 @@ export function resolveMicro(params: MicroParams, dishName: string): MicroResolv
   const g = microGroup(params.microGroupCode);
   const sug = suggestMicroGroup(dishName);
   const suggested = sug ? { code: sug.code, name: sug.name } : null;
-  if (g) return { mode: 'law', code: g.code, group: g.name, confirmed: true, suggested, index: `${MICRO_DOC}, прил. 2, табл. 1, п. 1.8; прил. 1 — «${g.name}»`, note: g.note || null, indicators: microTable(g) };
+  if (g) return { mode: 'law', code: g.code, group: g.name, confirmed: true, suggested,
+    index: g.doc ? `${g.doc}, ${g.ref}${g.refs ? '; патогенные — ТР ТС 021/2011, прил. 1' : ''} — «${g.name}»` : `${MICRO_DOC}, прил. 2, табл. 1, п. 1.8; прил. 1 — «${g.name}»`, note: g.note || null, indicators: microTable(g) };
   if (params.microGroupCode === 'custom' || Object.keys(manual).length) {
     const ind = MICRO_INDICATORS.map((i) => ({ ...i, norm: manual[i.code]?.trim() || null, basis: params.microIndex || null }));
     return { mode: 'custom', code: 'custom', group: params.microIndex || 'группа указана технологом', confirmed: ind.every((i) => i.norm) && !!params.microIndex, suggested, index: params.microIndex || null, note: null, indicators: ind };

@@ -11,7 +11,8 @@ import { semiGrams } from './bom';
 import { effectiveParams } from './dishgroups';
 import { versionSteps } from './processing';
 import { retention, stages } from '../recipes/chain';
-import { MICRO_INDICATORS, resolveMicro } from '../norms/micro';
+import { MICRO_INDICATORS, resolveMicro, microGroup } from '../norms/micro';
+import { meatProfile } from './declarations';
 import { DOCS } from '../norms/library';
 
 /**
@@ -59,12 +60,15 @@ const NORMATIVE = [
   { code: 'ТР ТС 005/2011', title: 'Технический регламент Таможенного союза «О безопасности упаковки»', use: 'упаковка' },
   { code: 'ТР ТС 021/2011', title: 'Технический регламент Таможенного союза «О безопасности пищевой продукции»', use: 'показатели безопасности, микробиология' },
   { code: 'ТР ТС 022/2011', title: 'Технический регламент Таможенного союза «Пищевая продукция в части ее маркировки»', use: 'маркировка, энергетические коэффициенты, аллергены' },
+  { code: 'ТР ТС 034/2013', title: 'Технический регламент Таможенного союза «О безопасности мяса и мясной продукции»', use: 'мясная продукция: микробиология (прил. 1), маркировка группы и вида', reg: 'trts034' },
+  { code: 'ТР ЕАЭС 051/2021', title: 'Технический регламент Евразийского экономического союза «О безопасности мяса птицы и продукции его переработки»', use: 'продукция из мяса птицы: микробиология (прил. 1), маркировка', reg: 'trts051' },
   { code: 'ТР ТС 029/2012', title: 'Технический регламент Таможенного союза «Требования безопасности пищевых добавок, ароматизаторов и технологических вспомогательных средств»', use: 'пищевые добавки' },
   { code: 'ГОСТ Р 1.3-2018', title: 'Стандартизация в Российской Федерации. Технические условия на продукцию. Общие требования к содержанию, оформлению, обозначению и обновлению', use: 'лист регистрации изменений (прил. Б)' },
   { code: 'ГОСТ Р 51740-2016', title: 'Технические условия на пищевую продукцию. Общие требования к разработке и оформлению', use: 'построение, титульный лист, обозначение, разделы ТУ' },
   { code: 'ГОСТ 10444.12-2013', title: 'Микробиология пищевых продуктов и кормов для животных. Методы выявления и подсчета количества дрожжей и плесневых грибов', use: 'дрожжи, плесени', micro: ['YEAST', 'MOLD'] },
   { code: 'ГОСТ 10444.15-94', title: 'Продукты пищевые. Методы определения количества мезофильных аэробных и факультативно-анаэробных микроорганизмов', use: 'КМАФАнМ', micro: ['KMAFANM'] },
   { code: 'ГОСТ 14192-96', title: 'Маркировка грузов', use: 'маркировка транспортной упаковки' },
+  { code: 'ГОСТ 28566-90', title: 'Продукты пищевые. Метод выявления и определения количества энтерококков', use: 'Enterococcus', micro: ['ENTEROCOCCUS'] },
   { code: 'ГОСТ 28560-90', title: 'Продукты пищевые. Метод выявления бактерий родов Proteus, Morganella, Providencia', use: 'Proteus', micro: ['PROTEUS'] },
   { code: 'ГОСТ 29185-2014', title: 'Микробиология пищевых продуктов и кормов для животных. Методы выявления и подсчета сульфитредуцирующих бактерий, растущих в анаэробных условиях', use: 'сульфитредуцирующие клостридии', micro: ['CLOSTRIDIA'] },
   { code: 'ГОСТ 30390-2013', title: 'Услуги общественного питания. Продукция общественного питания, реализуемая населению. Общие технические условия', use: 'общие требования, приёмка, хранение' },
@@ -245,6 +249,16 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
     ? `Группа продукции по ТР ТС 021/2011 не подтверждена: система предлагает «${micro.suggested.name}». Подтвердите группу — нормативы подставятся из регламента.`
     : 'Группа продукции по ТР ТС 021/2011 не выбрана — выберите группу, нормативы подставятся из регламента.');
   if (micro.mode === 'custom' && !micro.confirmed) warnings.push('Собственные микробиологические нормативы: заполните все показатели («не нормируется» — где не нормируются) и документ-основание.');
+  // Мясная продукция и продукция из мяса птицы (ТР ТС 034 п. 4 «в», «е»; ТР ЕАЭС 051 п. 5 «в», «е»): группа нормативов — из своего регламента
+  const meat = await meatProfile(tx, dishId).catch(() => null);
+  const special: 'trts034' | 'trts051' | null = !meat || meat.unknown.length || meat.problems.length ? null
+    : meat.poultry_g > meat.slaughter_g ? (meat.poultry_pct >= 5 ? 'trts051' : null) : meat.meat_pct >= 5 && meat.slaughter_g > 0 ? 'trts034' : null;
+  if (meat?.unknown.length && (meat.slaughter_g + meat.poultry_g > 0 || meat.unknown.some((x) => x.suggest === 'slaughter' || x.suggest === 'poultry'))) warnings.push(`Не указан вид сырья (${meat.unknown.map((x) => x.name).join(', ')}) — не определить, применяется ли ТР ТС 034/2013 или ТР ЕАЭС 051/2021 (раздел «Декларации» → вид сырья).`);
+  const gDoc = micro.mode === 'law' ? microGroup(micro.code)?.doc || null : null;
+  const SPECIAL_DOC = { trts034: 'ТР ТС 034/2013', trts051: 'ТР ЕАЭС 051/2021' } as const;
+  if (gDoc && special && gDoc !== SPECIAL_DOC[special]) errors.push(`Группа микробиологических нормативов из ${gDoc}, а по составу продукция относится к ${SPECIAL_DOC[special]} (мясных ингредиентов ${meat!.meat_pct} %, птицы ${meat!.poultry_pct} %). Выберите группу из ${SPECIAL_DOC[special]}.`);
+  if (gDoc && !special && !meat?.unknown.length) errors.push(`Группа нормативов из ${gDoc}, но по составу регламент на продукцию не распространяется (мясных ингредиентов ${meat?.meat_pct ?? 0} %).`);
+  if (special && micro.mode === 'law' && !gDoc) warnings.push(`По составу продукция — ${SPECIAL_DOC[special]} (мясных ингредиентов ${meat!.meat_pct} %). Группа «${micro.group}» ТР ТС 021/2011 (п. 1.8) — нормативы продукции общественного питания. Для продажи вне зала выберите группу из приложения 1 ${SPECIAL_DOC[special]}, если продукция в ней названа (охлаждённые готовые кулинарные изделия ТР ТС 034/2013 не называет).`);
 
   // Нормативные ссылки — из встроенной нормативной базы (norms/library.ts): действует ли документ, загружен ли текст.
   const today = new Date().toISOString().slice(0, 10);
@@ -257,7 +271,8 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
   const sanpin = lib.filter((l) => l.kind === 'СанПиН' && /4282/.test(l.code) && (!l.effectiveFrom || l.effectiveFrom <= today) && (!l.effectiveTo || l.effectiveTo > today));
   if (!sanpin.length) errors.push('Во встроенной нормативной базе нет действующих санитарных правил для общественного питания на сегодняшнюю дату.');
   // порядок по ГОСТ Р 51740-2016, 4.7.3.1: регламенты, ГОСТ Р, ГОСТ, санитарные правила, методические документы
-  const docs = NORMATIVE.filter((d) => !d.micro || d.micro.some((c) => usedMicro.has(c)));
+  const docs = (NORMATIVE as { code: string; title: string; use: string; micro?: string[]; reg?: string }[])
+    .filter((d) => (!d.micro || d.micro.some((c) => usedMicro.has(c))) && (!d.reg || d.reg === special)).map(({ reg: _r, ...d }) => d);
   const normative = [
     ...docs.filter((d) => !d.code.startsWith('МУК')).map(({ micro: _m, ...d }) => ({ ...d, state: stateOf(d.code) })),
     ...sanpin.map((x) => ({ code: x.code, title: x.title, use: 'санитарные требования к изготовлению, хранению и реализации', state: stateOf(x.code) })),
@@ -301,7 +316,7 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
     organoleptic_table: (() => { const d = (params as { organolepticDefault?: Record<string, string> }).organolepticDefault || {}, o = (v.organoleptic || {}) as Record<string, string>;
       return Object.fromEntries(['appearance', 'color', 'consistency', 'taste'].map((k) => [k, o[k] || d[k] || null])); })(),
     packaging: params.tiPackaging || null,
-    normative, designation, title, raw, ppk, status: errors.length ? 'error' : complete ? 'ready' : 'project', errors, warnings: warnings.filter((w) => !errors.includes(w)), generated_at: new Date().toISOString(),
+    meat_regulation: special, normative, designation, title, raw, ppk, status: errors.length ? 'error' : complete ? 'ready' : 'project', errors, warnings: warnings.filter((w) => !errors.includes(w)), generated_at: new Date().toISOString(),
   };
 }
 
