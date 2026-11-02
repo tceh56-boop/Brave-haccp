@@ -67,6 +67,7 @@ export default function ConsumerLabelPage({ params }: { params: Promise<{ lotId:
   const [mass, setMass] = useState('');
   const [format, setFormat] = useState('58x60');
   const [copies, setCopies] = useState(1);
+  const [reason, setReason] = useState('');
   const [pv, setPv] = useState<Preview | null>(null);
   const [label, setLabel] = useState<{ id: string; code: string } | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -91,6 +92,8 @@ export default function ConsumerLabelPage({ params }: { params: Promise<{ lotId:
             <div><label htmlFor="cc">Копий</label><input id="cc" type="number" min={1} max={100} value={copies} onChange={(e) => setCopies(Math.min(100, Math.max(1, Number(e.target.value) || 1)))} /></div>
           </div>
         </div>
+        <label htmlFor="cr">Причина перепечати (если эта этикетка уже печаталась)</label>
+        <input id="cr" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="повреждена, утеряна, дополнительная копия…" />
         {error && <div className="err">{error}</div>}
         {!ready && <div className="err"><b>Этикетку печатать нельзя — на ней были бы недостоверные сведения:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{pv.blockers.map((b) => <li key={b} className="small">{b}</li>)}</ul></div>}
         {pv.notes.length > 0 && <div className="note small">{pv.notes.map((x) => <div key={x}>{x}</div>)}</div>}
@@ -98,7 +101,7 @@ export default function ConsumerLabelPage({ params }: { params: Promise<{ lotId:
         {can('label.print') && <button className="btn block" disabled={busy || !ready} onClick={() => run(async () => {
           const lb = await api<{ id: string; code: string }>(`/orgs/${org.id}/lots/${lotId}/consumer-label`, { body: { netMassG: num } });
           setLabel(lb);
-          const r = await api<{ printed: number }>(`/orgs/${org.id}/labels/print`, { body: { labelIds: [lb.id], format, copies } });
+          const r = await api<{ printed: number }>(`/orgs/${org.id}/labels/print`, { body: { labelIds: [lb.id], format, copies, reason: reason || null } });
           setDone(`В журнал маркировки записано этикеток: ${r.printed}.`);
           setTimeout(() => window.print(), 100);
         })}>Печать</button>}

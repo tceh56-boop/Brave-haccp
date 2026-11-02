@@ -47,10 +47,11 @@ beforeAll(async () => {
 });
 
 describe('Перечень форм J01–J53 и семейства', () => {
-  it('53 формы; автоматические — из событий; пары ручных форм — одни данные; сводные формы — свои записи', async () => {
+  it('60 форм; автоматические — из событий; пары ручных форм — одни данные; сводные формы — свои записи', async () => {
     const forms = listForms();
-    expect(forms).toHaveLength(53);
-    expect(forms.filter((f) => f.mode === 'auto').map((f) => f.code).sort()).toEqual(['J01', 'J03', 'J04', 'J05', 'J07', 'J09', 'J10', 'J15', 'J16', 'J17', 'J18', 'J21', 'J25', 'J26', 'J29', 'J30', 'J31', 'J32', 'J34', 'J39', 'J42', 'J43']);
+    expect(forms).toHaveLength(60);
+    expect(forms.filter((f) => f.mode === 'auto').map((f) => f.code).sort()).toEqual(['J01', 'J03', 'J04', 'J05', 'J07', 'J09', 'J10', 'J15', 'J16', 'J17', 'J18', 'J21', 'J25', 'J26', 'J29', 'J30', 'J31', 'J32', 'J34', 'J39', 'J42', 'J43',
+      'J54', 'J55', 'J56', 'J57', 'J58', 'J59', 'J60']);
     expect(forms.find((f) => f.code === 'J40')).toMatchObject({ mode: 'manual', data_form: 'J02', shares_with: 'J02' });
     expect(dataFormOf('J02')).toBe('J02');
     expect(dataFormOf('J44')).toBe('J44');   // сводная: J07/J08/J27 — разные журналы, не склеиваются

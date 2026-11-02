@@ -66,8 +66,8 @@ beforeAll(async () => {
 
 describe('Задание на производство п/ф', () => {
   it('ставится только для п/ф с утверждённой ТТК и правом планирования; повар видит, но не планирует', async () => {
-    expect((await producibleDishes(cook.id, orgId)).map((d: { name: string }) => d.name)).toEqual(['Бульон говяжий']);
-    await expect(createProduction(chef.id, orgId, { siteId, dishId: stew, plannedKg: 1, plannedFor: today })).rejects.toThrow(/полуфабрикаты/);
+    // п/ф и блюда с утверждённой ТТК; блюдо — выпуск готовой продукции партией (с бракеражем, stage29)
+    expect((await producibleDishes(cook.id, orgId)).filter((d: { kind: string }) => d.kind === 'semi').map((d: { name: string }) => d.name)).toEqual(['Бульон говяжий']);
     await expect(createProduction(cook.id, orgId, { siteId, dishId: broth, plannedKg: 1, plannedFor: today })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(createProduction(cashier.id, orgId, { siteId, dishId: broth, plannedKg: 1, plannedFor: today })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     const o = await createProduction(chef.id, orgId, { siteId, dishId: broth, plannedKg: '2,5', plannedFor: today, note: 'на обед' });

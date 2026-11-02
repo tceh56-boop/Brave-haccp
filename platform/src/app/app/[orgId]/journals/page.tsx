@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 
 export interface FormInfo { code: string; name: string; purpose: string; fill: string; overlaps: string[]; mode: 'auto' | 'manual'; data_form: string; shares_with: string | null; columns: string[] }
 
-/** Журналы J01–J53: автоматические собираются из операций смены, ручные — записью по столбцам шаблона. */
+/** Журналы J01–J60: автоматические собираются из операций смены, ручные — записью по столбцам шаблона. */
 export default function JournalsPage() {
   const { org } = useOrg();
   const [forms, setForms] = useState<FormInfo[] | null>(null);

@@ -36,7 +36,7 @@ export async function semiGrams(tx: Tx, subDishId: string, q: number, unit: stri
  * opts.siteId — учитывать готовые п/ф на складе этой площадки (продажа, производство).
  */
 export async function explode(tx: Tx, orgId: string, dishId: string, amount: { portions?: number; grams?: number },
-  opts: { siteId?: string } = {}, depth = 0, acc = new Map<string, Need>()): Promise<{ needs: Map<string, Need>; versionId: string }> {
+  opts: { siteId?: string; ownStock?: boolean } = {}, depth = 0, acc = new Map<string, Need>()): Promise<{ needs: Map<string, Need>; versionId: string }> {
   if (depth > 5) throw Errors.conflict('Слишком глубокая вложенность полуфабрикатов.');
   const r = await approvedRecipe(tx, orgId, dishId);
   if (!r) {
@@ -47,6 +47,20 @@ export async function explode(tx: Tx, orgId: string, dishId: string, amount: { p
   if (!v.yield_g) throw Errors.conflict(`В ТТК «${dishId}» не указан выход.`);
   const grams = amount.grams ?? (v.portion_g ? amount.portions! * Number(v.portion_g) : null);
   if (grams === null) throw Errors.conflict('В ТТК не указан выход порции.');
+  // продажа блюда, выпущенного партией: сначала его годный остаток, раскладка до сырья — только на недостающее
+  if (depth === 0 && opts.ownStock && opts.siteId) {
+    const own = (await tx.query(`select d.name, d.product_id, p.unit from dishes d join products p on p.id = d.product_id where d.id = $1`, [dishId])).rows[0];
+    if (own) {
+      const need = await convertUnits(tx, own.product_id, grams, 'г', own.unit);
+      const free = need === null ? 0 : await usableQty(tx, orgId, opts.siteId, own.product_id);
+      const take = need === null ? 0 : Math.min(free, need);
+      if (take > 1e-9) {
+        acc.set(own.product_id, { productId: own.product_id, name: `${own.name} (выпущенная партия)`, unit: own.unit, qty: take, semiOf: dishId });
+        if (take + 1e-9 >= need!) return { needs: acc, versionId: v.id };
+        return explode(tx, orgId, dishId, { grams: grams * (1 - take / need!) }, { siteId: opts.siteId }, depth, acc);
+      }
+    }
+  }
   const factor = grams / Number(v.yield_g);
   for (const l of r.lines) {
     const q = Number(l.brutto ?? l.netto ?? 0) * factor;

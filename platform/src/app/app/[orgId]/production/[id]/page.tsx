@@ -12,7 +12,7 @@ import { d as day, dt, n } from '@/lib/fmt';
 
 interface Check { id: string; name: string; unit: string; limits: string; basis: string; last: { value: string; ok: boolean; recorded_at: string; recorded_by: string; incident_id: string | null } | null }
 interface Card {
-  order: { id: string; status: string; status_label: string; dish_id: string; dish_name: string; planned_g: string; actual_g: string | null; planned_for: string; note: string | null; cost: string | null;
+  order: { id: string; status: string; status_label: string; dish_id: string; dish_name: string; dish_kind?: string; organoleptic?: string | null; release_decision?: string | null; planned_g: string; actual_g: string | null; planned_for: string; note: string | null; cost: string | null;
     created_by_name: string | null; started_by_name: string | null; started_at: string | null; completed_by_name: string | null; completed_at: string | null; cancel_reason: string | null };
   ttk: { version: number; yield_g: string; shelf_life_hours: string | null; storage_conditions: string | null };
   checks: Check[];
@@ -30,6 +30,8 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
   const [c, setC] = useState<Card | null>(null);
   const [vals, setVals] = useState<Record<string, string>>({});
   const [actual, setActual] = useState('');
+  const [orgl, setOrgl] = useState('');
+  const [decision, setDecision] = useState<'allowed' | 'rejected' | ''>('');
   const [reason, setReason] = useState('');
   const op = useOperationId();
   const { busy, error, run, setError } = useSubmit();
@@ -96,11 +98,19 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
           <h2>Выпуск партии</h2>
           {blocked.length > 0 && <div className="note">Выпуск закрыт: нужен замер в пределах — {blocked.map((x) => x.name).join(', ')}.</div>}
           <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-            const r = await api<{ label_id: string }>(`/orgs/${org.id}/production/${id}/complete`, { body: { actualKg: actual, operationId: op.id } });
+            const r = await api<{ label_id: string }>(`/orgs/${org.id}/production/${id}/complete`, { body: { actualKg: actual, operationId: op.id, organoleptic: orgl || null, decision: decision || null } });
             op.next(); await load(); router.push(`/app/${org.id}/labels/print?ids=${r.label_id}`);
           }); }}>
             <label htmlFor="ak">Фактический выход, кг</label>
             <input id="ak" required inputMode="decimal" value={actual} onChange={(e) => setActual(e.target.value)} />
+            {o.dish_kind === 'dish' && <>
+              <h3>Бракераж (журнал J58)</h3>
+              <label htmlFor="org">Органолептика: внешний вид, цвет, консистенция, вкус и запах</label>
+              <textarea id="org" rows={2} required value={orgl} onChange={(e) => setOrgl(e.target.value)} />
+              <label htmlFor="dec">Решение</label>
+              <select id="dec" required value={decision} onChange={(e) => setDecision(e.target.value as 'allowed' | 'rejected' | '')}>
+                <option value="">— выберите —</option><option value="allowed">Допущено к реализации</option><option value="rejected">Не допущено — партия в карантин</option></select>
+            </>}
             <p className="small muted">Сырьё списывается по плану ТТК ({n(Number(o.planned_g) / 1000)} кг выхода), партия п/ф — по факту. Отклонение выхода запишется в аудит.</p>
             <button className="btn block" disabled={busy || blocked.length > 0}>Выпустить партию и напечатать этикетку</button>
           </form>

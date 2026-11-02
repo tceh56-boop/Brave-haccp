@@ -11,7 +11,7 @@ import { STATUS_LABEL as INC_STATUS } from './incidents';
 import { approvedPlan, PLAN_STATUS } from './haccp';
 
 /**
- * Журналы ХАССП J01–J53 (книга «Журналы_J01-J53.xlsx»). ТЗ v2 §0, §12: запись делается один раз — журнал
+ * Журналы ХАССП J01–J60 (книга «Журналы_J01-J53.xlsx» + J54–J60 по ТЗ доработки, 7.5). ТЗ v2 §0, §12: запись делается один раз — журнал
  * собирается из событий системы. Пересекающиеся формы (J01 ↔ J25 ↔ J42, J03 ↔ J21 ↔ J39 …) — разные
  * печатные виды одних и тех же данных. Где событий пока нет — ручная запись по столбцам шаблона,
  * одна на семейство форм. Подпись за период хранит хеш содержимого; подписать нельзя при открытых
@@ -23,7 +23,8 @@ import formsJson from '../../../data/reference/journal_forms.json';
 const FORMS: FormDef[] = (formsJson as { forms: FormDef[] }).forms;
 export const FORM_BY_CODE = new Map(FORMS.map((f) => [f.code, f]));
 
-type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan' | 'repairs' | 'cleaning' | 'washing' | 'concentration' | 'health' | 'briefing_sanitary' | 'briefing_safety';
+type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan' | 'repairs' | 'cleaning' | 'washing' | 'concentration' | 'health' | 'briefing_sanitary' | 'briefing_safety'
+  | 'opening' | 'semi_release' | 'label_prints' | 'relabels' | 'dish_release' | 'samples' | 'lab';
 /** Формы, собираемые из событий. Остальные — ручная запись. */
 const AUTO: Record<string, Source> = {
   J01: 'cold', J25: 'cold', J42: 'cold_grid', J04: 'room', J43: 'room_grid',
@@ -31,6 +32,8 @@ const AUTO: Record<string, Source> = {
   J30: 'plans', J31: 'hazards', J32: 'plan',   // реестры из плана ХАССП (не зависят от периода)
   J18: 'repairs', J10: 'cleaning', J09: 'washing', J15: 'concentration', J26: 'concentration',   // оборудование и санитария (этап 15)
   J07: 'health', J16: 'briefing_sanitary', J17: 'briefing_safety',   // персонал (этап 16)
+  // ТЗ доработки, 7.5: вскрытие, выпуск, маркировка, суточные пробы, лаборатория — из реальных событий
+  J54: 'opening', J55: 'semi_release', J56: 'label_prints', J57: 'relabels', J58: 'dish_release', J59: 'samples', J60: 'lab',
 };
 /**
  * Для ручных семейств — форма, в которой хранятся данные. Пара форм (J02 ↔ J40) — одни данные, печатный вид
@@ -46,7 +49,7 @@ export function dataFormOf(code: string): string {
 
 const INC_BLOCK: Partial<Record<Source, string[]>> = {
   cold: ['temperature_deviation'], cold_grid: ['temperature_deviation'], room: ['temperature_deviation'], room_grid: ['temperature_deviation'],
-  receipt: ['receipt_problem'], lots: ['expired_lot'], repairs: ['equipment'], cleaning: ['sanitation'], washing: ['sanitation'], concentration: ['sanitation'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail', 'equipment', 'sanitation'],
+  receipt: ['receipt_problem'], lots: ['expired_lot'], semi_release: ['release_check'], dish_release: ['release_check'], lab: ['lab_fail'], repairs: ['equipment'], cleaning: ['sanitation'], washing: ['sanitation'], concentration: ['sanitation'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail', 'equipment', 'sanitation'],
 };
 
 export function listForms() {
@@ -250,6 +253,86 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       return [h.code, h.step_name || '', h.class_label || '', h.description, limit, [m.method, m.device ? `прибор: ${m.device}` : '', m.record_form ? `запись: ${m.record_form}` : ''].filter(Boolean).join('; '),
         m.frequency, m.responsible_label, m.corrective_action, ver];
     }) };
+  }
+  if (src === 'opening') {
+    // J54: вскрытие тары — дочерняя партия (lot_links.kind = 'opened'), сотрудник — из движения склада
+    const r = (await c.tx.query(`select cl.opened_at, p.name as product, pl.lot_no, k.quantity, k.unit, cl.expires_at, cl.expiry_basis, o.name as storage,
+        (select u.full_name from stock_movements sm join users u on u.id = sm.created_by where sm.lot_id = cl.id and sm.kind = 'open_in' order by sm.created_at limit 1) as who,
+        (select lb.code from labels lb where lb.lot_id = cl.id order by lb.created_at limit 1) as label
+      from lot_links k join lots cl on cl.id = k.child_lot_id join lots pl on pl.id = k.parent_lot_id join products p on p.id = cl.product_id
+      left join control_objects o on o.id = cl.storage_object_id
+      where k.organization_id = $1 and k.kind = 'opened' and cl.site_id = $2 and cl.opened_at between ${periodSql(3, 4, 5)} order by cl.opened_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+    return { columns: f.columns, rows: r.map((x) => {
+      const h = /после вскрытия ([\d,.]+) ч/.exec(x.expiry_basis || '')?.[1] || /([\d,.]+) ч после вскрытия/.exec(x.expiry_basis || '')?.[1];
+      return [fmtDT(x.opened_at, tz), x.product, x.lot_no || 'без номера', `${fmtNum(x.quantity)} ${x.unit}`, x.who || '—', h ? `${h} ч` : '—', x.expiry_basis || '—',
+        fmtDT(x.expires_at, tz), x.label || 'не выдана', x.storage || '—', x.who ? `электронно: ${x.who}` : 'нет'];
+    }) };
+  }
+  if (src === 'semi_release' || src === 'dish_release') {
+    const r = (await c.tx.query(`select o.id, o.completed_at, o.actual_g, o.organoleptic, o.release_decision, (select full_name from users where id = o.assessed_by) as assessor, d.name as dish, v.version as ttk_version, v.card_date, l.lot_no, l.expires_at, l.status as lot_status, u.full_name as who,
+        (select string_agg(p.name || ' ' || coalesce(pl.lot_no, 'б/н'), '; ' order by p.name) from lot_links k join lots pl on pl.id = k.parent_lot_id join products p on p.id = pl.product_id
+           where k.child_lot_id = o.output_lot_id and k.kind = 'production') as raw,
+        (select lb.code from labels lb where lb.lot_id = o.output_lot_id order by lb.created_at limit 1) as label,
+        (select count(*)::int from production_checks pc where pc.order_id = o.id) as checks,
+        (select count(*)::int from production_checks pc where pc.order_id = o.id and not pc.ok) as bad
+      from production_orders o join dishes d on d.id = o.dish_id join ttk_versions v on v.id = o.ttk_version_id left join lots l on l.id = o.output_lot_id left join users u on u.id = o.completed_by
+      where o.organization_id = $1 and o.site_id = $2 and o.status = 'done' and d.kind = $3 and o.completed_at between ${periodSql(4, 5, 6)} order by o.completed_at`,
+      [c.orgId, c.siteId, src === 'semi_release' ? 'semi' : 'dish', c.from, c.to, c.tz])).rows;
+    const ctl = (x: { checks: number; bad: number }) => (!x.checks ? 'контроль не предусмотрен (нет проверок выпуска)' : x.bad ? `отклонение: ${x.bad} из ${x.checks}` : `в норме: ${x.checks} из ${x.checks}`);
+    if (src === 'semi_release') return { columns: f.columns, rows: r.map((x) => [x.dish, `версия ${x.ttk_version}`, fmtDT(x.completed_at, tz), `${fmtNum(Number(x.actual_g) / 1000)} кг`,
+      x.raw || 'нет связей с сырьём', fmtDT(x.expires_at, tz), x.label || 'не выдана', x.who || '—', ctl(x)]) };
+    return { columns: f.columns, rows: r.map((x) => [x.dish, x.lot_no || 'без номера', `версия ${x.ttk_version}`, fmtDT(x.completed_at, tz),
+      x.release_decision ? `${x.release_decision === 'allowed' ? 'допущено' : 'не допущено'} (${x.assessor}); ${ctl(x)}` : `нет записи бракеража; ${ctl(x)}`, x.organoleptic || 'нет записи в системе',
+      x.release_decision === 'allowed' && x.lot_status === 'available' && !x.bad ? 'разрешено' : `не разрешено (${x.release_decision === 'rejected' ? 'бракераж' : LOT_STATUS_LABEL[x.lot_status] || x.lot_status || 'нет партии'})`,
+      fmtDT(x.expires_at, tz), x.who || '—']) };
+  }
+  if (src === 'label_prints') {
+    const SRC: Record<string, string> = { lot: 'этикетка партии', opened: 'вскрытие тары', consumer: 'потребительская этикетка' };
+    const r = (await c.tx.query(`select pr.printed_at, pr.copies, pr.reason, lb.code, lb.kind, lb.payload->>'lot_no' as lot_no, lb.payload->>'product' as product, u.full_name as who
+      from label_prints pr join labels lb on lb.id = pr.label_id join users u on u.id = pr.printed_by
+      where pr.organization_id = $1 and pr.site_id = $2 and pr.printed_at between ${periodSql(3, 4, 5)} order by pr.printed_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+    return { columns: f.columns, rows: r.map((x) => [x.lot_no || 'без номера', x.product, x.code, fmtDT(x.printed_at, tz), String(x.copies), x.who, SRC[x.kind] || x.kind, x.reason || '—']) };
+  }
+  if (src === 'relabels') {
+    // перепечать той же этикетки (с причиной) и замена этикетки партии новой (изменились данные партии)
+    const re = (await c.tx.query(`select pr.printed_at as at, lb.code, pr.reason, u.full_name as who, cu.full_name as confirmer, cf.confirmed_at
+      from label_prints pr join labels lb on lb.id = pr.label_id join users u on u.id = pr.printed_by
+      left join label_print_confirmations cf on cf.print_id = pr.id left join users cu on cu.id = cf.confirmed_by
+      where pr.organization_id = $1 and pr.site_id = $2 and pr.reason is not null and pr.printed_at between ${periodSql(3, 4, 5)}`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+    const rp = (await c.tx.query(`select lb.created_at as at, lb.code, lb.payload as p, u.full_name as who,
+        (select row_to_json(x) from (select o.code, o.payload as p from labels o where o.lot_id = lb.lot_id and o.kind = lb.kind and o.created_at < lb.created_at order by o.created_at desc limit 1) x) as old
+      from labels lb left join users u on u.id = lb.created_by
+      where lb.organization_id = $1 and lb.site_id = $2 and lb.created_at between ${periodSql(3, 4, 5)}`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows.filter((x) => x.old);
+    const FIELD: Record<string, string> = { expires_at: 'срок годности', expiry_basis: 'основание срока', warning: 'пометка', storage: 'место хранения', lot_no: 'номер партии', opened_at: 'вскрытие', product: 'продукт' };
+    const val = (k: string, v: unknown) => (v == null || v === '' ? '—' : k === 'expires_at' || k === 'opened_at' ? fmtDT(String(v), tz) : String(v));
+    const diff = (a: Record<string, unknown>, b: Record<string, unknown>) => Object.keys(FIELD).filter((k) => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null))
+      .map((k) => `${FIELD[k]}: ${val(k, a[k])} → ${val(k, b[k])}`).join('; ');
+    const rows = [
+      ...re.map((x) => ({ at: x.at, row: [x.code, `${x.code} (та же, повторная печать)`, x.reason, 'без изменений', x.who, x.confirmer ? `${x.confirmer}, ${fmtDT(x.confirmed_at, tz)}` : 'не подтверждено'] })),
+      ...rp.map((x) => ({ at: x.at, row: [x.old.code, x.code, 'изменились данные партии', diff(x.old.p, x.p) || 'изменились прочие данные', x.who || '—', 'выдана системой по изменению данных партии'] })),
+    ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    return { columns: f.columns, rows: rows.map((x) => x.row) };
+  }
+  if (src === 'samples') {
+    const r = (await c.tx.query(`select s.*, d.name as dish, l.lot_no, o.name as storage, u.full_name as who, x.destroyed_at, du.full_name as destroyer
+      from daily_samples s left join dishes d on d.id = s.dish_id left join lots l on l.id = s.lot_id left join control_objects o on o.id = s.storage_object_id
+      join users u on u.id = s.taken_by left join daily_sample_destructions x on x.sample_id = s.id left join users du on du.id = x.destroyed_by
+      where s.organization_id = $1 and s.site_id = $2 and s.taken_at between ${periodSql(3, 4, 5)} order by s.taken_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+    return { columns: f.columns, rows: r.map((x) => [x.dish || x.title, x.lot_no || '—', fmtDT(x.taken_at, tz), x.whole_portion ? `порция целиком (${fmtNum(x.weight_g)} г)` : `${fmtNum(x.weight_g)} г`,
+      x.container || '—', x.temperature == null ? '—' : `${fmtNum(x.temperature)} °C`, x.storage || x.storage_place || '—', `до ${fmtDT(x.keep_until, tz)}`,
+      x.destroyed_at ? `${fmtDT(x.destroyed_at, tz)}, ${x.destroyer}` : new Date(x.keep_until) < new Date() ? 'не уничтожена — срок прошёл' : 'хранится', x.who]) };
+  }
+  if (src === 'lab') {
+    const r = (await c.tx.query(`select r.*, i.title as inc_title, i.status as inc_status from lab_results r left join incidents i on i.id = r.incident_id
+      where r.organization_id = $1 and r.site_id = $2 and r.sampled_on between $3::date and $4::date order by r.sampled_on, r.recorded_at`, [c.orgId, c.siteId, c.from, c.to])).rows;
+    const rows: string[][] = [];
+    for (const x of r) {
+      const act = x.inc_title ? `${x.inc_title} (${INC_STATUS[x.inc_status] || x.inc_status})` : x.result === 'fail' ? 'нет записи о действии' : '—';
+      const ps = (x.params || []) as { name: string; fact: string; norm: string; unit: string | null; pass: boolean }[];
+      if (!ps.length) rows.push([x.target, x.test_type, fmtD(x.sampled_on, tz), x.lab_name, x.protocol_no, x.conclusion || '—', '—', x.result === 'pass' ? 'соответствует' : 'не соответствует', act]);
+      for (const q of ps) rows.push([x.target, `${x.test_type}: ${q.name}`, fmtD(x.sampled_on, tz), x.lab_name, x.protocol_no, `${q.fact}${q.unit ? ` ${q.unit}` : ''}`, q.norm, q.pass ? 'соответствует' : 'не соответствует', q.pass ? '—' : act]);
+    }
+    return { columns: f.columns, rows };
   }
   // Ручная форма: записи хранятся в форме-источнике семейства; показываются её столбцы.
   const data = dataFormOf(code);

@@ -8,15 +8,17 @@ import { dt } from '@/lib/fmt';
 
 /** Журнал маркировки: каждая печать этикеток — что, сколько, в каком формате, кто. Записи не меняются. */
 
-interface Row { id: string; printed_at: string; copies: number; format: string; printed_by: string; label_id: string; code: string; kind: string; lot_id: string; product: string; lot_no: string | null; expires_at: string | null; warning: string | null }
-const FMT: Record<string, string> = { '58x40': '58×40', '58x30': '58×30', a4: 'A4' };
+interface Row { id: string; reason: string | null; confirmed_by: string | null; printed_at: string; copies: number; format: string; printed_by: string; label_id: string; code: string; kind: string; lot_id: string; product: string; lot_no: string | null; expires_at: string | null; warning: string | null }
+const FMT: Record<string, string> = { '58x40': '58×40', '58x30': '58×30', a4: 'A4', '58x60': '58×60', '100x70': '100×70' };
 
 export default function LabelsPage() {
-  const { org, siteId } = useOrg();
+  const { org, siteId, can, me } = useOrg();
+  const [tick, setTick] = useState(0);
+  const confirm = (id: string) => api(`/orgs/${org.id}/labels/prints/${id}/confirm`, { body: {} }).then(() => setTick((t) => t + 1)).catch((e) => setErr(e.message));
   const [days, setDays] = useState(7);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { if (siteId) api<Row[]>(`/orgs/${org.id}/labels/log?siteId=${siteId}&days=${days}`).then(setRows).catch((e) => setErr(e.message)); }, [org.id, siteId, days]);
+  useEffect(() => { if (siteId) api<Row[]>(`/orgs/${org.id}/labels/log?siteId=${siteId}&days=${days}`).then(setRows).catch((e) => setErr(e.message)); }, [org.id, siteId, days, tick]);
   const tz = org.timezone;
   return (
     <>
@@ -37,7 +39,9 @@ export default function LabelsPage() {
                   {r.warning && <span className="badge crit">{r.warning}</span>}</td>
                 <td>{r.expires_at ? dt(r.expires_at, tz) : '—'}</td>
                 <td>{r.copies} · {FMT[r.format] || r.format}</td>
-                <td className="small">{r.printed_by}</td>
+                <td className="small">{r.printed_by}
+                  {r.reason && <div>Перепечать: {r.reason}. {r.confirmed_by ? `Подтвердил: ${r.confirmed_by}` : can('journal.sign') && r.printed_by !== me.full_name
+                    ? <button type="button" className="btn small secondary" onClick={() => confirm(r.id)}>Подтвердить</button> : <span className="muted">не подтверждено</span>}</div>}</td>
                 <td><Link className="small" href={`/app/${org.id}/labels/print?ids=${r.label_id}`}>Ещё раз</Link></td>
               </tr>))}</tbody>
           </table></div>

@@ -38,7 +38,7 @@ export async function fulfilSale(tx: Tx, orgId: string, saleId: string, userId: 
   if (!s.dish_id) { await tx.query(`update sales set fulfil_status = 'unmatched' where id = $1`, [saleId]); return 'unmatched'; }
   await tx.query('savepoint fulfil');
   try {
-    const { needs, versionId } = await explode(tx, orgId, s.dish_id, { portions: Number(s.qty) }, { siteId: s.site_id });
+    const { needs, versionId } = await explode(tx, orgId, s.dish_id, { portions: Number(s.qty) }, { siteId: s.site_id, ownStock: true });
     let cost: number | null = 0;
     for (const n of needs.values()) {
       const c = await takeFefo(tx, orgId, s.site_id, n, { refType: 'sale', refId: s.id, reason: `продажа: ${s.name} × ${fmtNum(s.qty)}`, operationId: `sale:${s.id}`, userId });
@@ -82,7 +82,7 @@ export async function retryQueue(userId: string, orgId: string, input: unknown) 
 /** Порций из годного остатка площадки по утверждённой ТТК; null — посчитать нельзя (нет ТТК) — авто-стоп не ставится. */
 async function portionsLeft(tx: Tx, orgId: string, siteId: string, dishId: string) {
   let needs: Map<string, Need>;
-  try { needs = (await explode(tx, orgId, dishId, { portions: 1 }, { siteId })).needs; } catch { return null; }
+  try { needs = (await explode(tx, orgId, dishId, { portions: 1 }, { siteId, ownStock: true })).needs; } catch { return null; }
   let portions = Infinity; let short: { name: string; have: number; need: number; unit: string } | null = null;
   for (const n of needs.values()) {
     if (n.qty <= 0) continue;

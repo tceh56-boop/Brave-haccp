@@ -106,6 +106,7 @@ const PrintInput = z.object({
   labelIds: z.array(z.uuid()).min(1).max(100),
   format: z.enum(Object.keys(LABEL_FORMATS) as [keyof typeof LABEL_FORMATS, ...(keyof typeof LABEL_FORMATS)[]]),
   copies: z.coerce.number().int().min(1, 'Копий — от 1.').max(100, 'Копий — не больше 100.'),
+  reason: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
 });
 
 /** Запись в журнал маркировки перед отправкой на принтер. */
@@ -114,14 +115,34 @@ export async function logPrint(userId: string, orgId: string, input: unknown) {
   return inOrg(userId, orgId, 'label.print', async (tx, m) => {
     const labels = (await tx.query(`select id, site_id, lot_id from labels where organization_id = $1 and id = any($2::uuid[])`, [orgId, d.labelIds])).rows;
     if (labels.length !== new Set(d.labelIds).size) throw Errors.notFound('Этикетка не найдена.');
+    // повторная печать той же этикетки — с причиной (журнал J57, ТЗ доработки 7.5)
+    const again = (await tx.query(`select distinct label_id from label_prints where label_id = any($1::uuid[])`, [d.labelIds])).rows.length;
+    if (again && (!d.reason || d.reason.length < 3)) throw Errors.validation(`Этикетка уже печаталась (${again} из ${labels.length}) — укажите причину перепечати: повреждена, утеряна, нужна дополнительная копия…`);
     for (const lb of labels) {
       assertSiteAccess(m, lb.site_id);
-      await tx.query(`insert into label_prints (organization_id, site_id, label_id, copies, format, printed_by) values ($1, $2, $3, $4, $5, $6)`,
-        [orgId, lb.site_id, lb.id, d.copies, d.format, userId]);
+      await tx.query(`insert into label_prints (organization_id, site_id, label_id, copies, format, printed_by, reason) values ($1, $2, $3, $4, $5, $6, $7)`,
+        [orgId, lb.site_id, lb.id, d.copies, d.format, userId, d.reason]);
     }
     await audit.record(tx, { organizationId: orgId, siteId: labels[0].site_id, actorUserId: userId, action: 'label.print', entityType: 'lot', entityId: labels[0].lot_id,
       after: { labels: labels.length, copies: d.copies, format: d.format } });
     return { printed: labels.length * d.copies };
+  });
+}
+
+/** Подтверждение перепечати ответственным (J57). Подтверждает другой человек — не тот, кто печатал. */
+export async function confirmReprint(userId: string, orgId: string, printId: string, input: unknown) {
+  const d = parse(z.object({ note: z.string().trim().max(300).optional().nullable() }), input ?? {});
+  return inOrg(userId, orgId, 'journal.sign', async (tx, m) => {
+    const p = (await tx.query(`select id, site_id, printed_by, reason from label_prints where id = $1 and organization_id = $2`, [parse(z.uuid(), printId), orgId])).rows[0];
+    if (!p) throw Errors.notFound('Запись печати не найдена.');
+    assertSiteAccess(m, p.site_id);
+    if (!p.reason) throw Errors.conflict('Это первая печать этикетки — подтверждать нечего.');
+    if (p.printed_by === userId) throw Errors.forbidden('Перепечать подтверждает другой сотрудник — не тот, кто печатал.');
+    const r = (await tx.query(`insert into label_print_confirmations (organization_id, print_id, confirmed_by, note) values ($1, $2, $3, $4) on conflict (print_id) do nothing returning id`,
+      [orgId, p.id, userId, d.note || null])).rows[0];
+    if (!r) throw Errors.conflict('Перепечать уже подтверждена.');
+    await audit.record(tx, { organizationId: orgId, siteId: p.site_id, actorUserId: userId, action: 'label.reprint_confirm', entityType: 'label_print', entityId: p.id, after: { note: d.note || null } });
+    return { ok: true };
   });
 }
 
@@ -130,7 +151,8 @@ export async function labelLog(userId: string, orgId: string, siteId: string, da
   const period = Math.min(Math.max(Math.trunc(days) || 7, 1), 92);
   parse(z.uuid({ message: 'Выберите площадку.' }), siteId);
   return inOrg(userId, orgId, 'lot.read', async (tx) => (await tx.query(`
-    select pr.id, pr.printed_at, pr.copies, pr.format, u.full_name as printed_by, lb.id as label_id, lb.code, lb.kind, lb.lot_id,
+    select pr.id, pr.printed_at, pr.copies, pr.format, pr.reason, u.full_name as printed_by, lb.id as label_id,
+      (select cu.full_name from label_print_confirmations c join users cu on cu.id = c.confirmed_by where c.print_id = pr.id) as confirmed_by, lb.code, lb.kind, lb.lot_id,
       lb.payload->>'product' as product, lb.payload->>'lot_no' as lot_no, lb.payload->>'expires_at' as expires_at, lb.payload->>'warning' as warning
     from label_prints pr join labels lb on lb.id = pr.label_id join users u on u.id = pr.printed_by
     where pr.organization_id = $1 and pr.site_id = $2 and pr.printed_at >= now() - make_interval(days => $3)

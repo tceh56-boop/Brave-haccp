@@ -11,7 +11,7 @@ import { n } from '@/lib/fmt';
 /** Производство п/ф: задания на день по статусам (в работе, план, выпущено), новое задание. */
 
 interface Order { id: string; status: string; status_label: string; planned_g: string; actual_g: string | null; planned_for: string; note: string | null; dish_name: string; ttk_version: number; started_by_name: string | null }
-interface Semi { id: string; name: string; version: number; yield_g: string; shelf_life_hours: string | null }
+interface Semi { id: string; name: string; kind?: string; version: number; yield_g: string; shelf_life_hours: string | null }
 const TONE: Record<string, string> = { in_progress: 'warn', planned: '', done: 'ok', cancelled: '' };
 const today = () => new Date().toLocaleDateString('sv-SE');
 
@@ -50,14 +50,14 @@ function Production() {
       {can('production.plan') && (
         <div className="card">
           <h2>Новое задание</h2>
-          {semis.length === 0 ? <p className="small muted">Нет полуфабрикатов с утверждённой ТТК. Создайте п/ф в «Блюда и ТТК» и утвердите карту.</p> : (
+          {semis.length === 0 ? <p className="small muted">Нет полуфабрикатов и блюд с утверждённой ТТК. Создайте их в «Блюда и ТТК» и утвердите карту.</p> : (
             <form onSubmit={(e) => { e.preventDefault(); run(async () => {
               await api(`/orgs/${org.id}/production`, { body: { siteId, dishId: f.dishId, plannedKg: f.kg, plannedFor: date, note: f.note || null } });
               setF({ dishId: '', kg: '', note: '' }); load();
             }); }}>
               <label htmlFor="ps">Полуфабрикат</label>
               <select id="ps" required value={f.dishId} onChange={(e) => setF({ ...f, dishId: e.target.value })}>
-                <option value="">— выберите —</option>{semis.map((s) => <option key={s.id} value={s.id}>{s.name} (ТТК v{s.version}{s.shelf_life_hours ? `, срок ${n(s.shelf_life_hours)} ч` : ''})</option>)}
+                <option value="">— выберите —</option>{semis.map((s) => <option key={s.id} value={s.id}>{s.kind === 'dish' ? 'Готовая продукция: ' : ''}{s.name} (ТТК v{s.version}{s.shelf_life_hours ? `, срок ${n(s.shelf_life_hours)} ч` : ''})</option>)}
               </select>
               <div className="grid2">
                 <div><label htmlFor="pk">Выход, кг</label><input id="pk" required inputMode="decimal" value={f.kg} onChange={(e) => setF({ ...f, kg: e.target.value })} placeholder="2,5" /></div>

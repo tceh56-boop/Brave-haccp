@@ -61,11 +61,11 @@ export async function listProduction(userId: string, orgId: string, siteId: stri
   [orgId, d.siteId, d.date || null])).rows.map((r) => ({ ...r, status_label: ORDER_STATUS[r.status] })), d.siteId);
 }
 
-/** Полуфабрикаты с утверждённой ТТК — то, что можно ставить в производство. */
+/** Полуфабрикаты и блюда с утверждённой ТТК — то, что можно выпускать партией (блюдо — фасованная готовая продукция). */
 export async function producibleDishes(userId: string, orgId: string) {
   return inOrg(userId, orgId, 'production.read', async (tx) => (await tx.query(`
-    select d.id, d.name, v.version, v.yield_g, v.shelf_life_hours from dishes d join ttk_versions v on v.dish_id = d.id and v.status = 'approved'
-    where d.organization_id = $1 and d.status = 'active' and d.kind = 'semi' order by d.name`, [orgId])).rows);
+    select d.id, d.name, d.kind, v.version, v.yield_g, v.shelf_life_hours from dishes d join ttk_versions v on v.dish_id = d.id and v.status = 'approved'
+    where d.organization_id = $1 and d.status = 'active' and d.kind in ('semi', 'dish') order by d.kind desc, d.name`, [orgId])).rows);
 }
 
 const CreateInput = z.object({ siteId: z.uuid(), dishId: z.uuid(), plannedKg: qtyKg, plannedFor: day, note: optText(500), planEventId: z.uuid().optional().nullable() });
@@ -75,8 +75,8 @@ export async function createProduction(userId: string, orgId: string, input: unk
   return inOrg(userId, orgId, 'production.plan', async (tx) => {
     await getSite(tx, orgId, d.siteId);
     const dish = (await tx.query(`select id, name, kind from dishes where id = $1 and organization_id = $2 and status = 'active'`, [d.dishId, orgId])).rows[0];
-    if (!dish) throw Errors.notFound('Полуфабрикат не найден.');
-    if (dish.kind !== 'semi') throw Errors.validation('В производство ставятся полуфабрикаты. Блюдо списывается по ТТК при продаже.');
+    if (!dish) throw Errors.notFound('Полуфабрикат или блюдо не найдены.');
+    // готовое блюдо — партией (фасованная продукция, выпуск под реализацию); продажа такой партии списывает её, а не сырьё
     const r = await approvedRecipe(tx, orgId, dish.id);
     if (!r) throw Errors.conflict(`У «${dish.name}» нет утверждённой ТТК — ставить в производство нельзя.`);
     if (!r.version.yield_g) throw Errors.conflict('В утверждённой ТТК не указан выход.');
@@ -156,7 +156,9 @@ export async function recordCheck(userId: string, orgId: string, id: string, inp
   });
 }
 
-const CompleteInput = z.object({ actualKg: qtyKg, operationId: z.string().trim().min(8).max(100) });
+const CompleteInput = z.object({ actualKg: qtyKg, operationId: z.string().trim().min(8).max(100),
+  // бракераж готовой продукции (J58): органолептика и решение о допуске — обязательны для блюда
+  organoleptic: z.string().trim().max(1000).optional().nullable(), decision: z.enum(['allowed', 'rejected']).optional().nullable() });
 
 /** Выпуск партии п/ф: списание по ТТК (FEFO), партия с себестоимостью и сроком из ТТК, этикетка. */
 export async function completeProduction(userId: string, orgId: string, id: string, input: unknown) {
@@ -165,6 +167,8 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     const o = await orderFor(tx, orgId, id, true);
     assertSiteAccess(m, o.site_id);
     if (o.status !== 'in_progress') throw Errors.conflict(o.status === 'planned' ? 'Сначала «Начать»: выпуск — из задания в работе.' : `Задание уже ${ORDER_STATUS[o.status].toLowerCase()}.`);
+    if (o.dish_kind === 'dish' && (!d.organoleptic || d.organoleptic.length < 5 || !d.decision))
+      throw Errors.validation('Выпуск готовой продукции — с бракеражем: опишите органолептику (внешний вид, цвет, консистенция, вкус и запах) и решение о допуске к реализации.');
     const checks = await activeChecks(tx, o.dish_id), last = await lastChecks(tx, o.id);
     const missing = checks.filter((c) => !last.find((x) => x.check_id === c.id && x.ok));
     if (missing.length) throw Errors.conflict(`Выпуск закрыт: нет замера в пределах — ${missing.map((c) => `${c.name} (${limits(c)})`).join('; ')}.`);
@@ -174,7 +178,7 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     // складская позиция п/ф (создаётся при первом выпуске)
     let productId: string = o.product_id;
     if (!productId) {
-      productId = (await tx.query(`insert into products (organization_id, name, unit, category) values ($1, $2, 'кг', 'Полуфабрикат') returning id`, [orgId, o.dish_name])).rows[0].id;
+      productId = (await tx.query(`insert into products (organization_id, name, unit, category) values ($1, $2, 'кг', $3) returning id`, [orgId, o.dish_name, o.dish_kind === 'dish' ? 'Готовая продукция' : 'Полуфабрикат'])).rows[0].id;
       await tx.query(`update dishes set product_id = $2 where id = $1`, [o.dish_id, productId]);
     }
     const unit = (await tx.query(`select unit from products where id = $1`, [productId])).rows[0].unit as string;
@@ -195,11 +199,13 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     const hours = v.shelf_life_hours ? Number(v.shelf_life_hours) : null;
     const expiresAt = hours ? new Date(now.getTime() + hours * 3600e3) : null;
     const basis = hours ? `ТТК «${o.dish_name}» v${v.version}: ${fmtNum(hours)} ч${v.storage_conditions ? `, ${v.storage_conditions}` : ''}` : null;
-    const lotNo = `ПФ-${now.toISOString().slice(2, 10).replace(/-/g, '')}-${o.id.slice(0, 4).toUpperCase()}`;
+    const lotNo = `${o.dish_kind === 'dish' ? 'ГП' : 'ПФ'}-${now.toISOString().slice(2, 10).replace(/-/g, '')}-${o.id.slice(0, 4).toUpperCase()}`;
+    const rejected = d.decision === 'rejected';
     const unitPrice = cost === null || outQty <= 0 ? null : Math.round((cost / outQty) * 100) / 100;
     const lot = (await tx.query(`insert into lots (organization_id, site_id, product_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, status, status_reason, unit_price)
-      values ($1, $2, $3, $4, 0, $5, $6, $7, $8, 'available', 'выпуск п/ф', $9) returning id`,
-      [orgId, o.site_id, productId, lotNo, unit, now.toISOString().slice(0, 10), expiresAt, basis, unitPrice])).rows[0];
+      values ($1, $2, $3, $4, 0, $5, $6, $7, $8, $10, $11, $9) returning id`,
+      [orgId, o.site_id, productId, lotNo, unit, now.toISOString().slice(0, 10), expiresAt, basis, unitPrice, rejected ? 'quarantine' : 'available',
+        rejected ? `бракераж: не допущено к реализации — ${d.organoleptic}` : o.dish_kind === 'dish' ? 'выпуск готовой продукции' : 'выпуск п/ф'])).rows[0];
     await move(tx, { orgId, siteId: o.site_id, lotId: lot.id, productId, kind: 'produce', quantity: outQty, unit, refType: 'production', refId: o.id, operationId: d.operationId, userId, reason: `выпуск: ${o.dish_name}` });
     for (const t of taken) {
       await tx.query(`insert into lot_links (organization_id, parent_lot_id, child_lot_id, kind, quantity, unit) values ($1, $2, $3, 'production', $4, $5)`, [orgId, t.lotId, lot.id, t.qty, t.unit]);
@@ -210,8 +216,9 @@ export async function completeProduction(userId: string, orgId: string, id: stri
         entityType: 'lot', entityId: lot.id, assigneeRole: 'chef', dueAt: new Date(now.getTime() + 2 * 3600e3), createdBy: userId });
     }
     const cRound = cost === null ? null : Math.round(cost * 100) / 100;
-    await tx.query(`update production_orders set status = 'done', completed_by = $2, completed_at = now(), actual_g = $3, output_lot_id = $4, cost = $5 where id = $1`,
-      [o.id, userId, d.actualKg * 1000, lot.id, cRound]);
+    await tx.query(`update production_orders set status = 'done', completed_by = $2, completed_at = now(), actual_g = $3, output_lot_id = $4, cost = $5,
+      organoleptic = $6, release_decision = $7, assessed_by = $8 where id = $1`,
+      [o.id, userId, d.actualKg * 1000, lot.id, cRound, d.organoleptic || null, d.decision || null, d.decision ? userId : null]);
     const label = await labelForLot(tx, orgId, userId, lot.id);
     const yieldDiff = Math.round(((d.actualKg * 1000) / Number(o.planned_g) - 1) * 1000) / 10;
     await audit.record(tx, { organizationId: orgId, siteId: o.site_id, actorUserId: userId, action: 'production.complete', entityType: 'production_order', entityId: o.id,

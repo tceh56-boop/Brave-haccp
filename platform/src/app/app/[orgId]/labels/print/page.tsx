@@ -52,6 +52,7 @@ function PrintLabels() {
   const [labels, setLabels] = useState<Label[] | null>(null);
   const [format, setFormat] = useState('58x40');
   const [copies, setCopies] = useState(1);
+  const [reason, setReason] = useState('');
   const [done, setDone] = useState<string | null>(null);
   const { busy, error, run, setError } = useSubmit();
   const key = ids.join(',');
@@ -76,11 +77,13 @@ function PrintLabels() {
           </select>
           <label htmlFor="lc">Копий каждой</label>
           <input id="lc" type="number" min={1} max={100} value={copies} onChange={(e) => setCopies(Math.min(100, Math.max(1, Number(e.target.value) || 1)))} />
+          {labels.some((l) => l.printed) && <><label htmlFor="lr">Причина перепечати (журнал J57)</label>
+            <input id="lr" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="повреждена, утеряна, нужна дополнительная копия…" /></>}
           <p className="small muted">Этикеток: {labels.length} × {copies} = {sheet.length}. {labels.some((l) => l.printed) ? `Уже печатались: ${labels.filter((l) => l.printed).length}.` : ''} Печать записывается в журнал маркировки.</p>
           {error && <div className="err">{error}</div>}
           {done && <div className="okbox">{done}</div>}
           <button className="btn block" disabled={busy} onClick={() => run(async () => {
-            const r = await api<{ printed: number }>(`/orgs/${org.id}/labels/print`, { body: { labelIds: labels.map((l) => l.id), format, copies } });
+            const r = await api<{ printed: number }>(`/orgs/${org.id}/labels/print`, { body: { labelIds: labels.map((l) => l.id), format, copies, reason: reason || null } });
             setDone(`В журнал записано этикеток: ${r.printed}.`);
             setTimeout(() => window.print(), 50);
           })}>Печать</button>
