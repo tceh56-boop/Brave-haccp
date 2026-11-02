@@ -70,7 +70,7 @@ export async function buildPack(userId: string, orgId: string, input: unknown) {
   const files: { name: string; data: Buffer }[] = [];
 
   // Журналы: все автоматические формы и ручные — если за период есть записи (формы-«виды» общих данных не дублируются).
-  const journals: { code: string; name: string; rows: number; sign: string; file: string | null }[] = [];
+  const journals: { code: string; name: string; rows: number; sign: string; file: string | null; gaps: number; version: string }[] = [];
   for (const f of listForms()) {
     if (f.mode === 'manual' && f.shares_with) continue;
     const j = await getJournal(userId, orgId, f.code, p);
@@ -82,7 +82,7 @@ export async function buildPack(userId: string, orgId: string, input: unknown) {
       file = `journals/${f.code}.html`;
       files.push({ name: file, data: Buffer.from(await toHtml(j), 'utf8') }, { name: `journals/${f.code}.csv`, data: Buffer.from(toCsv(j), 'utf8') });
     }
-    journals.push({ code: f.code, name: f.name, rows: j.rows.length, sign, file });
+    journals.push({ code: f.code, name: f.name, rows: j.rows.length, sign, file, gaps: j.gaps.length, version: j.form.version });
   }
 
   const data = await inOrg(userId, orgId, 'pack.export', async (tx) => {
@@ -105,7 +105,22 @@ export async function buildPack(userId: string, orgId: string, input: unknown) {
     for (const f of evidence) contents.set(f.id, (await tx.query(`select content from evidence_files where id = $1`, [f.id])).rows[0].content);
     // Готовность предприятия на конец периода — тем же движком, что ППК и главный экран (ТЗ доработки, P0).
     const ready = await validateEnterpriseReadiness(tx, orgId, p.to, { siteIds: [p.siteId] });
-    return { plan, incidents, capas, reqs, evidence, contents, ready };
+    // Утверждённые документы с версиями и хешами; журнал формирования пакетов (ТЗ доработки, сценарий «инспекционный пакет»)
+    const docs = [
+      ...(await tx.query(`select 'ППК' as kind, 'Программа производственного контроля' as title, version, approved_at, content_hash from ppk_versions where organization_id = $1 order by version desc limit 1`, [orgId])).rows,
+      ...(await tx.query(`select 'ТУ' as kind, d.name || ' — ' || t.designation as title, t.version, t.approved_at, t.content_hash from tech_spec_versions t join dishes d on d.id = t.dish_id
+        where t.organization_id = $1 and t.version = (select max(version) from tech_spec_versions x where x.dish_id = t.dish_id) order by d.name`, [orgId])).rows,
+      ...(await tx.query(`select 'ТИ' as kind, d.name || ' — ' || t.designation as title, t.version, t.approved_at, t.content_hash from ti_versions t join dishes d on d.id = t.dish_id
+        where t.organization_id = $1 and t.version = (select max(version) from ti_versions x where x.dish_id = t.dish_id) order by d.name`, [orgId])).rows,
+      ...(await tx.query(`select 'СТО' as kind, s.title || ' — ' || v.designation as title, v.version, v.approved_at, v.content_hash from sto_versions v join sto_standards s on s.id = v.sto_id
+        where v.organization_id = $1 and v.version = (select max(version) from sto_versions x where x.sto_id = v.sto_id) order by s.seq`, [orgId])).rows,
+      ...(await tx.query(`select 'Декларация' as kind, x.name || ' — ' || r.reg_number || coalesce(', до ' || to_char(r.valid_to, 'DD.MM.YYYY'), '') as title, d.number as version, a.accepted_at as approved_at, a.content_hash
+        from declarations d join dishes x on x.id = d.dish_id join declaration_acceptances a on a.declaration_id = d.id join declaration_registrations r on r.declaration_id = d.id
+        where d.organization_id = $1 and not exists (select 1 from declaration_terminations t where t.declaration_id = d.id) order by x.name`, [orgId])).rows,
+    ];
+    const packLog = (await tx.query(`select a.created_at, u.full_name, a.after from audit_events a left join users u on u.id = a.actor_user_id
+      where a.organization_id = $1 and a.action = 'pack.export' order by a.created_at desc limit 20`, [orgId])).rows;
+    return { plan, incidents, capas, reqs, evidence, contents, ready, docs, packLog };
   }, p.siteId);
 
   for (const f of data.evidence) files.push({ name: `evidence/${f.entity_type}/${f.id.slice(0, 8)}_${safe(f.filename)}`, data: data.contents.get(f.id)! });
@@ -120,41 +135,56 @@ table{width:100%;border-collapse:collapse;margin:6px 0}th,td{border:1px solid #8
 <div class="muted">Сформировано: ${e(fmt(new Date()))}, ${e(head.me.full_name)}. Часовой пояс: ${e(tz)}.</div>
 <p class="note">Система поддерживает утверждённые процедуры и хранение доказательств; применимость требований и фактическое соблюдение подтверждаются ответственными специалистами предприятия. Пакет не является заключением о соответствии законодательству.</p>
 
+<h2>Содержание</h2>
+<ol><li>План ХАССП</li><li>Утверждённые документы: версии и контрольные суммы</li><li>Журналы за период: подписи, пропуски</li><li>Отклонения</li><li>CAPA</li>
+<li>Применимые требования</li><li>Готовность предприятия</li><li>Доказательства за период</li><li>Журнал формирования пакетов</li></ol>
+
 <h2>1. План ХАССП</h2>
 ${plan ? `<p>Версия ${plan.plan.version}, утверждён ${e(fmt(plan.plan.approved_at))}${plan.plan.approved_by_name ? `, ${e(plan.plan.approved_by_name)}` : ''}. Область применения: ${e(plan.plan.scope)}.
 Этапов: ${plan.steps.length}; опасностей: ${plan.hazards.length}; ККТ: ${plan.hazards.filter((h) => h.class === 'ccp').length}; ОПРП: ${plan.hazards.filter((h) => h.class === 'oprp').length}.
 Реестры — в журналах J30, J31, J32.</p>` : '<p><b>Утверждённого плана ХАССП нет.</b></p>'}
 
-<h2>2. Журналы за период</h2>
-<table><tr><th>Форма</th><th>Название</th><th>Записей</th><th>Подпись</th><th>Файл</th></tr>
-${journals.map((j) => `<tr><td>${j.code}</td><td>${e(j.name)}</td><td>${j.rows}</td><td>${e(j.sign)}</td><td>${j.file ? `<a href="${j.file}">печатный вид</a> · <a href="${j.file.replace('.html', '.csv')}">CSV</a>` : '—'}</td></tr>`).join('\n')}
+<h2>2. Утверждённые документы: версии и контрольные суммы</h2>
+${data.docs.length ? `<table><tr><th>Документ</th><th>Наименование</th><th>Версия</th><th>Утверждён / принят</th><th>SHA-256 снимка</th></tr>
+${data.docs.map((d) => `<tr><td>${e(d.kind)}</td><td>${e(d.title)}</td><td>${e(d.version)}</td><td>${e(fmt(d.approved_at))}</td><td><code>${e(d.content_hash)}</code></td></tr>`).join('\n')}</table>
+<p class="muted">Целостность снимков сверяется с базой при каждой выдаче документа; расхождение блокирует выдачу и пишется в аудит.</p>` : '<p><b>Утверждённых документов (ППК, ТУ, ТИ, СТО, деклараций) нет.</b></p>'}
+
+<h2>3. Журналы за период: подписи, пропуски</h2>
+<table><tr><th>Форма</th><th>Название</th><th>Редакция</th><th>Записей</th><th>Пропуски</th><th>Подпись</th><th>Файл</th></tr>
+${journals.map((j) => `<tr><td>${j.code}</td><td>${e(j.name)}</td><td>${e(j.version)}</td><td>${j.rows}</td><td>${j.gaps ? `<b>${j.gaps}</b>` : '—'}</td><td>${e(j.sign)}</td><td>${j.file ? `<a href="${j.file}">печатный вид</a> · <a href="${j.file.replace('.html', '.csv')}">CSV</a>` : '—'}</td></tr>`).join('\n')}
 </table>
 
-<h2>3. Отклонения</h2>
+<h2>4. Отклонения</h2>
 ${data.incidents.length ? `<table><tr><th>Создано</th><th>Отклонение</th><th>Риск</th><th>Статус</th><th>Действие</th><th>Закрыто</th><th>CAPA</th></tr>
 ${data.incidents.map((i) => `<tr><td>${e(fmt(i.created_at))}</td><td>${e(i.title)}<div class="muted">${e(i.what)}</div></td><td>${e(SEVERITY_LABEL[i.severity])}</td><td>${e(INC_STATUS[i.status])}</td>
 <td>${e(i.action_note || '')}</td><td>${e(i.closed_at ? fmt(i.closed_at) : '—')}</td><td>${i.capa_id ? e(CAPA_STATUS[i.capa_status]) : '—'}</td></tr>`).join('\n')}</table>` : '<p>Отклонений за период нет.</p>'}
 
-<h2>4. CAPA</h2>
+<h2>5. CAPA</h2>
 ${data.capas.length ? `<table><tr><th>CAPA</th><th>Причина</th><th>Корректирующее / предупреждающее</th><th>Критерий эффективности</th><th>Ответственный, срок</th><th>Статус, проверка</th></tr>
 ${data.capas.map((c) => `<tr><td>${e(c.title)}</td><td>${e(c.root_cause || 'не установлена')}</td><td>${e(c.corrective_action || '—')}${c.preventive_action ? `<div>${e(c.preventive_action)}</div>` : ''}</td>
 <td>${e(c.effectiveness_criterion || '—')}</td><td>${e(c.responsible || '—')}${c.due_at ? `, до ${e(String(c.due_at).slice(0, 10))}` : ''}</td>
 <td>${e(CAPA_STATUS[c.status])}${c.verified_at ? `<div>проверил: ${e(c.verifier)}, ${e(fmt(c.verified_at))} — ${e(c.verification_note)}</div>` : ''}</td></tr>`).join('\n')}</table>` : '<p>CAPA нет.</p>'}
 
-<h2>5. Применимые требования (нормативный профиль)</h2>
+<h2>6. Применимые требования (нормативный профиль)</h2>
 ${data.reqs.length ? `<table><tr><th>Источник, пункт</th><th>Требование</th><th>Редакция</th><th>Обоснование применимости</th></tr>
 ${data.reqs.map((r) => `<tr><td>${e(r.code)}, ${e(r.clause)}</td><td>${e(r.text)}</td><td>${e(r.edition)}${r.workflow_status !== 'approved' ? ' (не утверждена)' : ''}</td><td>${e(r.rationale || '')}</td></tr>`).join('\n')}</table>` : '<p>Применимость требований не определена.</p>'}
 
-<h2>6. Готовность предприятия на ${e(data.ready.as_of.split('-').reverse().join('.'))}</h2>
+<h2>7. Готовность предприятия на ${e(data.ready.as_of.split('-').reverse().join('.'))}</h2>
 <p class="muted">Проверки единого движка готовности; каждая — с пунктами нормативной базы. Не выполнено: ${data.ready.items.filter((i) => isBad(i.status)).length} из ${data.ready.items.length}.</p>
 <table><tr><th>Группа</th><th>Проверка</th><th>Статус</th><th>Подробно</th><th>Основание</th></tr>
 ${data.ready.items.map((i) => `<tr><td>${e(i.group)}</td><td>${e(i.title)}</td><td>${isBad(i.status) ? '<b>' : ''}${e(R_STATUS[i.status])}${isBad(i.status) ? '</b>' : ''}</td><td>${e(i.detail)}${i.items?.length ? `<div class="muted">${i.items.map(e).join('; ')}</div>` : ''}</td><td>${e(i.basis.join(', ') || '—')}</td></tr>`).join('\n')}
 </table>
 
-<h2>7. Доказательства за период</h2>
+<h2>8. Доказательства за период</h2>
 ${data.evidence.length ? `<table><tr><th>Файл</th><th>К записи</th><th>Загружено</th><th>SHA-256</th></tr>
 ${data.evidence.map((f) => `<tr><td><a href="evidence/${e(f.entity_type)}/${f.id.slice(0, 8)}_${e(safe(f.filename))}">${e(f.filename)}</a>${f.note ? `<div class="muted">${e(f.note)}</div>` : ''}</td>
 <td>${e(ENTITY_LABEL[f.entity_type] || f.entity_type)} ${e(f.entity_id.slice(0, 8))}</td><td>${e(fmt(f.uploaded_at))}, ${e(f.uploaded_by)}</td><td><code>${f.sha256}</code></td></tr>`).join('\n')}</table>` : '<p>Доказательств за период нет.</p>'}
+
+<h2>9. Журнал формирования пакетов</h2>
+<table><tr><th>Когда</th><th>Кто</th><th>Площадка, период</th><th>Файлов</th><th>SHA-256 архива</th></tr>
+<tr><td>${e(fmt(new Date()))}</td><td>${e(head.me.full_name)}</td><td>${e(head.site.name)}, ${e(period)}</td><td>этот пакет</td><td>— (в журнале аудита после формирования)</td></tr>
+${data.packLog.map((x) => `<tr><td>${e(fmt(x.created_at))}</td><td>${e(x.full_name || '—')}</td><td>${e(x.after?.from || '')} — ${e(x.after?.to || '')}</td><td>${e(x.after?.files ?? '')}</td><td><code>${e(x.after?.sha256 || '')}</code></td></tr>`).join('\n')}
+</table>
 
 <p class="muted">Контрольные суммы всех файлов пакета — в checksums.sha256.</p></body></html>`;
   files.unshift({ name: 'index.html', data: Buffer.from(html, 'utf8') });

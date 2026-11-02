@@ -205,3 +205,27 @@ describe('Рабочий экран смены', () => {
     expect(c.status.capa).toBeUndefined();
   });
 });
+
+describe('Инспекционный пакет', () => {
+  it('оглавление, версии документов, журналы с пропусками и редакцией, журнал формирования', async () => {
+    const { buildPack } = await import('../src/server/ops/pack');
+    const { inflateRawSync } = await import('node:zlib');
+    const read = (buf: Buffer, name: string) => {
+      let o = 0;
+      while (buf.readUInt32LE(o) === 0x04034b50) {
+        const m = buf.readUInt16LE(o + 8), size = buf.readUInt32LE(o + 18), nl = buf.readUInt16LE(o + 26), el = buf.readUInt16LE(o + 28);
+        const n = buf.subarray(o + 30, o + 30 + nl).toString('utf8'), st = o + 30 + nl + el, data = buf.subarray(st, st + size);
+        if (n === name) return (m === 8 ? inflateRawSync(data) : data).toString('utf8');
+        o = st + size;
+      }
+      throw new Error(name);
+    };
+    const first = await buildPack(owner.id, orgId, P());
+    const second = await buildPack(owner.id, orgId, P());
+    const html = read(second.archive, 'index.html');
+    for (const s of ['<h2>Содержание</h2>', '2. Утверждённые документы', '3. Журналы за период: подписи, пропуски', '9. Журнал формирования пакетов', first.sha256])
+      expect(html).toContain(s);
+    expect(html).toMatch(/<td>J54<\/td><td>Журнал вскрытия тары<\/td><td>2026\.11<\/td><td>1<\/td>/);
+    expect(second.files).toEqual(expect.arrayContaining(['journals/J54.html', 'journals/J60.html', 'checksums.sha256']));
+  });
+});
