@@ -178,7 +178,37 @@ export async function getShift(userId: string, orgId: string, siteId: string) {
       and (assignee_user_id = $3 or assignee_role = $4)`, [orgId, siteId, userId, m.role])).rows[0].count);
     const openIncidents = Number((await tx.query(`select count(*) from incidents where organization_id = $1 and site_id = $2 and status <> 'closed'`, [orgId, siteId])).rows[0].count);
     const production = Number((await tx.query(`select count(*) from production_orders where organization_id = $1 and site_id = $2 and status in ('planned', 'in_progress') and planned_for <= current_date`, [orgId, siteId])).rows[0].count);
-    return { site, objects, myTasks, openIncidents, production, role: m.role };
+    // Рабочий экран смены (ТЗ доработки, 10): состояние смены одним взглядом; каждый блок — только при праве на него.
+    const tz = (await tx.query(`select timezone from organizations where id = $1`, [orgId])).rows[0].timezone as string;
+    const one = async (sql: string, a: unknown[]) => (await tx.query(sql, a)).rows[0];
+    const DAY = `((now() at time zone $3)::date)`;   // «сегодня» по часовому поясу организации
+    const can = (p: string) => roleHas(m.role, p as never);
+    const scheduled = objects.filter((o) => o.due.state !== 'no_schedule');
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: tz });
+    const checkedToday = scheduled.filter((o) => o.last && new Date(o.last.measured_at).toLocaleDateString('sv-SE', { timeZone: tz }) === today).length;
+    const status = {
+      pos_shift: can('pos.sell') || can('sales.manage') ? await one(`select s.opened_at, u.full_name as opened_by from pos_shifts s join users u on u.id = s.opened_by where s.site_id = $1 and s.status = 'open'`, [siteId]) || null : undefined,
+      staff: can('staff.read') ? await one(`select count(*)::int as checked, count(*) filter (where admitted)::int as admitted, count(*) filter (where not admitted)::int as not_admitted
+        from health_checks where organization_id = $1 and site_id = $2 and checked_on = ${DAY}`, [orgId, siteId, tz]) : undefined,
+      fridges: { scheduled: scheduled.length, checked_today: checkedToday, overdue: scheduled.filter((o) => o.due.state === 'missed').length },
+      lots: await one(`select count(*) filter (where status = 'quarantine')::int as quarantine,
+          count(*) filter (where status = 'available' and expires_at < now())::int as expired,
+          count(*) filter (where status = 'available' and expires_at >= now() and expires_at < now() + interval '24 hours')::int as soon
+        from lots where organization_id = $1 and site_id = $2 and quantity > 0`, [orgId, siteId]),
+      capa: can('capa.read') ? await one(`select count(*) filter (where status <> 'closed')::int as active, count(*) filter (where status <> 'closed' and due_at < now())::int as overdue
+        from capas where organization_id = $1 and (site_id = $2 or site_id is null)`, [orgId, siteId]) : undefined,
+      samples: can('sample.record') || can('lab.read') ? await one(`select count(*)::int as today from daily_samples where organization_id = $1 and site_id = $2 and (taken_at at time zone $3)::date = ${DAY}`, [orgId, siteId, tz]) : undefined,
+      semis: can('production.read') ? await one(`select count(*)::int as lots, coalesce(sum(l.quantity), 0)::float as qty from lots l join dishes d on d.product_id = l.product_id and d.kind = 'semi'
+        where l.organization_id = $1 and l.site_id = $2 and l.status = 'available' and l.quantity > 0 and (l.expires_at is null or l.expires_at > now())`, [orgId, siteId]) : undefined,
+      receipts_draft: can('receipt.record') ? Number((await one(`select count(*) from receipts where organization_id = $1 and site_id = $2 and status = 'draft'`, [orgId, siteId])).count) : undefined,
+      sales_unfulfilled: can('sales.manage') ? Number((await one(`select count(*) from sales where organization_id = $1 and site_id = $2 and fulfil_status not in ('done', 'not_required')`, [orgId, siteId])).count) : undefined,
+      finance: can('econ.read') ? await one(`select count(*)::int as sales, coalesce(sum(amount), 0)::float as amount from sales where organization_id = $1 and site_id = $2 and (sold_at at time zone $3)::date = ${DAY}`, [orgId, siteId, tz]) : undefined,
+    };
+    // незаполненные обязательные журналы на сегодня: замеры по графику (J01/J04), осмотр персонала (J07)
+    const journalsDue: { code: string; text: string }[] = [];
+    if (status.fridges.overdue) journalsDue.push({ code: 'J01', text: `пропущены замеры: ${status.fridges.overdue} из ${scheduled.length} объектов` });
+    if (status.staff && status.staff.checked === 0) journalsDue.push({ code: 'J07', text: 'нет ни одного осмотра персонала за сегодня' });
+    return { site, objects, myTasks, openIncidents, production, role: m.role, status, journals_due: journalsDue };
   }, siteId);
 }
 

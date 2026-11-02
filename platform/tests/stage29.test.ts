@@ -190,3 +190,18 @@ describe('Единая карточка продукта', () => {
     await expect(getProductCard(stranger.id, orgId, semi)).rejects.toMatchObject({ code: expect.stringMatching(/FORBIDDEN|NOT_FOUND/) });
   });
 });
+
+describe('Рабочий экран смены', () => {
+  it('состояние смены: партии, п/ф, пробы, незаполненные журналы; финансы и CAPA — только с правом', async () => {
+    const { getShift } = await import('../src/server/ops/dashboard');
+    const o = await getShift(owner.id, orgId, siteId);
+    expect(o.status.semis).toMatchObject({ lots: 1 });
+    expect(o.status.samples).toMatchObject({ today: 1 });
+    expect(o.status.lots).toMatchObject({ quarantine: 0 });
+    expect(o.status.finance).toBeDefined();
+    expect(o.journals_due.map((j) => j.code)).toEqual(expect.arrayContaining(['J01', 'J07']));   // холодильник без замеров, осмотров нет
+    const c = await getShift(cook.id, orgId, siteId);
+    expect(c.status.finance).toBeUndefined();
+    expect(c.status.capa).toBeUndefined();
+  });
+});
