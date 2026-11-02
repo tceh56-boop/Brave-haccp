@@ -95,7 +95,7 @@ export async function getProduction(userId: string, orgId: string, id: string) {
   return inOrg(userId, orgId, 'production.read', async (tx, m) => {
     const o = await orderFor(tx, orgId, id);
     assertSiteAccess(m, o.site_id);
-    const v = (await tx.query(`select version, yield_g, shelf_life_hours, storage_conditions from ttk_versions where id = $1`, [o.ttk_version_id])).rows[0];
+    const v = (await tx.query(`select version, yield_g, shelf_life_hours, sale_hours, opened_hours, shelf_basis, storage_conditions from ttk_versions where id = $1`, [o.ttk_version_id])).rows[0];
     const checks = await activeChecks(tx, o.dish_id);
     const last = await lastChecks(tx, o.id);
     let need: Awaited<ReturnType<typeof availability>> | null = null, needError: string | null = null;
@@ -180,6 +180,8 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     if (!productId) {
       productId = (await tx.query(`insert into products (organization_id, name, unit, category) values ($1, $2, 'кг', $3) returning id`, [orgId, o.dish_name, o.dish_kind === 'dish' ? 'Готовая продукция' : 'Полуфабрикат'])).rows[0].id;
       await tx.query(`update dishes set product_id = $2 where id = $1`, [o.dish_id, productId]);
+      // срок после вскрытия из утверждённой ТТК — правило новой складской позиции
+      if (v.opened_hours) await tx.query(`update products set opened_shelf_hours = $2, opened_shelf_basis = $3 where id = $1`, [productId, v.opened_hours, `ТТК «${o.dish_name}» v${v.version}: ${v.shelf_basis}`]);
     }
     const unit = (await tx.query(`select unit from products where id = $1`, [productId])).rows[0].unit as string;
     const outQty = await convertUnits(tx, productId, d.actualKg, 'кг', unit);
@@ -196,16 +198,19 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     }
 
     const now = new Date();
-    const hours = v.shelf_life_hours ? Number(v.shelf_life_hours) : null;
+    // ТЗ 5.2: партия п/ф — срок партии п/ф; готовая продукция — срок реализации (иначе срок партии); основание сроков — из ТТК
+    const kindOf = o.dish_kind === 'dish' && v.sale_hours ? 'срок реализации' : 'срок партии';
+    const hoursRaw = o.dish_kind === 'dish' ? (v.sale_hours ?? v.shelf_life_hours) : v.shelf_life_hours;
+    const hours = hoursRaw ? Number(hoursRaw) : null;
     const expiresAt = hours ? new Date(now.getTime() + hours * 3600e3) : null;
-    const basis = hours ? `ТТК «${o.dish_name}» v${v.version}: ${fmtNum(hours)} ч${v.storage_conditions ? `, ${v.storage_conditions}` : ''}` : null;
+    const basis = hours ? `ТТК «${o.dish_name}» v${v.version}: ${kindOf} ${fmtNum(hours)} ч${v.storage_conditions ? `, ${v.storage_conditions}` : ''}${v.shelf_basis ? ` (${v.shelf_basis})` : ''}` : null;
     const lotNo = `${o.dish_kind === 'dish' ? 'ГП' : 'ПФ'}-${now.toISOString().slice(2, 10).replace(/-/g, '')}-${o.id.slice(0, 4).toUpperCase()}`;
     const rejected = d.decision === 'rejected';
     const unitPrice = cost === null || outQty <= 0 ? null : Math.round((cost / outQty) * 100) / 100;
-    const lot = (await tx.query(`insert into lots (organization_id, site_id, product_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, status, status_reason, unit_price)
-      values ($1, $2, $3, $4, 0, $5, $6, $7, $8, $10, $11, $9) returning id`,
+    const lot = (await tx.query(`insert into lots (organization_id, site_id, product_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, status, status_reason, unit_price, storage_conditions)
+      values ($1, $2, $3, $4, 0, $5, $6, $7, $8, $10, $11, $9, $12) returning id`,
       [orgId, o.site_id, productId, lotNo, unit, now.toISOString().slice(0, 10), expiresAt, basis, unitPrice, rejected ? 'quarantine' : 'available',
-        rejected ? `бракераж: не допущено к реализации — ${d.organoleptic}` : o.dish_kind === 'dish' ? 'выпуск готовой продукции' : 'выпуск п/ф'])).rows[0];
+        rejected ? `бракераж: не допущено к реализации — ${d.organoleptic}` : o.dish_kind === 'dish' ? 'выпуск готовой продукции' : 'выпуск п/ф', v.storage_conditions || null])).rows[0];
     await move(tx, { orgId, siteId: o.site_id, lotId: lot.id, productId, kind: 'produce', quantity: outQty, unit, refType: 'production', refId: o.id, operationId: d.operationId, userId, reason: `выпуск: ${o.dish_name}` });
     for (const t of taken) {
       await tx.query(`insert into lot_links (organization_id, parent_lot_id, child_lot_id, kind, quantity, unit) values ($1, $2, $3, 'production', $4, $5)`, [orgId, t.lotId, lot.id, t.qty, t.unit]);

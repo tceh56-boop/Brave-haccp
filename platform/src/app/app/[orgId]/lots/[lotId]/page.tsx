@@ -15,7 +15,10 @@ interface LotCard { lot: { id: string; product: string; lot_no: string | null; q
   tasks: { id: string; kind: string; title: string }[];
   opened_from: { id: string; lot_no: string | null } | null;
   opened: { id: string; quantity: string; unit: string; opened_at: string; expires_at: string; status: string }[];
-  label: { id: string; code: string; created_at: string; printed: number } | null }
+  label: { id: string; code: string; created_at: string; printed: number } | null;
+  card: { manufacturer: string | null; supplier: string | null; received_at: string | null; after_opening: { hours: number; basis: string } | null; storage_conditions: string | null;
+    storage_place: string | null; receipt: { id: string; date: string | null; document_no: string | null; document_date: string | null } | null; vsd_no: string | null;
+    ttk: { dish_id: string; label: string } | null; allergens: string | null; composition: string[] | null; origin: 'production' | 'receipt' | 'unknown' } }
 
 export default function LotPage({ params }: { params: Promise<{ lotId: string }> }) {
   const { lotId } = use(params);
@@ -27,7 +30,7 @@ export default function LotPage({ params }: { params: Promise<{ lotId: string }>
   const load = useCallback(() => api<LotCard>(`/orgs/${org.id}/lots/${lotId}`).then(setC).catch((e) => setError(e.message)), [org.id, lotId, setError]);
   useEffect(() => { load(); }, [load]);
   if (!c) return error ? <div className="err">{error}</div> : <p className="muted">Загрузка…</p>;
-  const l = c.lot, tz = org.timezone;
+  const l = c.lot, k = c.card, tz = org.timezone;
   const tone = l.status !== 'available' ? 'crit' : l.expiry_state === 'ok' ? 'ok' : l.expiry_state === 'expired' ? 'crit' : 'warn';
   return (
     <>
@@ -36,14 +39,28 @@ export default function LotPage({ params }: { params: Promise<{ lotId: string }>
       <p style={{ marginTop: 0 }}><span className={`badge ${tone}`}>{l.status !== 'available' ? l.status_label : l.expiry_label}</span></p>
       <div className="card">
         <dl className="kv">
+          <dt>Продукт</dt><dd>{l.product}</dd>
           <dt>Партия</dt><dd>{l.lot_no || 'без номера'}</dd>
-          <dt>Количество</dt><dd>{n(l.quantity)} {l.unit}</dd>
-          <dt>Годен до</dt><dd>{l.expires_at ? `${d(l.expires_at, tz)} — ${l.expiry_basis}` : 'не подтверждён'}</dd>
-          {l.manufactured_at && <><dt>Изготовлен</dt><dd>{d(l.manufactured_at, tz)}</dd></>}
-          <dt>Принят</dt><dd>{dt(l.received_at, tz)}{l.supplier ? ` · ${l.supplier}` : ''}{l.document_no ? ` · ${l.document_no}` : ''}</dd>
-          <dt>Хранение</dt><dd>{l.storage_object_id ? <Link href={`/app/${org.id}/objects/${l.storage_object_id}`}>{l.storage_name}</Link> : '—'} · {l.site_name}</dd>
+          <dt>Изготовитель</dt><dd>{k.manufacturer || <span className="muted">не указан в приёмке</span>}</dd>
+          {k.origin !== 'production' && <><dt>Поставщик</dt><dd>{k.supplier || '—'}</dd></>}
+          <dt>Дата изготовления</dt><dd>{l.manufactured_at ? d(l.manufactured_at, tz) : <span className="muted">не указана</span>}</dd>
+          {k.received_at && <><dt>Дата поступления</dt><dd>{dt(k.received_at, tz)}</dd></>}
+          <dt>Годен до</dt><dd>{l.expires_at ? dt(l.expires_at, tz) : 'не подтверждён'}</dd>
+          <dt>Основание срока</dt><dd>{l.expiry_basis || '—'}</dd>
+          <dt>После вскрытия</dt><dd>{k.after_opening ? `${n(k.after_opening.hours)} ч — ${k.after_opening.basis}` : <span className="muted">правило не задано</span>}</dd>
           {l.opened_at && <><dt>Вскрыто</dt><dd>{dt(l.opened_at, tz)}{c.opened_from && <> · из <Link href={`/app/${org.id}/lots/${c.opened_from.id}`}>исходной тары</Link></>}</dd></>}
-          {l.status_reason && <><dt>Причина</dt><dd>{l.status_reason}</dd></>}
+          <dt>Условия хранения</dt><dd>{k.storage_conditions || <span className="muted">не указаны</span>}</dd>
+          <dt>Количество</dt><dd>{n(l.quantity)} {l.unit}</dd>
+          <dt>Место хранения</dt><dd>{l.storage_object_id ? <Link href={`/app/${org.id}/objects/${l.storage_object_id}`}>{l.storage_name}</Link> : '—'} · {l.site_name}</dd>
+          <dt>Статус</dt><dd>{l.status_label}</dd>
+          {k.receipt && <><dt>Приёмка</dt><dd><Link href={`/app/${org.id}/receipts/${k.receipt.id}`}>{k.receipt.date ? `от ${d(k.receipt.date, tz)}` : 'открыть'}</Link></dd>
+            <dt>УПД / накладная</dt><dd>{k.receipt.document_no ? `№ ${k.receipt.document_no}${k.receipt.document_date ? ` от ${d(k.receipt.document_date, tz)}` : ''}` : '—'}</dd>
+            <dt>ВСД</dt><dd>{k.vsd_no || <span className="muted">нет (если продукция не подконтрольна — не требуется)</span>}</dd></>}
+          {k.ttk && <><dt>ТТК</dt><dd><Link href={`/app/${org.id}/menu/${k.ttk.dish_id}`}>{k.ttk.label}</Link></dd></>}
+          {k.composition && <><dt>Состав</dt><dd>{k.composition.join(', ')}</dd></>}
+          {k.ttk && k.composition && <><dt>Аллергены</dt><dd>{k.allergens || <span className="muted">не указаны в ТТК</span>}</dd></>}
+          {c.label && <><dt>QR-код</dt><dd>этикетка {c.label.code} — в разделе «Этикетка» ниже</dd></>}
+          {l.status_reason && <><dt>Причина статуса</dt><dd>{l.status_reason}</dd></>}
         </dl>
         {l.status !== 'available' && <div className="err">Партию использовать нельзя.</div>}
         {l.status === 'available' && l.expiry_state === 'unconfirmed' && <div className="note">Срок не подтверждён — партию использовать нельзя до подтверждения срока по основанию.</div>}

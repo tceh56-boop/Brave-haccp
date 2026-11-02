@@ -69,7 +69,8 @@ export async function getProductCard(userId: string, orgId: string, dishIdInput:
     if (outdated(tu, ttkId)) issues.push(`ТУ (версия ${tu!.version}) основаны не на действующей ТТК — устарели, нужен пересмотр.`);
     if (outdated(ti, ttkId)) issues.push(`ТИ (версия ${ti!.version}) основана не на действующей ТТК — устарела, нужен пересмотр.`);
     if (costing && ttkId && costing.ttk_version_id !== ttkId) issues.push(`Калькуляционная карточка № ${costing.doc_no} составлена по другой версии ТТК — пересчитайте.`);
-    if (ttk && !ttk.shelf_life_hours) issues.push('В ТТК не указан срок годности в часах — партии нельзя назначить срок.');
+    if (ttk && !(dish.kind === 'dish' ? ttk.sale_hours ?? ttk.shelf_life_hours : ttk.shelf_life_hours))
+      issues.push(dish.kind === 'dish' ? 'В ТТК не указан срок реализации в часах — выпущенной партии нельзя назначить срок.' : 'В ТТК не указан срок партии п/ф в часах — партии нельзя назначить срок.');
     const comp = ttk ? await composition(tx, orgId, dishId) : null;
     if (comp && 'allergens_complete' in comp && !comp.allergens_complete) issues.push('Профиль аллергенов неполный — «не содержит» не утверждается.');
     if (meat?.unknown.length) issues.push(`Не указан вид сырья (ТР ТС 034 / ТР ЕАЭС 051): ${meat.unknown.map((x) => x.name).join(', ')}.`);
@@ -87,6 +88,7 @@ export async function getProductCard(userId: string, orgId: string, dishIdInput:
       },
       composition: comp,
       storage: ttk ? { conditions: ttk.storage_conditions, shelf_life: ttk.shelf_life, shelf_life_hours: ttk.shelf_life_hours,
+        storage_hours: ttk.storage_hours, sale_hours: ttk.sale_hours, opened_hours: ttk.opened_hours, basis: ttk.shelf_basis,
         after_opening: dish.opened_shelf_hours ? { hours: Number(dish.opened_shelf_hours), basis: dish.opened_shelf_basis } : null } : null,
       labeling: { meat_group: meat?.group || null, meat_pct: meat?.meat_pct ?? null, eac: !!active, active_declaration: active?.reg_number || null, declarations },
       ccp: checks,

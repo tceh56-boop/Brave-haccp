@@ -53,7 +53,7 @@ await call('POST', `/orgs/${orgId}/receipts/${rec.id}/lines`, { productId: onion
 await call('POST', `/orgs/${orgId}/receipts/${rec.id}/complete`, {});
 const dish = await call('POST', `/orgs/${orgId}/dishes`, { name: 'Бульон говяжий', kind: 'semi' });
 const v = (await call('GET', `/orgs/${orgId}/dishes/${dish.id}`)).current.version.id;
-await call('PATCH', `/orgs/${orgId}/ttk/${v}`, { yieldG: 1000, technology: 'Варить 3 часа на слабом огне, процедить.', storageConditions: 'при +2…+6 °C', shelfLife: '48 часов', shelfLifeHours: 48 });
+await call('PATCH', `/orgs/${orgId}/ttk/${v}`, { yieldG: 1000, technology: 'Варить 3 часа на слабом огне, процедить.', storageConditions: 'при +2…+6 °C', shelfLife: '48 часов', shelfLifeHours: 48, shelfBasis: 'протоколы лабораторных исследований (обоснование сроков)' });
 await call('POST', `/orgs/${orgId}/ttk/${v}/lines`, { productId: beef.id, unit: 'кг', brutto: 0.8, netto: 0.7 });
 await call('POST', `/orgs/${orgId}/ttk/${v}/lines`, { productId: onion.id, unit: 'кг', brutto: 0.2, netto: 0.18 });
 await call('POST', `/orgs/${orgId}/ttk/${v}/submit`, {}); await call('POST', `/orgs/${orgId}/ttk/${v}/approve`, {});

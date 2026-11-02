@@ -16,7 +16,7 @@ interface Card {
     costing: { doc_no: string; calc_date: string; cost_1: string | null; sale_price: string | null; outdated: boolean } | null };
   composition: { recipe?: { name: string; kind: string; netto_g: number | null }[]; allergens?: string[]; allergens_complete?: boolean; allergens_missing?: string[];
     nutrition?: { protein: number; fat: number; carbs: number; kcal: number } | null; nutrition_coverage_pct?: number; nutrition_verified_pct?: number; error?: string } | null;
-  storage: { conditions: string | null; shelf_life: string | null; shelf_life_hours: string | null; after_opening: { hours: number; basis: string } | null } | null;
+  storage: { conditions: string | null; shelf_life: string | null; shelf_life_hours: string | null; storage_hours: string | null; sale_hours: string | null; opened_hours: string | null; basis: string | null; after_opening: { hours: number; basis: string } | null } | null;
   labeling: { meat_group: string | null; meat_pct: number | null; eac: boolean; active_declaration: string | null; declarations: { id: string; number: number; scheme: string | null; status: string }[] };
   ccp: { name: string; unit: string | null; min_value: string | null; max_value: string | null; basis: string; hazard: string | null; class: string | null }[];
   lab: { programs: { test_type: string; target: string; period_days: number; next_due: string; basis: string }[]; results: { test_type: string; lab_name: string; protocol_no: string; sampled_on: string; result: string }[] };
@@ -69,7 +69,8 @@ export default function ProductCard({ params }: { params: Promise<{ dishId: stri
         <div className="card"><h2>Сроки и хранение</h2>
           <div className="kv">
             <span>Условия хранения</span><b style={{ fontWeight: 400 }}>{c.storage.conditions || 'не указаны'}</b>
-            <span>Срок годности</span><b style={{ fontWeight: 400 }}>{c.storage.shelf_life || 'не указан'}{c.storage.shelf_life_hours ? ` (${n(Number(c.storage.shelf_life_hours))} ч — срок партии)` : ''}</b>
+            <span>Срок годности</span><b style={{ fontWeight: 400 }}>{c.storage.shelf_life || 'не указан'}{[[c.storage.storage_hours, 'хранение'], [c.storage.sale_hours, 'реализация'], [c.storage.shelf_life_hours, 'партия п/ф'], [c.storage.opened_hours, 'после вскрытия']]
+              .filter(([h]) => h).map(([h, l]) => `; ${l} — ${n(Number(h))} ч`).join('')}{c.storage.basis ? ` (основание: ${c.storage.basis})` : ''}</b>
             <span>После вскрытия упаковки</span><b style={{ fontWeight: 400 }}>{c.storage.after_opening ? `${n(c.storage.after_opening.hours)} ч — ${c.storage.after_opening.basis}` : 'не установлен'}</b>
           </div>
         </div>)}

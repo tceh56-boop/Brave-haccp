@@ -18,7 +18,7 @@ interface Obj { id: string; name: string }
 
 const CHECKS: [string, string][] = [['packaging', 'Упаковка цела'], ['labeling', 'Маркировка есть и читается'], ['documents', 'Документы в порядке'], ['quality', 'Качество (вид, запах)']];
 const DEC: Record<string, [string, string]> = { accepted: ['принято', 'ok'], quarantine: ['карантин', 'warn'], rejected: ['отказ', 'crit'] };
-const empty = { productId: '', quantity: '', lotNo: '', manufacturedAt: '', expiresAt: '', expiryBasis: 'маркировка изготовителя', temperature: '', storageObjectId: '', decisionReason: '', unitPrice: '' };
+const empty = { productId: '', quantity: '', lotNo: '', manufacturedAt: '', expiresAt: '', expiryBasis: 'маркировка изготовителя', temperature: '', storageObjectId: '', decisionReason: '', unitPrice: '', manufacturer: '', vsdNo: '', storageConditions: '' };
 
 export default function ReceiptPage({ params }: { params: Promise<{ receiptId: string }> }) {
   const { receiptId } = use(params);
@@ -48,6 +48,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
       expiresAt: f.expiresAt || null, expiryBasis: f.expiresAt ? f.expiryBasis : null, temperature: f.temperature ? f.temperature.replace(',', '.') : null,
       checks, decision, decisionReason: decision === 'accepted' ? null : f.decisionReason, storageObjectId: f.storageObjectId || null,
       unitPrice: f.unitPrice ? f.unitPrice.replace(',', '.') : null,
+      manufacturer: f.manufacturer || null, vsdNo: f.vsdNo || null, storageConditions: f.storageConditions || null,
     } });
     setF({ ...empty, storageObjectId: f.storageObjectId }); setChecks({ packaging: null, labeling: null, documents: null, quality: null }); await load();
   });
@@ -145,6 +146,9 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
             <div><label htmlFor="so">Место хранения</label>
               <select id="so" value={f.storageObjectId} onChange={(e) => setF({ ...f, storageObjectId: e.target.value })}><option value="">—</option>{objects.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
             <div><label htmlFor="up">Цена за {unit || 'единицу'}, ₽</label><input id="up" inputMode="decimal" value={f.unitPrice} onChange={(e) => setF({ ...f, unitPrice: e.target.value })} placeholder="как в накладной" /></div>
+            <div><label htmlFor="mfr">Изготовитель</label><input id="mfr" value={f.manufacturer} onChange={(e) => setF({ ...f, manufacturer: e.target.value })} placeholder="как на маркировке" /></div>
+            <div><label htmlFor="vsd">Номер ВСД</label><input id="vsd" value={f.vsdNo} onChange={(e) => setF({ ...f, vsdNo: e.target.value })} placeholder="для подконтрольной продукции" /></div>
+            <div><label htmlFor="stc">Условия хранения</label><input id="stc" value={f.storageConditions} onChange={(e) => setF({ ...f, storageConditions: e.target.value })} placeholder="как на маркировке, напр. 0…+4 °C" /></div>
           </div>
           <h3 style={{ marginTop: 14 }}>Проверки</h3>
           {CHECKS.map(([k, label]) => (

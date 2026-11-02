@@ -17,7 +17,7 @@ interface Method { code: string; name: string; kind: 'cold' | 'thermal' }
 interface TodayNorm { id: string; loss_pct: number; basis: string; season: string }
 interface Version { id: string; version: number; status: string; status_label: string; card_date: string | null; semi_yield_g: string | null;
   organoleptic: { appearance?: string | null; color?: string | null; consistency?: string | null; taste?: string | null } | null; serving: string | null; menu_description: string | null; yield_g: string | null; portion_g: string | null; technology: string | null; storage_conditions: string | null;
-  shelf_life: string | null; shelf_life_hours: string | null; quality: string | null; allergens: string | null; source: string; change_reason: string | null; return_note: string | null; approved_at: string | null }
+  shelf_life: string | null; shelf_life_hours: string | null; storage_hours: string | null; sale_hours: string | null; opened_hours: string | null; shelf_basis: string | null; quality: string | null; allergens: string | null; source: string; change_reason: string | null; return_note: string | null; approved_at: string | null }
 interface Cost { total: number | null; known: number; complete: boolean; missing: string[]; per_portion: number | null; per_kg: number | null; food_cost_pct: number | null;
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
 interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' }
@@ -224,12 +224,16 @@ function ReleaseChecks({ dishId }: { dishId: string }) {
   );
 }
 
+const hrs = (x: string | null) => (x ? String(Number(x)) : '');
+const SHELF: [string, string][] = [['storage_hours', 'Срок хранения'], ['sale_hours', 'Срок реализации'], ['shelf_life_hours', 'Срок партии п/ф'], ['opened_hours', 'После вскрытия упаковки']];
+
 function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string; editable: boolean; onSave: (b: object) => void; busy: boolean }) {
   const init = () => ({ yieldG: v.yield_g ? String(Number(v.yield_g)) : '', portionG: v.portion_g ? String(Number(v.portion_g)) : '', technology: v.technology || '', storageConditions: v.storage_conditions || '',
     shelfLife: v.shelf_life || '', quality: v.quality || '', allergens: v.allergens || '', shelfLifeHours: v.shelf_life_hours ? String(Number(v.shelf_life_hours)) : '',
     cardDate: v.card_date ? v.card_date.slice(0, 10) : '', semiYieldG: v.semi_yield_g ? String(Number(v.semi_yield_g)) : '',
     appearance: v.organoleptic?.appearance || '', color: v.organoleptic?.color || '', consistency: v.organoleptic?.consistency || '', taste: v.organoleptic?.taste || '',
-    serving: v.serving || '', menuDescription: v.menu_description || '', recipeBasis: v.source || '' });
+    serving: v.serving || '', menuDescription: v.menu_description || '', recipeBasis: v.source || '',
+    storageHours: hrs(v.storage_hours), saleHours: hrs(v.sale_hours), openedHours: hrs(v.opened_hours), shelfBasis: v.shelf_basis || '' });
   const [f, setF] = useState(init);
   useEffect(() => { setF(init()); }, [v.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!editable) {
@@ -239,7 +243,9 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
         <dt>Технология</dt><dd style={{ whiteSpace: 'pre-line' }}>{v.technology || '—'}</dd>
         <dt>Хранение</dt><dd>{v.storage_conditions || '—'}</dd>
         <dt>Срок</dt><dd>{v.shelf_life || '—'}</dd>
-        {kind === 'semi' && <><dt>Срок партии</dt><dd>{v.shelf_life_hours ? `${n(v.shelf_life_hours)} ч от выпуска` : 'не задан — партия п/ф получит «срок не подтверждён»'}</dd></>}
+        {SHELF.map(([k, l]) => { const x = (v as unknown as Record<string, string | null>)[k]; return x ? <span key={k} style={{ display: 'contents' }}><dt>{l}</dt><dd>{n(x)} ч</dd></span> : null; })}
+        {kind === 'semi' && !v.shelf_life_hours && <><dt>Срок партии п/ф</dt><dd>не задан — партия п/ф получит «срок не подтверждён»</dd></>}
+        {v.shelf_basis && <><dt>Основание сроков</dt><dd>{v.shelf_basis}</dd></>}
         {v.quality && <><dt>Качество</dt><dd>{v.quality}</dd></>}
         {v.serving && <><dt>Подача</dt><dd>{v.serving}</dd></>}
         {v.organoleptic && Object.values(v.organoleptic).some(Boolean) && <><dt>Органолептика</dt><dd>{[['Внешний вид', v.organoleptic.appearance], ['Цвет', v.organoleptic.color], ['Консистенция', v.organoleptic.consistency], ['Вкус и запах', v.organoleptic.taste]].filter(([, x]) => x).map(([k, x]) => `${k}: ${x}`).join('; ')}</dd></>}
@@ -249,7 +255,7 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
   }
   const num = (s: string) => (s ? Number(s.replace(',', '.')) : null);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null, shelfLifeHours: num(f.shelfLifeHours), cardDate: f.cardDate || undefined, semiYieldG: num(f.semiYieldG),
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...f, yieldG: num(f.yieldG), portionG: num(f.portionG), quality: f.quality || null, allergens: f.allergens || null, shelfLifeHours: num(f.shelfLifeHours), storageHours: num(f.storageHours), saleHours: num(f.saleHours), openedHours: num(f.openedHours), shelfBasis: f.shelfBasis || null, cardDate: f.cardDate || undefined, semiYieldG: num(f.semiYieldG),
       organoleptic: { appearance: f.appearance || null, color: f.color || null, consistency: f.consistency || null, taste: f.taste || null }, serving: f.serving || null, menuDescription: f.menuDescription || null }); }}>
       <div className="grid2">
         <div><label htmlFor="cd">Дата рецептуры</label><input id="cd" type="date" value={f.cardDate} onChange={(e) => setF({ ...f, cardDate: e.target.value })} /></div>
@@ -262,11 +268,19 @@ function Fields({ v, kind, editable, onSave, busy }: { v: Version; kind: string;
       <textarea id="tc" rows={5} value={f.technology} onChange={(e) => setF({ ...f, technology: e.target.value })} />
       <div className="grid2">
         <div><label htmlFor="sc">Условия хранения</label><input id="sc" value={f.storageConditions} onChange={(e) => setF({ ...f, storageConditions: e.target.value })} placeholder="например, при +2…+6 °C" /></div>
-        <div><label htmlFor="sl">Срок годности (реализации)</label><input id="sl" value={f.shelfLife} onChange={(e) => setF({ ...f, shelfLife: e.target.value })} placeholder="по утверждённому основанию" /></div>
+        <div><label htmlFor="sl">Срок (формулировка для документов)</label><input id="sl" value={f.shelfLife} onChange={(e) => setF({ ...f, shelfLife: e.target.value })} placeholder="напр. 48 ч при +2…+6 °C" /></div>
         <div><label htmlFor="ql">Показатели качества</label><input id="ql" value={f.quality} onChange={(e) => setF({ ...f, quality: e.target.value })} /></div>
         <div><label htmlFor="al">Аллергены</label><input id="al" value={f.allergens} onChange={(e) => setF({ ...f, allergens: e.target.value })} /></div>
-        {kind === 'semi' && <div><label htmlFor="slh">Срок партии п/ф, ч от выпуска</label><input id="slh" inputMode="decimal" value={f.shelfLifeHours} onChange={(e) => setF({ ...f, shelfLifeHours: e.target.value })} placeholder="по утверждённому основанию" /></div>}
       </div>
+      <h3 style={{ marginTop: 10 }}>Сроки, ч</h3>
+      <div className="grid2">
+        <div><label htmlFor="sth">Срок хранения</label><input id="sth" inputMode="decimal" value={f.storageHours} onChange={(e) => setF({ ...f, storageHours: e.target.value })} placeholder="при указанных условиях" /></div>
+        {kind === 'dish' && <div><label htmlFor="sah">Срок реализации</label><input id="sah" inputMode="decimal" value={f.saleHours} onChange={(e) => setF({ ...f, saleHours: e.target.value })} placeholder="с окончания приготовления" /></div>}
+        {kind === 'semi' && <div><label htmlFor="slh">Срок партии п/ф</label><input id="slh" inputMode="decimal" value={f.shelfLifeHours} onChange={(e) => setF({ ...f, shelfLifeHours: e.target.value })} placeholder="от выпуска" /></div>}
+        <div><label htmlFor="oph">После вскрытия упаковки</label><input id="oph" inputMode="decimal" value={f.openedHours} onChange={(e) => setF({ ...f, openedHours: e.target.value })} placeholder="если продукция упакована" /></div>
+      </div>
+      <label htmlFor="sb">Основание сроков</label><input id="sb" value={f.shelfBasis} onChange={(e) => setF({ ...f, shelfBasis: e.target.value })} placeholder="ТУ/СТО с протоколами исследований или пункт санитарных правил" />
+      <p className="small muted">Срок выпущенной партии: для п/ф — срок партии п/ф, для готовой продукции — срок реализации. Срок после вскрытия становится правилом вскрытия тары этой продукции.</p>
       <label htmlFor="sv">Подача (оформление, температура подачи)</label><textarea id="sv" rows={2} value={f.serving} onChange={(e) => setF({ ...f, serving: e.target.value })} />
       <h3 style={{ marginTop: 10 }}>Органолептические показатели (для ТТК)</h3>
       <div className="grid2">

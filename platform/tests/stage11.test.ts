@@ -23,7 +23,7 @@ async function invite(role: string) {
 async function withTtk(name: string, kind: 'dish' | 'semi', yieldG: number, technology: string, lines: Record<string, unknown>[], approve = true) {
   const d = await createDish(chef.id, orgId, { name, kind, salePrice: kind === 'dish' ? 350 : undefined });
   const v = (await getDish(chef.id, orgId, d.id)).current!.version.id;
-  await updateVersion(chef.id, orgId, v, { yieldG, portionG: kind === 'dish' ? yieldG : undefined, technology, storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24 });
+  await updateVersion(chef.id, orgId, v, { yieldG, portionG: kind === 'dish' ? yieldG : undefined, technology, storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24, shelfBasis: 'протоколы лабораторных исследований (обоснование сроков)' });
   for (const l of lines) await addLine(chef.id, orgId, v, l);
   if (approve) { await submitVersion(chef.id, orgId, v); await approveVersion(chef.id, orgId, v); }
   return d.id as string;

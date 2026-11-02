@@ -374,12 +374,28 @@ export async function calcVersion(tx: Tx, orgId: string, versionId: string, stac
 
 /* ───────────── Препятствия к утверждению ───────────── */
 
+/** Сроки ТТК (ТЗ 5.2): каждый — отдельно, в часах; при любом сроке — основание; сроки согласованы между собой. */
+export const SHELF_LIVES = [['storage_hours', 'срок хранения'], ['sale_hours', 'срок реализации'], ['shelf_life_hours', 'срок партии п/ф'], ['opened_hours', 'срок после вскрытия']] as const;
+export function shelfLifeProblems(v: Record<string, any>): string[] {
+  const out: string[] = [];
+  const h = (k: string) => (v[k] === null || v[k] === undefined || v[k] === '' ? null : Number(v[k]));
+  const set = SHELF_LIVES.filter(([k]) => h(k) !== null);
+  if (set.length && (!v.shelf_basis || v.shelf_basis.trim().length < 5))
+    out.push(`Укажите основание сроков (${set.map(([, l]) => l).join(', ')}): ТУ/СТО с протоколами исследований или пункт санитарных правил.`);
+  const st = h('storage_hours');
+  if (st !== null) for (const [k, l] of SHELF_LIVES.slice(1)) if (h(k) !== null && h(k)! > st) out.push(`${l[0].toUpperCase()}${l.slice(1)} (${h(k)} ч) больше срока хранения (${st} ч).`);
+  const batch = h('shelf_life_hours') ?? h('sale_hours');
+  if (batch !== null && h('opened_hours') !== null && h('opened_hours')! > batch) out.push(`Срок после вскрытия (${h('opened_hours')} ч) больше срока партии (${batch} ч).`);
+  return out;
+}
+
 async function versionBlockers(tx: Tx, orgId: string, v: Record<string, any>, dish: Record<string, any>, lines: Record<string, any>[]): Promise<string[]> {
   const out: string[] = [];
   if (!v.technology || v.technology.trim().length < 10) out.push('Опишите технологию приготовления.');
   if (!v.storage_conditions) out.push('Укажите условия хранения.');
   if (!v.shelf_life) out.push('Укажите срок годности (реализации) — по утверждённому основанию.');
   if (!v.yield_g) out.push('Укажите выход.');
+  out.push(...shelfLifeProblems(v));
   if (!v.source || v.source.trim().length < 3) out.push('Укажите основание рецептуры: сборник (название, год, номер рецептуры) или «Собственная разработка».');
   else if (!/^собственн/i.test(v.source.trim()) && !(await tx.query(`select 1 from evidence_files where organization_id = $1 and entity_type = 'ttk_version' and entity_id = $2 limit 1`, [orgId, v.id])).rowCount)
     out.push(`Приложите файл основания рецептуры (скан или фото страницы «${v.source.trim()}»).`);
@@ -415,6 +431,9 @@ const VersionInput = z.object({
   cardDate: z.iso.date('Дата рецептуры — ГГГГ-ММ-ДД.').optional(), semiYieldG: z.coerce.number().min(0).nullable().optional(),
   organoleptic: z.object({ appearance: optText(1000), color: optText(1000), consistency: optText(1000), taste: optText(1000) }).optional(),
   serving: optText(2000), menuDescription: optText(2000),
+  // ТЗ 5.2: сроки раздельно, в часах, с одним основанием
+  storageHours: z.coerce.number().positive('Срок хранения — больше нуля часов.').max(24 * 365).nullable().optional(), saleHours: z.coerce.number().positive('Срок реализации — больше нуля часов.').max(24 * 365).nullable().optional(),
+  openedHours: z.coerce.number().positive('Срок после вскрытия — больше нуля часов.').max(24 * 365).nullable().optional(), shelfBasis: optText(500),
   recipeBasis: z.string().trim().min(3, 'Основание рецептуры: сборник, год, номер рецептуры или «Собственная разработка».').max(500).optional(),
 });
 
@@ -445,7 +464,8 @@ export async function updateVersion(userId: string, orgId: string, versionId: st
     ['storageConditions', 'storage_conditions', (x) => x ?? null], ['shelfLife', 'shelf_life', (x) => x ?? null], ['quality', 'quality', (x) => x ?? null],
     ['allergens', 'allergens', (x) => x ?? null], ['shelfLifeHours', 'shelf_life_hours', (x) => x ?? null], ['semiYieldG', 'semi_yield_g', (x) => x ?? null],
     ['serving', 'serving', (x) => x ?? null], ['menuDescription', 'menu_description', (x) => x ?? null],
-    ['recipeBasis', 'source', (x) => x],
+    ['recipeBasis', 'source', (x) => x], ['storageHours', 'storage_hours', (x) => x ?? null], ['saleHours', 'sale_hours', (x) => x ?? null],
+    ['openedHours', 'opened_hours', (x) => x ?? null], ['shelfBasis', 'shelf_basis', (x) => x ?? null],
   ];
   return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
     const v = await draftVersion(tx, orgId, versionId);
@@ -676,10 +696,10 @@ export async function newVersion(userId: string, orgId: string, dishId: string, 
     const src = (await tx.query(`select * from ttk_versions where dish_id = $1 and organization_id = $2 order by (status = 'approved') desc, version desc limit 1`, [dishId, orgId])).rows[0];
     if (!src) throw Errors.notFound('Блюдо не найдено.');
     const max = Number((await tx.query(`select max(version) as m from ttk_versions where dish_id = $1`, [dishId])).rows[0].m);
-    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours, semi_yield_g, organoleptic, serving, menu_description)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) returning *`,
+    const v = (await tx.query(`insert into ttk_versions (organization_id, dish_id, version, yield_g, portion_g, technology, storage_conditions, shelf_life, quality, allergens, source, change_reason, created_by, shelf_life_hours, semi_yield_g, organoleptic, serving, menu_description, storage_hours, sale_hours, opened_hours, shelf_basis)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) returning *`,
       [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours, src.semi_yield_g,
-        JSON.stringify(src.organoleptic || {}), src.serving, src.menu_description])).rows[0];
+        JSON.stringify(src.organoleptic || {}), src.serving, src.menu_description, src.storage_hours, src.sale_hours, src.opened_hours, src.shelf_basis])).rows[0];
     await copyLines(tx, src.id, v.id, 0);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.new_version', entityType: 'ttk_version', entityId: v.id, after: { version: v.version, from: src.version }, reason: d.changeReason });
     return v;
@@ -728,6 +748,14 @@ export async function approveVersion(userId: string, orgId: string, versionId: s
     if ((await tx.query(`select 1 from haccp_plans where organization_id = $1 and status = 'approved'`, [orgId])).rowCount) {
       await openTask(tx, { orgId, kind: 'haccp_review', title: `Проверить план ХАССП: новая ТТК «${dish.name}» v${v.version}`, details: 'Изменилась рецептура или технология — проверьте опасности, ККТ и пределы.',
         entityType: 'dish', entityId: dish.id, assigneeRole: 'haccp_lead', createdBy: userId });
+    }
+    // срок после вскрытия из ТТК — правило товара выпускаемой продукции (по нему вскрывают тару партии)
+    if (v.opened_hours && dish.product_id) {
+      const basis = `ТТК «${dish.name}» v${v.version}: ${v.shelf_basis}`;
+      const p = (await tx.query(`select opened_shelf_hours, opened_shelf_basis from products where id = $1`, [dish.product_id])).rows[0];
+      await tx.query(`update products set opened_shelf_hours = $2, opened_shelf_basis = $3 where id = $1`, [dish.product_id, v.opened_hours, basis]);
+      await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'product.opened_shelf_life', entityType: 'product', entityId: dish.product_id,
+        before: { hours: p?.opened_shelf_hours ?? null, basis: p?.opened_shelf_basis ?? null }, after: { hours: Number(v.opened_hours), basis } });
     }
     const reviews = await openDependentReviews(tx, orgId, userId, dish, v.version, v.change_reason);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.approve', entityType: 'ttk_version', entityId: versionId,

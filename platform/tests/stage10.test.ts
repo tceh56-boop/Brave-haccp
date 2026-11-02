@@ -56,7 +56,7 @@ beforeAll(async () => {
   onion = (await createProduct(chef.id, orgId, { name: 'Лук репчатый', unit: 'кг' })).id;
   supplierId = (await createSupplier(chef.id, orgId, { name: 'ООО «Фермер»' })).id;
   // Бульон (п/ф): 1 кг выхода из 0,8 кг говядины и 0,2 кг лука, хранение 48 ч
-  broth = await withTtk('Бульон говяжий', 'semi', 1000, [{ productId: beef, unit: 'кг', brutto: 0.8, netto: 0.7 }, { productId: onion, unit: 'кг', brutto: 0.2, netto: 0.18 }], { shelfLifeHours: 48 });
+  broth = await withTtk('Бульон говяжий', 'semi', 1000, [{ productId: beef, unit: 'кг', brutto: 0.8, netto: 0.7 }, { productId: onion, unit: 'кг', brutto: 0.2, netto: 0.18 }], { shelfLifeHours: 48, shelfBasis: 'протоколы лабораторных исследований (обоснование сроков)' });
   // Суп (блюдо): порция 300 г — 250 г бульона + 50 г лука
   stew = await withTtk('Суп с луком', 'dish', 300, [{ subDishId: broth, unit: 'г', brutto: 250, netto: 250 }, { productId: onion, unit: 'г', brutto: 50, netto: 50 }]);
   await receive(beef, 4, 600, 'Г-1', inDays(2));
@@ -108,7 +108,7 @@ describe('Контроль при выпуске и выпуск партии п
     const beefBefore = await qty(beef), onionBefore = await qty(onion);
     const id = op();
     const r = await completeProduction(cook.id, orgId, orderId, { actualKg: '1,9', operationId: id });
-    expect(r).toMatchObject({ unit: 'кг', quantity: 1.9, expiry_basis: expect.stringContaining('ТТК «Бульон говяжий» v1: 48 ч'), yield_diff_pct: -5 });
+    expect(r).toMatchObject({ unit: 'кг', quantity: 1.9, expiry_basis: expect.stringContaining('ТТК «Бульон говяжий» v1: срок партии 48 ч'), yield_diff_pct: -5 });
     // 2 кг выхода: говядина 1,6 кг (из Г-1 по 600 ₽ — ближайший срок), лук 0,4 кг по 40 ₽ → 960 + 16 = 976 ₽
     expect(r.cost).toBe(976);
     expect(r.unit_price).toBeCloseTo(976 / 1.9, 2);

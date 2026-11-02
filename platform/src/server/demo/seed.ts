@@ -208,7 +208,7 @@ export async function seedDemo() {
   // Производство п/ф: «Соус сливочный» с ККТ «температура в толще» и сроком партии 24 ч — выпущенная партия и задание в плане
   const sauce = (await createDish(chef.id, orgId, { name: 'Соус сливочный', kind: 'semi', category: 'Полуфабрикаты' })).id;
   const sv = (await getDish(chef.id, orgId, sauce)).current!.version.id;
-  await updateVersion(chef.id, orgId, sv, { yieldG: 1000, technology: 'Лук пассеровать, добавить сливки, довести до кипения, уварить на треть.', storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24 });
+  await updateVersion(chef.id, orgId, sv, { yieldG: 1000, technology: 'Лук пассеровать, добавить сливки, довести до кипения, уварить на треть.', storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24, shelfBasis: 'демо-пример: замените основанием предприятия (ТУ/СТО с протоколами)' });
   await addLine(chef.id, orgId, sv, { productId: p.cream, unit: 'л', brutto: 1.2, netto: 1.2 });
   await addLine(chef.id, orgId, sv, { productId: p.onion, unit: 'г', brutto: 120, netto: 100 });
   await submitVersion(chef.id, orgId, sv);

@@ -31,7 +31,7 @@ async function invite(role: string) {
 async function dish(name: string, lines: [string, number][]) {
   const d = await createDish(owner.id, orgId, { name, kind: 'dish' });
   const v = (await getDish(owner.id, orgId, d.id)).current!.version.id;
-  await updateVersion(owner.id, orgId, v, { yieldG: 1000, portionG: 250, technology: 'Ингредиенты подготавливают, формуют, тушат до готовности.', storageConditions: 'при температуре от +2 до +6 °C', shelfLife: '48 часов', shelfLifeHours: 48 });
+  await updateVersion(owner.id, orgId, v, { yieldG: 1000, portionG: 250, technology: 'Ингредиенты подготавливают, формуют, тушат до готовности.', storageConditions: 'при температуре от +2 до +6 °C', shelfLife: '48 часов', shelfLifeHours: 48, shelfBasis: 'протоколы лабораторных исследований (обоснование сроков)' });
   for (const [p, kg] of lines) await addLine(owner.id, orgId, v, { productId: p, unit: 'кг', brutto: kg, netto: kg });
   await submitVersion(owner.id, orgId, v); await approveVersion(owner.id, orgId, v);
   return d.id;

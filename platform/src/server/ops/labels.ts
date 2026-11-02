@@ -204,9 +204,9 @@ export async function openLot(userId: string, orgId: string, lotId: string, inpu
       ? `срок изготовителя наступает раньше, чем ${fmtNum(hours)} ч после вскрытия (${basis})`
       : `после вскрытия ${fmtNum(hours)} ч: ${basis}`;
     const child = (await tx.query(`insert into lots (organization_id, site_id, product_id, receipt_line_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis,
-        storage_object_id, status, status_reason, unit_price, opened_at)
-      values ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, 'available', 'вскрытая тара', $11, $12) returning id`,
-      [orgId, lot.site_id, lot.product_id, lot.receipt_line_id, lot.lot_no, lot.unit, lot.manufactured_at, expiresAt, expiryBasis, lot.storage_object_id, lot.unit_price, now])).rows[0];
+        storage_object_id, status, status_reason, unit_price, opened_at, storage_conditions)
+      values ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, 'available', 'вскрытая тара', $11, $12, $13) returning id`,
+      [orgId, lot.site_id, lot.product_id, lot.receipt_line_id, lot.lot_no, lot.unit, lot.manufactured_at, expiresAt, expiryBasis, lot.storage_object_id, lot.unit_price, now, lot.storage_conditions])).rows[0];
     await tx.query(`insert into lot_links (organization_id, parent_lot_id, child_lot_id, kind, quantity, unit) values ($1, $2, $3, 'opened', $4, $5)`, [orgId, lot.id, child.id, qty, lot.unit]);
     await move(tx, { orgId, siteId: lot.site_id, lotId: lot.id, productId: lot.product_id, kind: 'open_out', quantity: -qty, unit: lot.unit, refType: 'lot', refId: child.id, operationId: d.operationId, userId, reason: 'вскрытие тары' });
     await move(tx, { orgId, siteId: lot.site_id, lotId: child.id, productId: lot.product_id, kind: 'open_in', quantity: qty, unit: lot.unit, refType: 'lot', refId: lot.id, operationId: d.operationId, userId, reason: 'вскрытие тары' });

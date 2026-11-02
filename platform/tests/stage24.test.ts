@@ -45,7 +45,7 @@ beforeAll(async () => {
   beefLot = (await withSystem((tx) => tx.query(`select id from lots where product_id = $1`, [beef]))).rows[0].id;
   const d = await createDish(chef.id, orgId, { name: 'Фарш говяжий с луком', kind: 'semi' });
   const v = (await getDish(chef.id, orgId, d.id)).current!.version.id;
-  await updateVersion(chef.id, orgId, v, { yieldG: 1000, technology: 'Мясо и лук измельчают на мясорубке, перемешивают.', storageConditions: 'при температуре от +2 до +6 °C', shelfLife: '24 часа', shelfLifeHours: 24 });
+  await updateVersion(chef.id, orgId, v, { yieldG: 1000, technology: 'Мясо и лук измельчают на мясорубке, перемешивают.', storageConditions: 'при температуре от +2 до +6 °C', shelfLife: '24 часа', shelfLifeHours: 24, shelfBasis: 'протоколы лабораторных исследований (обоснование сроков)' });
   await addLine(chef.id, orgId, v, { productId: onion, unit: 'кг', brutto: 0.2, netto: 0.17 });
   await addLine(chef.id, orgId, v, { productId: beef, unit: 'кг', brutto: 0.9, netto: 0.85 });
   await submitVersion(chef.id, orgId, v); await approveVersion(chef.id, orgId, v);

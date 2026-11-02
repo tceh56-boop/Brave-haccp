@@ -48,7 +48,7 @@ const pr = {};
 for (const [key, name] of [['milk', 'Молоко 3,2%'], ['flour', 'Мука пшеничная'], ['butter', 'Масло сливочное 82,5%'], ['salt', 'Соль поваренная']]) pr[key] = (await call('POST', `/orgs/${orgId}/products`, { name, unit: 'кг' })).id;
 const dish = await call('POST', `/orgs/${orgId}/dishes`, { name: 'Соус бешамель', kind: 'semi' });
 const v = (await call('GET', `/orgs/${orgId}/dishes/${dish.id}`)).current.version.id;
-await call('PATCH', `/orgs/${orgId}/ttk/${v}`, { yieldG: 1000, technology: 'Муку обжарить на масле, влить горячее молоко, варить 10 минут, посолить.', storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24 });
+await call('PATCH', `/orgs/${orgId}/ttk/${v}`, { yieldG: 1000, technology: 'Муку обжарить на масле, влить горячее молоко, варить 10 минут, посолить.', storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24, shelfBasis: 'протоколы лабораторных исследований (обоснование сроков)' });
 for (const [key, kg] of [['milk', 0.9], ['flour', 0.06], ['butter', 0.06], ['salt', 0.01]]) await call('POST', `/orgs/${orgId}/ttk/${v}/lines`, { productId: pr[key], unit: 'кг', brutto: kg, netto: kg });
 await call('POST', `/orgs/${orgId}/ttk/${v}/submit`, {}); await call('POST', `/orgs/${orgId}/ttk/${v}/approve`, {});
 
