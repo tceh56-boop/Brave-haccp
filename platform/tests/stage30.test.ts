@@ -87,6 +87,9 @@ describe('Управленческие отчёты', () => {
     expect(Number(rev.plan)).toBeGreaterThan(0);
     const cf = (await econReport(acc.id, orgId, P('cash_flow'))).table;
     expect(cf.notes!.join(' ')).toMatch(/Оплаты поставщикам в системе не ведутся/);
+    const pl = (await econReport(acc.id, orgId, P('pnl'))).table;
+    expect(pl.rows.find((r) => r.item === 'Чистая выручка')).toMatchObject({ amount: 4300 });
+    expect(pl.rows.find((r) => r.item === 'Возвраты')).toMatchObject({ amount: -300 });
     const de = (await econReport(acc.id, orgId, P('debts'))).table;
     expect(de.rows.every((r) => /не ведётся/.test(String(r.value)))).toBe(true);
     const co = (await econReport(acc.id, orgId, P('completeness'))).table;

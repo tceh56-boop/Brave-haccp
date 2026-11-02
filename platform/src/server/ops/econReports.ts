@@ -16,6 +16,8 @@ import type { Table } from './tableExport';
  */
 
 export const REPORTS = {
+  pnl: 'Отчет руководителя (P&L)',
+  abc: 'ABC / XYZ блюд',
   stock_value: 'Остатки склада в рублях',
   purchases: 'Закупки по поставщикам',
   price_changes: 'Изменение закупочных цен',
@@ -44,6 +46,24 @@ async function build(c: Ctx, kind: ReportKind): Promise<Table> {
   const { tx, per, args } = c;
   const q = async (sql: string, a: unknown[] = args) => (await tx.query(sql, a)).rows;
   switch (kind) {
+    case 'pnl': {
+      const f = await pnl(c.userId, c.orgId, { from: c.from, to: c.to, siteId: c.siteId });
+      const row = (item: string, amount: number | null, pctV: number | null = null) => ({ item, amount, pct: pctV });
+      const rows = [row('Валовая выручка', f.gross_revenue), row('Возвраты', -f.returns), row('Чистая выручка', f.revenue, 100),
+        row('Количество заказов', f.orders), row('Средний чек', f.avg_check), row('Себестоимость продаж', -f.cogs, f.pct.cogs), row('Валовая прибыль', f.gross_margin, f.pct.gross),
+        row('Списания (подтверждённые потери)', -f.losses, f.pct.losses), row('ФОТ', -f.payroll),
+        ...Object.entries(f.expenses).filter(([k]) => k !== 'payroll').map(([k, v]) => row(EXPENSE_CATEGORY[k] || k, -v)),
+        row('Управленческая прибыль', f.profit, f.pct.profit), row('Prime Cost (себестоимость + ФОТ)', f.prime_cost, f.pct.prime),
+        row('Фудкост (по продажам с известной себестоимостью)', null, f.food_cost_pct), row('Наценка', null, f.markup_pct), row('Маржинальность', null, f.margin_pct)];
+      return { title: REPORTS.pnl, columns: [{ key: 'item', label: 'Показатель' }, { key: 'amount', label: 'Сумма, ₽', type: 'money' }, { key: 'pct', label: '% от чистой выручки', type: 'pct' }],
+        rows, notes: [`Данные: ${f.status_label}.`, ...f.reasons.map((r) => `— ${r.text}`)] };
+    }
+    case 'abc': {
+      const a = await abcXyz(c.userId, c.orgId, { from: c.from, to: c.to, siteId: c.siteId });
+      return { title: REPORTS.abc, columns: [{ key: 'name', label: 'Блюдо' }, { key: 'qty', label: 'Продано', type: 'num' }, { key: 'revenue', label: 'Выручка, ₽', type: 'money' },
+          { key: 'revenue_share', label: 'Доля выручки', type: 'pct' }, { key: 'abc_revenue', label: 'ABC (выручка)' }, { key: 'abc_margin', label: 'ABC (маржа)' }, { key: 'cv', label: 'Вариация', type: 'pct' }, { key: 'xyz', label: 'XYZ' }],
+        rows: a.rows, notes: a.notes };
+    }
     case 'stock_value': {
       const rows = (await q(`select p.name, l.unit, sum(l.quantity)::float as qty, count(*)::int as lots,
           sum(l.quantity * l.unit_price) filter (where l.unit_price is not null)::float as value,
