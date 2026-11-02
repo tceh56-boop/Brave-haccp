@@ -9,7 +9,7 @@ import { dt } from '@/lib/fmt';
 import type { FormInfo } from '../page';
 
 interface Signoff { id: string; signer: string; signed_at: string; rows_count: number; note: string | null; valid: boolean }
-interface Journal { form: FormInfo; site: { name: string }; period: { from: string; to: string }; columns: string[]; rows: string[][]; grid: boolean; content_hash: string; signoffs: Signoff[]; blockers: string[] }
+interface Journal { form: FormInfo; site: { name: string }; period: { from: string; to: string }; columns: string[]; rows: string[][]; grid: boolean; content_hash: string; signoffs: Signoff[]; blockers: string[]; gaps?: string[] }
 interface Entry { id: string; occurred_at: string; entered_at: string; is_late: boolean; values: Record<string, string>; corrects_id: string | null; correction_reason: string | null; author: string }
 
 const ymd = (date: Date, tz: string) => date.toLocaleDateString('sv-SE', { timeZone: tz });
@@ -80,6 +80,7 @@ export default function JournalPage({ params }: { params: Promise<{ code: string
             {valid ? <div className="okbox">Подписано: {valid.signer}, {dt(valid.signed_at, org.timezone)}{valid.note ? ` — ${valid.note}` : ''}</div>
               : j.signoffs.length ? <div className="note">Журнал изменился после подписи ({j.signoffs[0].signer}, {dt(j.signoffs[0].signed_at, org.timezone)}). Нужна новая подпись.</div>
               : <p className="small muted">Не подписан.</p>}
+            {(j.gaps?.length || 0) > 0 && <div className="note">Пропуски по графику замеров ({j.gaps!.length}) — в печатной форме журнал помечается как неполный:<ul>{j.gaps!.slice(0, 20).map((g) => <li key={g} className="small">{g}</li>)}</ul>{j.gaps!.length > 20 && <span className="small">… ещё {j.gaps!.length - 20}</span>}</div>}
             {j.blockers.length > 0 && <div className="err">Подписать нельзя, пока в журнале есть проблемы:<ul>{j.blockers.map((b) => <li key={b}>{b}</li>)}</ul><Link href={`/app/${org.id}/problems`}>Открыть проблемы →</Link></div>}
             {can('journal.sign') && !valid && j.blockers.length === 0 && (
               <button className="btn block" disabled={busy} onClick={() => run(async () => {

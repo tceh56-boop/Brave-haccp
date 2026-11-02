@@ -9,6 +9,9 @@ import { criterionText } from './control';
 import { expiryState, EXPIRY_LABEL, LOT_STATUS_LABEL } from './lots';
 import { STATUS_LABEL as INC_STATUS } from './incidents';
 import { approvedPlan, PLAN_STATUS } from './haccp';
+import QRCode from 'qrcode';
+import { clauseById, DOCS } from '../norms/library';
+import { registerNormRefs } from '../readiness/engine';
 
 /**
  * Журналы ХАССП J01–J60 (книга «Журналы_J01-J53.xlsx» + J54–J60 по ТЗ доработки, 7.5). ТЗ v2 §0, §12: запись делается один раз — журнал
@@ -40,6 +43,22 @@ const AUTO: Record<string, Source> = {
  * по столбцам формы-источника. Сводная форма (пересекается с несколькими, например J44 ↔ J07/J08/J27) ведётся
  * своими записями: склеивать разные журналы по цепочке нельзя.
  */
+/** Версия печатных форм (ТЗ доработки, 8): меняется при изменении состава столбцов или оформления. */
+export const FORM_VERSION = '2026.11';
+/** Нормативное основание формы — пункты встроенной нормативной базы (fail-closed: неизвестный id ловит тест). */
+const FORM_BASIS: Record<string, string[]> = {
+  J01: ['sanpin4282:35', 'sanpin4282:40'], J25: ['sanpin4282:35', 'sanpin4282:40'], J42: ['sanpin4282:35'], J04: ['sanpin4282:35'], J43: ['sanpin4282:35'],
+  J03: ['sanpin4282:5', 'trts021:11.4'], J21: ['sanpin4282:5'], J39: ['sanpin4282:5'], J05: ['trts021:17.7', 'sanpin4282:6'], J29: ['trts021:17.7'],
+  J07: ['sanpin4282:25', 'trts021:11.6'], J09: ['sanpin4282:37'], J10: ['sanpin4282:21'], J15: ['sanpin4282:47'], J26: ['sanpin4282:47'], J18: ['trts021:15.2'],
+  J30: ['trts021:10.3'], J31: ['trts021:11.3'], J32: ['trts021:11.3'], J34: ['trts021:11.3'], J38: ['sanpin4282:44'], J41: ['sanpin4282:44'],
+  J54: ['trts021:17.7'], J55: ['sanpin4282:11'], J56: ['trts022:1.2'], J57: ['trts022:1.2'], J58: ['sanpin4282:11', 'sanpin4282:32'],
+  J59: ['sanpin4282:56.4', 'sanpin4282:59.10'], J60: ['sp4284:3'],
+};
+registerNormRefs('journals', Object.values(FORM_BASIS).flat());
+export function formBasis(code: string) {
+  return (FORM_BASIS[code] || []).map((id) => clauseById.get(id)).filter(Boolean).map((c) => `${DOCS[c!.doc].code}, ${c!.clause}`);
+}
+
 const manualOverlaps = (code: string) => (FORM_BY_CODE.get(code)?.overlaps || []).filter((c) => FORM_BY_CODE.has(c) && !AUTO[c]);
 const isHub = (code: string) => manualOverlaps(code).length >= 2;
 export function dataFormOf(code: string): string {
@@ -347,6 +366,28 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
   return { columns: df.columns, rows };
 }
 
+/**
+ * Пропуски (ТЗ доработки, P1 «контроль пропусков журналов»): по утверждённому правилу с частотой ≤ 24 ч за каждые
+ * полностью прошедшие сутки периода должно быть не меньше ceil(24 / частота) замеров. Нехватка — пропуск, а не «норма».
+ */
+async function gapsOf(c: Ctx, src: Source | null): Promise<string[]> {
+  if (!src || !['cold', 'cold_grid', 'room', 'room_grid'].includes(src)) return [];
+  const kinds = src.startsWith('cold') ? ['fridge', 'freezer'] : ['room'];
+  const rows = (await c.tx.query(`with days as (
+      select d::date as day from generate_series($4::date, least($5::date, (now() at time zone $6)::date - 1), interval '1 day') d)
+    select o.name, r.parameter, r.frequency_hours, d.day::text as day,
+      (select count(*)::int from measurements m where m.control_object_id = o.id and m.parameter = r.parameter
+         and not exists (select 1 from measurements x where x.corrects_id = m.id)
+         and m.measured_at >= (d.day::timestamp at time zone $6) and m.measured_at < ((d.day + 1)::timestamp at time zone $6)) as n
+    from control_objects o join control_rules r on r.control_object_id = o.id and r.status = 'approved' and r.frequency_hours is not null and r.frequency_hours <= 24
+      join days d on d.day >= (coalesce(r.approved_at, r.created_at) at time zone $6)::date
+    where o.organization_id = $1 and o.site_id = $2 and o.status = 'active' and o.kind = any($3::text[])
+    order by o.name, r.parameter, d.day`, [c.orgId, c.siteId, kinds, c.from, c.to, c.tz])).rows;
+  const P: Record<string, string> = { temperature: 'температура', humidity: 'влажность' };
+  return rows.filter((r) => r.n < Math.ceil(24 / Number(r.frequency_hours)))
+    .map((r) => `${r.day.split('-').reverse().join('.')} — ${r.name} (${P[r.parameter] || r.parameter}): ${r.n} из ${Math.ceil(24 / Number(r.frequency_hours))} замеров`);
+}
+
 function contentHash(columns: string[], rows: string[][]) {
   return createHash('sha256').update(JSON.stringify({ columns, rows })).digest('hex');
 }
@@ -357,7 +398,7 @@ export async function getJournal(userId: string, orgId: string, code: string, in
   const p = parse(PeriodInput, input);
   return inOrg(userId, orgId, 'journal.read', async (tx) => {
     const site = await getSite(tx, orgId, p.siteId);
-    const org = (await tx.query(`select name, legal_form, timezone from organizations where id = $1`, [orgId])).rows[0];
+    const org = (await tx.query(`select id, name, legal_form, inn, ogrn, legal_address, timezone from organizations where id = $1`, [orgId])).rows[0];
     const src = AUTO[code] || null;
     const built = await buildRows({ tx, orgId, siteId: p.siteId, tz: org.timezone, from: p.from, to: p.to }, code, src);
     const hash = contentHash(built.columns, built.rows);
@@ -365,9 +406,13 @@ export async function getJournal(userId: string, orgId: string, code: string, in
       where s.organization_id = $1 and s.site_id = $2 and s.form_code = $3 and s.period_from = $4 and s.period_to = $5 order by s.signed_at desc`, [orgId, p.siteId, code, p.from, p.to])).rows
       .map((s) => ({ ...s, valid: s.content_hash === hash }));
     const blockers = await signBlockers(tx, orgId, p.siteId, src, p, org.timezone);
+    const siteAddr = (await tx.query(`select address from sites where id = $1`, [p.siteId])).rows[0]?.address as string | null;
+    const gaps = await gapsOf({ tx, orgId, siteId: p.siteId, tz: org.timezone, from: p.from, to: p.to }, src);
+    const me = (await tx.query(`select full_name from users where id = $1`, [userId])).rows[0];
     return {
-      form: { ...listForms().find((x) => x.code === code)! }, organization: org, site,
-      period: p, columns: built.columns, rows: built.rows, grid: !!built.grid, content_hash: hash, signoffs, blockers,
+      form: { ...listForms().find((x) => x.code === code)!, version: FORM_VERSION, basis: formBasis(code) }, organization: org, site: { ...site, address: siteAddr },
+      period: p, columns: built.columns, rows: built.rows, grid: !!built.grid, content_hash: hash, signoffs, blockers, gaps,
+      generated: { at: new Date().toISOString(), by: me?.full_name || null },
     };
   }, p.siteId);
 }
@@ -455,19 +500,39 @@ export function toCsv(j: { columns: string[]; rows: string[][] }) {
   return '﻿' + [j.columns, ...j.rows].map((r) => r.map(q).join(';')).join('\r\n');
 }
 
-export function toHtml(j: Awaited<ReturnType<typeof getJournal>>) {
+/**
+ * Печатная форма журнала (ТЗ доработки, 8): реквизиты, ИНН, адрес, площадка, период, код и версия формы, основание,
+ * номер страницы, дата формирования, кто сформировал, подпись (электронная), QR и хеш содержимого, отметка о пропусках
+ * и о записях, внесённых позднее.
+ */
+export async function toHtml(j: Awaited<ReturnType<typeof getJournal>>) {
   const e = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!));
+  const tz = j.organization.timezone;
+  const dmyS = (d: string) => d.split('-').reverse().join('.');
   const sign = j.signoffs.find((s) => s.valid);
+  const o = j.organization;
+  const late = j.rows.filter((r) => r.some((c) => /внесено (позже|позднее|\d)/.test(c))).length;
+  const qr = await QRCode.toString(`ЦЕХ|${j.form.code}|v${j.form.version}|${o.inn || '-'}|${j.site.id}|${j.period.from}|${j.period.to}|${j.content_hash}`, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' });
+  const landscape = j.grid || j.columns.length > 9;
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${e(j.form.code)} ${e(j.form.name)}</title>
-<style>@page{size:A4 ${j.grid || j.columns.length > 9 ? 'landscape' : 'portrait'};margin:12mm}body{font:10pt/1.35 Arial,sans-serif;color:#111}
-.hdr{display:flex;justify-content:space-between;font-size:9pt;border-bottom:1px solid #444;padding-bottom:4px}h1{font-size:13pt;text-align:center;margin:10px 0 2px}
-.sub{text-align:center;font-size:9pt;color:#444;margin-bottom:8px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:3px 4px;font-size:${j.grid ? '7.5' : '8.5'}pt;vertical-align:top}
-th{background:#eee}.foot{margin-top:14px;font-size:8.5pt;display:flex;justify-content:space-between;gap:20px}.hash{font-size:7pt;color:#666;word-break:break-all}</style></head><body>
-<div class="hdr"><span>${e(j.organization.legal_form || '')} «${e(j.organization.name)}» · ${e(j.site.name)}</span><span>СИСТЕМА ХАССП</span><span>Начат: ${e(j.period.from.split('-').reverse().join('.'))} · Окончен: ${e(j.period.to.split('-').reverse().join('.'))}</span></div>
-<h1>${e(j.form.name.toUpperCase())}</h1><div class="sub">${e(j.form.code)} · ${e(j.form.purpose)}${j.form.shares_with ? ` · данные журнала ${e(j.form.shares_with)}` : ''}</div>
+<style>@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:12mm 12mm 16mm;@bottom-right{content:"Страница " counter(page) " из " counter(pages);font:8pt Arial,sans-serif}@bottom-left{content:"${e(j.form.code)} · ред. ${e(j.form.version)} · SHA-256 ${e(j.content_hash.slice(0, 16))}…";font:7pt Arial,sans-serif;color:#555}}
+body{font:10pt/1.35 Arial,sans-serif;color:#111}.hdr{display:flex;justify-content:space-between;gap:12px;font-size:8.5pt;border-bottom:1px solid #444;padding-bottom:4px}
+.hdr .qr svg{width:22mm;height:22mm}h1{font-size:13pt;text-align:center;margin:8px 0 2px}.sub{text-align:center;font-size:8.5pt;color:#333;margin-bottom:6px}
+table{width:100%;border-collapse:collapse}thead{display:table-header-group}tr{break-inside:avoid}th,td{border:1px solid #555;padding:3px 4px;font-size:${j.grid ? '7.5' : '8.5'}pt;vertical-align:top}
+th{background:#eee}.foot{margin-top:12px;font-size:8.5pt;display:flex;justify-content:space-between;gap:20px}.hash{font-size:7pt;color:#555;word-break:break-all;margin-top:6px}
+.warn{border:1px solid #a60;background:#fff6e0;padding:4px 6px;margin:6px 0;font-size:8.5pt}</style></head><body>
+<div class="hdr"><div><b>${e(o.legal_form && o.legal_form !== 'другое' && !o.name.startsWith(o.legal_form) ? `${o.legal_form} «${o.name}»` : o.name)}</b>${o.inn ? `, ИНН ${e(o.inn)}` : ', ИНН не указан'}${o.ogrn ? `, ${o.legal_form === 'ИП' ? 'ОГРНИП' : 'ОГРН'} ${e(o.ogrn)}` : ''}<br>
+Адрес: ${e(o.legal_address || 'не указан')}<br>Площадка: ${e(j.site.name)}${j.site.address ? `, ${e(j.site.address)}` : ''}<br>
+Период: ${e(dmyS(j.period.from))} — ${e(dmyS(j.period.to))}</div>
+<div style="text-align:right">Форма ${e(j.form.code)}, редакция ${e(j.form.version)}<br>Сформировано: ${e(new Date(j.generated.at).toLocaleString('ru-RU', { timeZone: tz }))}${j.generated.by ? `<br>${e(j.generated.by)}` : ''}</div>
+<div class="qr">${qr}</div></div>
+<h1>${e(j.form.name.toUpperCase())}</h1><div class="sub">${e(j.form.purpose)}${j.form.shares_with ? ` · данные журнала ${e(j.form.shares_with)}` : ''}<br>
+Основание: ${e(j.form.basis.length ? j.form.basis.join('; ') : 'программа производственного контроля предприятия')}</div>
+${j.gaps.length ? `<div class="warn"><b>Неполные данные — пропуски по графику (${j.gaps.length}):</b> ${j.gaps.slice(0, 30).map(e).join('; ')}${j.gaps.length > 30 ? `; … ещё ${j.gaps.length - 30}` : ''}</div>` : ''}
+${late ? `<div class="warn">Записей, внесённых позднее события: ${late} — отмечены в строках (кто и когда внёс).</div>` : ''}
 <table><thead><tr>${j.columns.map((c) => `<th>${e(c)}</th>`).join('')}</tr></thead><tbody>
 ${j.rows.length ? j.rows.map((r) => `<tr>${r.map((c) => `<td>${e(c)}</td>`).join('')}</tr>`).join('\n') : `<tr><td colspan="${j.columns.length}" style="text-align:center">Записей за период нет</td></tr>`}
 </tbody></table>
-<div class="foot"><span>${sign ? `Подписано: ${e(sign.signer)}, ${e(new Date(sign.signed_at).toLocaleString('ru-RU', { timeZone: j.organization.timezone }))}` : 'Ответственный: ____________________ / ____________________'}</span><span>Записей: ${j.rows.length}</span></div>
-<div class="hash">Контрольная сумма содержимого (SHA-256): ${e(j.content_hash)}</div></body></html>`;
+<div class="foot"><span>${sign ? `Подписано электронно: ${e(sign.signer)}, ${e(new Date(sign.signed_at).toLocaleString('ru-RU', { timeZone: tz }))}` : j.signoffs.length ? 'Подпись недействительна: журнал изменён после подписи' : 'Ответственный: ____________________ / ____________________'}</span><span>Записей: ${j.rows.length}</span></div>
+<div class="hash">Контрольная сумма содержимого (SHA-256): ${e(j.content_hash)}. QR-код содержит форму, редакцию, ИНН, площадку, период и контрольную сумму — по ним документ сверяется с системой.</div></body></html>`;
 }

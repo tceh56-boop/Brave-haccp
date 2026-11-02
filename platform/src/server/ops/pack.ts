@@ -80,7 +80,7 @@ export async function buildPack(userId: string, orgId: string, input: unknown) {
     let file: string | null = null;
     if (j.rows.length) {
       file = `journals/${f.code}.html`;
-      files.push({ name: file, data: Buffer.from(toHtml(j), 'utf8') }, { name: `journals/${f.code}.csv`, data: Buffer.from(toCsv(j), 'utf8') });
+      files.push({ name: file, data: Buffer.from(await toHtml(j), 'utf8') }, { name: `journals/${f.code}.csv`, data: Buffer.from(toCsv(j), 'utf8') });
     }
     journals.push({ code: f.code, name: f.name, rows: j.rows.length, sign, file });
   }

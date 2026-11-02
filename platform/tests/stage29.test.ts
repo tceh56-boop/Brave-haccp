@@ -152,3 +152,21 @@ describe('Готовая продукция партией и продажа', (
     expect([...raw.needs.keys()]).toEqual([beef]);
   });
 });
+
+describe('Печатная форма и пропуски журналов', () => {
+  it('реквизиты, код и редакция формы, основание, страницы, QR, хеш; пропуски замеров помечаются', async () => {
+    const { createControlObject } = await import('../src/server/ops/control');
+    const obj = await createControlObject(owner.id, orgId, { siteId, name: 'Холодильник мясной', kind: 'fridge' });
+    // правило с частотой 12 ч, утверждённое три дня назад: за полностью прошедшие сутки нужно по 2 замера
+    await withSystem((tx) => tx.query(`insert into control_rules (organization_id, control_object_id, parameter, unit, min_value, max_value, frequency_hours, grace_minutes, source_ref, reaction, status, version, created_by, approved_by, approved_at)
+      values ($1, $2, 'temperature', '°C', 2, 6, 12, 30, 'СанПиН 2.3/2.4.4282-26, п. 35', 'incident', 'approved', 1, $3, $3, now() - interval '3 days')`, [orgId, obj.id, owner.id]));
+    const { getJournal: gj, toHtml } = await import('../src/server/ops/journals');
+    const j = await gj(owner.id, orgId, 'J01', { siteId, from: inDays(-2), to: inDays(0) });
+    expect(j.gaps.length).toBeGreaterThanOrEqual(2);
+    expect(j.gaps[0]).toMatch(/Холодильник мясной \(температура\): 0 из 2 замеров/);
+    expect(j.form).toMatchObject({ version: '2026.11', basis: expect.arrayContaining(['СанПиН 2.3/2.4.4282-26, п. 35']) });
+    const html = await toHtml(j);
+    for (const s of ['Форма J01, редакция 2026.11', 'Основание: СанПиН 2.3/2.4.4282-26, п. 35', 'counter(pages)', '<svg', j.content_hash, 'Неполные данные — пропуски по графику', 'ИНН не указан'])
+      expect(html).toContain(s);
+  });
+});

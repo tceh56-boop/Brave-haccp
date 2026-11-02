@@ -181,7 +181,7 @@ describe('Изоляция и выгрузка', () => {
     const csv = toCsv(j);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
     expect(csv.split('\r\n')[0]).toContain(';');
-    const html = toHtml(j);
+    const html = await toHtml(j);
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain(j.content_hash);
