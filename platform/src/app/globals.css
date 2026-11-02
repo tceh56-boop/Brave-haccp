@@ -134,6 +134,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .f-58x60 .cl { width: 58mm; height: 60mm; }
 .f-100x70 .cl { width: 100mm; height: 70mm; font-size: 7.6pt; }
 .cl-name { font-weight: 700; font-size: 1.45em; line-height: 1.1; margin-bottom: .8mm; }
+.cl-group { font-size: .95em; margin-bottom: .8mm; }
+.cl-eac { display: inline-block; border: .4mm solid #000; padding: 0 1.2mm; letter-spacing: .5mm; }
 .cl p { margin: 0 0 .6mm; }
 .cl-al { font-weight: 700; }
 .cl-dates { display: flex; justify-content: space-between; gap: 2mm; font-weight: 700; border-top: .3mm solid #000; border-bottom: .3mm solid #000; padding: .5mm 0; margin: .6mm 0; }

@@ -66,7 +66,14 @@ export async function getOrganization(userId: string, orgId: string) {
   });
 }
 
-const OrgPatch = OrgInput.omit({ firstSiteName: true }).partial();
+/** Реквизиты заявителя для декларации о соответствии (решение ЕЭК N 293, разд. II п. 5 «в», «г»; приказ МЭР N 478, п. 7.1, 7.2, 12). */
+const Requisites = z.object({
+  ogrn: z.string().trim().regex(/^(\d{13}|\d{15})?$/, 'ОГРН — 13 цифр, ОГРНИП — 15 цифр.').optional().transform((v) => v || null),
+  legalAddress: optText(400), email: z.string().trim().max(200).optional().transform((v) => v || null)
+    .refine((v) => !v || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), 'Адрес электронной почты указан с ошибкой.'),
+  headPosition: optText(200), headName: optText(200), headBasis: optText(300), activityNotice: optText(400),
+});
+const OrgPatch = OrgInput.omit({ firstSiteName: true }).partial().merge(Requisites.partial());
 
 export async function updateOrganization(userId: string, orgId: string, input: unknown) {
   const d = parse(OrgPatch, input);
@@ -74,8 +81,11 @@ export async function updateOrganization(userId: string, orgId: string, input: u
     await requirePermission(tx, userId, orgId, 'org.update');
     const before = (await tx.query(`select * from organizations where id = $1 for update`, [orgId])).rows[0];
     const after = (await tx.query(`update organizations set name = coalesce($2, name), legal_form = coalesce($3, legal_form), inn = coalesce($4, inn),
-        phone = coalesce($5, phone), region = coalesce($6, region), timezone = coalesce($7, timezone), updated_at = now()
-      where id = $1 returning *`, [orgId, d.name ?? null, d.legalForm ?? null, d.inn ?? null, d.phone ?? null, d.region ?? null, d.timezone ?? null])).rows[0];
+        phone = coalesce($5, phone), region = coalesce($6, region), timezone = coalesce($7, timezone),
+        ogrn = coalesce($8, ogrn), legal_address = coalesce($9, legal_address), email = coalesce($10, email), head_position = coalesce($11, head_position),
+        head_name = coalesce($12, head_name), head_basis = coalesce($13, head_basis), activity_notice = coalesce($14, activity_notice), updated_at = now()
+      where id = $1 returning *`, [orgId, d.name ?? null, d.legalForm ?? null, d.inn ?? null, d.phone ?? null, d.region ?? null, d.timezone ?? null,
+        d.ogrn ?? null, d.legalAddress ?? null, d.email ?? null, d.headPosition ?? null, d.headName ?? null, d.headBasis ?? null, d.activityNotice ?? null])).rows[0];
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.update', entityType: 'organization', entityId: orgId, before, after });
     return after;
   });

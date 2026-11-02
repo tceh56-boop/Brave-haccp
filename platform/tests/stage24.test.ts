@@ -9,6 +9,7 @@ import { createProduction, startProduction, completeProduction } from '../src/se
 import { setProductNutrition, setProductAllergens } from '../src/server/ops/techspec';
 import { setOpenedShelfLife, logPrint, getLabels } from '../src/server/ops/labels';
 import { previewConsumerLabel, createConsumerLabel } from '../src/server/ops/consumerLabels';
+import { setMeatKind } from '../src/server/ops/declarations';
 import { makeUser, lastLinkToken } from './helpers';
 
 /** Потребительская этикетка по ТР ТС 022/2011: данные из ТТК, расчёта ТУ и партии; при неполных сведениях — не печатается. */
@@ -86,13 +87,17 @@ describe('Потребительская этикетка', () => {
     await setProductNutrition(tech.id, orgId, onion, { kcal: 41, protein: 1.4, fat: 0, carbs: 8.2, basis: 'маркировка изготовителя' });
     await setProductAllergens(tech.id, orgId, beef, { allergens: [], basis: 'спецификация поставщика' });
     await setProductAllergens(tech.id, orgId, onion, { allergens: [], basis: 'спецификация поставщика' });
+    // вид сырья для ТР ТС 034: без него группу мясной продукции не определить — печать запрещена
+    expect((await previewConsumerLabel(owner.id, orgId, brothLot, 500)).blockers.join(' ')).toMatch(/Не указан вид сырья/);
+    await setMeatKind(tech.id, orgId, beef, { meatKind: 'slaughter' });
+    await setMeatKind(tech.id, orgId, onion, { meatKind: 'none' });
     const product = (await withSystem((tx) => tx.query(`select product_id from lots where id = $1`, [brothLot]))).rows[0].product_id;
     await setOpenedShelfLife(chef.id, orgId, product, { hours: 12, basis: 'Тест: ТТК, раздел хранения' });
     await withSystem((tx) => tx.query(`update sites set address = 'Оренбургская обл., г. Оренбург, ул. Тестовая, 1' where id = $1`, [siteId]));
     const p = await previewConsumerLabel(owner.id, orgId, brothLot, '500');
     expect(p.blockers).toEqual([]);
     expect(p.payload).toMatchObject({ product: 'Фарш говяжий с луком', composition: ['Говядина охлаждённая', 'Лук репчатый'], allergen_text: 'Аллергены: не содержит.',
-      net_mass_g: 500, storage: 'при температуре от +2 до +6 °C', after_opening: expect.stringMatching(/не более 12 ч/), manufacturer: 'Цех полуфабрикатов', eac: false });
+      net_mass_g: 500, storage: 'при температуре от +2 до +6 °C', after_opening: expect.stringMatching(/не более 12 ч/), manufacturer: 'Цех полуфабрикатов', eac: false, meat_group: 'Мясной полуфабрикат' });
     expect(p.payload.nutrition).toMatchObject({ protein: expect.any(Number), kcal: expect.any(Number) });
     expect(p.notes.join(' ')).toMatch(/Знак ЕАС не печатается/);
     await expect(createConsumerLabel(cook.id, orgId, brothLot, { netMassG: 500 })).resolves.toBeTruthy();   // у повара есть право печати этикеток

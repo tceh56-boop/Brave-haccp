@@ -117,6 +117,25 @@ const DEFS: Def[] = [
       return r.length ? { status: 'warning', detail: `Продукция без утверждённых ТУ: ${r.length}. Для продажи вне зала ТУ — документ, по которому изготовлена продукция, основа для декларации.`, items: list(r), href: `${base}/menu` }
         : { status: 'ok', detail: 'На всю продукцию с утверждённой ТТК есть ТУ.', href: `${base}/menu` };
     } },
+  { key: 'declarations', group: 'Технологические документы', title: 'Декларации о соответствии на продукцию, реализуемую вне услуг питания', basis: ['sanpin4282:7', 'trts021:23.1', 'trts034:132'], blocks: [], owner: 'руководитель (заявитель)',
+    async run({ tx, orgId, base, profile, today }) {
+      if (!offsite(profile)) return { status: 'not_applicable', detail: 'Реализации вне зала (вынос, доставка, кейтеринг, продажа вне предприятия) в профиле нет.' };
+      const rows = (await tx.query(`select d.number, x.name, r.reg_number, r.valid_to::text as valid_to, (a.id is not null) as accepted, (t.id is not null) as terminated
+        from declarations d join dishes x on x.id = d.dish_id left join declaration_acceptances a on a.declaration_id = d.id
+        left join declaration_registrations r on r.declaration_id = d.id left join declaration_terminations t on t.declaration_id = d.id where d.organization_id = $1`, [orgId])).rows;
+      const live = rows.filter((r) => r.reg_number && !r.terminated);
+      const expired = live.filter((r) => r.valid_to && r.valid_to < today);
+      const soon = live.filter((r) => r.valid_to && r.valid_to >= today && (new Date(r.valid_to).getTime() - new Date(today).getTime()) / 864e5 <= 30);
+      const unreg = rows.filter((r) => r.accepted && !r.reg_number && !r.terminated);
+      const href = `${base}/declarations`;
+      if (expired.length) return { status: 'expired', detail: `Истёк срок действия деклараций: ${expired.length}. Продукцию по ним в обращение не выпускать.`, items: list(expired.map((r) => ({ name: `№ ${r.number} «${r.name}» (${r.reg_number}, до ${dmy(r.valid_to)})` }))), href };
+      if (unreg.length) return { status: 'incomplete', detail: `Принятые, но не внесённые как зарегистрированные: ${unreg.length}. Декларация действует со дня регистрации (приказ МЭР N 478, прил. 1 п. 4).`, items: list(unreg.map((r) => ({ name: `№ ${r.number} «${r.name}»` }))), href };
+      if (soon.length) return { status: 'warning', detail: `Срок действия истекает в течение 30 дней: ${soon.length}.`, items: list(soon.map((r) => ({ name: `№ ${r.number} «${r.name}», до ${dmy(r.valid_to)}` }))), href };
+      if (live.length) return { status: 'ok', detail: `Действующих деклараций: ${live.length}.`, items: list(live.map((r) => ({ name: `«${r.name}» — ${r.reg_number}` }))), href };
+      return profile.features.includes('outside_sales')
+        ? { status: 'missing', detail: 'Продукция реализуется вне услуг общественного питания, а зарегистрированных деклараций нет (СанПиН 2.3/2.4.4282-26, п. 7; ТР ТС 021/2011, ст. 23 ч. 1).', href }
+        : { status: 'not_checked', detail: 'Доставка, вынос, кейтеринг: по ТР ТС 021/2011 (ст. 21 ч. 3) — оценка в форме госнадзора; территориальные разъяснения могут требовать декларацию. Решение — за руководителем.', href };
+    } },
   { key: 'allergens', group: 'Технологические документы', title: 'Аллергены сырья по документам', basis: ['sanpin4282:43'], blocks: [], owner: 'технолог',
     async run({ tx, orgId, base }) {
       const r = (await tx.query(`select distinct p.name from ttk_versions v join ttk_lines l on l.version_id = v.id join products p on p.id = l.product_id

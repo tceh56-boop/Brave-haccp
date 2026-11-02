@@ -31,10 +31,11 @@ const ENTITY: Record<string, { table: string; site: string | null; read?: Permis
   equipment: { table: 'equipment', site: 'site_id' },
   equipment_event: { table: 'equipment_events', site: 'site_id' },
   contract: { table: 'contracts', site: 'site_id', read: 'contract.read', add: 'contract.manage', docx: true },
+  declaration: { table: 'declarations', site: 'site_id', read: 'decl.read', add: 'decl.manage' },
 };
 export const ENTITY_LABEL: Record<string, string> = {
   incident: 'Отклонение', capa: 'CAPA', receipt: 'Приёмка', lot: 'Партия', measurement: 'Замер', journal_entry: 'Запись журнала',
-  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование', equipment: 'Оборудование', equipment_event: 'ТО / поверка / ремонт', contract: 'Договор',
+  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование', equipment: 'Оборудование', equipment_event: 'ТО / поверка / ремонт', contract: 'Договор', declaration: 'Декларация о соответствии',
 };
 
 /** Тип по сигнатуре файла. */

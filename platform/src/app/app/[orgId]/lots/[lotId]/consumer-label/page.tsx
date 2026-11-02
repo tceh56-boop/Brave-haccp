@@ -16,7 +16,7 @@ interface Payload {
   product: string; lot_no: string | null; composition: string[]; allergens: string[]; allergen_text: string | null;
   nutrition: { protein: number; fat: number; carbs: number; kcal: number; kj: number } | null; net_mass_g: number | null;
   manufactured_text: string | null; expires_text: string | null; storage: string | null; after_opening: string | null;
-  manufacturer: string; address: string | null; tu: string | null; eac: boolean;
+  manufacturer: string; address: string | null; tu: string | null; eac: boolean; declaration?: string | null; meat_group?: string | null;
 }
 interface Preview { payload: Payload; blockers: string[]; notes: string[]; lot_no: string | null }
 
@@ -40,6 +40,7 @@ function ConsumerLabel({ p, code }: { p: Payload; code: string | null }) {
   return (
     <div className="cl">
       <div className="cl-name">{p.product}</div>
+      {p.meat_group && <div className="cl-group">{p.meat_group}</div>}
       <p><b>Состав:</b> <Composition p={p} /></p>
       {p.allergen_text && <p className="cl-al">{p.allergen_text}</p>}
       {p.nutrition && <p><b>Пищевая ценность в 100 г:</b> белки {n(p.nutrition.protein)} г, жиры {n(p.nutrition.fat)} г, углеводы {n(p.nutrition.carbs)} г. Энергетическая ценность {p.nutrition.kcal} ккал / {p.nutrition.kj} кДж.</p>}
@@ -50,6 +51,7 @@ function ConsumerLabel({ p, code }: { p: Payload; code: string | null }) {
         <div style={{ flex: 1 }}>
           <p><b>Изготовитель:</b> {p.manufacturer}{p.address ? `, ${p.address}` : ''}.</p>
           {p.tu && <p>{p.tu}</p>}
+          {p.eac && <p className="cl-eac" title={p.declaration || ''}><b>ЕАС</b></p>}
           <p>Партия {p.lot_no || '—'}{code ? ` · ${code}` : ''}</p>
         </div>
         {url && <Qr text={url} />}

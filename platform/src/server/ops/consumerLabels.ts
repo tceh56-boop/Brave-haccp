@@ -6,6 +6,7 @@ import { inOrg, parse, assertSiteAccess } from './common';
 import { calcTechSpec } from './techspec';
 import { effectiveParams } from './dishgroups';
 import { newLabelCode } from './labels';
+import { activeDeclarationFor, meatProfile } from './declarations';
 
 /**
  * Потребительская этикетка упакованной продукции собственного изготовления — ТР ТС 022/2011, ст. 4.1 п. 1:
@@ -15,7 +16,8 @@ import { newLabelCode } from './labels';
  * недостоверным: пока не хватает обязательных сведений, вместо этикетки — перечень того, что исправить.
  *  - Пищевая ценность — только если данные есть по всему сырью и подтверждены документами.
  *  - «Аллергены: не содержит» — только при полном профиле аллергенов.
- *  - Знак ЕАС — только при зарегистрированной декларации (модуля деклараций пока нет — знак не печатается).
+ *  - Знак ЕАС — только при действующей зарегистрированной декларации на эту продукцию (для партии по 2д/4д — на эту партию).
+ *  - Мясная продукция (ТР ТС 034/2013, п. 109, 120): группа («мясной», «мясосодержащий») рядом с наименованием.
  * Снимок хранится как этикетка вида 'consumer' (код для QR, журнал печати).
  */
 
@@ -39,7 +41,7 @@ export async function buildConsumerLabel(tx: Tx, orgId: string, lotId: string, n
   if (!dishId) throw Errors.conflict(`«${l.product}» — не продукция собственного изготовления: на упаковке остаётся маркировка изготовителя.`);
   const org = (await tx.query(`select name, legal_form, inn, timezone from organizations where id = $1`, [orgId])).rows[0];
   const tz = org.timezone || 'Europe/Moscow';
-  const dish = (await tx.query(`select name from dishes where id = $1`, [dishId])).rows[0];
+  const dish = (await tx.query(`select name, kind from dishes where id = $1`, [dishId])).rows[0];
   const calc = await calcTechSpec(tx, orgId, dishId, await effectiveParams(tx, dishId));
   const v = (await tx.query(`select storage_conditions, shelf_life from ttk_versions where id = $1`, [calc.object.ttk_version_id])).rows[0];
   const tu = (await tx.query(`select designation from tech_spec_versions where dish_id = $1 order by version desc limit 1`, [dishId])).rows[0];
@@ -72,18 +74,29 @@ export async function buildConsumerLabel(tx: Tx, orgId: string, lotId: string, n
   const manufacturer = `${org.legal_form && org.legal_form !== 'другое' && !org.name.startsWith(org.legal_form) ? `${org.legal_form} ` : ''}${org.name}`;
   if (!l.site_address) blockers.push(`Не указан адрес площадки «${l.site_name}» — место нахождения изготовителя (место производства).`);
   if (!tu) notes.push('Нет утверждённых ТУ — обозначение документа, по которому изготовлена продукция, на этикетке не указывается.');
-  notes.push('Знак ЕАС не печатается: декларация о соответствии в системе не зарегистрирована.');
+  const decl = await activeDeclarationFor(tx, orgId, dishId, l.id);
+  if (!decl) notes.push('Знак ЕАС не печатается: нет действующей зарегистрированной декларации о соответствии на эту продукцию.');
+  else notes.push(`Знак ЕАС — по декларации ${decl.reg_number}. Графическое изображение знака установлено решением Комиссии Таможенного союза от 15.07.2011 N 711; его в нормативной базе нет — система печатает текстовое обозначение, для тиража используйте утверждённое изображение.`);
+  // ТР ТС 034/2013: группа мясной продукции рядом с наименованием
+  const meat = await meatProfile(tx, dishId);
+  let meatGroup: string | null = null;
+  if (meat.unknown.length && (meat.slaughter_g > 0 || meat.unknown.some((x) => x.suggest === 'slaughter' || x.suggest === 'poultry')))
+    blockers.push(`Не указан вид сырья (${meat.unknown.map((x) => `«${x.name}»`).join(', ')}) — не определить группу мясной продукции для маркировки (ТР ТС 034/2013, п. 4, 109).`);
+  else if (meat.group && meat.slaughter_g >= meat.poultry_g) {
+    meatGroup = `${meat.group[0].toUpperCase()}${meat.group.slice(1)} ${dish.kind === 'semi' || /полуфабрикат/i.test(dish.name) ? 'полуфабрикат' : 'продукт'}`;
+    if (!new RegExp(meat.group, 'i').test(dish.name)) notes.push(`ТР ТС 034/2013, п. 109: группа «${meat.group}» печатается рядом с наименованием (мясных ингредиентов по рецептуре ${meat.meat_pct} %). Вид и термическое состояние («охлаждённые», «замороженные») — по п. 120, если это полуфабрикат.`);
+  }
 
   return {
     lot_id: l.id, site_id: l.site_id, dish_id: dishId, lot_no: l.lot_no,
     payload: {
-      kind: 'consumer', product: dish.name, lot_no: l.lot_no, composition, allergens,
+      kind: 'consumer', product: dish.name, meat_group: meatGroup, lot_no: l.lot_no, composition, allergens,
       allergen_text: allergens.length ? `Содержит: ${allergens.join(', ')}.` : calc.allergens.complete ? 'Аллергены: не содержит.' : null,
       nutrition: per100 ? { protein: per100.protein, fat: per100.fat, carbs: per100.carbs, kcal: per100.kcal, kj: per100.kj } : null,
       net_mass_g: netMassG, manufactured_at: madeAt ? madeAt.toISOString() : null, manufactured_text: madeAt ? ddmmyyyy(madeAt, tz) : null,
       expires_at: l.expires_at ? new Date(l.expires_at).toISOString() : null, expires_text: l.expires_at ? ddmmyyyy(new Date(l.expires_at), tz) : null,
       storage: v.storage_conditions, shelf_life: v.shelf_life, after_opening: afterOpening,
-      manufacturer, address: l.site_address, inn: org.inn, tu: tu?.designation || null, eac: false,
+      manufacturer, address: l.site_address, inn: org.inn, tu: tu?.designation || null, eac: !!decl, declaration: decl?.reg_number || null,
     },
     blockers, notes,
   };
