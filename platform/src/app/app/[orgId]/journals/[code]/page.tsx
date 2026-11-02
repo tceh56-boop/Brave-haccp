@@ -9,7 +9,7 @@ import { dt } from '@/lib/fmt';
 import type { FormInfo } from '../page';
 
 interface Signoff { id: string; signer: string; signed_at: string; rows_count: number; note: string | null; valid: boolean }
-interface Journal { form: FormInfo; site: { name: string }; period: { from: string; to: string }; columns: string[]; rows: string[][]; grid: boolean; content_hash: string; signoffs: Signoff[]; blockers: string[]; gaps?: string[] }
+interface Journal { form: FormInfo; site: { name: string }; period: { from: string; to: string }; columns: string[]; rows: string[][]; grid: boolean; content_hash: string; signoffs: Signoff[]; blockers: string[]; gaps?: string[]; links?: (string | null)[] | null }
 interface Entry { id: string; occurred_at: string; entered_at: string; is_late: boolean; values: Record<string, string>; corrects_id: string | null; correction_reason: string | null; author: string }
 
 const ymd = (date: Date, tz: string) => date.toLocaleDateString('sv-SE', { timeZone: tz });
@@ -69,9 +69,9 @@ export default function JournalPage({ params }: { params: Promise<{ code: string
               </div></div>
             <div className="scroll" style={{ marginTop: 10 }}>
               <table className="tbl">
-                <thead><tr>{j.columns.map((c, i) => <th key={i}>{c}</th>)}</tr></thead>
+                <thead><tr>{j.columns.map((c, i) => <th key={i}>{c}</th>)}{j.links && <th>Источник</th>}</tr></thead>
                 <tbody>{j.rows.length === 0 ? <tr><td colSpan={j.columns.length} className="muted">Записей за период нет</td></tr>
-                  : j.rows.map((r, i) => <tr key={i}>{r.map((c, k) => <td key={k}>{c}</td>)}</tr>)}</tbody>
+                  : j.rows.map((r, i) => <tr key={i}>{r.map((c, k) => <td key={k}>{c}</td>)}{j.links && <td>{j.links[i] ? <Link href={j.links[i]!}>открыть →</Link> : '—'}</td>}</tr>)}</tbody>
               </table>
             </div>
           </div>

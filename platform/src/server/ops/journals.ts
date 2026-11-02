@@ -115,7 +115,7 @@ function mNote(m: { is_late: boolean; corrects_id: string | null; correction_rea
     m.corrects_id ? `исправление: ${m.correction_reason}` : '', m.comment || ''].filter(Boolean).join('; ');
 }
 
-async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ columns: string[]; rows: string[][]; grid?: boolean }> {
+async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ columns: string[]; rows: string[][]; grid?: boolean; links?: (string | null)[] }> {
   const f = FORM_BY_CODE.get(code)!;
   const tz = c.tz;
   if (src === 'cold' || src === 'room') {
@@ -131,7 +131,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       const t = m.parameter === 'temperature', h = m.parameter === 'humidity';
       return [fmtD(m.measured_at, tz), fmtT(m.measured_at, tz), m.object, t ? norm : '', t ? val : '', h ? norm : '', h ? val : '', RESULT_RU[m.result], m.author];
     });
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links: ms.map((m) => `/app/${c.orgId}/objects/${m.control_object_id}`) };
   }
   if (src === 'cold_grid' || src === 'room_grid') {
     // Месячная сетка (J42/J43): объект × дни месяца начала периода; значения дня через «/», выход за предел — «!».
@@ -162,7 +162,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       return [fmtD(l.completed_at, tz), l.product, exp, l.supplier || '—', doc, `${fmtNum(l.quantity)} ${l.unit}${l.lot_no ? `, партия ${l.lot_no}` : ''}`, temp, yesNo(ch.documents),
         `упаковка: ${yesNo(ch.packaging)}, маркировка: ${yesNo(ch.labeling)}`, l.decision === 'accepted' ? 'П' : 'О', l.decision === 'accepted' ? '' : `${DECISION_RU[l.decision]}: ${l.decision_reason}`, l.accepted_by];
     });
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links: ls.map((l) => `/app/${c.orgId}/receipts/${l.receipt_id}`) };
   }
   if (src === 'repairs') {
     const bs = (await c.tx.query(`select b.*, e.name as equipment, u.full_name as reporter,
@@ -172,7 +172,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       where b.organization_id = $1 and b.site_id = $2 and b.kind = 'breakdown' and b.recorded_at between ${periodSql(3, 4, 5)} order by b.recorded_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
     const rows = bs.map((b) => [fmtDT(b.recorded_at, tz), b.equipment, b.description, b.safety_impact || 'не указано', b.reporter, b.repair?.performer || '', b.repair?.description || '',
       b.repair ? fmtD(b.repair.happened_on, tz) : '', b.repair ? (b.repair.admitted ? 'допущено' : 'не допущено') : 'ремонт не завершён']);
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links: bs.map((b) => `/app/${c.orgId}/equipment/${b.equipment_id}`) };
   }
   if (src === 'cleaning' || src === 'washing' || src === 'concentration') {
     const rs = (await c.tx.query(`select r.*, p.area, p.work, p.kind, p.period_days, x.name as disinfectant, x.concentration_min, x.concentration_max, u.full_name as author,
@@ -194,7 +194,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       return [fmtD(r.done_at, tz), fmtT(r.done_at, tz), r.disinfectant || '—', norm(r), conc(r), 'по инструкции средства', r.concentration_ok ? 'да' : 'нет',
         r.concentration_ok ? '' : r.recommended_action || 'раствор приготовлен заново', r.author];
     });
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links: rs.map(() => `/app/${c.orgId}/sanitation`) };
   }
   if (src === 'health') {
     const hs = (await c.tx.query(`select h.*, u.full_name as employee, m.position, m.role, cu.full_name as checker from health_checks h join users u on u.id = h.user_id
@@ -202,7 +202,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       where h.organization_id = $1 and h.site_id = $2 and h.checked_on between $3::date and $4::date order by h.checked_on, u.full_name`, [c.orgId, c.siteId, c.from, c.to])).rows;
     const rows = hs.map((h) => [fmtD(h.checked_on, tz), h.employee, h.position || ROLES[h.role as Role]?.label || '', h.admitted ? 'признаков заболеваний нет' : 'выявлены признаки',
       h.signs || 'нет', h.admitted ? 'допущен' : `не допущен; ${h.action}`, h.checker, fmtT(h.checked_at, tz)]);
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links: hs.map(() => `/app/${c.orgId}/staff`) };
   }
   if (src === 'briefing_sanitary' || src === 'briefing_safety') {
     const bs = (await c.tx.query(`select b.*, t.title, t.material, u.full_name as employee, m.position, m.role, iu.full_name as instructor, a.acknowledged_at
@@ -236,7 +236,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       if (code === 'J05') return [checkDate, l.product, l.lot_no || '—', fmtD(l.received_at, tz), exp, qty, st, fifo, action];
       return [checkDate, l.product, l.lot_no || '—', exp, qty, st, fifo, action, ''];
     });
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links: ls.map((l) => `/app/${c.orgId}/lots/${l.id}`) };
   }
   if (src === 'incidents') {
     const is = (await c.tx.query(`select i.*, ru.full_name as responsible, cu.full_name as confirmer, au.full_name as actor,
@@ -248,7 +248,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       i.capa_cause ? `CAPA: ${i.capa_cause}` : i.capa_status ? 'CAPA: причина устанавливается' : '',
       [i.action_note, i.capa_action ? `CAPA — корректирующее: ${i.capa_action}` : '', i.capa_prevent ? `предупреждающее: ${i.capa_prevent}` : ''].filter(Boolean).join('; '),
       i.responsible || i.actor || i.responsible_role || '', fmtDT(i.due_at, tz), i.closed_at ? `${fmtDT(i.closed_at, tz)}${i.confirmer ? ` / ${i.confirmer}` : ''}` : INC_STATUS[i.status]]);
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links: is.map((x) => `/app/${c.orgId}/incidents/${x.id}`) };
   }
   if (src === 'plans') {
     const ps = (await c.tx.query(`select p.*, a.full_name as approver, cr.full_name as creator from haccp_plans p left join users a on a.id = p.approved_by
@@ -275,7 +275,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
   }
   if (src === 'opening') {
     // J54: вскрытие тары — дочерняя партия (lot_links.kind = 'opened'), сотрудник — из движения склада
-    const r = (await c.tx.query(`select cl.opened_at, p.name as product, pl.lot_no, k.quantity, k.unit, cl.expires_at, cl.expiry_basis, o.name as storage,
+    const r = (await c.tx.query(`select cl.id, cl.opened_at, p.name as product, pl.lot_no, k.quantity, k.unit, cl.expires_at, cl.expiry_basis, o.name as storage,
         (select u.full_name from stock_movements sm join users u on u.id = sm.created_by where sm.lot_id = cl.id and sm.kind = 'open_in' order by sm.created_at limit 1) as who,
         (select lb.code from labels lb where lb.lot_id = cl.id order by lb.created_at limit 1) as label
       from lot_links k join lots cl on cl.id = k.child_lot_id join lots pl on pl.id = k.parent_lot_id join products p on p.id = cl.product_id
@@ -285,7 +285,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       const h = /после вскрытия ([\d,.]+) ч/.exec(x.expiry_basis || '')?.[1] || /([\d,.]+) ч после вскрытия/.exec(x.expiry_basis || '')?.[1];
       return [fmtDT(x.opened_at, tz), x.product, x.lot_no || 'без номера', `${fmtNum(x.quantity)} ${x.unit}`, x.who || '—', h ? `${h} ч` : '—', x.expiry_basis || '—',
         fmtDT(x.expires_at, tz), x.label || 'не выдана', x.storage || '—', x.who ? `электронно: ${x.who}` : 'нет'];
-    }) };
+    }), links: r.map((x) => `/app/${c.orgId}/lots/${x.id}`) };
   }
   if (src === 'semi_release' || src === 'dish_release') {
     const r = (await c.tx.query(`select o.id, o.completed_at, o.actual_g, o.organoleptic, o.release_decision, (select full_name from users where id = o.assessed_by) as assessor, d.name as dish, v.version as ttk_version, v.card_date, l.lot_no, l.expires_at, l.status as lot_status, u.full_name as who,
@@ -299,18 +299,19 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       [c.orgId, c.siteId, src === 'semi_release' ? 'semi' : 'dish', c.from, c.to, c.tz])).rows;
     const ctl = (x: { checks: number; bad: number }) => (!x.checks ? 'контроль не предусмотрен (нет проверок выпуска)' : x.bad ? `отклонение: ${x.bad} из ${x.checks}` : `в норме: ${x.checks} из ${x.checks}`);
     if (src === 'semi_release') return { columns: f.columns, rows: r.map((x) => [x.dish, `версия ${x.ttk_version}`, fmtDT(x.completed_at, tz), `${fmtNum(Number(x.actual_g) / 1000)} кг`,
-      x.raw || 'нет связей с сырьём', fmtDT(x.expires_at, tz), x.label || 'не выдана', x.who || '—', ctl(x)]) };
+      x.raw || 'нет связей с сырьём', fmtDT(x.expires_at, tz), x.label || 'не выдана', x.who || '—', ctl(x)]), links: r.map((x) => `/app/${c.orgId}/production/${x.id}`) };
     return { columns: f.columns, rows: r.map((x) => [x.dish, x.lot_no || 'без номера', `версия ${x.ttk_version}`, fmtDT(x.completed_at, tz),
       x.release_decision ? `${x.release_decision === 'allowed' ? 'допущено' : 'не допущено'} (${x.assessor}); ${ctl(x)}` : `нет записи бракеража; ${ctl(x)}`, x.organoleptic || 'нет записи в системе',
       x.release_decision === 'allowed' && x.lot_status === 'available' && !x.bad ? 'разрешено' : `не разрешено (${x.release_decision === 'rejected' ? 'бракераж' : LOT_STATUS_LABEL[x.lot_status] || x.lot_status || 'нет партии'})`,
-      fmtDT(x.expires_at, tz), x.who || '—']) };
+      fmtDT(x.expires_at, tz), x.who || '—']), links: r.map((x) => `/app/${c.orgId}/production/${x.id}`) };
   }
   if (src === 'label_prints') {
     const SRC: Record<string, string> = { lot: 'этикетка партии', opened: 'вскрытие тары', consumer: 'потребительская этикетка' };
-    const r = (await c.tx.query(`select pr.printed_at, pr.copies, pr.reason, lb.code, lb.kind, lb.payload->>'lot_no' as lot_no, lb.payload->>'product' as product, u.full_name as who
+    const r = (await c.tx.query(`select lb.lot_id, pr.printed_at, pr.copies, pr.reason, lb.code, lb.kind, lb.payload->>'lot_no' as lot_no, lb.payload->>'product' as product, u.full_name as who
       from label_prints pr join labels lb on lb.id = pr.label_id join users u on u.id = pr.printed_by
       where pr.organization_id = $1 and pr.site_id = $2 and pr.printed_at between ${periodSql(3, 4, 5)} order by pr.printed_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
-    return { columns: f.columns, rows: r.map((x) => [x.lot_no || 'без номера', x.product, x.code, fmtDT(x.printed_at, tz), String(x.copies), x.who, SRC[x.kind] || x.kind, x.reason || '—']) };
+    return { columns: f.columns, rows: r.map((x) => [x.lot_no || 'без номера', x.product, x.code, fmtDT(x.printed_at, tz), String(x.copies), x.who, SRC[x.kind] || x.kind, x.reason || '—']),
+      links: r.map((x) => (x.lot_id ? `/app/${c.orgId}/lots/${x.lot_id}` : null)) };
   }
   if (src === 'relabels') {
     // перепечать той же этикетки (с причиной) и замена этикетки партии новой (изменились данные партии)
@@ -339,19 +340,22 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       where s.organization_id = $1 and s.site_id = $2 and s.taken_at between ${periodSql(3, 4, 5)} order by s.taken_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
     return { columns: f.columns, rows: r.map((x) => [x.dish || x.title, x.lot_no || '—', fmtDT(x.taken_at, tz), x.whole_portion ? `порция целиком (${fmtNum(x.weight_g)} г)` : `${fmtNum(x.weight_g)} г`,
       x.container || '—', x.temperature == null ? '—' : `${fmtNum(x.temperature)} °C`, x.storage || x.storage_place || '—', `до ${fmtDT(x.keep_until, tz)}`,
-      x.destroyed_at ? `${fmtDT(x.destroyed_at, tz)}, ${x.destroyer}` : new Date(x.keep_until) < new Date() ? 'не уничтожена — срок прошёл' : 'хранится', x.who]) };
+      x.destroyed_at ? `${fmtDT(x.destroyed_at, tz)}, ${x.destroyer}` : new Date(x.keep_until) < new Date() ? 'не уничтожена — срок прошёл' : 'хранится', x.who]),
+      links: r.map((x) => (x.lot_id ? `/app/${c.orgId}/lots/${x.lot_id}` : `/app/${c.orgId}/lab`)) };
   }
   if (src === 'lab') {
     const r = (await c.tx.query(`select r.*, i.title as inc_title, i.status as inc_status from lab_results r left join incidents i on i.id = r.incident_id
       where r.organization_id = $1 and r.site_id = $2 and r.sampled_on between $3::date and $4::date order by r.sampled_on, r.recorded_at`, [c.orgId, c.siteId, c.from, c.to])).rows;
-    const rows: string[][] = [];
+    const rows: string[][] = [], links: string[] = [];
     for (const x of r) {
+      const before = rows.length;
       const act = x.inc_title ? `${x.inc_title} (${INC_STATUS[x.inc_status] || x.inc_status})` : x.result === 'fail' ? 'нет записи о действии' : '—';
       const ps = (x.params || []) as { name: string; fact: string; norm: string; unit: string | null; pass: boolean }[];
       if (!ps.length) rows.push([x.target, x.test_type, fmtD(x.sampled_on, tz), x.lab_name, x.protocol_no, x.conclusion || '—', '—', x.result === 'pass' ? 'соответствует' : 'не соответствует', act]);
       for (const q of ps) rows.push([x.target, `${x.test_type}: ${q.name}`, fmtD(x.sampled_on, tz), x.lab_name, x.protocol_no, `${q.fact}${q.unit ? ` ${q.unit}` : ''}`, q.norm, q.pass ? 'соответствует' : 'не соответствует', q.pass ? '—' : act]);
+      for (let k = before; k < rows.length; k++) links.push(x.incident_id ? `/app/${c.orgId}/incidents/${x.incident_id}` : `/app/${c.orgId}/lab`);
     }
-    return { columns: f.columns, rows };
+    return { columns: f.columns, rows, links };
   }
   // Ручная форма: записи хранятся в форме-источнике семейства; показываются её столбцы.
   const data = dataFormOf(code);
@@ -411,7 +415,7 @@ export async function getJournal(userId: string, orgId: string, code: string, in
     const me = (await tx.query(`select full_name from users where id = $1`, [userId])).rows[0];
     return {
       form: { ...listForms().find((x) => x.code === code)!, version: FORM_VERSION, basis: formBasis(code) }, organization: org, site: { ...site, address: siteAddr },
-      period: p, columns: built.columns, rows: built.rows, grid: !!built.grid, content_hash: hash, signoffs, blockers, gaps,
+      period: p, columns: built.columns, rows: built.rows, links: built.links || null, grid: !!built.grid, content_hash: hash, signoffs, blockers, gaps,
       generated: { at: new Date().toISOString(), by: me?.full_name || null },
     };
   }, p.siteId);

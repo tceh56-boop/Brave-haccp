@@ -90,6 +90,7 @@ describe('Журналы J54–J60 из событий', () => {
     expect(who).not.toBe('—');
     expect(basis).toMatch(/после вскрытия/);
     expect(label).toMatch(/^[A-Z0-9-]+$/);
+    expect(j.links).toEqual([`/app/${orgId}/lots/${openedLot}`]);   // строка журнала ведёт к исходному событию
   });
 
   it('J55 — выпуск п/ф: версия ТТК, партии сырья, этикетка, результат контроля; J58 — готовое блюдо', async () => {
@@ -99,6 +100,7 @@ describe('Журналы J54–J60 из событий', () => {
     expect(j.rows[0][1]).toBe('версия 1');
     expect(j.rows[0][4]).toMatch(/Говядина Г-77/);
     expect(j.rows[0][8]).toBe('в норме: 1 из 1');
+    expect(j.links![0]).toMatch(new RegExp(`^/app/${orgId}/production/`));
     const d = await getJournal(owner.id, orgId, 'J58', P());
     expect(d.rows.map((r) => r[0])).toEqual(['Котлеты']);
     expect(d.rows[0][4]).toMatch(/^допущено/);
