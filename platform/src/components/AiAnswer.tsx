@@ -11,6 +11,8 @@ export interface AiResult {
   job_id: string; status: string; message: string | null; model: string | null;
   answer: { found: string; why: string; do_now: string[]; dont: string[]; who_confirms: string; closes_when: string; limitations: string; confidence: 'low' | 'medium' | 'high' } | null;
   citations: Citation[]; sources: Citation[]; unsupported: string[]; bad_citations: { source: string; quote: string; reason: string }[];
+  /** ЦЕХ AI: какие данные системы запросил агент. */
+  steps?: { tool: string; label: string; input: unknown; ok: boolean }[];
 }
 
 const CONF: Record<string, [string, string]> = { high: ['высокая', 'ok'], medium: ['средняя', 'warn'], low: ['низкая', 'crit'] };
@@ -44,10 +46,14 @@ export function AiAnswerView({ r }: { r: AiResult }) {
   });
   return (
     <div className="card">
-      <div className="between"><h2 style={{ margin: 0 }}>AI-помощник</h2>{a && <span className={`badge ${CONF[a.confidence][1]}`}>уверенность: {CONF[a.confidence][0]}</span>}</div>
+      <div className="between"><h2 style={{ margin: 0 }}>{r.steps ? 'ЦЕХ AI' : 'AI-помощник'}</h2>{a && <span className={`badge ${CONF[a.confidence][1]}`}>уверенность: {CONF[a.confidence][0]}</span>}</div>
       <p className="small muted">AI объясняет и предлагает. Решения принимает ответственный; AI ничего не утверждает, не закрывает и не списывает.</p>
       {error && <div className="err">{error}</div>}
       {r.message && <div className={r.status === 'unavailable' ? 'note' : 'err'}>{r.message}</div>}
+      {r.steps && r.steps.length > 0 && (
+        <details className="small" style={{ marginBottom: 8 }}><summary>Что AI посмотрел в системе ({r.steps.length})</summary>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{r.steps.map((x, i) => <li key={i}>{x.label}{x.ok ? '' : ' — нет доступа или ошибка'}</li>)}</ul></details>
+      )}
       {r.unsupported.length > 0 && <p className="small">Значения без источника: {r.unsupported.join(', ')}.</p>}
       {a && (
         <>

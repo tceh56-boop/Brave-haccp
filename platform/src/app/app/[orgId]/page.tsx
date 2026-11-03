@@ -66,7 +66,7 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
       {can('menu.read') && <p className="small"><Link href={`/app/${orgId}/stop-list`}>Стоп-лист →</Link></p>}
       {can('sales.manage') && <p className="small"><Link href={`/app/${orgId}/sales`}>Продажи: очередь списания, импорт внешней кассы →</Link></p>}
       {can('econ.read') && <p className="small"><Link href={`/app/${orgId}/economics`}>Экономика: выручка, себестоимость, маржа →</Link></p>}
-      {can('ai.use') && <p className="small"><Link href={`/app/${orgId}/assistant`}>AI-помощник: вопрос по требованиям со ссылкой на источник →</Link></p>}
+      {can('ai.use') && <p className="small"><Link href={`/app/${orgId}/assistant`}>ЦЕХ AI: вопрос по данным системы и требованиям со ссылкой на источник →</Link></p>}
       {can('pilot.read') && <p className="small"><Link href={`/app/${orgId}/readiness`}>Готовность к пилоту: проверки, подтверждения, решение Go/No-Go →</Link></p>}
       <p className="small"><Link href={`/app/${orgId}/guide`}>Памятки по ролям →</Link> · <a href="/api/v1/me/data" download>Мои данные (152-ФЗ) — скачать</a></p>
       <div className="tabs" role="tablist">
