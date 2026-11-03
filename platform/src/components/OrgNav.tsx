@@ -17,6 +17,7 @@ function useGroups(): [string, Item[]][] {
       { href: `${b}/shift`, label: 'Смена', show: can('measure.record') || can('receipt.record'), match: [`${b}/objects`, `${b}/report`] },
       { href: `${b}/problems`, label: 'Проблемы', show: can('incident.read'), match: [`${b}/incidents`] },
       { href: `${b}/tasks`, label: 'Задачи', show: can('task.read') },
+      { href: `${b}/checklists`, label: 'Чек-листы', show: can('task.read') },
       { href: `${b}/stock`, label: 'Склад', show: can('lot.read'), match: [`${b}/lots`, `${b}/receipts`] },
       { href: `${b}/recalls`, label: 'Отзывы партий', show: can('trace.read') },
       { href: `${b}/purchasing`, label: 'Закупки', show: can('purchase.read') },
