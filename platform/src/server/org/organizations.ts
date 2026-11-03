@@ -74,7 +74,8 @@ const Requisites = z.object({
   headPosition: optText(200), headName: optText(200), headBasis: optText(300), activityNotice: optText(400),
 });
 const OrgPatch = OrgInput.omit({ firstSiteName: true }).partial().merge(Requisites.partial())
-  .extend({ modules: z.array(z.enum(Object.keys(MODULES) as [ModuleCode, ...ModuleCode[]], 'Неизвестный модуль.')).max(10).optional() });
+  .extend({ modules: z.array(z.enum(Object.keys(MODULES) as [ModuleCode, ...ModuleCode[]], 'Неизвестный модуль.')).max(10).optional(),
+    salesConsumption: z.enum(['estimate', 'ttk_writeoff'], 'Неизвестный способ учёта расхода по продажам.').optional() });
 
 export async function updateOrganization(userId: string, orgId: string, input: unknown) {
   const d = parse(OrgPatch, input);
@@ -92,6 +93,11 @@ export async function updateOrganization(userId: string, orgId: string, input: u
         await tx.query(`update organizations set modules = $2 where id = $1`, [orgId, mods]);
         await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.modules', entityType: 'organization', entityId: orgId, before: { modules: before.modules }, after: { modules: mods } });
       }
+    }
+    if (d.salesConsumption && d.salesConsumption !== before.sales_consumption) {
+      await tx.query(`update organizations set sales_consumption = $2 where id = $1`, [orgId, d.salesConsumption]);
+      await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.sales_consumption', entityType: 'organization', entityId: orgId,
+        before: { sales_consumption: before.sales_consumption }, after: { sales_consumption: d.salesConsumption } });
     }
     const after = (await tx.query(`update organizations set name = coalesce($2, name), legal_form = coalesce($3, legal_form), inn = coalesce($4, inn),
         phone = coalesce($5, phone), region = coalesce($6, region), timezone = coalesce($7, timezone),

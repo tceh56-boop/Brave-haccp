@@ -6,7 +6,7 @@ import { roleHas } from '../access/roles';
 import { inOrg, parse, optText, getSite, openTask, closeTasksFor, fmtNum } from './common';
 import { once, move } from './stock';
 import { normName } from './recipes';
-import { explode, takeFefo, USABLE, type Need } from './bom';
+import { explode, takeFefo, priceFefo, USABLE, type Need } from './bom';
 
 /**
  * Касса и продажи (этап 6 ТЗ v2; механика Pos.gs прежнего ЦЕХ):
@@ -22,7 +22,7 @@ import { explode, takeFefo, USABLE, type Need } from './bom';
 export const METHOD_LABEL: Record<string, string> = { cash: 'Наличные', card: 'Карта', other: 'Прочее' };
 export const ORDER_STATUS: Record<string, string> = { open: 'Открыт', paid: 'Оплачен', cancelled: 'Отменён', refunded: 'Возврат' };
 export const FULFIL_LABEL: Record<string, string> = {
-  pending: 'Ожидает списания', done: 'Списано по ТТК', failed: 'Не списано', no_ttk: 'Нет утверждённой ТТК', unmatched: 'Не сопоставлено с блюдом', not_required: 'Не требуется',
+  pending: 'Ожидает обработки', done: 'Обработано по ТТК', failed: 'Не списано', no_ttk: 'Нет утверждённой ТТК', unmatched: 'Не сопоставлено с блюдом', not_required: 'Не требуется',
 };
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const LOW_PORTIONS = 5;
@@ -39,11 +39,20 @@ export async function fulfilSale(tx: Tx, orgId: string, saleId: string, userId: 
   await tx.query('savepoint fulfil');
   try {
     const { needs, versionId } = await explode(tx, orgId, s.dish_id, { portions: Number(s.qty) }, { siteId: s.site_id, ownStock: true });
+    // Д-2: по умолчанию продажа — только расчёт; списание по ТТК — если предприятие утвердило такую методику сверки
+    const mode = (await tx.query(`select sales_consumption from organizations where id = $1`, [orgId])).rows[0].sales_consumption as 'estimate' | 'ttk_writeoff';
+    const ver = (await tx.query(`select version from ttk_versions where id = $1`, [versionId])).rows[0].version;
     let cost: number | null = 0;
     for (const n of needs.values()) {
-      const c = await takeFefo(tx, orgId, s.site_id, n, { refType: 'sale', refId: s.id, reason: `продажа: ${s.name} × ${fmtNum(s.qty)}`, operationId: `sale:${s.id}`, userId });
+      await tx.query(`insert into consumption_estimates (organization_id, site_id, kind, ref_type, ref_id, product_id, quantity, unit, ttk_version_id, basis, created_by)
+        values ($1, $2, 'sale', 'sale', $3, $4, $5, $6, $7, $8, $9)`,
+      [orgId, s.site_id, s.id, n.productId, Math.round(n.qty * 1e6) / 1e6, n.unit, versionId, `ТТК «${s.dish_name}» v${ver} × ${fmtNum(s.qty)} порц.`, userId]);
+      const c = mode === 'ttk_writeoff'
+        ? await takeFefo(tx, orgId, s.site_id, n, { refType: 'sale', refId: s.id, reason: `расчётное списание по ТТК: ${s.name} × ${fmtNum(s.qty)}`, reasonCode: 'ttk_writeoff', operationId: `sale:${s.id}`, userId })
+        : await priceFefo(tx, orgId, s.site_id, n);
       cost = cost === null || c === null ? null : cost + c;
     }
+    await tx.query(`update sales set consumption_kind = $2 where id = $1`, [saleId, mode]);
     await tx.query(`update sales set fulfil_status = 'done', fulfil_error = null, ttk_version_id = $2, cost = $3, fulfilled_at = now() where id = $1`, [saleId, versionId, cost === null ? null : r2(cost)]);
     await tx.query('release savepoint fulfil');
     return 'done';

@@ -6,7 +6,7 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 
 interface Org { id: string; name: string; legal_form: string | null; inn: string | null; phone: string | null; region: string | null; timezone: string; status: string;
-  ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null; modules?: string[] }
+  ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null; modules?: string[]; sales_consumption?: string }
 interface Membership { role: string; role_label: string; site_ids: string[]; permissions: string[] }
 interface Site { id: string; name: string; address: string | null; status: string }
 interface Member { id: string; user_id: string; full_name: string; email: string; role: string; role_label: string; site_ids: string[]; position: string | null; status: string; blocked_reason: string | null }
@@ -334,6 +334,16 @@ function OrgModules({ org, defs, canEdit }: { org: Org; defs: ModuleDef[]; canEd
           })}
         </tbody>
       </table>
+      <h3 style={{ marginTop: 16 }}>Расход сырья по продажам</h3>
+      <p className="small muted">ТЗ 3.0 §12.5: расчётное потребление по продажам отделено от фактического расхода.</p>
+      {[['estimate', 'Только расчёт (по умолчанию)', 'Продажа создаёт расчётное потребление по ТТК; склад меняют выпуск, расход, списание и инвентаризация. Расхождение расчёта и факта видно при инвентаризации.'],
+        ['ttk_writeoff', 'Списание по ТТК — утверждённая методика сверки', 'Продажа списывает сырьё по ТТК (по ближайшему сроку). Такие движения помечены «расчётное списание»; выбирайте, только если методика утверждена на предприятии.']]
+        .map(([k, l, h]) => (
+          <label key={k} className="row" style={{ fontWeight: 400, alignItems: 'flex-start', marginTop: 6 }}>
+            <input type="radio" name="sc" style={{ width: 22, minHeight: 22 }} disabled={!canEdit || busy} checked={(org.sales_consumption || 'estimate') === k}
+              onChange={() => run(async () => { await api(`/orgs/${org.id}`, { method: "PATCH", body: { salesConsumption: k } }); window.location.reload(); })} />
+            <span><b>{l}</b><br /><span className="small muted">{h}</span></span>
+          </label>))}
       {error && <div className="err">{error}</div>}
     </div>
   );

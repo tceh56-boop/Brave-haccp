@@ -96,7 +96,7 @@ export async function explode(tx: Tx, orgId: string, dishId: string, amount: { p
 
 /** FEFO-расход позиции с площадки; стоимость — по ценам партий (null, если у партии нет цены). */
 export async function takeFefo(tx: Tx, orgId: string, siteId: string, n: Need,
-  ref: { refType: string; refId: string; reason: string; operationId: string; userId: string | null }, taken?: { lotId: string; qty: number; unit: string }[]) {
+  ref: { refType: string; refId: string; reason: string; operationId: string; userId: string | null; reasonCode?: string }, taken?: { lotId: string; qty: number; unit: string }[]) {
   const lots = (await tx.query(`select l.* from lots l where l.organization_id = $1 and l.site_id = $2 and l.product_id = $3 and ${USABLE} order by l.expires_at, l.received_at for update`,
     [orgId, siteId, n.productId])).rows;
   const have = lots.reduce((s, l) => s + Number(l.quantity), 0);
@@ -105,10 +105,31 @@ export async function takeFefo(tx: Tx, orgId: string, siteId: string, n: Need,
   for (const l of lots) {
     if (left <= 1e-9) break;
     const q = Math.min(Number(l.quantity), left);
-    await move(tx, { orgId, siteId, lotId: l.id, productId: n.productId, kind: 'consume', quantity: -q, unit: n.unit, reason: ref.reason, refType: ref.refType, refId: ref.refId, operationId: ref.operationId, userId: ref.userId });
+    await move(tx, { orgId, siteId, lotId: l.id, productId: n.productId, kind: 'consume', quantity: -q, unit: n.unit, reason: ref.reason, reasonCode: ref.reasonCode, refType: ref.refType, refId: ref.refId, operationId: ref.operationId, userId: ref.userId });
     cost = cost === null || l.unit_price === null ? null : cost + q * Number(l.unit_price);
     taken?.push({ lotId: l.id, qty: q, unit: n.unit });
     left -= q;
+  }
+  return cost;
+}
+
+/**
+ * Оценка стоимости позиции без списания (расчётное потребление): по ценам годных партий в порядке FEFO;
+ * недостающее — по цене последней приёмки позиции. Нет ни одной цены — null (неизвестно ≠ 0).
+ */
+export async function priceFefo(tx: Tx, orgId: string, siteId: string, n: Need): Promise<number | null> {
+  const lots = (await tx.query(`select l.quantity, l.unit_price from lots l where l.organization_id = $1 and l.site_id = $2 and l.product_id = $3 and ${USABLE} order by l.expires_at, l.received_at`,
+    [orgId, siteId, n.productId])).rows;
+  let left = n.qty, cost = 0;
+  for (const l of lots) {
+    if (left <= 1e-9) break;
+    if (l.unit_price === null) return null;
+    const q = Math.min(Number(l.quantity), left); cost += q * Number(l.unit_price); left -= q;
+  }
+  if (left > 1e-9) {
+    const last = (await tx.query(`select unit_price from lots where organization_id = $1 and product_id = $2 and unit_price is not null order by received_at desc limit 1`, [orgId, n.productId])).rows[0];
+    if (!last) return null;
+    cost += left * Number(last.unit_price);
   }
   return cost;
 }

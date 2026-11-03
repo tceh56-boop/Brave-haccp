@@ -12,7 +12,7 @@ interface TreeLot { id: string; parent_id: string | null; link: string | null; d
 interface Sale { id: string; name: string; qty: number; sold_at: string; site: string; from_chain: number; unit: string }
 interface Recall { id: string; status: string; hazard: string; source_label: string; opened_at: string; opened_by_name: string; decision: string | null; decision_note: string | null;
   decided_by_name: string | null; decided_at: string | null; root_lot_id: string;
-  affected: { lots: TreeLot[]; dishes: { id: string; name: string }[]; sales: Sale[]; sold_dishes: { id: string; name: string; qty: number }[];
+  affected: { lots: TreeLot[]; dishes: { id: string; name: string }[]; sales: Sale[]; possible_sales?: { id: string; name: string; qty: number; sold_at: string; site: string }[]; sold_dishes: { id: string; name: string; qty: number }[];
     origin: { receipt_id: string; document_no: string | null; supplier: string | null; supplier_inn: string | null; supplier_phone: string | null; manufacturer: string | null } | null; actions: string[] };
   held: { lot_id: string; prev_status: string; quantity_at_block: number; quantity: number; status: string; unit: string; lot_no: string | null; product: string; site: string }[] }
 const LINK: Record<string, string> = { opened: 'вскрытие', transfer: 'перемещение', production: 'производство' };
@@ -74,6 +74,13 @@ export default function RecallPage({ params }: { params: Promise<{ id: string }>
             <thead><tr><th>Дата</th><th>Блюдо</th><th>Кол-во</th><th>Списано из цепочки</th><th>Площадка</th></tr></thead>
             <tbody>{a.sales.map((s) => <tr key={s.id}><td>{dt(s.sold_at, tz)}</td><td>{s.name}</td><td>{n(s.qty)}</td><td>{n(s.from_chain)} {s.unit}</td><td>{s.site}</td></tr>)}</tbody>
           </table></div>)}
+        {(a.possible_sales?.length ?? 0) > 0 && <>
+          <h3>Возможно затронутые продажи (расчёт)</h3>
+          <p className="small muted">Продажи по ТТК со списанием не связаны (учёт «только расчёт»): здесь продажи блюд, в ТТК которых есть позиции цепочки, на той же площадке после поступления партии.
+            Использовалась ли именно эта партия, система не знает.</p>
+          <div className="tablewrap"><table className="table small"><thead><tr><th>Дата</th><th>Блюдо</th><th>Кол-во</th><th>Площадка</th></tr></thead>
+            <tbody>{a.possible_sales!.map((s) => <tr key={s.id}><td>{dt(s.sold_at, tz)}</td><td>{s.name}</td><td>{n(s.qty)}</td><td>{s.site}</td></tr>)}</tbody></table></div>
+        </>}
       </div>
 
       {r.status === 'open' && (can('recall.decide') ? (

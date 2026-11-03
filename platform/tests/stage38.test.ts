@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { closePool, withSystem } from '../src/server/db/pool';
-import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
+import { createOrganization, inviteMember, acceptInvitation, updateOrganization } from '../src/server/org/organizations';
 import { createProduct, createSupplier } from '../src/server/ops/catalog';
 import { createReceipt, addReceiptLine, completeReceipt } from '../src/server/ops/receipts';
 import { createDish, getDish, updateVersion, addLine, submitVersion, approveVersion } from '../src/server/ops/recipes';
@@ -51,6 +51,7 @@ beforeAll(async () => {
   owner = await makeUser();
   const r = await createOrganization(owner, { name: 'Кафе «Отзыв»' });
   orgId = r.organization.id; siteId = r.site.id;
+  await updateOrganization(owner.id, orgId, { salesConsumption: 'ttk_writeoff' });   // продажи списывают партии — отзыв их находит
   chef = await invite('chef'); cook = await invite('line_staff'); keeper = await invite('storekeeper'); haccp = await invite('haccp_lead');
   beef = (await createProduct(chef.id, orgId, { name: 'Говядина', unit: 'кг' })).id;
   sup = (await createSupplier(chef.id, orgId, { name: 'ООО «Мясо»', inn: '7700000000' })).id;

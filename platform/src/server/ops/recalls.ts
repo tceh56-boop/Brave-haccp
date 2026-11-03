@@ -47,7 +47,14 @@ async function affectedOf(tx: Tx, orgId: string, lots: TreeLot[]) {
   const origin = (await tx.query(`select r.id as receipt_id, r.document_no, r.document_date, sp.id as supplier_id, sp.name as supplier, sp.inn as supplier_inn, sp.phone as supplier_phone, rl.manufacturer
       from lots l join receipt_lines rl on rl.id = l.receipt_line_id join receipts r on r.id = rl.receipt_id left join suppliers sp on sp.id = r.supplier_id where l.id = $1`, [lots[0].id])).rows[0] || null;
   const inStock = lots.filter((l) => l.quantity > 0 && ['available', 'quarantine', 'blocked'].includes(l.status));
-  return { lots, in_stock: inStock, dishes, sales, sold_dishes: sold, origin };
+  // продажи без списания партий (режим «только расчёт»): возможно затронуты — блюда с позициями цепочки по ТТК,
+  // та же площадка, с момента появления партии. Это расчёт, а не установленный факт (§10.6).
+  const sites = [...new Set(lots.map((l) => l.site_id))];
+  const since = (await tx.query(`select min(created_at) as t from lots where id = any($1::uuid[])`, [ids])).rows[0].t;
+  const possible = (await tx.query(`select distinct s.id, s.name, s.qty::float8 as qty, s.sold_at, st.name as site from consumption_estimates e join sales s on s.id = e.ref_id join sites st on st.id = s.site_id
+      where e.organization_id = $1 and e.kind = 'sale' and e.product_id = any($2::uuid[]) and s.site_id = any($3::uuid[]) and s.sold_at >= $4
+        and s.id <> all($5::uuid[]) order by s.sold_at`, [orgId, products, sites, since, sales.map((x) => x.id)])).rows;
+  return { lots, in_stock: inStock, dishes, sales, sold_dishes: sold, possible_sales: possible, origin };
 }
 
 /** Перечень действий — только из найденных данных. */
@@ -56,6 +63,7 @@ function actionsFor(a: Awaited<ReturnType<typeof affectedOf>>): string[] {
   for (const l of a.in_stock) out.push(`Изолировать и промаркировать «НЕ ИСПОЛЬЗОВАТЬ»: ${l.product}${l.lot_no ? `, партия ${l.lot_no}` : ''} — ${fmtNum(l.quantity)} ${l.unit}, ${l.site}.`);
   if (!a.in_stock.length) out.push('Остатков партии и её дочерних партий в системе нет — проверить места хранения физически (незарегистрированное движение система не видит).');
   if (a.sales.length) out.push(`Оценить риск для реализованной продукции: ${a.sales.length} продаж(и) с ${new Date(a.sales[0].sold_at).toLocaleDateString('ru-RU')} — ${a.sold_dishes.map((d) => `${d.name} × ${fmtNum(d.qty)}`).join(', ')}.`);
+  if (a.possible_sales?.length) out.push(`Проверить продажи, где партия могла использоваться (расчёт по ТТК, списание по продажам не ведётся): ${a.possible_sales.length} с ${new Date(a.possible_sales[0].sold_at).toLocaleDateString('ru-RU')} — ${[...new Set(a.possible_sales.map((x) => x.name))].join(', ')}.`);
   if (a.origin?.supplier) out.push(`Сообщить поставщику ${a.origin.supplier}${a.origin.supplier_inn ? ` (ИНН ${a.origin.supplier_inn})` : ''} о блокировке партии; запросить документы и сведения о партии.`);
   if (a.dishes.length) out.push(`Проверить продукцию, в которую входила партия: ${a.dishes.map((d) => d.name).join(', ')}.`);
   out.push('Принять решение: вернуть в оборот (с обоснованием) или списать остатки.');
