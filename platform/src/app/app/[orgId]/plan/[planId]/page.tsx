@@ -1,11 +1,12 @@
 'use client';
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
-import { KINDS, LAYERS, ZONE_CLASS, FLOWS, corners, swingZone, specification, findRisks, passages, roomOf, bbox, centerFromCorner, areaM2,
+import { KINDS, LAYERS, ZONE_CLASS, FLOWS, DEFAULT_HEIGHT, corners, swingZone, specification, findRisks, passages, roomOf, bbox, centerFromCorner, areaM2,
   type PlanObject, type PlanRoute, type Layer, type Risk } from '@/lib/floorplan';
 
 /**
@@ -19,6 +20,8 @@ interface Decision { decision: string; rationale: string; measure: string | null
 interface TtkRoute extends PlanRoute { dish: string; dish_id: string; version: number; from_id: string; to_id: string }
 interface Data { plan: Plan; objects: PlanObject[]; routes: PlanRoute[]; ttk_routes: TtkRoute[]; risks: (Risk & { decision: Decision | null })[];
   versions: { version: number; change_note: string; approved_at: string; approved_by: string; content_hash: string }[]; equipment: { id: string; name: string }[] }
+const Plan3D = dynamic(() => import('@/components/Plan3D'), { ssr: false, loading: () => <p className="muted">Загрузка 3D…</p> });
+
 type Mode = { t: 'select' } | { t: 'place'; kind: string } | { t: 'route'; flow: string; points: P[] } | { t: 'calibrate'; points: P[] };
 
 const uid = () => crypto.randomUUID();
@@ -46,6 +49,7 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
   const [layers, setLayers] = useState<Record<Layer | 'routes' | 'risks' | 'background' | 'dims' | 'passages' | 'ttk', boolean>>({ rooms: true, building: true, zones: true, equipment: true, engineering: true, routes: true, risks: true, background: true, dims: true, passages: true, ttk: true });
   const [view, setView] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [dim, setDim] = useState<'2d' | '3d'>('2d');
   const [note, setNote] = useState('');
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ kind: 'obj' | 'pan'; start: P; orig: P; id?: string } | null>(null);
@@ -157,6 +161,11 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
       {error && <div className="err" role="alert">{error}</div>}
       {msg && <div className="okbox" role="status">{msg}</div>}
 
+      <div className="tabs noprint" role="tablist">
+        {([['2d', '2D-план'], ['3d', '3D-вид']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={dim === k} onClick={() => setDim(k)}>{l}</button>)}
+      </div>
+      {dim === '3d' && <div className="card"><Plan3D objects={objects} routes={[...routes, ...ttkRoutes]} risks={risks} width={plan.width_mm} height={plan.height_mm} /></div>}
+      {dim === '2d' && <>
       <div className="card noprint" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         <button className={`btn small ${mode.t === 'select' ? '' : 'secondary'}`} onClick={() => setMode({ t: 'select' })}>Выбор</button>
         {manage && <>
@@ -264,6 +273,7 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
             <g key={r.key}><circle cx={r.at![0]} cy={r.at![1]} r={fs * 1.1} fill="#c0392b" opacity={0.85} /><text x={r.at![0]} y={r.at![1] + fs * 0.35} fontSize={fs} textAnchor="middle" fill="#fff">!{i + 1}</text></g>))}
         </svg>
       </div>
+      </>}
 
       {(selected || selRoute) && (
         <div className="card noprint">
@@ -289,6 +299,8 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
                   <div><label>Толщина стен, мм</label><input inputMode="numeric" value={Number(selected.props?.wall_mm ?? WALL)} onChange={(e) => update(selected.id, { props: { ...selected.props, wall_mm: Number(e.target.value) || 0 } })} /></div>
                 </>}
                 <div><label>Поворот, °</label><div className="row">{[0, 90, 180, 270].map((a) => <button key={a} type="button" className={`btn small ${Math.round(selected.rotation) === a ? '' : 'secondary'}`} onClick={() => update(selected.id, { rotation: a })}>{a}</button>)}</div></div>
+                {DEFAULT_HEIGHT[selected.kind] !== undefined && <div><label>Высота, мм{!(Number(selected.props?.height_mm) > 0) && <span className="muted"> (условно {DEFAULT_HEIGHT[selected.kind]})</span>}</label>
+                  <input inputMode="numeric" value={(selected.props?.height_mm as number) ?? ''} placeholder={`не указана`} onChange={(e) => update(selected.id, { props: { ...selected.props, height_mm: Number(e.target.value) || undefined } })} /></div>}
                 {(selected.kind === 'room' || selected.kind === 'zone' || selected.kind === 'passage') && <div><label>Назначение</label>
                   <select value={selected.zone_class || ''} onChange={(e) => update(selected.id, { zone_class: e.target.value || null })}><option value="">—</option>{Object.entries(ZONE_CLASS).map(([c, z]) => <option key={c} value={c}>{z.label}</option>)}</select></div>}
                 {selected.kind === 'door' && <>

@@ -278,4 +278,67 @@ export function passages(objects: PlanObject[]): Passage[] {
   return out;
 }
 
+/**
+ * 3D-модель строится только из 2D-плана (мастер-модели): отдельной геометрии нет.
+ * Высоты: помещение — props.height_mm, дверь — props.height_mm, оборудование — props.height_mm.
+ * Если высота не указана, берётся условное значение для отображения и помечается conventional: true
+ * (как условный габарит в 2D). Результат — коробки в мм (центр, размеры, поворот), без привязки к библиотеке отображения.
+ */
+export const DEFAULT_HEIGHT: Record<string, number> = {
+  room: 3000, door: 2100, window: 1200, wall: 3000, column: 3000, table: 850, sink: 850, sink2: 850, bath: 850, handwash: 850, rack: 1800, fridge: 2000, freezer: 2000,
+  chestfreezer: 850, coldroom: 2400, stove: 850, oven: 1600, combi: 1000, fryer: 850, vacuum: 500, sousvide: 400, blastchiller: 1800, packing: 900, dishwasher: 850,
+  chemicals: 1800, waste: 900, other: 900,
+};
+export interface Box3 { id: string; part: 'wall' | 'lintel' | 'partition' | 'equipment' | 'floor' | 'zone'; kind: string; x: number; y: number; z: number; w: number; d: number; h: number;
+  rotation: number; color: string; conventional: boolean; label?: string; no?: number }
+
+const H = (o: PlanObject) => Number(o.props?.height_mm) > 0 ? { h: Number(o.props!.height_mm), conv: false } : { h: DEFAULT_HEIGHT[o.kind] ?? 900, conv: true };
+
+export function scene3d(objects: PlanObject[]) {
+  const boxes: Box3[] = [];
+  const doors = objects.filter((o) => o.kind === 'door' || o.kind === 'window');
+  const nos = new Map(specification(objects).map((s) => [s.id, s.no]));
+  for (const r of objects.filter((o) => o.kind === 'room')) {
+    const rh = H(r), t = Number(r.props?.wall_mm ?? 200), b = bbox(r);
+    boxes.push({ id: `${r.id}:floor`, part: 'floor', kind: 'room', x: r.x_mm, y: r.y_mm, z: 0, w: r.w_mm, d: r.h_mm, h: 0, rotation: r.rotation, color: r.zone_class ? ZONE_CLASS[r.zone_class].color : '#efe6d6', conventional: rh.conv, label: r.label || undefined });
+    if (!(t > 0) || Math.round(r.rotation) % 90 !== 0) continue;
+    // четыре стены снаружи внутренних граней; проёмы дверей и окон, лежащих на стене, вырезаются
+    const sides: { horiz: boolean; c: number; from: number; to: number }[] = [
+      { horiz: true, c: b.y1 - t / 2, from: b.x1 - t, to: b.x2 + t }, { horiz: true, c: b.y2 + t / 2, from: b.x1 - t, to: b.x2 + t },
+      { horiz: false, c: b.x1 - t / 2, from: b.y1, to: b.y2 }, { horiz: false, c: b.x2 + t / 2, from: b.y1, to: b.y2 }];
+    for (const [si, s] of sides.entries()) {
+      const cuts = doors.map((dr) => ({ dr, bb: bbox(dr) })).filter(({ bb }) => (s.horiz ? bb.y1 <= s.c + t / 2 && bb.y2 >= s.c - t / 2 : bb.x1 <= s.c + t / 2 && bb.x2 >= s.c - t / 2))
+        .map(({ dr, bb }) => ({ dr, a: s.horiz ? bb.x1 : bb.y1, z: s.horiz ? bb.x2 : bb.y2 })).filter((c) => c.z > s.from && c.a < s.to).sort((p, q) => p.a - q.a);
+      let cur = s.from, k = 0;
+      const piece = (a: number, z: number, z0: number, h: number, part: Box3['part']) => {
+        if (z - a < 1 || h < 1) return;
+        boxes.push({ id: `${r.id}:w${si}:${k++}`, part, kind: 'wall', x: s.horiz ? (a + z) / 2 : s.c, y: s.horiz ? s.c : (a + z) / 2, z: z0, w: s.horiz ? z - a : t, d: s.horiz ? t : z - a, h, rotation: 0,
+          color: '#3a3128', conventional: rh.conv });
+      };
+      for (const c of cuts) {
+        piece(cur, c.a, 0, rh.h, 'wall');
+        const dh = H(c.dr).h;
+        if (c.dr.kind === 'window') { const sill = Number(c.dr.props?.sill_mm ?? 900); piece(c.a, c.z, 0, sill, 'wall'); piece(c.a, c.z, sill + dh, rh.h - sill - dh, 'lintel'); }
+        else piece(c.a, c.z, dh, rh.h - dh, 'lintel');
+        cur = Math.max(cur, c.z);
+      }
+      piece(cur, s.to, 0, rh.h, 'wall');
+    }
+  }
+  const roomH = (o: PlanObject) => { const r = roomOf(o, objects); return r ? H(r).h : DEFAULT_HEIGHT.room; };
+  for (const o of objects.filter((x) => x.kind === 'wall' || x.kind === 'column')) {
+    const h = Number(o.props?.height_mm) > 0 ? Number(o.props!.height_mm) : roomH(o);
+    boxes.push({ id: o.id, part: 'partition', kind: o.kind, x: o.x_mm, y: o.y_mm, z: 0, w: o.w_mm, d: o.h_mm, h, rotation: o.rotation, color: '#5b4a3a', conventional: !(Number(o.props?.height_mm) > 0) });
+  }
+  for (const o of objects.filter((x) => x.kind === 'zone' || x.kind === 'passage')) {
+    boxes.push({ id: o.id, part: 'zone', kind: o.kind, x: o.x_mm, y: o.y_mm, z: 0, w: o.w_mm, d: o.h_mm, h: 0, rotation: o.rotation, color: o.zone_class ? ZONE_CLASS[o.zone_class].color : '#888888', conventional: false, label: o.label || undefined });
+  }
+  for (const o of objects.filter((x) => KINDS[x.kind]?.layer === 'equipment')) {
+    const e = H(o);
+    boxes.push({ id: o.id, part: 'equipment', kind: o.kind, x: o.x_mm, y: o.y_mm, z: 0, w: o.w_mm, d: o.h_mm, h: e.h, rotation: o.rotation, color: KINDS[o.kind].fill,
+      conventional: e.conv || !o.size_confirmed, label: o.label || KINDS[o.kind].label, no: nos.get(o.id) });
+  }
+  return boxes;
+}
+
 export function areaM2(o: Pick<PlanObject, 'w_mm' | 'h_mm'>) { return Math.round((o.w_mm * o.h_mm) / 1e4) / 100; }

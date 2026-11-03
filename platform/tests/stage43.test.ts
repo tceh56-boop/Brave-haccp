@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { closePool, withSystem } from '../src/server/db/pool';
 import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
 import { createPlan, getPlan, savePlan, decideRisk, approvePlan } from '../src/server/ops/floorplan';
-import { specification, findRisks, passages, centerFromCorner, type PlanObject } from '../src/lib/floorplan';
+import { specification, findRisks, passages, centerFromCorner, scene3d, type PlanObject } from '../src/lib/floorplan';
 import { makeUser, lastLinkToken } from './helpers';
 
 /** ТЗ 3.0 §15.2, §15.4; мастер-промт, раздел 4: 2D-план в мм, спецификация, риски, решения специалиста, версии. */
@@ -70,6 +70,23 @@ describe('Проходы', () => {
     const narrow = findRisks([room, a, b, c], [], { minPassage: 900, basis: 'Проект, лист 3' }).filter((r) => r.type === 'narrow');
     expect(narrow.map((r) => r.title)).toEqual(['Проход 800 мм меньше заданного минимума 900 мм: Стол 1 — Шкаф']);
     expect(narrow[0].basis).toBe('Минимальная ширина прохода: 900 мм — Проект, лист 3');
+  });
+});
+
+describe('3D из 2D (критерий 7 мастер-промта)', () => {
+  it('оборудование — те же центр и габариты; проём двери вырезан в стене, над ним перемычка; условные высоты помечены', () => {
+    const t = at('table', 1000, 2000, 1200, 600, { props: { height_mm: 900 } });
+    const f = at('fridge', 0, 0, 700, 700);
+    const door = at('door', 1600, 8000 + 100 - 900 / 2 + 450, 900, 200);                       // центр двери — на нижней стене
+    const d2 = { ...door, x_mm: 1600 + 450, y_mm: 8000 + 100 };
+    const boxes = scene3d([room, t, f, d2]);
+    expect(boxes.find((b) => b.id === t.id)).toMatchObject({ part: 'equipment', x: t.x_mm, y: t.y_mm, w: 1200, d: 600, h: 900, conventional: false });
+    expect(boxes.find((b) => b.id === f.id)).toMatchObject({ h: 2000, conventional: true });                // высота не указана — условная
+    const bottom = boxes.filter((b) => b.part !== 'floor' && b.kind === 'wall' && Math.abs(b.y - 8100) < 1);
+    const solid = bottom.filter((b) => b.part === 'wall').map((b) => [Math.round(b.x - b.w / 2), Math.round(b.x + b.w / 2)]).sort((a, c) => a[0] - c[0]);
+    expect(solid).toEqual([[-200, 1600], [2500, 4200]]);                                             // проём 1600…2500 по X
+    expect(bottom.find((b) => b.part === 'lintel')).toMatchObject({ z: 2100, h: 900, w: 900 });     // 3000 − 2100
+    expect(boxes.find((b) => b.part === 'floor')).toMatchObject({ x: 2000, y: 4000, w: 4000, d: 8000 });
   });
 });
 
