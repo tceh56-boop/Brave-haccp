@@ -217,12 +217,13 @@ export async function listLab(userId: string, orgId: string, siteId: string) {
 }
 
 const ParamIn = z.object({ name: z.string().trim().min(1).max(200), norm: z.string().trim().min(1, 'Укажите норму показателя.').max(200), fact: z.string().trim().min(1, 'Укажите фактическое значение.').max(200),
-  unit: optText(40), pass: z.boolean() });
+  unit: optText(40), pass: z.boolean(), code: z.string().max(20).optional().nullable() });   // code — показатель ТУ (MicroCode), если выбран из списка
 const ResultInput = z.object({
   siteId: z.uuid(), programId: z.uuid().optional().nullable(),
   testType: z.string().trim().max(200).optional().nullable(), target: z.string().trim().max(200).optional().nullable(),
   dishId: z.uuid().optional().nullable(), lotId: z.uuid().optional().nullable(),
-  labName: z.string().trim().min(3, 'Укажите лабораторию.').max(200), protocolNo: z.string().trim().min(1, 'Укажите номер протокола.').max(100),
+  laboratoryId: z.uuid().optional().nullable(), sampleRef: optText(100),
+  labName: z.string().trim().max(200).optional().nullable(), protocolNo: z.string().trim().min(1, 'Укажите номер протокола.').max(100),
   sampledOn: day, resultOn: day, params: z.array(ParamIn).max(50).default([]),
   result: z.enum(['pass', 'fail']).optional().nullable(), conclusion: optText(1000),
 }).refine((x) => x.resultOn >= x.sampledOn, 'Дата результата не раньше даты отбора.');
@@ -237,6 +238,11 @@ export async function recordResult(userId: string, orgId: string, input: unknown
     const testType = p?.test_type || d.testType, target = p?.target || d.target;
     if (!testType || testType.length < 3 || !target || target.length < 2) throw Errors.validation('Укажите вид исследования и объект (или выберите из программы).');
     if (d.lotId && !(await tx.query(`select 1 from lots where id = $1 and organization_id = $2`, [d.lotId, orgId])).rowCount) throw Errors.notFound('Партия не найдена.');
+    const lab = d.laboratoryId ? (await tx.query(`select * from laboratories where id = $1 and organization_id = $2`, [d.laboratoryId, orgId])).rows[0] : null;
+    if (d.laboratoryId && !lab) throw Errors.notFound('Лаборатория не найдена в реестре.');
+    if (lab && lab.status !== 'active') throw Errors.conflict(`Лаборатория «${lab.name}» в реестре предприятия не действует (${lab.status === 'suspended' ? 'аккредитация приостановлена' : 'в архиве'}).`);
+    const labName = lab ? `${lab.name} (аттестат ${lab.accreditation_no})` : d.labName;
+    if (!labName || labName.length < 3) throw Errors.validation('Укажите лабораторию.');
     // итог — по показателям; без показателей — по протоколу, указывает человек
     const result = d.params.length ? (d.params.some((x) => !x.pass) ? 'fail' : 'pass') : d.result;
     if (!result) throw Errors.validation('Добавьте показатели из протокола или укажите итог: соответствует / не соответствует.');
@@ -252,13 +258,13 @@ export async function recordResult(userId: string, orgId: string, input: unknown
     if (result === 'fail') {
       const bad = d.params.filter((x) => !x.pass).map((x) => `${x.name}: ${x.fact}${x.unit ? ` ${x.unit}` : ''} при норме ${x.norm}`).join('; ');
       incidentId = (await raiseIncident(tx, { orgId, siteId: d.siteId, severity: 'high', kind: 'lab_fail', title: `Не соответствует: ${testType}`,
-        what: `${target} — протокол ${d.protocolNo} (${d.labName}) от ${ddmm(d.resultOn)}. ${bad || d.conclusion}`.trim(),
+        what: `${target} — протокол ${d.protocolNo} (${labName}) от ${ddmm(d.resultOn)}. ${bad || d.conclusion}`.trim(),
         entityType: 'lab_result', entityId: id, responsibleRole: p?.responsible_role || 'haccp_lead', dueMinutes: 24 * 60,
         ruleSource: p?.basis || null, recommendedAction: 'Установить причину, устранить, назначить повторный отбор; при угрозе безопасности — остановить выпуск продукции', createdBy: userId })).id;
     }
-    await tx.query(`insert into lab_results (id, organization_id, site_id, program_id, test_type, target, dish_id, lot_id, lab_name, protocol_no, sampled_on, result_on, params, result, conclusion, incident_id, recorded_by)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
-    [id, orgId, d.siteId, p?.id || null, testType, target, d.dishId || p?.dish_id || null, d.lotId || null, d.labName, d.protocolNo, d.sampledOn, d.resultOn, JSON.stringify(d.params), result, d.conclusion, incidentId, userId]);
+    await tx.query(`insert into lab_results (id, organization_id, site_id, program_id, test_type, target, dish_id, lot_id, lab_name, protocol_no, sampled_on, result_on, params, result, conclusion, incident_id, recorded_by, laboratory_id, sample_ref)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+    [id, orgId, d.siteId, p?.id || null, testType, target, d.dishId || p?.dish_id || null, d.lotId || null, labName, d.protocolNo, d.sampledOn, d.resultOn, JSON.stringify(d.params), result, d.conclusion, incidentId, userId, lab?.id || null, d.sampleRef ?? null]);
     if (result === 'fail') await openTask(tx, { orgId, siteId: d.siteId, kind: 'lab_retest', title: `Повторный отбор: ${testType} — ${target}`,
       details: `Несоответствие по протоколу ${d.protocolNo}.${nextDue ? ` Срок повторного отбора — ${ddmm(nextDue)}.` : ''}`,
       entityType: 'lab_result', entityId: id, assigneeRole: p?.responsible_role || 'haccp_lead', dueAt: nextDue ? new Date(`${nextDue}T18:00:00+03:00`) : null, createdBy: userId });
@@ -276,5 +282,39 @@ export async function getResult(userId: string, orgId: string, id: string) {
     if (!r) throw Errors.notFound('Результат не найден.');
     assertSiteAccess(m, r.site_id);
     return r;
+  });
+}
+
+/* ───────────── Реестр лабораторий (ТЗ доработки 5.4) ───────────── */
+
+const LabInput = z.object({
+  name: z.string().trim().min(3, 'Наименование лаборатории.').max(300),
+  accreditationNo: z.string().trim().min(5, 'Номер аттестата аккредитации (записи в реестре), напр. RA.RU.21АБ12.').max(100),
+  accreditedOn: z.iso.date().optional().nullable(),
+  scope: z.string().trim().min(10, 'Область аккредитации: объекты и показатели, как в документе лаборатории.').max(5000),
+  scopeChecked: optText(300), address: optText(300),
+  status: z.enum(['active', 'suspended', 'archived']).optional(),
+});
+
+export async function listLaboratories(userId: string, orgId: string) {
+  return inOrg(userId, orgId, 'lab.read', async (tx) => (await tx.query(`select l.*, l.accredited_on::text as accredited_on,
+      (select count(*)::int from lab_results r where r.laboratory_id = l.id) as protocols
+    from laboratories l where l.organization_id = $1 order by l.status, l.name`, [orgId])).rows);
+}
+
+export async function saveLaboratory(userId: string, orgId: string, id: string | null, input: unknown) {
+  const d = parse(LabInput, input);
+  return inOrg(userId, orgId, 'lab.manage', async (tx) => {
+    const before = id ? (await tx.query(`select * from laboratories where id = $1 and organization_id = $2 for update`, [id, orgId])).rows[0] : null;
+    if (id && !before) throw Errors.notFound('Лаборатория не найдена.');
+    const dup = (await tx.query(`select id from laboratories where organization_id = $1 and accreditation_no = $2 and id <> coalesce($3::uuid, '00000000-0000-0000-0000-000000000000')`, [orgId, d.accreditationNo, id])).rows[0];
+    if (dup) throw Errors.conflict('Лаборатория с этим аттестатом уже есть в реестре.');
+    const row = id
+      ? (await tx.query(`update laboratories set name = $3, accreditation_no = $4, accredited_on = $5, scope = $6, scope_checked = $7, address = $8, status = coalesce($9, status), updated_by = $10, updated_at = now()
+          where id = $1 and organization_id = $2 returning *`, [id, orgId, d.name, d.accreditationNo, d.accreditedOn ?? null, d.scope, d.scopeChecked ?? null, d.address ?? null, d.status ?? null, userId])).rows[0]
+      : (await tx.query(`insert into laboratories (organization_id, name, accreditation_no, accredited_on, scope, scope_checked, address, status, created_by)
+          values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, 'active'), $9) returning *`, [orgId, d.name, d.accreditationNo, d.accreditedOn ?? null, d.scope, d.scopeChecked ?? null, d.address ?? null, d.status ?? null, userId])).rows[0];
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: id ? 'lab.registry_update' : 'lab.registry_add', entityType: 'laboratory', entityId: row.id, before, after: row });
+    return row;
   });
 }

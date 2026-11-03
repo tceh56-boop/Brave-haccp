@@ -327,8 +327,13 @@ export async function getTechSpec(userId: string, orgId: string, dishId: string)
     const spec = (await tx.query(`select params, updated_at from tech_specs where dish_id = $1 and organization_id = $2`, [dishId, orgId])).rows[0];
     const params: TuParams = spec?.params || {};
     const calc = await calcTechSpec(tx, orgId, dishId, await effectiveParams(tx, dishId));   // правила папки + блюдо
-    const versions = (await tx.query(`select v.id, v.version, v.designation, v.lab_protocol, v.approved_at, u.full_name as approved_by_name, t.version as ttk_version
+    const versions = (await tx.query(`select v.id, v.version, v.designation, v.lab_protocol, v.approved_at, v.change_note, v.ppk_version, v.haccp_version, u.full_name as approved_by_name,
+        t.version as ttk_version, t.status <> 'approved' as outdated
       from tech_spec_versions v join users u on u.id = v.approved_by join ttk_versions t on t.id = v.ttk_version_id where v.dish_id = $1 order by v.version desc`, [dishId])).rows;
+    // протоколы, которыми можно подтвердить ТУ: образец — это блюдо или его партия
+    const candidates = (await tx.query(`select r.id from lab_results r left join lots lt on lt.id = r.lot_id
+      where r.organization_id = $1 and (r.dish_id = $2 or lt.product_id = (select product_id from dishes where id = $2)) order by r.result_on desc limit 30`, [orgId, dishId])).rows.map((r) => r.id as string);
+    const protocols = candidates.length ? (await tuProtocols(tx, orgId, dishId, candidates, calc.micro.indicators)).rows : [];
     // по каждому сырью — данные пищевой ценности и профиль аллергенов (для ввода по документу)
     const products = (await tx.query(`with recursive tree(dish_id, depth) as (select $1::uuid, 0 union
         select l.sub_dish_id, t.depth + 1 from tree t join ttk_versions v on v.dish_id = t.dish_id and v.status = 'approved' join ttk_lines l on l.version_id = v.id where l.sub_dish_id is not null and t.depth < 5)
@@ -338,7 +343,7 @@ export async function getTechSpec(userId: string, orgId: string, dishId: string)
       p.allergens = await allergenProfile(tx, p.id);
       p.suggest = suggestAllergens(p.name);
     }
-    return { params, calc, versions, products, allergen_list: Object.entries(ALLERGENS).map(([code, a]) => ({ code, label: a.label })), micro_list: MICRO };
+    return { params, calc, versions, protocols, products, allergen_list: Object.entries(ALLERGENS).map(([code, a]) => ({ code, label: a.label })), micro_list: MICRO };
   });
 }
 
@@ -379,21 +384,71 @@ export async function saveTechSpecParams(userId: string, orgId: string, dishId: 
   });
 }
 
-const ApproveInput = z.object({ labProtocol: z.string().trim().min(8, 'Укажите протокол испытаний аккредитованной лаборатории: номер, дата, лаборатория.').max(500) });
+const ApproveInput = z.object({
+  labResultIds: z.array(z.uuid()).min(1, 'Выберите протоколы испытаний аккредитованной лаборатории.').max(20),
+  changeNote: optText(1000),
+});
 
-/** Утверждение ТУ: только полный проверенный расчёт и протокол испытаний; снимок не меняется. */
+/** Как показатель ТУ может называться в протоколе (если в протоколе не выбран код показателя). */
+const MICRO_ALIASES: Record<string, string[]> = {
+  KMAFANM: ['кмафанм', 'мафанм'], BGKP: ['бгкп', 'колиформ'], ECOLI: ['e. coli', 'e.coli', 'кишечная палочка', 'escherichia'],
+  SAUREUS: ['aureus', 'стафилококк'], PROTEUS: ['proteus', 'протей'], CLOSTRIDIA: ['клостриди'], SALMONELLA: ['сальмонел', 'патоген'],
+  LISTERIA: ['monocytogenes', 'листери'], YEAST: ['дрожж'], MOLD: ['плесен'], ENTEROCOCCUS: ['enterococc', 'энтерокок'],
+};
+type Param = { name: string; norm: string; fact: string; unit?: string | null; pass: boolean; code?: string | null };
+const covers = (p: Param, code: string) => p.code === code || (MICRO_ALIASES[code] || []).some((a) => p.name.toLowerCase().includes(a));
+
+/**
+ * Протоколы для утверждения ТУ (ТЗ доработки 5.4): лаборатория из реестра с аттестатом и областью аккредитации,
+ * файл протокола приложен, образец — это блюдо или его партия, итог «соответствует», каждый нормируемый
+ * микробиологический показатель ТУ есть в протоколах с фактическим значением. Возвращает препятствия и протоколы.
+ */
+export async function tuProtocols(tx: Tx, orgId: string, dishId: string, ids: string[], indicators: { code: string; name: string; norm: string | null }[]) {
+  const rows = (await tx.query(`select r.id, r.protocol_no, r.result_on::text as result_on, r.sampled_on::text as sampled_on, r.result, r.params, r.dish_id, r.lot_id, r.sample_ref, r.test_type,
+      l.id as lab_id, l.name as lab, l.accreditation_no, l.scope, l.status as lab_status, lt.lot_no,
+      (select count(*)::int from evidence_files f where f.entity_type = 'lab_result' and f.entity_id = r.id) as files,
+      (r.dish_id = $3 or lt.product_id = (select product_id from dishes where id = $3)) as of_dish
+    from lab_results r left join laboratories l on l.id = r.laboratory_id left join lots lt on lt.id = r.lot_id
+    where r.organization_id = $1 and r.id = any($2::uuid[])`, [orgId, ids, dishId])).rows;
+  const problems: string[] = [];
+  for (const id of ids) if (!rows.some((r) => r.id === id)) problems.push('Протокол не найден.');
+  for (const r of rows) {
+    const n = `Протокол № ${r.protocol_no}`;
+    if (!r.lab_id) problems.push(`${n}: лаборатория не из реестра — нет аттестата и области аккредитации.`);
+    else if (r.lab_status !== 'active') problems.push(`${n}: лаборатория «${r.lab}» в реестре не действует.`);
+    if (!r.files) problems.push(`${n}: не приложен файл протокола.`);
+    if (!r.of_dish) problems.push(`${n}: образец не связан с этим блюдом или его партией.`);
+    if (r.result !== 'pass') problems.push(`${n}: результат «не соответствует».`);
+    if (!(r.params as Param[]).length) problems.push(`${n}: нет показателей с фактическими результатами.`);
+  }
+  const params = rows.flatMap((r) => r.params as Param[]);
+  for (const i of indicators.filter((x) => x.norm)) {
+    if (!params.some((p) => covers(p, i.code))) problems.push(`Показатель «${i.name.split(',')[0]}» не исследован ни в одном выбранном протоколе.`);
+  }
+  return { problems, rows };
+}
+
+/** Утверждение ТУ: только полный проверенный расчёт и протоколы испытаний (5.4); снимок не меняется. */
 export async function approveTechSpec(userId: string, orgId: string, dishId: string, input: unknown) {
   const d = parse(ApproveInput, input);
   return inOrg(userId, orgId, 'ttk.approve', async (tx) => {
-    const spec = (await tx.query(`select params from tech_specs where dish_id = $1 and organization_id = $2 for update`, [dishId, orgId])).rows[0];
-    void spec;
+    await tx.query(`select 1 from tech_specs where dish_id = $1 and organization_id = $2 for update`, [dishId, orgId]);
     const calc = await calcTechSpec(tx, orgId, dishId, await effectiveParams(tx, dishId));
     if (calc.status !== 'ready') throw Errors.conflict(`ТУ — проект, утвердить нельзя: ${[...calc.errors, ...calc.warnings].join(' ')}`);
+    const { problems, rows } = await tuProtocols(tx, orgId, dishId, d.labResultIds, calc.micro.indicators);
+    if (problems.length) throw Errors.validation(`Протоколы испытаний не подтверждают ТУ: ${problems.join(' ')}`, problems);
     const n = Number((await tx.query(`select coalesce(max(version), 0) as m from tech_spec_versions where dish_id = $1`, [dishId])).rows[0].m) + 1;
-    const row = (await tx.query(`insert into tech_spec_versions (organization_id, dish_id, version, ttk_version_id, designation, snapshot, lab_protocol, approved_by)
-      values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, version, approved_at`, [orgId, dishId, n, calc.object.ttk_version_id, calc.designation, JSON.stringify(calc), d.labProtocol, userId])).rows[0];
+    if (n > 1 && (!d.changeNote || d.changeNote.length < 5)) throw Errors.validation('Укажите содержание изменения для листа регистрации изменений.');
+    const ppk = (await tx.query(`select max(version) as v from ppk_versions where organization_id = $1`, [orgId])).rows[0].v;
+    const haccp = (await tx.query(`select max(version) as v from haccp_plans where organization_id = $1 and status = 'approved'`, [orgId])).rows[0].v;
+    const labProtocol = rows.map((r) => `протокол № ${r.protocol_no} от ${r.result_on.split('-').reverse().join('.')}, ${r.lab} (аттестат ${r.accreditation_no})`).join('; ');
+    const row = (await tx.query(`insert into tech_spec_versions (organization_id, dish_id, version, ttk_version_id, designation, snapshot, lab_protocol, approved_by, lab_result_ids, ppk_version, haccp_version, change_note)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id, version, approved_at`,
+      [orgId, dishId, n, calc.object.ttk_version_id, calc.designation, JSON.stringify({ ...calc, protocols: rows.map(({ files: _f, of_dish: _o, ...r }) => r) }), labProtocol, userId,
+        rows.map((r) => r.id), ppk ?? null, haccp ?? null, n === 1 ? 'первая редакция' : d.changeNote])).rows[0];
     await closeTasksFor(tx, orgId, 'tu_review', dishId, userId, `утверждена версия ${n}`);
-    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'tu.approve', entityType: 'dish', entityId: dishId, after: { version: n, designation: calc.designation, lab_protocol: d.labProtocol } });
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'tu.approve', entityType: 'dish', entityId: dishId,
+      after: { version: n, designation: calc.designation, lab_protocol: labProtocol, ppk_version: ppk ?? null, haccp_version: haccp ?? null, change_note: d.changeNote ?? null } });
     return row;
   });
 }

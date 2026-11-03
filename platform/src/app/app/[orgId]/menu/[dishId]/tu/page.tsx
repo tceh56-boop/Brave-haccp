@@ -31,7 +31,8 @@ export interface TuCalc {
   designation: string; status: string; errors?: string[]; warnings: string[]; generated_at: string;
 }
 interface Data { params: Record<string, unknown> & { micro?: Record<string, string> }; calc: TuCalc; products: Prod[];
-  versions: { version: number; designation: string; lab_protocol: string; approved_at: string; approved_by_name: string; ttk_version: number }[];
+  versions: { version: number; designation: string; lab_protocol: string; approved_at: string; approved_by_name: string; ttk_version: number; outdated: boolean; change_note: string | null; ppk_version: number | null; haccp_version: number | null }[];
+  protocols: Protocol[];
   allergen_list: { code: string; label: string }[] }
 
 export default function TuPage({ params }: { params: Promise<{ dishId: string }> }) {
@@ -90,23 +91,42 @@ export default function TuPage({ params }: { params: Promise<{ dishId: string }>
 
       <div className="card">
         <h2>Утверждённые версии ТУ</h2>
-        {data.versions.length === 0 ? <p className="small muted">Ещё не утверждались.</p> : <ul className="list">{data.versions.map((v) => (
-          <li key={v.version} className="between"><div><b>Версия {v.version}</b> · {v.designation}<div className="small muted">{v.approved_by_name}, {dt(v.approved_at, org.timezone)} · по ТТК v{v.ttk_version} · {v.lab_protocol}</div></div>
-            <Link className="small" href={`/app/${org.id}/menu/${dishId}/tu/print?v=${v.version}`}>документ</Link></li>))}</ul>}
-        {can('ttk.approve') && <Approve ready={c.status === 'ready'} busy={busy} onApprove={(labProtocol) => run(async () => { await api(`/orgs/${org.id}/dishes/${dishId}/tu/approve`, { body: { labProtocol } }); await load(); })} />}
+        {data.versions[0]?.outdated && <div className="err">Действующая версия ТУ построена на ТТК v{data.versions[0].ttk_version}, которая больше не действует, — ТУ устарели, нужен пересмотр.</div>}
+        {data.versions.length === 0 ? <p className="small muted">Ещё не утверждались.</p> : <>
+          <h3>Лист регистрации изменений</h3>
+          <div className="scroll"><table className="tbl small"><thead><tr><th>Версия</th><th>Изменение</th><th>ТТК</th><th>Протоколы</th><th>ППК / ХАССП</th><th>Утвердил</th><th /></tr></thead>
+            <tbody>{data.versions.map((v) => (
+              <tr key={v.version}><td>{v.version}{v.outdated && <span className="badge crit" style={{ marginLeft: 4 }}>устарела</span>}<div className="muted">{v.designation}</div></td><td>{v.change_note || '—'}</td><td>v{v.ttk_version}</td><td>{v.lab_protocol}</td>
+                <td>{v.ppk_version ? `ППК v${v.ppk_version}` : 'ППК не утверждена'} / {v.haccp_version ? `ХАССП v${v.haccp_version}` : 'план ХАССП не утверждён'}</td>
+                <td>{v.approved_by_name}<div className="muted">{dt(v.approved_at, org.timezone)}</div></td><td><Link href={`/app/${org.id}/menu/${dishId}/tu/print?v=${v.version}`}>документ</Link></td></tr>))}</tbody></table></div></>}
+        {can('ttk.approve') && <Approve ready={c.status === 'ready'} busy={busy} protocols={data.protocols} first={data.versions.length === 0}
+          onApprove={(labResultIds, changeNote) => run(async () => { await api(`/orgs/${org.id}/dishes/${dishId}/tu/approve`, { body: { labResultIds, changeNote: changeNote || null } }); await load(); })} />}
       </div>
     </>
   );
 }
 
-function Approve({ ready, busy, onApprove }: { ready: boolean; busy: boolean; onApprove: (p: string) => void }) {
-  const [p, setP] = useState('');
-  if (!ready) return <p className="small muted">Утвердить можно, когда расчёт полный и подтверждён документами (статус «Готов к испытаниям»), и есть протокол испытаний аккредитованной лаборатории.</p>;
+interface Protocol { id: string; protocol_no: string; result_on: string; result: string; lab: string | null; accreditation_no: string | null; lab_status: string | null; lot_no: string | null; sample_ref: string | null;
+  test_type: string; params: { name: string; norm: string; fact: string; unit?: string | null; pass: boolean }[] }
+function Approve({ ready, busy, protocols, first, onApprove }: { ready: boolean; busy: boolean; protocols: Protocol[]; first: boolean; onApprove: (ids: string[], note: string) => void }) {
+  const { org } = useOrg();
+  const [ids, setIds] = useState<string[]>([]);
+  const [note, setNote] = useState('');
+  if (!ready) return <p className="small muted">Утвердить можно, когда расчёт полный и подтверждён документами (статус «Готов к испытаниям»), и есть протоколы испытаний аккредитованной лаборатории.</p>;
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onApprove(p); }}>
-      <label htmlFor="lp">Протокол испытаний аккредитованной лаборатории</label>
-      <input id="lp" required value={p} onChange={(e) => setP(e.target.value)} placeholder="Протокол № 15 от 20.10.2026, ИЛЦ «…»" />
-      <button className="btn block" disabled={busy}>Утвердить ТУ</button>
+    <form onSubmit={(e) => { e.preventDefault(); onApprove(ids, note); }}>
+      <h3>Протоколы испытаний</h3>
+      {protocols.length === 0 && <p className="small muted">Протоколов с образцом этого блюда или его партии нет. Внесите их в разделе <Link href={`/app/${org.id}/lab?tab=lab`}>«Лаборатория»</Link>: лаборатория из реестра, образец — блюдо или партия, показатели с фактическими значениями, скан протокола.</p>}
+      {protocols.map((p) => (
+        <label key={p.id} className="check" style={{ alignItems: 'flex-start' }}>
+          <input type="checkbox" checked={ids.includes(p.id)} onChange={(e) => setIds(e.target.checked ? [...ids, p.id] : ids.filter((x) => x !== p.id))} />
+          <span><b>№ {p.protocol_no}</b> от {p.result_on.split('-').reverse().join('.')} · {p.lab ? `${p.lab}, аттестат ${p.accreditation_no}` : <span style={{ color: 'var(--crit)' }}>лаборатория не из реестра</span>}
+            {p.lot_no ? ` · партия ${p.lot_no}` : ''}{p.sample_ref ? ` · образец ${p.sample_ref}` : ''} · {p.result === 'pass' ? 'соответствует' : 'не соответствует'}
+            <span className="small muted" style={{ display: 'block' }}>{p.params.map((x) => `${x.name}: ${x.fact}${x.unit ? ` ${x.unit}` : ''} (норма ${x.norm})`).join('; ') || 'нет показателей'}</span></span>
+        </label>))}
+      {!first && <><label htmlFor="cn">Содержание изменения (лист регистрации изменений)</label><input id="cn" value={note} onChange={(e) => setNote(e.target.value)} placeholder="что изменено и почему" /></>}
+      <button className="btn block" disabled={busy || !ids.length}>Утвердить ТУ</button>
+      <p className="small muted">Проверяется: лаборатория из реестра и действует, файл протокола приложен, образец — это блюдо или его партия, каждый нормируемый показатель ТУ исследован. В версии фиксируются версии ППК и плана ХАССП на дату утверждения.</p>
     </form>
   );
 }

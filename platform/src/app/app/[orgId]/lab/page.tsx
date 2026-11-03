@@ -140,13 +140,63 @@ function SamplesTab() {
   );
 }
 
-interface Param { name: string; norm: string; fact: string; unit: string; pass: boolean }
+interface Param { name: string; norm: string; fact: string; unit: string; pass: boolean; code?: string }
+interface Laboratory { id: string; name: string; accreditation_no: string; accredited_on: string | null; scope: string; scope_checked: string | null; address: string | null; status: string; protocols: number }
+const MICRO_CODES: [string, string][] = [['KMAFANM', 'КМАФАнМ'], ['BGKP', 'БГКП (колиформы)'], ['ECOLI', 'E. coli'], ['SAUREUS', 'S. aureus'], ['PROTEUS', 'Proteus'], ['CLOSTRIDIA', 'Сульфитредуцирующие клостридии'],
+  ['SALMONELLA', 'Патогенные, в т. ч. сальмонеллы'], ['LISTERIA', 'L. monocytogenes'], ['YEAST', 'Дрожжи'], ['MOLD', 'Плесени'], ['ENTEROCOCCUS', 'Enterococcus']];
+
+/** Реестр лабораторий: аттестат и область аккредитации (ТЗ 5.4). Протоколы для ТУ принимаются только от лабораторий реестра. */
+function Laboratories({ labs, onDone }: { labs: Laboratory[]; onDone: () => void }) {
+  const { org, can } = useOrg();
+  const empty = { name: '', accreditationNo: '', accreditedOn: '', scope: '', scopeChecked: '', address: '' };
+  const [f, setF] = useState(empty);
+  const { busy, error, run } = useSubmit();
+  return (
+    <div className="card">
+      <h2>Лаборатории · {labs.length}</h2>
+      {labs.length === 0 && <p className="small muted">Реестр пуст. Протоколы для утверждения ТУ принимаются только от лаборатории из реестра — с аттестатом и областью аккредитации.</p>}
+      {labs.map((l) => (
+        <details key={l.id} className="objrow" style={{ display: 'block' }}>
+          <summary><b>{l.name}</b> <span className={`badge ${l.status === 'active' ? 'ok' : 'crit'}`}>{l.status === 'active' ? 'действует' : l.status === 'suspended' ? 'приостановлена' : 'архив'}</span>
+            <div className="small muted">аттестат {l.accreditation_no}{l.accredited_on ? ` от ${ddmm(l.accredited_on)}` : ''} · протоколов: {l.protocols}{l.scope_checked ? ` · сверено: ${l.scope_checked}` : ' · сверка с реестром не отмечена'}</div></summary>
+          <p className="small" style={{ whiteSpace: 'pre-line' }}><b>Область аккредитации:</b> {l.scope}</p>
+          {l.address && <p className="small">{l.address}</p>}
+          {can('lab.manage') && <div className="row" style={{ gap: 6 }}>
+            {l.status !== 'active' && <button className="btn small secondary" disabled={busy} onClick={() => run(async () => { await api(`/orgs/${org.id}/lab/laboratories/${l.id}`, { method: 'PATCH', body: { name: l.name, accreditationNo: l.accreditation_no, accreditedOn: l.accredited_on, scope: l.scope, scopeChecked: l.scope_checked, address: l.address, status: 'active' } }); onDone(); })}>Действует</button>}
+            {l.status === 'active' && <button className="btn small secondary" disabled={busy} onClick={() => run(async () => { await api(`/orgs/${org.id}/lab/laboratories/${l.id}`, { method: 'PATCH', body: { name: l.name, accreditationNo: l.accreditation_no, accreditedOn: l.accredited_on, scope: l.scope, scopeChecked: l.scope_checked, address: l.address, status: 'suspended' } }); onDone(); })}>Аккредитация приостановлена</button>}
+          </div>}
+        </details>))}
+      {can('lab.manage') && (
+        <form style={{ marginTop: 12 }} onSubmit={(e) => { e.preventDefault(); run(async () => {
+          await api(`/orgs/${org.id}/lab/laboratories`, { body: { ...f, accreditedOn: f.accreditedOn || null, scopeChecked: f.scopeChecked || null, address: f.address || null } }); setF(empty); onDone();
+        }); }}>
+          <h3>Добавить лабораторию</h3>
+          <div className="grid2">
+            <div><label htmlFor="ln">Наименование</label><input id="ln" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+            <div><label htmlFor="la">Аттестат аккредитации №</label><input id="la" value={f.accreditationNo} onChange={(e) => setF({ ...f, accreditationNo: e.target.value })} placeholder="RA.RU.…" /></div>
+            <div><label htmlFor="ld">Дата аккредитации</label><input id="ld" type="date" value={f.accreditedOn} onChange={(e) => setF({ ...f, accreditedOn: e.target.value })} /></div>
+            <div><label htmlFor="lc">Сверено с реестром Росаккредитации</label><input id="lc" value={f.scopeChecked} onChange={(e) => setF({ ...f, scopeChecked: e.target.value })} placeholder="дата, кто сверил" /></div>
+          </div>
+          <label htmlFor="ls">Область аккредитации</label><textarea id="ls" rows={3} value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })} placeholder="объекты (пищевая продукция) и показатели — как в документе лаборатории" />
+          <label htmlFor="lad">Адрес</label><input id="lad" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} />
+          {error && <div className="err" role="alert">{error}</div>}
+          <button className="btn secondary block" disabled={busy}>Добавить в реестр</button>
+        </form>)}
+    </div>
+  );
+}
 
 function LabTab() {
   const { org, siteId, can } = useOrg();
   const [x, setX] = useState<{ programs: Program[]; results: Result[] } | null>(null);
   const [pg, setPg] = useState({ testType: '', target: '', periodDays: '90', retestDays: '7', nextDue: today(), basis: '' });
-  const [r, setR] = useState({ programId: '', testType: '', target: '', labName: '', protocolNo: '', sampledOn: today(), resultOn: today(), result: '', conclusion: '' });
+  const [r, setR] = useState({ programId: '', testType: '', target: '', labName: '', laboratoryId: '', sampleRef: '', dishId: '', lotId: '', protocolNo: '', sampledOn: today(), resultOn: today(), result: '', conclusion: '' });
+  const [labs, setLabs] = useState<Laboratory[]>([]);
+  const [dishes, setDishes] = useState<Dish[]>([]);
+  const [lots, setLots] = useState<Lot[]>([]);
+  const loadLabs = useCallback(() => api<Laboratory[]>(`/orgs/${org.id}/lab/laboratories`).then(setLabs).catch(() => setLabs([])), [org.id]);
+  useEffect(() => { loadLabs(); api<Dish[]>(`/orgs/${org.id}/dishes`).then(setDishes).catch(() => setDishes([])); }, [org.id, loadLabs]);
+  useEffect(() => { if (siteId) api<Lot[]>(`/orgs/${org.id}/sites/${siteId}/lots`).then((l) => setLots(l.filter((t) => t.status !== 'blocked'))).catch(() => setLots([])); }, [org.id, siteId]);
   const [params, setParams] = useState<Param[]>([]);
   const [mc, setMc] = useState({ season: 'cold' as 'cold' | 'warm', category: 'IIа' });
   const [done, setDone] = useState<string | null>(null);
@@ -186,6 +236,8 @@ function LabTab() {
         )}
       </div>
 
+      <Laboratories labs={labs} onDone={loadLabs} />
+
       {manage && (
         <div className="card">
           <h2>Внести результат</h2>
@@ -197,8 +249,15 @@ function LabTab() {
             <div><label htmlFor="rt">Вид исследования</label><input id="rt" value={r.testType} onChange={(e) => setR({ ...r, testType: e.target.value })} /></div>
             <div><label htmlFor="ro">Объект</label><input id="ro" value={r.target} onChange={(e) => setR({ ...r, target: e.target.value })} /></div>
           </div>}
+          <label htmlFor="rlab">Лаборатория из реестра</label>
+          <select id="rlab" value={r.laboratoryId} onChange={(e) => setR({ ...r, laboratoryId: e.target.value })}>
+            <option value="">— не из реестра (для ТУ не годится) —</option>{labs.filter((l) => l.status === 'active').map((l) => <option key={l.id} value={l.id}>{l.name} · {l.accreditation_no}</option>)}
+          </select>
           <div className="grid2">
-            <div><label htmlFor="rl">Лаборатория</label><input id="rl" value={r.labName} onChange={(e) => setR({ ...r, labName: e.target.value })} /></div>
+            {!r.laboratoryId && <div><label htmlFor="rl">Лаборатория</label><input id="rl" value={r.labName} onChange={(e) => setR({ ...r, labName: e.target.value })} /></div>}
+            <div><label htmlFor="rsr">Образец (шифр в протоколе)</label><input id="rsr" value={r.sampleRef} onChange={(e) => setR({ ...r, sampleRef: e.target.value })} /></div>
+            <div><label htmlFor="rdish">Образец — блюдо / п/ф</label><select id="rdish" value={r.dishId} onChange={(e) => setR({ ...r, dishId: e.target.value })}><option value="">—</option>{dishes.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div><label htmlFor="rlot">Образец — партия</label><select id="rlot" value={r.lotId} onChange={(e) => setR({ ...r, lotId: e.target.value })}><option value="">—</option>{lots.map((l) => <option key={l.id} value={l.id}>{l.product} · {l.lot_no || 'без номера'}</option>)}</select></div>
             <div><label htmlFor="rn">Протокол №</label><input id="rn" value={r.protocolNo} onChange={(e) => setR({ ...r, protocolNo: e.target.value })} /></div>
             <div><label htmlFor="rs">Отбор</label><input id="rs" type="date" value={r.sampledOn} onChange={(e) => setR({ ...r, sampledOn: e.target.value })} /></div>
             <div><label htmlFor="rd">Результат от</label><input id="rd" type="date" value={r.resultOn} onChange={(e) => setR({ ...r, resultOn: e.target.value })} /></div>
@@ -218,7 +277,9 @@ function LabTab() {
           {params.map((p, i) => (
             <div key={i} className="card" style={{ padding: 10, marginBottom: 8 }}>
               <div className="grid2">
-                <input aria-label={`Показатель ${i + 1}`} placeholder="показатель (БГКП, КМАФАнМ)" value={p.name} onChange={(e) => setParams(params.map((q, k) => (k === i ? { ...q, name: e.target.value } : q)))} />
+                <select aria-label={`Показатель ТУ ${i + 1}`} value={p.code || ''} onChange={(e) => { const c = MICRO_CODES.find(([k]) => k === e.target.value); setParams(params.map((q, k) => (k === i ? { ...q, code: e.target.value || undefined, name: c && !q.name ? c[1] : q.name } : q))); }}>
+                  <option value="">показатель ТУ — не выбран</option>{MICRO_CODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                <input aria-label={`Показатель ${i + 1}`} placeholder="показатель как в протоколе" value={p.name} onChange={(e) => setParams(params.map((q, k) => (k === i ? { ...q, name: e.target.value } : q)))} />
                 <input aria-label={`Норма ${i + 1}`} placeholder="норма" value={p.norm} onChange={(e) => setParams(params.map((q, k) => (k === i ? { ...q, norm: e.target.value } : q)))} />
                 <input aria-label={`Факт ${i + 1}`} placeholder="факт" value={p.fact} onChange={(e) => setParams(params.map((q, k) => (k === i ? { ...q, fact: e.target.value } : q)))} />
                 <input aria-label={`Ед. ${i + 1}`} placeholder="ед." value={p.unit} onChange={(e) => setParams(params.map((q, k) => (k === i ? { ...q, unit: e.target.value } : q)))} />
@@ -241,7 +302,8 @@ function LabTab() {
           {done && <div className="okbox" role="status">{done}</div>}
           <button className="btn block" disabled={busy || !siteId || !computed} onClick={() => run(async () => {
             const res = await api<{ result: string; next_due: string | null; incident_id: string | null }>(`/orgs/${org.id}/lab/results`, { body: { siteId, programId: r.programId || null, testType: r.testType || null, target: r.target || null,
-              labName: r.labName, protocolNo: r.protocolNo, sampledOn: r.sampledOn, resultOn: r.resultOn, params: params.map((p) => ({ ...p, unit: p.unit || null })), result: params.length ? null : r.result || null, conclusion: r.conclusion || null } });
+              labName: r.labName || null, laboratoryId: r.laboratoryId || null, sampleRef: r.sampleRef || null, dishId: r.dishId || null, lotId: r.lotId || null,
+              protocolNo: r.protocolNo, sampledOn: r.sampledOn, resultOn: r.resultOn, params: params.map((p) => ({ ...p, unit: p.unit || null, code: p.code || null })), result: params.length ? null : r.result || null, conclusion: r.conclusion || null } });
             setDone(`${res.result === 'pass' ? 'Соответствует' : 'Не соответствует — создано отклонение и задача на повторный отбор'}.${res.next_due ? ` Следующий отбор — ${ddmm(res.next_due)}.` : ''}`);
             setParams([]); setR({ ...r, protocolNo: '', result: '', conclusion: '' }); load();
           })}>Сохранить результат</button>

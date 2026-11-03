@@ -4,13 +4,15 @@ import { createOrganization, inviteMember, acceptInvitation } from '../src/serve
 import { createProduct } from '../src/server/ops/catalog';
 import { createDish, getDish, updateVersion, addLine, submitVersion, approveVersion } from '../src/server/ops/recipes';
 import { getTechSpec, saveTechSpecParams, approveTechSpec, getTechSpecVersion, setProductNutrition, setProductAllergens, MICRO } from '../src/server/ops/techspec';
+import { saveLaboratory, recordResult } from '../src/server/ops/lab';
+import { addEvidence } from '../src/server/ops/evidence';
 import { makeUser, lastLinkToken } from './helpers';
 
 afterAll(() => closePool());
 
 type U = Awaited<ReturnType<typeof makeUser>>;
 let owner: U, chef: U, tech: U, cook: U, stranger: U;
-let orgId: string;
+let orgId: string, siteId: string, labId: string;
 const P: Record<string, string> = {};
 let sauce: string, casserole: string, draftOnly: string;
 
@@ -32,6 +34,7 @@ async function withTtk(name: string, kind: 'dish' | 'semi', yieldG: number, tech
 beforeAll(async () => {
   owner = await makeUser();
   const r = await createOrganization(owner, { name: 'Кафе «Технические условия»' });
+  siteId = r.site.id;
   orgId = r.organization.id;
   chef = await invite('chef'); tech = await invite('technologist'); cook = await invite('line_staff');
   stranger = await makeUser(); await createOrganization(stranger, { name: 'Чужое кафе' });
@@ -119,12 +122,22 @@ describe('Расчёт ТУ по утверждённой ТТК', () => {
   });
 });
 
+/** Протокол аккредитованной лаборатории по всем нормируемым показателям ТУ блюда, со сканом. */
+async function protocol(dishId: string, no: string) {
+  if (!labId) labId = (await saveLaboratory(owner.id, orgId, null, { name: 'ИЛЦ «Тест»', accreditationNo: 'RA.RU.21ТС01', scope: 'Пищевая продукция: микробиологические показатели (КМАФАнМ, БГКП, S. aureus, патогенные)' })).id;
+  const ind = (await getTechSpec(owner.id, orgId, dishId)).calc.micro.indicators.filter((i: { norm: string | null }) => i.norm);
+  const r = await recordResult(owner.id, orgId, { siteId, testType: 'Микробиология', target: 'ТУ', dishId, laboratoryId: labId, sampleRef: `обр. ${no}`, protocolNo: no, sampledOn: '2026-10-15', resultOn: '2026-10-20',
+    params: ind.map((i: { code: string; name: string; norm: string | null }) => ({ code: i.code, name: i.name.split(',')[0], norm: i.norm, fact: 'не обнаружено', pass: true })) });
+  await addEvidence(owner.id, orgId, { entityType: 'lab_result', entityId: r.id, filename: `протокол-${no}.pdf` }, Buffer.from('%PDF-1.4\n'));
+  return r.id as string;
+}
+
 describe('Параметры и утверждение ТУ', () => {
   it('параметры — разработчик ТТК; формат кодов проверяется; утверждение проекта невозможно', async () => {
     await expect(saveTechSpecParams(cook.id, orgId, sauce, { okpd2: '10.85.19' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(saveTechSpecParams(chef.id, orgId, sauce, { okpd2: 'десять' })).rejects.toThrow(/ОКПД2/);
     await expect(saveTechSpecParams(chef.id, orgId, sauce, { okpo: '123' })).rejects.toThrow(/ОКПО/);
-    await expect(approveTechSpec(chef.id, orgId, sauce, { labProtocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' })).rejects.toThrow(/ТУ — проект, утвердить нельзя/);
+    await expect(approveTechSpec(chef.id, orgId, sauce, { labResultIds: [await protocol(sauce, '14')] })).rejects.toThrow(/ТУ — проект, утвердить нельзя/);
   });
 
   it('полные проверенные данные + санитарные правила в реестре → «готов к испытаниям»; утверждение с протоколом — неизменяемый снимок', async () => {
@@ -143,15 +156,54 @@ describe('Параметры и утверждение ТУ', () => {
     expect(t.calc.normative.map((d: { code: string }) => d.code)).toEqual(expect.arrayContaining(['ГОСТ Р 51740-2016', 'ГОСТ 10444.15-94', 'ГОСТ 31659-2012']));
     expect(t.calc.normative.map((d: { code: string }) => d.code)).not.toContain('ГОСТ 32031-2022');   // листерии для соусов не нормируются — метод не нужен
     expect(t.calc.normative.find((n: { code: string }) => n.code === 'СанПиН 2.3/2.4.4282-26')).toMatchObject({ state: 'действует, текст в нормативной базе' });
-    await expect(approveTechSpec(cook.id, orgId, sauce, { labProtocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(approveTechSpec(chef.id, orgId, sauce, { labProtocol: '№ 15' })).rejects.toThrow(/протокол испытаний/);
-    const v = await approveTechSpec(chef.id, orgId, sauce, { labProtocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' });
+    const p15 = await protocol(sauce, '15');
+    await expect(approveTechSpec(cook.id, orgId, sauce, { labResultIds: [p15] })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(approveTechSpec(chef.id, orgId, sauce, { labResultIds: [] })).rejects.toThrow(/протоколы испытаний/);
+    const v = await approveTechSpec(chef.id, orgId, sauce, { labResultIds: [p15] });
     expect(v.version).toBe(1);
     const got = await getTechSpecVersion(cook.id, orgId, sauce, 1);
     expect(got.snapshot.nutrition.per100.kcal).toBe(118);
-    expect(got).toMatchObject({ designation: t.calc.designation, lab_protocol: 'Протокол № 15 от 20.10.2026, ИЛЦ «Тест»' });
+    expect(got).toMatchObject({ designation: t.calc.designation, lab_protocol: 'протокол № 15 от 20.10.2026, ИЛЦ «Тест» (аттестат RA.RU.21ТС01)', lab_result_ids: [p15], change_note: 'первая редакция' });
     await expect(withSystem((tx) => tx.query(`update tech_spec_versions set lab_protocol = 'x' where dish_id = $1`, [sauce]))).rejects.toThrow(/не изменяются/);
     expect((await getTechSpec(cook.id, orgId, sauce)).versions).toEqual([expect.objectContaining({ version: 1 })]);
+  });
+});
+
+describe('Протоколы испытаний для ТУ (ТЗ 5.4)', () => {
+  it('не из реестра, без скана, чужой образец, не все показатели, лаборатория приостановлена — не утверждается; v2 — с записью изменения', async () => {
+    const ind = (await getTechSpec(owner.id, orgId, sauce)).calc.micro.indicators.filter((i: { norm: string | null }) => i.norm);
+    const base = { siteId, testType: 'Микробиология', target: 'ТУ', sampledOn: '2026-10-21', resultOn: '2026-10-25' };
+    const all = ind.map((i: { code: string; name: string; norm: string | null }) => ({ code: i.code, name: i.name.split(',')[0], norm: i.norm, fact: 'не обнаружено', pass: true }));
+    const noReg = (await recordResult(owner.id, orgId, { ...base, dishId: sauce, labName: 'Какая-то лаборатория', protocolNo: '21', params: all })).id;
+    const noFile = (await recordResult(owner.id, orgId, { ...base, dishId: sauce, laboratoryId: labId, protocolNo: '22', params: all })).id;
+    const other = (await recordResult(owner.id, orgId, { ...base, dishId: casserole, laboratoryId: labId, protocolNo: '23', params: all })).id;
+    const partial = (await recordResult(owner.id, orgId, { ...base, dishId: sauce, laboratoryId: labId, protocolNo: '24', params: all.slice(0, 1) })).id;
+    for (const id of [noReg, noFile, other, partial].filter((x) => x !== noFile)) await addEvidence(owner.id, orgId, { entityType: 'lab_result', entityId: id, filename: 'п.pdf' }, Buffer.from('%PDF-1.4\n'));
+    const msg = async (ids: string[]) => (await approveTechSpec(chef.id, orgId, sauce, { labResultIds: ids, changeNote: 'уточнены показатели' }).then(() => '', (e: Error) => e.message));
+    expect(await msg([noReg])).toMatch(/№ 21: лаборатория не из реестра/);
+    expect(await msg([noFile])).toMatch(/№ 22: не приложен файл протокола/);
+    expect(await msg([other])).toMatch(/№ 23: образец не связан с этим блюдом/);
+    expect(await msg([partial])).toMatch(/не исследован ни в одном выбранном протоколе/);
+    // повторная версия — только с записью в лист регистрации изменений
+    const p26 = await protocol(sauce, '26');
+    await expect(approveTechSpec(chef.id, orgId, sauce, { labResultIds: [p26] })).rejects.toThrow(/листа регистрации изменений/);
+    const v2 = await approveTechSpec(chef.id, orgId, sauce, { labResultIds: [partial, p26], changeNote: 'новые протоколы испытаний' });
+    expect(v2.version).toBe(2);
+    const t = await getTechSpec(chef.id, orgId, sauce);
+    expect(t.versions[0]).toMatchObject({ version: 2, change_note: 'новые протоколы испытаний', outdated: false, ppk_version: null, haccp_version: null });
+    expect(t.protocols.map((p: { protocol_no: string }) => p.protocol_no)).toEqual(expect.arrayContaining(['15', '21', '22', '24', '26']));
+    // лаборатория приостановлена — её протоколы больше не подтверждают ТУ
+    await saveLaboratory(owner.id, orgId, labId, { name: 'ИЛЦ «Тест»', accreditationNo: 'RA.RU.21ТС01', scope: 'Пищевая продукция: микробиологические показатели (КМАФАнМ, БГКП, S. aureus, патогенные)', status: 'suspended' });
+    expect(await msg([p26])).toMatch(/в реестре не действует/);
+    await expect(recordResult(owner.id, orgId, { ...base, dishId: sauce, laboratoryId: labId, protocolNo: '27', params: all })).rejects.toThrow(/аккредитация приостановлена/);
+    await saveLaboratory(owner.id, orgId, labId, { name: 'ИЛЦ «Тест»', accreditationNo: 'RA.RU.21ТС01', scope: 'Пищевая продукция: микробиологические показатели (КМАФАнМ, БГКП, S. aureus, патогенные)', status: 'active' });
+  });
+
+  it('новая ТТК — действующие ТУ помечаются «устарели»', async () => {
+    const { newVersion } = await import('../src/server/ops/recipes');
+    const nv = await newVersion(chef.id, orgId, sauce, { changeReason: 'уточнена технология' });
+    await submitVersion(chef.id, orgId, nv.id); await approveVersion(chef.id, orgId, nv.id);
+    expect((await getTechSpec(chef.id, orgId, sauce)).versions[0]).toMatchObject({ version: 2, outdated: true });
   });
 });
 
@@ -181,7 +233,7 @@ describe('ТУ по нормативной базе: микробиология 
     expect(c.status).toBe('error');
     expect(c.errors.join(' ')).toMatch(/больше закладки нетто/);
     expect(c.physico.every((x: { norm: number | string }) => typeof x.norm !== 'number' || x.norm > 0)).toBe(true);
-    await expect(approveTechSpec(chef.id, orgId, bad, { labProtocol: 'Протокол № 1 от 01.10.2026, ИЛЦ «Тест»' })).rejects.toThrow(/больше закладки/);
+    await expect(approveTechSpec(chef.id, orgId, bad, { labResultIds: [await protocol(bad, '1')] })).rejects.toThrow(/больше закладки/);
   });
 });
 
