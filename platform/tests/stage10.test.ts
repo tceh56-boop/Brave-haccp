@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { closePool, withSystem } from '../src/server/db/pool';
-import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
+import { createOrganization, inviteMember, acceptInvitation, updateOrganization } from '../src/server/org/organizations';
 import { createProduct, createSupplier } from '../src/server/ops/catalog';
 import { createReceipt, addReceiptLine, completeReceipt } from '../src/server/ops/receipts';
 import { getLot } from '../src/server/ops/lots';
@@ -129,6 +129,7 @@ describe('Контроль при выпуске и выпуск партии п
   });
 
   it('продажа блюда с п/ф берёт готовый бульон со склада, а не сырьё второй раз', async () => {
+    await updateOrganization(owner.id, orgId, { modules: ['pos'] });
     await openShift(cashier.id, orgId, { siteId, cashStart: 0 });
     const o = await createOrder(cashier.id, orgId, { siteId });
     await addOrderLine(cashier.id, orgId, o.order.id, { dishId: stew });

@@ -6,13 +6,14 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 
 interface Org { id: string; name: string; legal_form: string | null; inn: string | null; phone: string | null; region: string | null; timezone: string; status: string;
-  ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null }
+  ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null; modules?: string[] }
 interface Membership { role: string; role_label: string; site_ids: string[]; permissions: string[] }
 interface Site { id: string; name: string; address: string | null; status: string }
 interface Member { id: string; user_id: string; full_name: string; email: string; role: string; role_label: string; site_ids: string[]; position: string | null; status: string; blocked_reason: string | null }
 interface Invitation { id: string; email: string; full_name: string | null; role: string; site_ids: string[]; state: string; expires_at: string }
 interface AuditRow { id: string; created_at: string; action: string; entity_type: string | null; result: string; reason: string | null; actor: string | null; before: unknown; after: unknown }
 interface RoleDef { code: string; label: string; summary: string }
+interface ModuleDef { code: string; label: string; summary: string }
 
 const ACTIONS: Record<string, string> = {
   'org.create': 'Создано предприятие', 'org.update': 'Изменены реквизиты', 'site.create': 'Добавлена площадка', 'site.update': 'Изменена площадка',
@@ -23,7 +24,7 @@ const ACTIONS: Record<string, string> = {
 };
 const INV_STATE: Record<string, [string, string]> = { pending: ['ожидает', 'warn'], accepted: ['принято', 'ok'], revoked: ['отозвано', ''], expired: ['истекло', 'crit'] };
 
-type Tab = 'sites' | 'members' | 'invites' | 'audit' | 'org';
+type Tab = 'sites' | 'members' | 'invites' | 'audit' | 'org' | 'modules';
 
 function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
   const [org, setOrg] = useState<Org | null>(null);
@@ -32,12 +33,13 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
   const [tab, setTab] = useState<Tab>('sites');
   const [sites, setSites] = useState<Site[]>([]);
   const [roles, setRoles] = useState<RoleDef[]>([]);
+  const [modules, setModules] = useState<ModuleDef[]>([]);
 
   const loadSites = useCallback(() => api<Site[]>(`/orgs/${orgId}/sites`).then(setSites), [orgId]);
   useEffect(() => {
     api<{ organization: Org; membership: Membership }>(`/orgs/${orgId}`).then((r) => { setOrg(r.organization); setM(r.membership); }).catch((e) => setErr(e.message));
     loadSites().catch(() => undefined);
-    api<{ roles: RoleDef[] }>('/roles').then((r) => setRoles(r.roles));
+    api<{ roles: RoleDef[]; modules: ModuleDef[] }>('/roles').then((r) => { setRoles(r.roles); setModules(r.modules || []); });
   }, [orgId, loadSites]);
 
   if (err) return <><div className="err">{err}</div><p><Link href="/app">← Мои предприятия</Link></p></>;
@@ -45,7 +47,7 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
   const can = (p: string) => m.permissions.includes(p);
   const tabs: [Tab, string, boolean][] = [
     ['sites', 'Площадки', can('site.read')], ['members', 'Сотрудники', can('member.read')], ['invites', 'Приглашения', can('member.invite')],
-    ['audit', 'Аудит', can('audit.read')], ['org', 'Реквизиты', can('org.read')],
+    ['audit', 'Аудит', can('audit.read')], ['org', 'Реквизиты', can('org.read')], ['modules', 'Модули', can('org.read')],
   ];
   return (
     <>
@@ -75,6 +77,7 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
       {tab === 'invites' && <Invites orgId={orgId} sites={sites} roles={roles} />}
       {tab === 'audit' && <Audit orgId={orgId} />}
       {tab === 'org' && <OrgForm org={org} canEdit={can('org.update')} onSaved={setOrg} />}
+      {tab === 'modules' && <OrgModules org={org} defs={modules} canEdit={can('org.update')} />}
     </>
   );
 }
@@ -299,6 +302,39 @@ function OrgForm({ org, canEdit, onSaved }: { org: Org; canEdit: boolean; onSave
         {error && <div className="err">{error}</div>}
         {canEdit && <button className="btn block" disabled={busy}>Сохранить</button>}
       </form>
+    </div>
+  );
+}
+
+/** Необязательные модули (ТЗ 3.0 §1.4): по умолчанию выключены; выключение не удаляет историю. */
+function OrgModules({ org, defs, canEdit }: { org: Org; defs: ModuleDef[]; canEdit: boolean }) {
+  const on = org.modules || [];
+  const { busy, error, run } = useSubmit();
+  const toggle = (code: string, enable: boolean) => run(async () => {
+    await api(`/orgs/${org.id}`, { method: 'PATCH', body: { modules: enable ? [...on, code] : on.filter((x) => x !== code) } });
+    window.location.reload();                        // права и меню пересчитываются сервером
+  });
+  return (
+    <div className="card">
+      <p className="small muted">Необязательные модули включает владелец или администратор. Пока модуль выключен, его операции запрещены на сервере и раздел скрыт из меню.
+        Выключение не удаляет историю: прежние записи остаются в отчётах и журнале аудита.</p>
+      <table className="table">
+        <thead><tr><th>Модуль</th><th>Назначение</th><th>Состояние</th>{canEdit && <th />}</tr></thead>
+        <tbody>
+          {defs.map((d) => {
+            const enabled = on.includes(d.code);
+            return (
+              <tr key={d.code}>
+                <td>{d.label}</td><td className="small">{d.summary}</td><td>{enabled ? 'включён' : 'выключен'}</td>
+                {canEdit && <td><button className={`btn small ${enabled ? 'secondary' : ''}`} disabled={busy} onClick={() => {
+                  if (!enabled || confirm(`Выключить модуль «${d.label}»? Его операции станут недоступны всем сотрудникам.`)) toggle(d.code, !enabled);
+                }}>{enabled ? 'Выключить' : 'Включить'}</button></td>}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {error && <div className="err">{error}</div>}
     </div>
   );
 }

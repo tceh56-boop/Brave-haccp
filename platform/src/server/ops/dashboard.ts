@@ -5,7 +5,7 @@ import { profileOf, samplesRequired, SAMPLE_BASIS } from '../norms/library';
 import { SEVERITY_LABEL, STATUS_LABEL } from './incidents';
 import { taskHref } from './tasks';
 import { staffProblems } from './staff';
-import { ROLES, roleHas, type Role } from '../access/roles';
+import { ROLES, roleHas, memberHas, type Role } from '../access/roles';
 import { validateEnterpriseReadiness, isBad } from '../readiness/engine';
 
 /**
@@ -182,12 +182,12 @@ export async function getShift(userId: string, orgId: string, siteId: string) {
     const tz = (await tx.query(`select timezone from organizations where id = $1`, [orgId])).rows[0].timezone as string;
     const one = async (sql: string, a: unknown[]) => (await tx.query(sql, a)).rows[0];
     const DAY = `((now() at time zone $3)::date)`;   // «сегодня» по часовому поясу организации
-    const can = (p: string) => roleHas(m.role, p as never);
+    const can = (p: string) => memberHas(m, p as never);
     const scheduled = objects.filter((o) => o.due.state !== 'no_schedule');
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: tz });
     const checkedToday = scheduled.filter((o) => o.last && new Date(o.last.measured_at).toLocaleDateString('sv-SE', { timeZone: tz }) === today).length;
     const status = {
-      pos_shift: can('pos.sell') || can('sales.manage') ? await one(`select s.opened_at, u.full_name as opened_by from pos_shifts s join users u on u.id = s.opened_by where s.site_id = $1 and s.status = 'open'`, [siteId]) || null : undefined,
+      pos_shift: m.modules.includes('pos') && (can('pos.sell') || can('sales.manage')) ? await one(`select s.opened_at, u.full_name as opened_by from pos_shifts s join users u on u.id = s.opened_by where s.site_id = $1 and s.status = 'open'`, [siteId]) || null : undefined,
       staff: can('staff.read') ? await one(`select count(*)::int as checked, count(*) filter (where admitted)::int as admitted, count(*) filter (where not admitted)::int as not_admitted
         from health_checks where organization_id = $1 and site_id = $2 and checked_on = ${DAY}`, [orgId, siteId, tz]) : undefined,
       fridges: { scheduled: scheduled.length, checked_today: checkedToday, overdue: scheduled.filter((o) => o.due.state === 'missed').length },

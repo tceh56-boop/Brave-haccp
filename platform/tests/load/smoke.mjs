@@ -37,6 +37,7 @@ for (let i = 1; i <= 10; i++) {
   objects.push(o.id);
 }
 await req('POST', `/orgs/${org.id}/dishes`, { name: 'Морс', salePrice: 150 });
+await req('PATCH', `/orgs/${org.id}`, { modules: ['pos'] });   // касса — необязательный модуль
 await req('POST', `/orgs/${org.id}/pos/shift/open`, { siteId: site.id, cashStart: 0 });
 const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
 

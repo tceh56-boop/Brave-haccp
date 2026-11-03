@@ -158,6 +158,32 @@ export function roleHas(role: string, permission: Permission): boolean {
 }
 
 /**
+ * Необязательные модули организации (ТЗ 3.0 §1.4, §12.6): права модуля действуют, только пока он включён
+ * в настройках организации. По умолчанию модули выключены. Стоп-лист и загрузка продаж файлом — не касса.
+ */
+export const MODULES = {
+  pos: { label: 'Касса и зал', summary: 'Смены кассы, заказы по столам, оплата и возвраты. «ЦЕХ» не заменяет кассовую систему: чек пробивает ККТ предприятия.',
+    permissions: ['pos.sell', 'pos.refund'] as Permission[] },
+} as const;
+export type ModuleCode = keyof typeof MODULES;
+export const isModule = (x: string): x is ModuleCode => Object.hasOwn(MODULES, x);
+
+export function moduleOf(permission: Permission): ModuleCode | null {
+  for (const [code, d] of Object.entries(MODULES)) if ((d.permissions as readonly string[]).includes(permission)) return code as ModuleCode;
+  return null;
+}
+
+/** Право с учётом выключенных модулей организации. */
+export function memberHas(m: { role: string; modules?: string[] | null }, permission: Permission): boolean {
+  const mod = moduleOf(permission);
+  return roleHas(m.role, permission) && (!mod || (m.modules || []).includes(mod));
+}
+
+export function effectivePermissions(role: string, modules: string[] | null | undefined): Permission[] {
+  return isRole(role) ? (ROLES[role].permissions as readonly Permission[]).filter((p) => memberHas({ role, modules }, p)) : [];
+}
+
+/**
  * Кого может назначать роль: владелец — любую роль; администратор — любую, кроме владельца;
  * HR — линейные и специалистов, но не владельца, администратора и аудитора.
  */

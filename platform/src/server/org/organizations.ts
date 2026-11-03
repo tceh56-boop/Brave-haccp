@@ -3,7 +3,7 @@ import { withSystem, withTenant, type Tx } from '../db/pool';
 import { Errors } from '../http/errors';
 import { audit } from '../audit/audit';
 import { requirePermission } from '../access/guard';
-import { ROLES, isRole, canAssignRole, type Role } from '../access/roles';
+import { ROLES, MODULES, isRole, canAssignRole, effectivePermissions, type Role, type ModuleCode } from '../access/roles';
 import { newToken, tokenHash } from '../security/crypto';
 import { queueEmail, appUrl } from '../mail/outbox';
 import type { SessionUser } from '../identity/auth';
@@ -62,7 +62,7 @@ export async function getOrganization(userId: string, orgId: string) {
     const m = await requirePermission(tx, userId, orgId, 'org.read');
     const org = (await tx.query(`select * from organizations where id = $1`, [orgId])).rows[0];
     if (!org) throw Errors.notFound('Организация не найдена.');
-    return { organization: org, membership: { role: m.role, role_label: ROLES[m.role as Role]?.label, site_ids: m.site_ids, permissions: ROLES[m.role as Role]?.permissions || [] } };
+    return { organization: org, membership: { role: m.role, role_label: ROLES[m.role as Role]?.label, site_ids: m.site_ids, permissions: effectivePermissions(m.role, org.modules) } };
   });
 }
 
@@ -73,13 +73,26 @@ const Requisites = z.object({
     .refine((v) => !v || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), 'Адрес электронной почты указан с ошибкой.'),
   headPosition: optText(200), headName: optText(200), headBasis: optText(300), activityNotice: optText(400),
 });
-const OrgPatch = OrgInput.omit({ firstSiteName: true }).partial().merge(Requisites.partial());
+const OrgPatch = OrgInput.omit({ firstSiteName: true }).partial().merge(Requisites.partial())
+  .extend({ modules: z.array(z.enum(Object.keys(MODULES) as [ModuleCode, ...ModuleCode[]], 'Неизвестный модуль.')).max(10).optional() });
 
 export async function updateOrganization(userId: string, orgId: string, input: unknown) {
   const d = parse(OrgPatch, input);
   return withTenant({ userId, orgId }, async (tx) => {
     await requirePermission(tx, userId, orgId, 'org.update');
     const before = (await tx.query(`select * from organizations where id = $1 for update`, [orgId])).rows[0];
+    if (d.modules) {
+      const mods = [...new Set(d.modules)].sort();
+      // Касса выключается только без открытых смен: иначе деньги смены остались бы без закрытия и сверки наличных
+      if (before.modules.includes('pos') && !mods.includes('pos')) {
+        const open = (await tx.query(`select s.name from pos_shifts p join sites s on s.id = p.site_id where p.organization_id = $1 and p.status = 'open' order by s.name`, [orgId])).rows;
+        if (open.length) throw Errors.conflict(`Нельзя выключить кассу: открыта смена кассы (${open.map((x) => x.name).join(', ')}). Закройте смену со сверкой наличных.`);
+      }
+      if (mods.join() !== [...before.modules].sort().join()) {
+        await tx.query(`update organizations set modules = $2 where id = $1`, [orgId, mods]);
+        await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.modules', entityType: 'organization', entityId: orgId, before: { modules: before.modules }, after: { modules: mods } });
+      }
+    }
     const after = (await tx.query(`update organizations set name = coalesce($2, name), legal_form = coalesce($3, legal_form), inn = coalesce($4, inn),
         phone = coalesce($5, phone), region = coalesce($6, region), timezone = coalesce($7, timezone),
         ogrn = coalesce($8, ogrn), legal_address = coalesce($9, legal_address), email = coalesce($10, email), head_position = coalesce($11, head_position),

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closePool, withSystem } from '../src/server/db/pool';
-import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
+import { createOrganization, inviteMember, acceptInvitation, updateOrganization } from '../src/server/org/organizations';
 import { createProduct, createSupplier } from '../src/server/ops/catalog';
 import { createReceipt, addReceiptLine, completeReceipt } from '../src/server/ops/receipts';
 import { createDish, getDish, updateVersion, addLine, submitVersion, approveVersion } from '../src/server/ops/recipes';
@@ -50,6 +50,7 @@ beforeAll(async () => {
   owner = await makeUser({ name: 'Ольга Владелец' });
   const r = await createOrganization(owner, { name: 'Кафе «Касса»' });
   orgId = r.organization.id; siteId = r.site.id;
+  await updateOrganization(owner.id, orgId, { modules: ['pos'] });          // касса — необязательный модуль
   chef = await invite('chef'); cashier = await invite('cashier', [siteId]); store = await invite('storekeeper'); accountant = await invite('accountant');
   stranger = await makeUser();
   await createOrganization(stranger, { name: 'Чужое кафе' });

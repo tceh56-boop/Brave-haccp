@@ -57,6 +57,12 @@ await call(`/orgs/${orgId}/ttk/${v}/lines`, { productId: beef.id, unit: 'кг', 
 await call(`/orgs/${orgId}/ttk/${v}/submit`, {}); await call(`/orgs/${orgId}/ttk/${v}/approve`, {});
 await call(`/orgs/${orgId}/dishes`, { name: 'Морс', salePrice: 150 });
 
+step('управление → модули: касса выключена по умолчанию, включаем');
+await P.goto(`${BASE}${base}`);
+await P.click('button:has-text("Модули")'); await P.waitForSelector('td:has-text("выключен")');
+await P.click('button:has-text("Включить")'); await P.waitForLoadState('load');
+await P.click('button:has-text("Модули")'); await P.waitForSelector('td:has-text("включён")');
+
 step('касса: смена, заказ, оплата со сдачей');
 await P.click('text=Касса: смена, заказы, оплата');
 await P.fill('#cs', '1000'); await P.click('button:has-text("Открыть смену")');

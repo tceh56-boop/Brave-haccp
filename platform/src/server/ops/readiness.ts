@@ -126,7 +126,8 @@ export async function getReadiness(userId: string, orgId: string, siteIdInput?: 
     // Ручные подтверждения
     const conf = (await tx.query(`select distinct on (c.key) c.key, c.confirmed, c.evidence, c.created_at, u.full_name from pilot_confirmations c join users u on u.id = c.user_id
       where c.organization_id = $1 order by c.key, c.created_at desc`, [orgId])).rows;
-    const hasPos = (await tx.query(`select 1 from pos_shifts where organization_id = $1 limit 1`, [orgId])).rowCount;
+    // ККТ обязательна, только если касса «ЦЕХ» включена и ей пользуются
+    const hasPos = (await tx.query(`select 1 from pos_shifts p join organizations o on o.id = p.organization_id where p.organization_id = $1 and 'pos' = any(o.modules) limit 1`, [orgId])).rowCount;
     for (const k of CONFIRMATIONS) {
       const c = conf.find((x) => x.key === k.key && x.confirmed);
       const required = k.required || (k.key === 'kkt' && !!hasPos);

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { withSystem, closePool } from '../db/pool';
 import { register, verifyEmail, login, type SessionUser } from '../identity/auth';
-import { createOrganization, inviteMember, acceptInvitation } from '../org/organizations';
+import { createOrganization, inviteMember, acceptInvitation, updateOrganization } from '../org/organizations';
 import { createSupplier, createProduct } from '../ops/catalog';
 import { createEvent, setItem as setEventItem, confirmEvent } from '../ops/planmenu';
 import { createProgram, recordResult } from '../ops/lab';
@@ -227,7 +227,8 @@ export async function seedDemo() {
   await setProductAllergens(tech.id, orgId, p.onion, { allergens: [], basis: 'Демо: спецификация поставщика — не содержит' });
   await saveTechSpecParams(tech.id, orgId, sauce, { okpd2: '10.85.19', seq: '1' });
 
-  // Касса: смена, два оплаченных заказа, один открытый; ручной стоп
+  // Касса (необязательный модуль, ТЗ 3.0 §1.4): в демо включена, чтобы показать раздел; смена, два оплаченных заказа, один открытый; ручной стоп
+  await updateOrganization(owner.id, orgId, { modules: ['pos'] });
   await openShift(cashier.id, orgId, { siteId, cashStart: 3000 });
   const o1 = await createOrder(cashier.id, orgId, { siteId, tableLabel: '3' });
   await addOrderLine(cashier.id, orgId, o1.order.id, { dishId: stroganoff, qty: 2 });
