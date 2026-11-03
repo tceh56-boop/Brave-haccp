@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
+import { TtkStages } from '@/components/TtkStages';
 import { dt, n } from '@/lib/fmt';
 import { chain, type From } from '@/server/recipes/chain';
 import { GroupSelect, type Group } from '@/components/GroupSelect';
@@ -84,6 +85,8 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
             )}
             <Fields v={v} kind={data.dish.kind} editable={draft} onSave={(body) => act(() => api(`/orgs/${org.id}/ttk/${v.id}`, { method: 'PATCH', body }))} busy={busy} />
           </div>
+
+          <TtkStages versionId={v.id} editable={draft} />
 
           <div className="card">
             <h2>Состав{v.yield_g ? ` на выход ${n(v.yield_g)} г` : ''}</h2>

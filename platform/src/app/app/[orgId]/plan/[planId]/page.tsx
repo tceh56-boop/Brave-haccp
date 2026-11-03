@@ -16,7 +16,8 @@ import { KINDS, LAYERS, ZONE_CLASS, FLOWS, corners, swingZone, specification, fi
 type P = [number, number];
 interface Plan { id: string; name: string; width_mm: number; height_mm: number; revision: number; min_passage_mm: number | null; min_passage_basis: string | null; background_file_id: string | null; bg_mm_per_px: string | null; bg_offset_x: string; bg_offset_y: string }
 interface Decision { decision: string; rationale: string; measure: string | null; decided_by: string; decided_at: string }
-interface Data { plan: Plan; objects: PlanObject[]; routes: PlanRoute[]; risks: (Risk & { decision: Decision | null })[];
+interface TtkRoute extends PlanRoute { dish: string; dish_id: string; version: number; from_id: string; to_id: string }
+interface Data { plan: Plan; objects: PlanObject[]; routes: PlanRoute[]; ttk_routes: TtkRoute[]; risks: (Risk & { decision: Decision | null })[];
   versions: { version: number; change_note: string; approved_at: string; approved_by: string; content_hash: string }[]; equipment: { id: string; name: string }[] }
 type Mode = { t: 'select' } | { t: 'place'; kind: string } | { t: 'route'; flow: string; points: P[] } | { t: 'calibrate'; points: P[] };
 
@@ -42,7 +43,7 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
   const [placeKind, setPlaceKind] = useState('table');
   const [flow, setFlow] = useState('raw');
   const [snap, setSnap] = useState(50);
-  const [layers, setLayers] = useState<Record<Layer | 'routes' | 'risks' | 'background' | 'dims' | 'passages', boolean>>({ rooms: true, building: true, zones: true, equipment: true, engineering: true, routes: true, risks: true, background: true, dims: true, passages: true });
+  const [layers, setLayers] = useState<Record<Layer | 'routes' | 'risks' | 'background' | 'dims' | 'passages' | 'ttk', boolean>>({ rooms: true, building: true, zones: true, equipment: true, engineering: true, routes: true, risks: true, background: true, dims: true, passages: true, ttk: true });
   const [view, setView] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -65,7 +66,10 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
     window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h);
   }, [dirty]);
 
-  const risks = useMemo(() => findRisks(objects, routes, { minPassage: pass.min_mm, basis: pass.basis }), [objects, routes, pass]);
+  // схемы ТТК: точки — центры мест этапов в текущем положении объектов
+  const ttkRoutes = useMemo(() => (data?.ttk_routes || []).flatMap((r) => { const a = objects.find((o) => o.id === r.from_id), b = objects.find((o) => o.id === r.to_id);
+    return a && b ? [{ ...r, points: [[a.x_mm, a.y_mm], [b.x_mm, b.y_mm]] as [number, number][] }] : []; }), [data, objects]);
+  const risks = useMemo(() => findRisks(objects, [...routes, ...ttkRoutes], { minPassage: pass.min_mm, basis: pass.basis }), [objects, routes, ttkRoutes, pass]);
   const gaps = useMemo(() => passages(objects), [objects]);
   const spec = useMemo(() => specification(objects), [objects]);
   const noOf = useMemo(() => new Map(spec.map((s) => [s.id, s.no])), [spec]);
@@ -178,9 +182,9 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
       {mode.t === 'calibrate' && <div className="note noprint">Калибровка: кликните по двум концам известного размера на чертеже ({mode.points.length}/2).</div>}
 
       <div className="small noprint" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '6px 0' }}>
-        {([...Object.keys(LAYERS), 'routes', 'passages', 'risks', 'dims', 'background'] as (keyof typeof layers)[]).map((k) => (
+        {([...Object.keys(LAYERS), 'routes', 'ttk', 'passages', 'risks', 'dims', 'background'] as (keyof typeof layers)[]).map((k) => (
           <label key={k} style={{ fontWeight: 400 }}><input type="checkbox" style={{ width: 16, minHeight: 16 }} checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} />
-            {' '}{(LAYERS as Record<string, string>)[k] || { routes: 'Потоки', passages: 'Проходы', risks: 'Риски', dims: 'Размеры', background: 'Подложка' }[k as string]}</label>))}
+            {' '}{(LAYERS as Record<string, string>)[k] || { routes: 'Потоки', ttk: 'Маршруты по ТТК', passages: 'Проходы', risks: 'Риски', dims: 'Размеры', background: 'Подложка' }[k as string]}</label>))}
       </div>
 
       <div style={{ border: '1px solid var(--line, #ddd)', borderRadius: 8, background: '#fff', touchAction: 'none' }}>
@@ -251,6 +255,9 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
           {layers.routes && routes.map((r) => (
             <polyline key={r.id} points={r.points.map((p) => p.join(',')).join(' ')} fill="none" stroke={FLOWS[r.flow].color} strokeWidth={view.w / (sel === r.id ? 200 : 400)} strokeDasharray={FLOWS[r.flow].dash}
               markerEnd={`url(#arr-${r.flow})`} onPointerDown={(e) => { if (mode.t === 'select') { e.stopPropagation(); setSel(r.id); } }} style={{ cursor: 'pointer' }} />))}
+          {layers.ttk && ttkRoutes.map((r) => (
+            <g key={r.id}><polyline points={r.points.map((p) => p.join(',')).join(' ')} fill="none" stroke={FLOWS[r.flow].color} strokeWidth={view.w / 500} strokeDasharray={`${fs / 4} ${fs / 4}`} opacity={0.8} markerEnd={`url(#arr-${r.flow})`}>
+              <title>{r.label}</title></polyline></g>))}
           {mode.t === 'route' && mode.points.length > 0 && <polyline points={mode.points.map((p) => p.join(',')).join(' ')} fill="none" stroke={FLOWS[mode.flow].color} strokeWidth={view.w / 300} />}
           {/* риски */}
           {layers.risks && risks.filter((r) => r.at && r.type !== 'unconfirmed_size').map((r, i) => (
@@ -322,6 +329,14 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
           </div>}
         </div>
       )}
+
+      {data.ttk_routes.length > 0 && <div className="card noprint">
+        <h2>Маршруты продуктов по ТТК</h2>
+        <p className="small muted">Строятся из этапов утверждённых ТТК, привязанных к местам на этом плане: прямые между местами (схема последовательности, а не трассировка пути).
+          Цвет — состояние продукта на отрезке. Риски по ним — в общем списке.</p>
+        <ul className="list small">{[...new Map(data.ttk_routes.map((r) => [r.dish_id, r])).values()].map((r) => (
+          <li key={r.dish_id}><Link href={`/app/${org.id}/menu/${r.dish_id}`}>{r.dish}</Link> (ТТК v{r.version}): {data.ttk_routes.filter((x) => x.dish_id === r.dish_id).length} переходов</li>))}</ul>
+      </div>}
 
       <div className="card noprint">
         <h2>Проходы</h2>

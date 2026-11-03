@@ -3,8 +3,9 @@ import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, getSite, assertSiteAccess } from './common';
+import { inOrg, parse, optText, getSite, assertSiteAccess, openTask } from './common';
 import { KINDS, FLOWS, ZONE_CLASS, findRisks, type PlanObject, type PlanRoute } from '../../lib/floorplan';
+import { ttkRoutesForPlan } from './ttkStages';
 
 /**
  * 2D-план предприятия (ТЗ 3.0 §15.2, §15.4; мастер-промт, раздел 4). Геометрия — в мм.
@@ -75,11 +76,12 @@ export async function getPlan(userId: string, orgId: string, planId: string) {
     const c = await content(tx, p.id);
     const decisions = (await tx.query(`select d.risk_key, d.decision, d.rationale, d.measure, d.decided_at, u.full_name as decided_by from plan_risk_decisions d join users u on u.id = d.decided_by
       where d.plan_id = $1`, [p.id])).rows;
-    const risks = findRisks(c.objects, c.routes, { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
+    const ttkRoutes = await ttkRoutesForPlan(tx, p.id, c.objects);
+    const risks = findRisks(c.objects, [...c.routes, ...ttkRoutes], { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
     const versions = (await tx.query(`select v.version, v.change_note, v.approved_at, v.content_hash, u.full_name as approved_by from floor_plan_versions v join users u on u.id = v.approved_by
       where v.plan_id = $1 order by v.version desc`, [p.id])).rows;
     const equipment = (await tx.query(`select id, name from equipment where organization_id = $1 and site_id = $2 and status <> 'retired' order by name`, [orgId, p.site_id])).rows;
-    return { plan: p, ...c, risks, versions, equipment };
+    return { plan: p, ...c, ttk_routes: ttkRoutes, risks, versions, equipment };
   });
 }
 
@@ -98,6 +100,15 @@ export async function savePlan(userId: string, orgId: string, planId: string, in
     const bg = d.background;
     if (bg?.file_id && !(await tx.query(`select 1 from evidence_files where id = $1 and organization_id = $2 and entity_type = 'floor_plan' and entity_id = $3 and mime in ('image/png', 'image/jpeg', 'image/webp')`,
       [bg.file_id, orgId, p.id])).rowCount) throw Errors.validation('Подложка — изображение PNG, JPG или WEBP, загруженное к этому плану.');
+    // анализ влияния: удалённые места этапов утверждённых ТТК — задача технологу проверить ТТК
+    const keep = new Set(d.objects.map((o) => o.id));
+    const lostStages = (await tx.query(`select s.plan_object_id, d.id as dish_id, d.name, v.version, s.operation from ttk_stages s join ttk_versions v on v.id = s.version_id and v.status = 'approved'
+      join dishes d on d.id = v.dish_id where s.plan_id = $1`, [p.id])).rows.filter((x) => !keep.has(x.plan_object_id));
+    for (const dishId of new Set(lostStages.map((x) => x.dish_id as string))) {
+      const xs = lostStages.filter((x) => x.dish_id === dishId);
+      await openTask(tx, { orgId, siteId: p.site_id, kind: 'ttk_dependent_review', title: `Проверить ТТК «${xs[0].name}»: место этапа удалено с плана «${p.name}»`,
+        details: `Этапы версии ${xs[0].version}: ${xs.map((x) => x.operation).join('; ')}. Назначьте место в новой версии ТТК.`, entityType: 'dish', entityId: dishId, assigneeRole: 'technologist', createdBy: userId });
+    }
     await tx.query(`delete from plan_objects where plan_id = $1`, [p.id]);
     await tx.query(`delete from plan_routes where plan_id = $1`, [p.id]);
     for (const o of d.objects) {
@@ -129,7 +140,7 @@ export async function decideRisk(userId: string, orgId: string, planId: string, 
     const p = await planFor(tx, orgId, planId);
     assertSiteAccess(m, p.site_id);
     const c = await content(tx, p.id);
-    if (!findRisks(c.objects, c.routes, { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).some((r) => r.key === d.riskKey)) throw Errors.conflict('Такого риска в текущем плане нет — план изменился. Обновите страницу.');
+    if (!findRisks(c.objects, [...c.routes, ...await ttkRoutesForPlan(tx, p.id, c.objects)], { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).some((r) => r.key === d.riskKey)) throw Errors.conflict('Такого риска в текущем плане нет — план изменился. Обновите страницу.');
     await tx.query(`insert into plan_risk_decisions (organization_id, plan_id, risk_key, decision, rationale, measure, decided_by) values ($1, $2, $3, $4, $5, $6, $7)
       on conflict (plan_id, risk_key) do update set decision = excluded.decision, rationale = excluded.rationale, measure = excluded.measure, decided_by = excluded.decided_by, decided_at = now()`,
     [orgId, p.id, d.riskKey, d.decision, d.rationale, d.measure, userId]);
@@ -147,10 +158,11 @@ export async function approvePlan(userId: string, orgId: string, planId: string,
     const c = await content(tx, p.id);
     if (!c.objects.some((o) => o.kind === 'room')) throw Errors.conflict('На плане нет ни одного помещения — утверждать нечего.');
     const decisions = (await tx.query(`select risk_key, decision, rationale, measure from plan_risk_decisions where plan_id = $1`, [p.id])).rows;
-    const risks = findRisks(c.objects, c.routes, { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
+    const ttkRoutes = await ttkRoutesForPlan(tx, p.id, c.objects);
+    const risks = findRisks(c.objects, [...c.routes, ...ttkRoutes], { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
     const open = risks.filter((r) => r.severity === 'high' && !r.decision);
     if (open.length) throw Errors.conflict(`Нет решения специалиста по рискам (${open.length}): ${open.slice(0, 3).map((r) => r.title).join('; ')}${open.length > 3 ? '…' : ''}. Подтвердите с мерой или отклоните с обоснованием.`);
-    const snapshot = { name: p.name, width_mm: p.width_mm, height_mm: p.height_mm, background_file_id: p.background_file_id, bg_mm_per_px: p.bg_mm_per_px, ...c, risks, revision: p.revision };
+    const snapshot = { name: p.name, width_mm: p.width_mm, height_mm: p.height_mm, background_file_id: p.background_file_id, bg_mm_per_px: p.bg_mm_per_px, ...c, ttk_routes: ttkRoutes, risks, revision: p.revision };
     const hash = createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
     const n = Number((await tx.query(`select coalesce(max(version), 0) + 1 as n from floor_plan_versions where plan_id = $1`, [p.id])).rows[0].n);
     await tx.query(`insert into floor_plan_versions (organization_id, plan_id, version, snapshot, content_hash, change_note, approved_by) values ($1, $2, $3, $4, $5, $6, $7)`,

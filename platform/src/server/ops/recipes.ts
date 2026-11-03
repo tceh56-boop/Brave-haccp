@@ -396,6 +396,10 @@ async function versionBlockers(tx: Tx, orgId: string, v: Record<string, any>, di
   if (!v.shelf_life) out.push('Укажите срок годности (реализации) — по утверждённому основанию.');
   if (!v.yield_g) out.push('Укажите выход.');
   out.push(...shelfLifeProblems(v));
+  // этапы на плане: место этапа должно существовать (план мог измениться после назначения)
+  const lost = (await tx.query(`select s.position, s.operation from ttk_stages s where s.version_id = $1 and s.plan_object_id is not null
+    and not exists (select 1 from plan_objects o where o.id = s.plan_object_id and o.plan_id = s.plan_id)`, [v.id])).rows;
+  if (lost.length) out.push(`Место этапа удалено с плана: ${lost.map((x) => `${x.position}. ${x.operation}`).join('; ')} — выберите место заново.`);
   if (!v.source || v.source.trim().length < 3) out.push('Укажите основание рецептуры: сборник (название, год, номер рецептуры) или «Собственная разработка».');
   else if (!/^собственн/i.test(v.source.trim()) && !(await tx.query(`select 1 from evidence_files where organization_id = $1 and entity_type = 'ttk_version' and entity_id = $2 limit 1`, [orgId, v.id])).rowCount)
     out.push(`Приложите файл основания рецептуры (скан или фото страницы «${v.source.trim()}»).`);
@@ -701,6 +705,8 @@ export async function newVersion(userId: string, orgId: string, dishId: string, 
       [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours, src.semi_yield_g,
         JSON.stringify(src.organoleptic || {}), src.serving, src.menu_description, src.storage_hours, src.sale_hours, src.opened_hours, src.shelf_basis])).rows[0];
     await copyLines(tx, src.id, v.id, 0);
+    await tx.query(`insert into ttk_stages (organization_id, version_id, position, operation, plan_id, plan_object_id, state, params, control)
+      select organization_id, $2, position, operation, plan_id, plan_object_id, state, params, control from ttk_stages where version_id = $1`, [src.id, v.id]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.new_version', entityType: 'ttk_version', entityId: v.id, after: { version: v.version, from: src.version }, reason: d.changeReason });
     return v;
   });
