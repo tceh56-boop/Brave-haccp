@@ -24,7 +24,7 @@ import { openShift, createOrder, addOrderLine, payOrder, setStop } from '../ops/
 import { confirm } from '../ops/readiness';
 import { listLots } from '../ops/lots';
 import { createLabels, logPrint, openLot, setOpenedShelfLife } from '../ops/labels';
-import { createProduction, startProduction, recordCheck, completeProduction, addReleaseCheck } from '../ops/production';
+import { createProduction, startProduction, recordCheck, completeProduction, getProduction, addReleaseCheck } from '../ops/production';
 import { setProductNutrition, setProductAllergens, saveTechSpecParams } from '../ops/techspec';
 import { createCosting } from '../ops/costing';
 import { createAct } from '../ops/controlacts';
@@ -218,7 +218,9 @@ export async function seedDemo() {
   const po = await createProduction(chef.id, orgId, { siteId, dishId: sauce, plannedKg: 1, plannedFor: day, note: 'к обеду' });
   await startProduction(cook.id, orgId, po.id);
   await recordCheck(cook.id, orgId, po.id, { checkId: tcheck.id, value: 82 });
-  await completeProduction(cook.id, orgId, po.id, { actualKg: 0.95, operationId: `demo-prod-${SUFFIX || 'main'}` });
+  // демо: повар подтверждает подсказку формы (FEFO на план) как фактический расход
+  const fact = (await getProduction(cook.id, orgId, po.id)).lots.filter((l) => l.suggest > 0).map((l) => ({ lotId: l.lot_id, quantity: l.suggest }));
+  await completeProduction(cook.id, orgId, po.id, { actualKg: 0.95, consumed: fact, operationId: `demo-prod-${SUFFIX || 'main'}` });
   await createProduction(chef.id, orgId, { siteId, dishId: sauce, plannedKg: 2, plannedFor: day, note: 'на вечер' });
   // ТУ соуса: данные сырья по документам, параметры — расчёт есть, статус «проект» (нет микробиологии и протокола)
   await setProductNutrition(tech.id, orgId, p.cream, { kcal: 322, protein: 2.5, fat: 33, carbs: 3, basis: 'Демо: маркировка изготовителя' });

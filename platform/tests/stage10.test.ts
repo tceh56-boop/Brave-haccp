@@ -11,7 +11,7 @@ import { openShift, createOrder, addOrderLine, payOrder } from '../src/server/op
 import { listProduction, producibleDishes, createProduction, getProduction, startProduction, recordCheck, completeProduction, cancelProduction,
   addReleaseCheck, listReleaseChecks, archiveReleaseCheck } from '../src/server/ops/production';
 import { listTasks } from '../src/server/ops/tasks';
-import { makeUser, lastLinkToken } from './helpers';
+import { makeUser, lastLinkToken, fact } from './helpers';
 
 afterAll(() => closePool());
 
@@ -91,32 +91,33 @@ describe('Контроль при выпуске и выпуск партии п
     checkId = (await addReleaseCheck(haccp.id, orgId, broth, { name: 'Температура в толще', unit: '°C', min: 75, basis: 'План ХАССП, ККТ-1: тепловая обработка' })).id;
     expect(await listReleaseChecks(cook.id, orgId, broth)).toEqual([expect.objectContaining({ limits: 'не ниже 75 °C' })]);
     orderId = (await createProduction(chef.id, orgId, { siteId, dishId: broth, plannedKg: 2, plannedFor: today })).id;
-    await expect(completeProduction(cook.id, orgId, orderId, { actualKg: 1.9, operationId: op() })).rejects.toThrow(/Сначала «Начать»/);
+    await expect(completeProduction(cook.id, orgId, orderId, { consumed: await fact(cook.id, orgId, orderId), actualKg: 1.9, operationId: op() })).rejects.toThrow(/Сначала «Начать»/);
     await expect(recordCheck(cook.id, orgId, orderId, { checkId, value: 80 })).rejects.toThrow(/«в работе»/);
     await startProduction(cook.id, orgId, orderId);
-    await expect(completeProduction(cook.id, orgId, orderId, { actualKg: 1.9, operationId: op() })).rejects.toThrow(/Выпуск закрыт: нет замера в пределах — Температура в толще \(не ниже 75 °C\)/);
+    await expect(completeProduction(cook.id, orgId, orderId, { consumed: await fact(cook.id, orgId, orderId), actualKg: 1.9, operationId: op() })).rejects.toThrow(/Выпуск закрыт: нет замера в пределах — Температура в толще \(не ниже 75 °C\)/);
     const bad = await recordCheck(cook.id, orgId, orderId, { checkId, value: 68 });
     expect(bad).toMatchObject({ ok: false, incident_id: expect.any(String) });
     const inc = (await withSystem((tx) => tx.query(`select kind, severity, rule_source, status from incidents where id = $1`, [bad.incident_id]))).rows[0];
     expect(inc).toMatchObject({ kind: 'release_check', severity: 'high', rule_source: 'План ХАССП, ККТ-1: тепловая обработка' });
-    await expect(completeProduction(cook.id, orgId, orderId, { actualKg: 1.9, operationId: op() })).rejects.toThrow(/Выпуск закрыт/);
+    await expect(completeProduction(cook.id, orgId, orderId, { consumed: await fact(cook.id, orgId, orderId), actualKg: 1.9, operationId: op() })).rejects.toThrow(/Выпуск закрыт/);
     expect(await recordCheck(cook.id, orgId, orderId, { checkId, value: 82 })).toMatchObject({ ok: true });
     await expect(withSystem((tx) => tx.query(`update production_checks set value = 90 where order_id = $1`, [orderId]))).rejects.toThrow(/не изменяются/);
   });
 
-  it('выпуск: сырьё по FEFO по плану, партия по факту со сроком из ТТК и себестоимостью, этикетка, прослеживаемость; повтор не списывает дважды', async () => {
+  it('выпуск: фактический расход по партиям, норма ТТК отдельно, партия по факту со сроком из ТТК и себестоимостью, этикетка, прослеживаемость; повтор не списывает дважды', async () => {
     const beefBefore = await qty(beef), onionBefore = await qty(onion);
     const id = op();
-    const r = await completeProduction(cook.id, orgId, orderId, { actualKg: '1,9', operationId: id });
+    const used = await fact(cook.id, orgId, orderId);                    // повар подтвердил факт: 1,6 кг говядины Г-1 и 0,4 кг лука
+    const r = await completeProduction(cook.id, orgId, orderId, { consumed: used, actualKg: '1,9', operationId: id });
     expect(r).toMatchObject({ unit: 'кг', quantity: 1.9, expiry_basis: expect.stringContaining('ТТК «Бульон говяжий» v1: срок партии 48 ч'), yield_diff_pct: -5 });
     // 2 кг выхода: говядина 1,6 кг (из Г-1 по 600 ₽ — ближайший срок), лук 0,4 кг по 40 ₽ → 960 + 16 = 976 ₽
     expect(r.cost).toBe(976);
     expect(r.unit_price).toBeCloseTo(976 / 1.9, 2);
     expect(await qty(beef)).toBeCloseTo(beefBefore - 1.6, 6);
     expect(await qty(onion)).toBeCloseTo(onionBefore - 0.4, 6);
-    expect(await completeProduction(cook.id, orgId, orderId, { actualKg: '1,9', operationId: id })).toMatchObject({ lot_id: r.lot_id, repeated: true });
+    expect(await completeProduction(cook.id, orgId, orderId, { consumed: used, actualKg: '1,9', operationId: id })).toMatchObject({ lot_id: r.lot_id, repeated: true });
     expect(await qty(beef)).toBeCloseTo(beefBefore - 1.6, 6);
-    await expect(completeProduction(cook.id, orgId, orderId, { actualKg: 1, operationId: op() })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(completeProduction(cook.id, orgId, orderId, { consumed: used, actualKg: 1, operationId: op() })).rejects.toMatchObject({ code: 'CONFLICT' });
     const lot = (await getLot(cook.id, orgId, r.lot_id)).lot;
     expect(lot).toMatchObject({ status: 'available', expiry_state: 'ok', unit: 'кг', product: 'Бульон говяжий' });
     expect(Math.abs(new Date(lot.expires_at).getTime() - (Date.now() + 48 * 3600e3))).toBeLessThan(60e3);
@@ -147,7 +148,7 @@ describe('Контроль при выпуске и выпуск партии п
     const plain = await withTtk('Лук пассерованный', 'semi', 500, [{ productId: onion, unit: 'кг', brutto: 0.6, netto: 0.55 }]);
     const o = await createProduction(chef.id, orgId, { siteId, dishId: plain, plannedKg: 0.5, plannedFor: today });
     await startProduction(cook.id, orgId, o.id);
-    const r = await completeProduction(cook.id, orgId, o.id, { actualKg: 0.5, operationId: op() });
+    const r = await completeProduction(cook.id, orgId, o.id, { consumed: await fact(cook.id, orgId, o.id), actualKg: 0.5, operationId: op() });
     expect(r.expires_at).toBeNull();
     expect((await getLot(cook.id, orgId, r.lot_id)).lot.expiry_state).toBe('unconfirmed');
     const tasks = await listTasks(chef.id, orgId, { all: true });
@@ -158,15 +159,17 @@ describe('Контроль при выпуске и выпуск партии п
     const v2 = await newVersion(chef.id, orgId, plain, { changeReason: 'уточнили закладку лука' });
     await submitVersion(chef.id, orgId, v2.id);
     await approveVersion(chef.id, orgId, v2.id);
-    await expect(completeProduction(cook.id, orgId, o2.id, { actualKg: 0.5, operationId: op() })).rejects.toThrow(/больше не действует/);
+    await expect(completeProduction(cook.id, orgId, o2.id, { consumed: await fact(cook.id, orgId, o2.id), actualKg: 0.5, operationId: op() })).rejects.toThrow(/больше не действует/);
   });
 
-  it('нехватка сырья — выпуск отклоняется целиком, ничего не списано; параметр ККТ снимается только с основанием', async () => {
+  it('факт больше остатка партии — выпуск отклоняется целиком, ничего не списано; параметр ККТ снимается только с основанием', async () => {
     const o = await createProduction(chef.id, orgId, { siteId, dishId: broth, plannedKg: 20, plannedFor: today });
     await startProduction(cook.id, orgId, o.id);
     await recordCheck(cook.id, orgId, o.id, { checkId, value: 90 });
     const b0 = await qty(beef);
-    await expect(completeProduction(cook.id, orgId, o.id, { actualKg: 20, operationId: op() })).rejects.toThrow(/Не хватает годного остатка «Говядина на кости»/);
+    // фактом нельзя указать больше, чем есть в партии; ничего не списывается
+    const f = await fact(cook.id, orgId, o.id);
+    await expect(completeProduction(cook.id, orgId, o.id, { consumed: f.map((x, i) => (i ? x : { ...x, quantity: 999 })), actualKg: 20, operationId: op() })).rejects.toThrow(/в партии .* указано 999/);
     expect(await qty(beef)).toBeCloseTo(b0, 6);
     await expect(archiveReleaseCheck(haccp.id, orgId, checkId, { reason: 'нет' })).rejects.toThrow(/основание/);
     await archiveReleaseCheck(haccp.id, orgId, checkId, { reason: 'План ХАССП v2: ККТ перенесена на этап охлаждения' });

@@ -18,6 +18,8 @@ interface Card {
   checks: Check[];
   need: { product_id: string; name: string; unit: string; need: number; have: number; enough: boolean; semi: boolean }[] | null; need_error: string | null;
   consumed: { lot_id: string; quantity: string; unit: string; product: string; lot_no: string | null }[];
+  lots: { product_id: string; lot_id: string; lot_no: string | null; quantity: number; unit: string; expires_at: string; suggest: number }[];
+  deviation: { product_id: string; name: string; unit: string; norm: number | null; fact: number; diff: number | null; diff_pct: number | null }[] | null;
   lot: { id: string; lot_no: string; quantity: string; unit: string; expires_at: string | null; expiry_basis: string | null } | null;
   label: { id: string; code: string } | null;
 }
@@ -33,6 +35,7 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
   const [orgl, setOrgl] = useState('');
   const [decision, setDecision] = useState<'allowed' | 'rejected' | ''>('');
   const [reason, setReason] = useState('');
+  const [used, setUsed] = useState<Record<string, string> | null>(null);   // фактический расход по партиям, вводит повар
   const op = useOperationId();
   const { busy, error, run, setError } = useSubmit();
   const load = useCallback(() => api<Card>(`/orgs/${org.id}/production/${id}`).then((x) => { setC(x); setActual((v) => v || String(Number(x.order.planned_g) / 1000).replace('.', ',')); }).catch((e) => setError(e.message)), [org.id, id, setError]);
@@ -42,6 +45,8 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
   const run_ = can('production.run'), open = ['planned', 'in_progress'].includes(o.status);
   const blocked = c.checks.filter((x) => !x.last?.ok);
   const short = (c.need || []).filter((x) => !x.enough);
+  const fact = used ?? Object.fromEntries(c.lots.filter((l) => l.suggest > 0).map((l) => [l.lot_id, String(l.suggest).replace('.', ',')]));
+  const consumed = Object.entries(fact).filter(([, v]) => Number(v.replace(',', '.')) > 0).map(([lotId, v]) => ({ lotId, quantity: v }));
   return (
     <>
       <p className="small"><Link href={`/app/${org.id}/production`}>← Производство</Link></p>
@@ -98,9 +103,26 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
           <h2>Выпуск партии</h2>
           {blocked.length > 0 && <div className="note">Выпуск закрыт: нужен замер в пределах — {blocked.map((x) => x.name).join(', ')}.</div>}
           <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-            const r = await api<{ label_id: string }>(`/orgs/${org.id}/production/${id}/complete`, { body: { actualKg: actual, operationId: op.id, organoleptic: orgl || null, decision: decision || null } });
+            const r = await api<{ label_id: string }>(`/orgs/${org.id}/production/${id}/complete`, { body: { actualKg: actual, consumed, operationId: op.id, organoleptic: orgl || null, decision: decision || null } });
             op.next(); await load(); router.push(`/app/${org.id}/labels/print?ids=${r.label_id}`);
           }); }}>
+            <h3>Фактический расход</h3>
+            <p className="small muted">Укажите, сколько взяли из каждой партии. Значения заполнены подсказкой по ТТК на плановый выход и ближайшему сроку — исправьте по факту:
+              в учёт пойдут именно они. Норма ТТК сохранится отдельно, отклонение будет видно после выпуска.</p>
+            {(c.need || []).map((nd) => {
+              const ls = c.lots.filter((l) => l.product_id === nd.product_id);
+              return (
+                <div key={nd.product_id} style={{ marginBottom: 8 }}>
+                  <div className="small"><b>{nd.name}</b> · по ТТК на план {n(nd.need)} {nd.unit}</div>
+                  {ls.length === 0 && <div className="small err">Нет годных партий на площадке.</div>}
+                  {ls.map((l) => (
+                    <div key={l.lot_id} className="row" style={{ alignItems: 'center' }}>
+                      <span className="small" style={{ flex: 2 }}>{l.lot_no || 'без номера'} · остаток {n(l.quantity)} {l.unit} · до {day(l.expires_at, tz)}</span>
+                      <input aria-label={`Взято из партии ${l.lot_no || ''}: ${nd.name}`} inputMode="decimal" style={{ flex: 1 }} placeholder={l.unit}
+                        value={fact[l.lot_id] || ''} onChange={(e) => setUsed({ ...fact, [l.lot_id]: e.target.value })} />
+                    </div>))}
+                </div>);
+            })}
             <label htmlFor="ak">Фактический выход, кг</label>
             <input id="ak" required inputMode="decimal" value={actual} onChange={(e) => setActual(e.target.value)} />
             {o.dish_kind === 'dish' && <>
@@ -111,8 +133,8 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
               <select id="dec" required value={decision} onChange={(e) => setDecision(e.target.value as 'allowed' | 'rejected' | '')}>
                 <option value="">— выберите —</option><option value="allowed">Допущено к реализации</option><option value="rejected">Не допущено — партия в карантин</option></select>
             </>}
-            <p className="small muted">Сырьё списывается по плану ТТК ({n(Number(o.planned_g) / 1000)} кг выхода), партия п/ф — по факту. Отклонение выхода запишется в аудит.</p>
-            <button className="btn block" disabled={busy || blocked.length > 0}>Выпустить партию и напечатать этикетку</button>
+            <p className="small muted">Списывается только указанный фактический расход; партия выпуска — по фактическому выходу. Расход по норме фактом не записывается.</p>
+            <button className="btn block" disabled={busy || blocked.length > 0 || consumed.length === 0}>Выпустить партию и напечатать этикетку</button>
           </form>
         </div>
       )}
@@ -128,6 +150,13 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
           {c.label && <Link className="btn block secondary" href={`/app/${org.id}/labels/print?ids=${c.label.id}`}>Этикетка {c.label.code}</Link>}
           <h3 style={{ marginTop: 12 }}>Израсходовано</h3>
           <ul className="list">{c.consumed.map((x, i) => <li key={i}><Link href={`/app/${org.id}/lots/${x.lot_id}`}>{x.product}</Link> · {x.lot_no || 'без номера'} · {n(Math.abs(Number(x.quantity)))} {x.unit}</li>)}</ul>
+          {c.deviation && c.deviation.length > 0 && <>
+            <h3 style={{ marginTop: 12 }}>Факт против нормы ТТК</h3>
+            <div className="scroll"><table className="tbl"><thead><tr><th>Позиция</th><th>Норма на факт. выход (расчёт)</th><th>Факт</th><th>Отклонение</th></tr></thead>
+              <tbody>{c.deviation.map((x) => <tr key={x.product_id}><td>{x.name}</td><td>{x.norm === null ? '—' : `${n(x.norm)} ${x.unit}`}</td><td>{n(x.fact)} {x.unit}</td>
+                <td>{x.diff === null ? '—' : <span>{x.diff > 0 ? '+' : ''}{n(x.diff)} {x.unit}{x.diff_pct !== null ? ` (${x.diff_pct > 0 ? '+' : ''}${n(x.diff_pct)} %)` : ''}</span>}</td></tr>)}</tbody></table></div>
+            <p className="small muted">Норма — расчёт по утверждённой ТТК; в склад записан только факт.</p>
+          </>}
         </div>
       )}
 

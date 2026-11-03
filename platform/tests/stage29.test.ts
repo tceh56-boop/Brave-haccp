@@ -10,7 +10,7 @@ import { openLot, createLabels, logPrint, confirmReprint, labelLog } from '../sr
 import { setSampleSettings, takeSample, createProgram, recordResult } from '../src/server/ops/lab';
 import { getJournal, listForms } from '../src/server/ops/journals';
 import { explode } from '../src/server/ops/bom';
-import { makeUser, lastLinkToken } from './helpers';
+import { makeUser, lastLinkToken, fact } from './helpers';
 
 /** Журналы J54–J60 (ТЗ доработки, 7.5): из реальных событий, без повторного ввода; перепечать — с причиной и подтверждением. */
 
@@ -39,7 +39,7 @@ async function mkDish(name: string, kind: 'semi' | 'dish', lines: [string, numbe
 async function produce(dishId: string) {
   const o = await createProduction(chef.id, orgId, { siteId, dishId, plannedKg: 1, plannedFor: today() });
   await startProduction(cook.id, orgId, o.id);
-  return { orderId: o.id, done: (extra: Record<string, unknown> = {}) => completeProduction(cook.id, orgId, o.id, { actualKg: 0.95, operationId: randomUUID(), ...extra }) };
+  return { orderId: o.id, done: async (extra: Record<string, unknown> = {}) => completeProduction(cook.id, orgId, o.id, { consumed: await fact(cook.id, orgId, o.id), actualKg: 0.95, operationId: randomUUID(), ...extra }) };
 }
 
 beforeAll(async () => {

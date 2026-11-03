@@ -11,7 +11,7 @@ import { openLot } from '../src/server/ops/labels';
 import { consume } from '../src/server/ops/stock';
 import { listTasks } from '../src/server/ops/tasks';
 import { blockLot, getRecall, decideRecall, listRecalls } from '../src/server/ops/recalls';
-import { makeUser, lastLinkToken } from './helpers';
+import { makeUser, lastLinkToken, fact } from './helpers';
 
 /** ТЗ 3.0 §10.5, сценарий 4 §29.2: блокировка партии, вся цепочка дочерних партий, продажи, решение ответственного. */
 
@@ -60,7 +60,7 @@ beforeAll(async () => {
   const semi = await approved('Фарш', 'semi', { productId: beef, unit: 'кг', brutto: 1.1, netto: 1 }, { yieldG: 1000, storageHours: 48, shelfLifeHours: 24, shelfBasis: 'СТО 001-2026' });
   const o = await createProduction(chef.id, orgId, { siteId, dishId: semi, plannedKg: 1, plannedFor: today() });
   await startProduction(cook.id, orgId, o.id);
-  semiLot = (await completeProduction(cook.id, orgId, o.id, { actualKg: 1, operationId: randomUUID() })).lot_id;
+  semiLot = (await completeProduction(cook.id, orgId, o.id, { consumed: await fact(cook.id, orgId, o.id), actualKg: 1, operationId: randomUUID() })).lot_id;
   await approved('Котлеты', 'dish', { subDishId: semi, unit: 'г', brutto: 200, netto: 200 }, { yieldG: 200, portionG: 200 });
   const s = await importSales(chef.id, orgId, { siteId, source: 'other', rows: [{ externalId: 'чек-1', soldAt: new Date().toISOString(), name: 'Котлеты', qty: 2, price: 300 }] });
   expect(s).toMatchObject({ inserted: 1, done: 1 });

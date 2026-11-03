@@ -5,17 +5,19 @@ import { Errors } from '../http/errors';
 import { inOrg, parse, optText, assertSiteAccess, getSite, openTask, fmtNum } from './common';
 import { once, move } from './stock';
 import { approvedRecipe, convertUnits } from './recipes';
-import { explode, takeFefo, availability } from './bom';
+import { explode, availability, USABLE, type Need } from './bom';
 import { raiseIncident } from './incidents';
 import { labelForLot } from './labels';
 
 /**
  * Производство полуфабрикатов (этап 10; перенос Production.gs / SemiFinished.gs прежнего ЦЕХ и MON CHEF 3.1–3.3).
  *  - Задание: план → в работе → выпущено (или отменено с причиной). Переходы только явные: списание один раз.
- *  - Выпуск: по утверждённой ТТК (версия фиксируется в задании) на плановый выход раскладываются складские позиции;
- *    готовые п/ф со склада идут первыми, затем сырьё; всё — по FEFO. Выход приходуется партией п/ф: количество —
- *    фактическое, цена — себестоимость / выход, срок — часы хранения из утверждённой ТТК; без них партия получает
- *    «срок не подтверждён» и задачу шефу (система срок не придумывает).
+ *  - Выпуск (мастер-промт, раздел 2; ТЗ 3.0 §11.4): повар указывает фактически использованные партии и количества.
+ *    В движения склада попадает только этот факт. Норма по утверждённой ТТК пересчитывается на фактический выход и
+ *    хранится отдельно (consumption_estimates, «расчётное»); отклонение факта от нормы — по каждой позиции.
+ *    Подсказка в форме (FEFO на плановый выход) — только предзаполнение; подтверждает человек.
+ *    Выход приходуется партией: количество — фактическое, цена — стоимость фактически списанных партий / выход,
+ *    срок — часы хранения из утверждённой ТТК; без них партия получает «срок не подтверждён» и задачу шефу.
  *  - Контроль при выпуске (ККТ): параметры с пределами и основанием задаёт ХАССП; выпуск закрыт, пока последний замер
  *    по каждому параметру не в пределах. Замер вне предела — отклонение ответственному; замеры не меняются.
  *  - Прослеживаемость: каждая израсходованная партия связана с партией п/ф (lot_links.kind = 'production').
@@ -99,9 +101,21 @@ export async function getProduction(userId: string, orgId: string, id: string) {
     const checks = await activeChecks(tx, o.dish_id);
     const last = await lastChecks(tx, o.id);
     let need: Awaited<ReturnType<typeof availability>> | null = null, needError: string | null = null;
+    let lots: { product_id: string; lot_id: string; lot_no: string | null; quantity: number; unit: string; expires_at: string; suggest: number }[] = [];
     if (['planned', 'in_progress'].includes(o.status)) {
-      try { need = await availability(tx, orgId, o.site_id, (await explode(tx, orgId, o.dish_id, { grams: Number(o.planned_g) }, { siteId: o.site_id })).needs); }
-      catch (e) { needError = (e as Error).message; }
+      try {
+        const needs = (await explode(tx, orgId, o.dish_id, { grams: Number(o.planned_g) }, { siteId: o.site_id })).needs;
+        need = await availability(tx, orgId, o.site_id, needs);
+        // подсказка для формы выпуска: годные партии по FEFO и сколько из каждой взять на плановый выход (факт вводит повар)
+        for (const nd of needs.values()) {
+          let left = nd.qty;
+          for (const l of (await tx.query(`select l.id, l.lot_no, l.quantity::float8 as quantity, l.unit, l.expires_at from lots l where l.organization_id = $1 and l.site_id = $2 and l.product_id = $3 and ${USABLE}
+              order by l.expires_at, l.received_at`, [orgId, o.site_id, nd.productId])).rows) {
+            const take = Math.max(0, Math.min(l.quantity, left)); left -= take;
+            lots.push({ product_id: nd.productId, lot_id: l.id, lot_no: l.lot_no, quantity: l.quantity, unit: l.unit, expires_at: l.expires_at, suggest: Math.round(take * 1000) / 1000 });
+          }
+        }
+      } catch (e) { needError = (e as Error).message; lots = []; }
     }
     const consumed = o.status === 'done' ? (await tx.query(`select m.lot_id, m.quantity, m.unit, p.name as product, l.lot_no from stock_movements m join products p on p.id = m.product_id join lots l on l.id = m.lot_id
       where m.ref_type = 'production' and m.ref_id = $1 and m.kind = 'consume' order by p.name`, [o.id])).rows : [];
@@ -112,7 +126,7 @@ export async function getProduction(userId: string, orgId: string, id: string) {
     return {
       order: { ...o, status_label: ORDER_STATUS[o.status], created_by_name: name(o.created_by), started_by_name: name(o.started_by), completed_by_name: name(o.completed_by) },
       ttk: v, checks: checks.map((c) => ({ ...c, limits: limits(c), last: last.find((x) => x.check_id === c.id) || null })),
-      need, need_error: needError, consumed, lot, label,
+      need, need_error: needError, lots, consumed, lot, label, deviation: o.consumption_deviation || null,
     };
   });
 }
@@ -156,11 +170,38 @@ export async function recordCheck(userId: string, orgId: string, id: string, inp
   });
 }
 
+const lotQty = z.union([z.number(), z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Введите число.').transform((s) => Number(s.replace(',', '.')))])
+  .refine((v) => Number.isFinite(v) && v > 0, 'Количество — больше нуля.');
 const CompleteInput = z.object({ actualKg: qtyKg, operationId: z.string().trim().min(8).max(100),
+  consumed: z.array(z.object({ lotId: z.uuid(), quantity: lotQty }), 'Укажите фактически использованные партии.')
+    .min(1, 'Укажите фактически использованные партии и количества — расход по норме ТТК фактом не записывается.').max(200),
   // бракераж готовой продукции (J58): органолептика и решение о допуске — обязательны для блюда
   organoleptic: z.string().trim().max(1000).optional().nullable(), decision: z.enum(['allowed', 'rejected']).optional().nullable() });
 
-/** Выпуск партии п/ф: списание по ТТК (FEFO), партия с себестоимостью и сроком из ТТК, этикетка. */
+/** Выпуск партии: фактический расход по партиям, норма ТТК отдельно, партия с себестоимостью и сроком из ТТК, этикетка. */
+/** Позиции, которые можно списать на задание: всё из раскладки утверждённой ТТК — сырьё и выпущенные п/ф. */
+async function allowedProducts(tx: Tx, orgId: string, o: { dish_id: string; site_id: string; planned_g: string }, own: string | null) {
+  const a = await explode(tx, orgId, o.dish_id, { grams: Number(o.planned_g) }, { siteId: o.site_id });
+  const b = await explode(tx, orgId, o.dish_id, { grams: Number(o.planned_g) }, {});
+  const set = new Set<string>([...a.needs.keys(), ...b.needs.keys()]);
+  if (own) set.delete(own);
+  return set;
+}
+
+/** Факт против нормы по позициям. Позиция п/ф, взятая готовой со склада, сравнивается не с сырьём, а показывается отдельно. */
+function deviations(norm: Map<string, Need>, taken: { productId: string; qty: number; name: string; unit: string }[], allowed: Set<string>) {
+  const fact = new Map<string, number>();
+  for (const t of taken) fact.set(t.productId, (fact.get(t.productId) || 0) + t.qty);
+  const out: { product_id: string; name: string; unit: string; norm: number | null; fact: number; diff: number | null; diff_pct: number | null }[] = [];
+  const r = (x: number) => Math.round(x * 1000) / 1000;
+  for (const n of norm.values()) {
+    const f = fact.get(n.productId) || 0;
+    out.push({ product_id: n.productId, name: n.name, unit: n.unit, norm: r(n.qty), fact: r(f), diff: r(f - n.qty), diff_pct: n.qty > 0 ? Math.round(((f - n.qty) / n.qty) * 1000) / 10 : null });
+  }
+  for (const [pid, f] of fact) if (!norm.has(pid) && allowed.has(pid)) { const t = taken.find((x) => x.productId === pid)!; out.push({ product_id: pid, name: `${t.name} (готовый п/ф со склада)`, unit: t.unit, norm: null, fact: r(f), diff: null, diff_pct: null }); }
+  return out;
+}
+
 export async function completeProduction(userId: string, orgId: string, id: string, input: unknown) {
   const d = parse(CompleteInput, input);
   return inOrg(userId, orgId, 'production.run', async (tx, m) => once(tx, orgId, d.operationId, 'production_complete', userId, async () => {
@@ -187,14 +228,44 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     const outQty = await convertUnits(tx, productId, d.actualKg, 'кг', unit);
     if (outQty === null) throw Errors.conflict(`Единица п/ф «${unit}» — нет пересчёта из кг.`);
 
-    // списание: готовые п/ф со склада первыми, затем сырьё; всё по FEFO
-    const { needs } = await explode(tx, orgId, o.dish_id, { grams: Number(o.planned_g) }, { siteId: o.site_id });
-    needs.delete(productId);
-    const taken: { lotId: string; qty: number; unit: string }[] = [];
+    // фактический расход: только указанные партии этой площадки, годные, из позиций утверждённой ТТК (с п/ф)
+    const allowed = await allowedProducts(tx, orgId, o, productId);
+    const taken: { lotId: string; qty: number; unit: string; productId: string; name: string }[] = [];
+    const seen = new Set<string>();
     let cost: number | null = 0;
-    for (const n of needs.values()) {
-      const c = await takeFefo(tx, orgId, o.site_id, n, { refType: 'production', refId: o.id, reason: `производство: ${o.dish_name}`, operationId: d.operationId, userId }, taken);
-      cost = cost === null || c === null ? null : cost + c;
+    for (const c of d.consumed) {
+      if (seen.has(c.lotId)) throw Errors.validation('Партия указана дважды — объедините количество в одной строке.');
+      seen.add(c.lotId);
+      const l = (await tx.query(`select l.*, p.name as product from lots l join products p on p.id = l.product_id where l.id = $1 and l.organization_id = $2 for update of l`, [c.lotId, orgId])).rows[0];
+      if (!l) throw Errors.notFound('Партия не найдена.');
+      const label = `${l.product}${l.lot_no ? `, партия ${l.lot_no}` : ''}`;
+      if (l.site_id !== o.site_id) throw Errors.conflict(`${label}: партия другой площадки.`);
+      if (!allowed.has(l.product_id)) throw Errors.conflict(`${label}: позиции нет в утверждённой ТТК «${o.dish_name}» — замена сырья оформляется новой версией ТТК.`);
+      const usable = (await tx.query(`select 1 from lots l where l.id = $1 and ${USABLE}`, [l.id])).rowCount;
+      if (!usable) throw Errors.conflict(`${label}: партию использовать нельзя (статус, срок или срок не подтверждён).`);
+      if (c.quantity > Number(l.quantity) + 1e-9) throw Errors.conflict(`${label}: в партии ${fmtNum(l.quantity)} ${l.unit}, указано ${fmtNum(c.quantity)}.`);
+      await move(tx, { orgId, siteId: o.site_id, lotId: l.id, productId: l.product_id, kind: 'consume', quantity: -c.quantity, unit: l.unit,
+        reason: `производство: ${o.dish_name} (факт)`, refType: 'production', refId: o.id, operationId: d.operationId, userId });
+      cost = cost === null || l.unit_price === null ? null : cost + c.quantity * Number(l.unit_price);
+      taken.push({ lotId: l.id, qty: c.quantity, unit: l.unit, productId: l.product_id, name: l.product });
+    }
+    // норма по ТТК на фактический выход — расчёт, отдельно от факта
+    const norm = (await explode(tx, orgId, o.dish_id, { grams: d.actualKg * 1000 }, {})).needs;
+    norm.delete(productId);
+    // каждая позиция ТТК должна быть в факте — или покрыта готовым п/ф со склада, в который она входит
+    const factIds = new Set(taken.map((t) => t.productId));
+    const covered = new Set<string>();
+    for (const sd of (await tx.query(`select id from dishes where organization_id = $1 and product_id = any($2::uuid[])`, [orgId, [...factIds]])).rows) {
+      for (const k of (await explode(tx, orgId, sd.id, { grams: 1000 }, {})).needs.keys()) covered.add(k);
+    }
+    const absent = [...norm.values()].filter((n) => n.qty > 0 && !factIds.has(n.productId) && !covered.has(n.productId));
+    if (absent.length) throw Errors.conflict(`Не указан фактический расход: ${absent.map((n) => `${n.name} (по ТТК ${fmtNum(Math.round(n.qty * 1000) / 1000)} ${n.unit})`).join(', ')}. `
+      + 'Без позиции ТТК продукция не соответствует утверждённой карте — выпуск не оформляется; при замене сырья нужна новая версия ТТК.');
+    const deviation = deviations(norm, taken, allowed);
+    for (const n of norm.values()) {
+      await tx.query(`insert into consumption_estimates (organization_id, site_id, kind, ref_type, ref_id, product_id, quantity, unit, ttk_version_id, basis, created_by)
+        values ($1, $2, 'production_norm', 'production', $3, $4, $5, $6, $7, $8, $9)`,
+      [orgId, o.site_id, o.id, n.productId, Math.round(n.qty * 1e6) / 1e6, n.unit, v.id, `ТТК «${o.dish_name}» v${v.version} на ${fmtNum(d.actualKg)} кг выхода`, userId]);
     }
 
     const now = new Date();
@@ -222,14 +293,14 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     }
     const cRound = cost === null ? null : Math.round(cost * 100) / 100;
     await tx.query(`update production_orders set status = 'done', completed_by = $2, completed_at = now(), actual_g = $3, output_lot_id = $4, cost = $5,
-      organoleptic = $6, release_decision = $7, assessed_by = $8 where id = $1`,
-      [o.id, userId, d.actualKg * 1000, lot.id, cRound, d.organoleptic || null, d.decision || null, d.decision ? userId : null]);
+      organoleptic = $6, release_decision = $7, assessed_by = $8, consumption_deviation = $9 where id = $1`,
+      [o.id, userId, d.actualKg * 1000, lot.id, cRound, d.organoleptic || null, d.decision || null, d.decision ? userId : null, JSON.stringify(deviation)]);
     const label = await labelForLot(tx, orgId, userId, lot.id);
     const yieldDiff = Math.round(((d.actualKg * 1000) / Number(o.planned_g) - 1) * 1000) / 10;
     await audit.record(tx, { organizationId: orgId, siteId: o.site_id, actorUserId: userId, action: 'production.complete', entityType: 'production_order', entityId: o.id,
-      after: { lot: lot.id, lot_no: lotNo, actual_g: d.actualKg * 1000, planned_g: Number(o.planned_g), yield_diff_pct: yieldDiff, cost: cRound, consumed: taken.length } });
+      after: { lot: lot.id, lot_no: lotNo, actual_g: d.actualKg * 1000, planned_g: Number(o.planned_g), yield_diff_pct: yieldDiff, cost: cRound, consumed: taken.map((t) => ({ lot: t.lotId, qty: t.qty, unit: t.unit })), deviation } });
     return { lot_id: lot.id, lot_no: lotNo, label_id: label.id, quantity: outQty, unit, cost: cRound, unit_price: unitPrice,
-      expires_at: expiresAt?.toISOString() || null, expiry_basis: basis, yield_diff_pct: yieldDiff, consumed: taken.length };
+      expires_at: expiresAt?.toISOString() || null, expiry_basis: basis, yield_diff_pct: yieldDiff, consumed: taken.length, deviation };
   }));
 }
 

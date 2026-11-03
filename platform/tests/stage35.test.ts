@@ -8,7 +8,7 @@ import { createDish, getDish, updateVersion, addLine, submitVersion, approveVers
 import { createProduction, startProduction, completeProduction } from '../src/server/ops/production';
 import { openLot } from '../src/server/ops/labels';
 import { getLot } from '../src/server/ops/lots';
-import { makeUser, lastLinkToken } from './helpers';
+import { makeUser, lastLinkToken, fact } from './helpers';
 
 /** ТЗ доработки 5.2 (раздельные сроки ТТК) и 6.2 (карточка партии). */
 
@@ -35,7 +35,7 @@ async function draft(name: string, kind: 'dish' | 'semi', extra: Record<string, 
 async function produce(dishId: string, extra: Record<string, unknown> = {}) {
   const o = await createProduction(chef.id, orgId, { siteId, dishId, plannedKg: 1, plannedFor: today() });
   await startProduction(cook.id, orgId, o.id);
-  return completeProduction(cook.id, orgId, o.id, { actualKg: 1, operationId: randomUUID(), ...extra });
+  return completeProduction(cook.id, orgId, o.id, { consumed: await fact(cook.id, orgId, o.id), actualKg: 1, operationId: randomUUID(), ...extra });
 }
 
 beforeAll(async () => {

@@ -22,3 +22,13 @@ export async function makeUser(opts: { verified?: boolean; name?: string } = {})
   const r = await login({ email, password: PASSWORD }, { ip: '10.0.0.' + (n % 250) });
   return { ...r.session.user, token: r.token };
 }
+
+/**
+ * Фактический расход для выпуска в тестах: берём подсказку формы (FEFO на плановый выход) как будто повар её подтвердил.
+ * В системе это делает человек; сервер расчёт фактом не пишет.
+ */
+export async function fact(userId: string, orgId: string, orderId: string) {
+  const { getProduction } = await import('../src/server/ops/production');
+  const p = await getProduction(userId, orgId, orderId);
+  return p.lots.filter((l) => l.suggest > 0).map((l) => ({ lotId: l.lot_id, quantity: l.suggest }));
+}

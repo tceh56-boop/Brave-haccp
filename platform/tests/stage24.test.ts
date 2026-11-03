@@ -10,7 +10,7 @@ import { setProductNutrition, setProductAllergens } from '../src/server/ops/tech
 import { setOpenedShelfLife, logPrint, getLabels } from '../src/server/ops/labels';
 import { previewConsumerLabel, createConsumerLabel } from '../src/server/ops/consumerLabels';
 import { setMeatKind } from '../src/server/ops/declarations';
-import { makeUser, lastLinkToken } from './helpers';
+import { makeUser, lastLinkToken, fact } from './helpers';
 
 /** Потребительская этикетка по ТР ТС 022/2011: данные из ТТК, расчёта ТУ и партии; при неполных сведениях — не печатается. */
 
@@ -52,7 +52,7 @@ beforeAll(async () => {
   broth = d.id;
   const o = await createProduction(chef.id, orgId, { siteId, dishId: broth, plannedKg: 1, plannedFor: new Date().toISOString().slice(0, 10) });
   await startProduction(cook.id, orgId, o.id);
-  brothLot = (await completeProduction(cook.id, orgId, o.id, { actualKg: 1, operationId: randomUUID() })).lot_id;
+  brothLot = (await completeProduction(cook.id, orgId, o.id, { consumed: await fact(cook.id, orgId, o.id), actualKg: 1, operationId: randomUUID() })).lot_id;
 });
 
 describe('Прослеживаемость партии полуфабриката', () => {
