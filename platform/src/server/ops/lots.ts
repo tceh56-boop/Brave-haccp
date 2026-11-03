@@ -100,7 +100,9 @@ export async function getLot(userId: string, orgId: string, lotId: string) {
       from labels lb where lb.lot_id = $1 order by lb.created_at desc limit 1`, [lotId])).rows[0] || null;
     const st = expiryState(l);
     const card = await lotCard(tx, orgId, l);
-    return { lot: { ...l, expiry_state: st, expiry_label: EXPIRY_LABEL[st], status_label: LOT_STATUS_LABEL[l.status] }, tasks, opened_from: openedFrom, opened, label, card };
+    // последний отзыв, в который попала партия (ТЗ 3.0 §10.5)
+    const recall = (await tx.query(`select r.id, r.status, r.hazard, r.root_lot_id from recall_lots rl join recalls r on r.id = rl.recall_id where rl.lot_id = $1 order by r.opened_at desc limit 1`, [lotId])).rows[0] || null;
+    return { lot: { ...l, expiry_state: st, expiry_label: EXPIRY_LABEL[st], status_label: LOT_STATUS_LABEL[l.status] }, tasks, opened_from: openedFrom, opened, label, card, recall };
   });
 }
 

@@ -118,7 +118,7 @@ export async function consume(userId: string, orgId: string, input: unknown) {
 
 export const WRITE_OFF_REASONS = {
   expired: 'Истёк срок годности', spoiled: 'Порча (признаки порчи)', damaged: 'Повреждение упаковки', quality: 'Несоответствие качества',
-  quarantine_reject: 'Забракована по карантину', production_loss: 'Технологические потери (по факту)', other: 'Другое',
+  quarantine_reject: 'Забракована по карантину', production_loss: 'Технологические потери (по факту)', recall: 'Отзыв партии (опасность)', other: 'Другое',
 } as const;
 
 const WriteOffInput = z.object({

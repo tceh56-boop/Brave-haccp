@@ -16,6 +16,7 @@ interface LotCard { lot: { id: string; product: string; lot_no: string | null; q
   opened_from: { id: string; lot_no: string | null } | null;
   opened: { id: string; quantity: string; unit: string; opened_at: string; expires_at: string; status: string }[];
   label: { id: string; code: string; created_at: string; printed: number } | null;
+  recall: { id: string; status: string; hazard: string; root_lot_id: string } | null;
   card: { manufacturer: string | null; supplier: string | null; received_at: string | null; after_opening: { hours: number; basis: string } | null; storage_conditions: string | null;
     storage_place: string | null; receipt: { id: string; date: string | null; document_no: string | null; document_date: string | null } | null; vsd_no: string | null;
     ttk: { dish_id: string; label: string } | null; allergens: string | null; composition: string[] | null; origin: 'production' | 'receipt' | 'unknown' } }
@@ -91,11 +92,44 @@ export default function LotPage({ params }: { params: Promise<{ lotId: string }>
           </div>
         </div>
       )}
+      {c.recall && <div className={c.recall.status === 'open' ? 'err' : 'note'}>
+        {c.recall.status === 'open' ? 'Партия заблокирована по отзыву' : 'Партия была в отзыве'}: {c.recall.hazard}. <Link href={`/app/${org.id}/recalls/${c.recall.id}`}>Открыть отзыв →</Link></div>}
+      {can('recall.block') && ['available', 'quarantine', 'blocked'].includes(l.status) && Number(l.quantity) > 0 && c.recall?.status !== 'open' && <BlockLot lotId={lotId} />}
       <Marking c={c} onDone={load} />
       <LotActions lotId={lotId} status={l.status} quantity={l.quantity} unit={l.unit} onDone={load} />
       {c.tasks.length > 0 && <div className="card"><h3>Открытые задачи</h3><ul className="list">{c.tasks.map((t) => <li key={t.id}>{t.title}</li>)}</ul></div>}
       <Evidence entityType="lot" entityId={lotId} title="Фото маркировки и документы" />
     </>
+  );
+}
+
+/** Блокировка при опасности: партия и вся цепочка дочерних партий (ТЗ 3.0 §10.5). */
+function BlockLot({ lotId }: { lotId: string }) {
+  const { org } = useOrg();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ hazard: '', source: 'internal' });
+  const { busy, error, run } = useSubmit();
+  if (!open) return <p><button className="btn danger secondary" onClick={() => setOpen(true)}>Заблокировать партию (опасность, отзыв)</button></p>;
+  return (
+    <div className="card">
+      <h2>Заблокировать партию и все дочерние</h2>
+      <p className="small muted">Блокируются эта партия и всё, что из неё получено: вскрытая тара, перемещения, полуфабрикаты и блюда с остатком. Система соберёт продажи,
+        продукцию и поставщика и поставит задачу ответственному за решение.</p>
+      <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+        const r = await api<{ id: string }>(`/orgs/${org.id}/lots/${lotId}/block`, { body: f });
+        router.push(`/app/${org.id}/recalls/${r.id}`);
+      }); }}>
+        <label htmlFor="bh">Что обнаружено</label><textarea id="bh" rows={2} value={f.hazard} onChange={(e) => setF({ ...f, hazard: e.target.value })} placeholder="опасность, признаки, номер протокола или письма" />
+        <label htmlFor="bs">Источник сведений</label>
+        <select id="bs" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
+          {[['internal', 'Внутренний контроль'], ['laboratory', 'Лабораторное исследование'], ['supplier', 'Сообщение поставщика или изготовителя'], ['authority', 'Предписание или информация Роспотребнадзора'], ['complaint', 'Жалоба гостя']]
+            .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        {error && <div className="err">{error}</div>}
+        <div className="grid2"><button className="btn danger block" disabled={busy || f.hazard.trim().length < 5}>Заблокировать</button><button type="button" className="btn secondary block" onClick={() => setOpen(false)}>Отмена</button></div>
+      </form>
+    </div>
   );
 }
 
