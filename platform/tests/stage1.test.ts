@@ -32,7 +32,8 @@ describe('Регистрация и вход (ТЗ v1 AT-01, v2 §9)', () => {
     const u = await makeUser({ verified: false });
     await expect(createOrganization(u, { name: 'Кафе' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await verifyEmail(await lastLinkToken(u.email, 'verify_email'));
-    const s = await getSession(u.token);
+    expect(await getSession(u.token)).toBeNull();                 // сессии до подтверждения отзываются (этап 0 промта доработки)
+    const s = await getSession((await login({ email: u.email, password: PASSWORD }, { ip: '1.1.1.2' })).token);
     const { organization } = await createOrganization(s!.user, { name: 'Кафе «Пробное»' });
     expect(organization.status).toBe('DRAFT');
     expect((await listMyOrganizations(u.id))[0]).toMatchObject({ id: organization.id, role: 'owner' });

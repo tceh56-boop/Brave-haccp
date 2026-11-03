@@ -44,7 +44,8 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
 
 async function issueEmailToken(tx: Tx, userId: string, purpose: 'verify_email' | 'reset_password', minutes: number): Promise<string> {
   // Новая ссылка гасит прежние неиспользованные ссылки того же назначения.
-  await tx.query(`update email_tokens set used_at = now() where user_id = $1 and purpose = $2 and used_at is null`, [userId, purpose]);
+  // ссылки повторных регистраций (с паролем) не гасятся: иначе чужая сессия могла бы обнулить ссылку владельца адреса
+  await tx.query(`update email_tokens set used_at = now() where user_id = $1 and purpose = $2 and used_at is null and password_hash is null`, [userId, purpose]);
   const token = newToken();
   await tx.query(`insert into email_tokens (user_id, purpose, token_hash, expires_at) values ($1, $2, $3, now() + make_interval(mins => $4))`,
     [userId, purpose, tokenHash(token), minutes]);
@@ -62,8 +63,13 @@ export async function register(input: unknown, ip?: string | null): Promise<{ ok
       if (existing.email_verified_at) {
         await queueEmail(tx, data.email, 'already_registered', { name: existing.full_name, link: `${appUrl()}/login` });
       } else {
-        const token = await issueEmailToken(tx, existing.id, 'verify_email', VERIFY_HOURS * 60);
-        await queueEmail(tx, data.email, 'verify_email', { name: existing.full_name, link: `${appUrl()}/verify?token=${token}` });
+        // адрес не подтверждён: пароль этой регистрации — при её ссылке; прежние ссылки и пароль не трогаются
+        // (иначе повторная регистрация чужим человеком перехватывала бы учётную запись)
+        const token = newToken();
+        await tx.query(`insert into email_tokens (user_id, purpose, token_hash, expires_at, password_hash) values ($1, 'verify_email', $2, now() + make_interval(mins => $3), $4)`,
+          [existing.id, tokenHash(token), VERIFY_HOURS * 60, hash]);
+        await queueEmail(tx, data.email, 'verify_email', { name: data.fullName, link: `${appUrl()}/verify?token=${token}` });
+        await audit.record(tx, { actorUserId: existing.id, action: 'user.register_repeat', entityType: 'user', entityId: existing.id, ip });
       }
       return;
     }
@@ -76,15 +82,42 @@ export async function register(input: unknown, ip?: string | null): Promise<{ ok
   return { ok: true };
 }
 
-export async function verifyEmail(token: unknown): Promise<{ ok: true }> {
+/** Нужен ли пароль для подтверждения по ссылке (адрес регистрировали повторно). Ссылку не расходует. */
+export async function verifyInfo(token: unknown): Promise<{ need_password: boolean }> {
   if (typeof token !== 'string' || !token) throw Errors.validation('Ссылка подтверждения недействительна.');
   return withSystem(async (tx) => {
-    const t = (await tx.query(`select id, user_id, expires_at < now() as expired, used_at from email_tokens
+    const t = (await tx.query(`select t.user_id, t.password_hash, t.used_at, t.expires_at < now() as expired,
+        (select count(*)::int from email_tokens x where x.user_id = t.user_id and x.purpose = 'verify_email' and x.password_hash is not null) as repeats
+      from email_tokens t where t.token_hash = $1 and t.purpose = 'verify_email'`, [tokenHash(token)])).rows[0];
+    if (!t || t.used_at || t.expired) throw Errors.validation('Ссылка подтверждения недействительна или устарела. Запросите новую.');
+    return { need_password: t.repeats > 0 };
+  });
+}
+
+/**
+ * Подтверждение email. Если адрес регистрировали повторно, нужен пароль той регистрации, чья это ссылка:
+ * он и становится паролем учётной записи. При подтверждении отзываются все прежние сессии и гасятся другие ссылки.
+ */
+export async function verifyEmail(token: unknown, password?: unknown): Promise<{ ok: true }> {
+  if (typeof token !== 'string' || !token) throw Errors.validation('Ссылка подтверждения недействительна.');
+  return withSystem(async (tx) => {
+    const t = (await tx.query(`select id, user_id, password_hash, expires_at < now() as expired, used_at from email_tokens
       where token_hash = $1 and purpose = 'verify_email' for update`, [tokenHash(token)])).rows[0];
     if (!t || t.used_at || t.expired) throw Errors.validation('Ссылка подтверждения недействительна или устарела. Запросите новую.');
-    await tx.query(`update email_tokens set used_at = now() where id = $1`, [t.id]);
-    await tx.query(`update users set email_verified_at = coalesce(email_verified_at, now()), updated_at = now() where id = $1`, [t.user_id]);
-    await audit.record(tx, { actorUserId: t.user_id, action: 'user.verify_email', entityType: 'user', entityId: t.user_id });
+    const u = (await tx.query(`select password_hash, email_verified_at from users where id = $1 for update`, [t.user_id])).rows[0];
+    const contested = Number((await tx.query(`select count(*) from email_tokens where user_id = $1 and purpose = 'verify_email' and password_hash is not null`, [t.user_id])).rows[0].count) > 0;
+    let newHash: string | null = null;
+    if (contested && !u.email_verified_at) {
+      if (typeof password !== 'string' || !password) throw Errors.validation('На этот адрес регистрировались несколько раз. Введите пароль, указанный при регистрации, по ссылке из этого письма.');
+      const expected = t.password_hash || u.password_hash;
+      if (!(await verifyPassword(password, expected))) throw Errors.validation('Пароль не совпадает с паролем регистрации по этой ссылке.');
+      newHash = expected;
+    }
+    await tx.query(`update email_tokens set used_at = now() where user_id = $1 and purpose = 'verify_email' and used_at is null`, [t.user_id]);
+    await tx.query(`update users set email_verified_at = coalesce(email_verified_at, now()), password_hash = coalesce($2, password_hash), failed_logins = 0, locked_until = null, updated_at = now()
+      where id = $1`, [t.user_id, newHash]);
+    const revoked = (await tx.query(`update sessions set revoked_at = now() where user_id = $1 and revoked_at is null`, [t.user_id])).rowCount;
+    await audit.record(tx, { actorUserId: t.user_id, action: 'user.verify_email', entityType: 'user', entityId: t.user_id, after: { contested, sessions_revoked: revoked } });
     return { ok: true as const };
   });
 }
