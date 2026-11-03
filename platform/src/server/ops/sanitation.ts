@@ -4,6 +4,7 @@ import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, optText, assertSiteAccess, getSite, fmtNum } from './common';
 import { raiseIncident } from './incidents';
+import { listRegimes, AGENT_KIND } from './disinfectants';
 
 /**
  * Санитария (этап 15; перенос санитарного контура MON CHEF V41–V43).
@@ -75,7 +76,7 @@ export async function archiveDisinfectant(userId: string, orgId: string, id: str
 const PlanInput = z.object({
   siteId: z.uuid(), area: z.string().trim().min(2, 'Укажите зону или объект.').max(200), work: z.string().trim().min(3, 'Укажите, что делать.').max(500),
   kind: z.enum(['current', 'general', 'disinfection', 'inventory']), periodDays: z.coerce.number().int().min(1, 'Периодичность — от 1 дня.').max(365),
-  disinfectantId: z.uuid().optional().nullable(), checkConcentration: z.boolean().default(false),
+  disinfectantId: z.uuid().optional().nullable(), regimeId: z.uuid().optional().nullable(), checkConcentration: z.boolean().default(false),
   responsibleRole: z.enum(['line_staff', 'chef', 'storekeeper', 'haccp_lead']).default('line_staff'), nextDue: day.optional().nullable(),
 });
 
@@ -87,12 +88,18 @@ export async function createPlan(userId: string, orgId: string, input: unknown) 
       const x = (await tx.query(`select * from disinfectants where id = $1 and organization_id = $2`, [d.disinfectantId, orgId])).rows[0];
       if (!x) throw Errors.notFound('Средство не найдено.');
       if (x.status !== 'approved') throw Errors.conflict(`Режим средства «${x.name}» не утверждён — в план не включается.`);
-      if (d.checkConcentration && !range(x)) throw Errors.conflict(`У средства «${x.name}» не задана рабочая концентрация — замер не с чем сравнить.`);
+      if (d.regimeId) {
+        const rg = (await tx.query(`select * from disinfectant_regimes where id = $1 and organization_id = $2`, [d.regimeId, orgId])).rows[0];
+        if (!rg || rg.disinfectant_id !== x.id) throw Errors.validation('Режим не относится к выбранному средству.');
+        if (rg.status !== 'approved') throw Errors.conflict(`Режим «${x.name}: ${rg.object}» не утверждён — в план не включается.`);
+        if (d.checkConcentration && !range(rg)) throw Errors.conflict(`В режиме «${rg.object}» концентрация не в процентах («${rg.concentration_text}») — замер не с чем сравнить.`);
+      } else if (d.checkConcentration && !range(x)) throw Errors.conflict(`У средства «${x.name}» не задана рабочая концентрация — замер не с чем сравнить.`);
     }
+    if (d.regimeId && !d.disinfectantId) throw Errors.validation('Режим выбирается вместе со средством.');
     if (d.checkConcentration && !d.disinfectantId) throw Errors.validation('Для замера концентрации выберите средство.');
-    const p = (await tx.query(`insert into sanitation_plans (organization_id, site_id, area, work, kind, period_days, disinfectant_id, check_concentration, responsible_role, next_due, created_by)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
-    [orgId, d.siteId, d.area, d.work, d.kind, d.periodDays, d.disinfectantId || null, d.checkConcentration, d.responsibleRole, d.nextDue || await todayOf(tx, orgId), userId])).rows[0];
+    const p = (await tx.query(`insert into sanitation_plans (organization_id, site_id, area, work, kind, period_days, disinfectant_id, regime_id, check_concentration, responsible_role, next_due, created_by)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
+    [orgId, d.siteId, d.area, d.work, d.kind, d.periodDays, d.disinfectantId || null, d.regimeId || null, d.checkConcentration, d.responsibleRole, d.nextDue || await todayOf(tx, orgId), userId])).rows[0];
     await audit.record(tx, { organizationId: orgId, siteId: d.siteId, actorUserId: userId, action: 'sanitation.plan_create', entityType: 'sanitation_plan', entityId: p.id, after: d });
     return p;
   }, d.siteId);
@@ -116,8 +123,9 @@ export async function listSanitation(userId: string, orgId: string, siteId: stri
   return inOrg(userId, orgId, 'sanitation.record', async (tx) => {
     const today = await todayOf(tx, orgId);
     const plans = (await tx.query(`select p.id, p.area, p.work, p.kind, p.period_days, p.check_concentration, p.responsible_role, p.next_due::text as next_due, p.disinfectant_id,
-        x.name as disinfectant, x.concentration_min, x.concentration_max, x.exposure
-      from sanitation_plans p left join disinfectants x on x.id = p.disinfectant_id where p.organization_id = $1 and p.site_id = $2 and p.status = 'active' order by p.next_due, p.area`, [orgId, sid])).rows
+        x.name as disinfectant, coalesce(rg.concentration_min, x.concentration_min) as concentration_min, coalesce(rg.concentration_max, x.concentration_max) as concentration_max,
+        coalesce(rg.exposure_text, x.exposure) as exposure, rg.object as regime_object, rg.method as regime_method, rg.concentration_text as regime_concentration
+      from sanitation_plans p left join disinfectants x on x.id = p.disinfectant_id left join disinfectant_regimes rg on rg.id = p.regime_id where p.organization_id = $1 and p.site_id = $2 and p.status = 'active' order by p.next_due, p.area`, [orgId, sid])).rows
       .map((p) => ({ ...p, kind_label: PLAN_KIND[p.kind], range: p.disinfectant_id ? range(p) : null, state: p.next_due < today ? 'overdue' : p.next_due === today ? 'today' : 'later' }));
     const records = (await tx.query(`select r.id, r.plan_id, p.area, p.work, p.kind, r.done_at, u.full_name as done_by, r.done_by as done_by_id, r.concentration, r.concentration_ok, r.result, r.note,
         x.name as disinfectant, v.ok as verified_ok, v.note as verify_note, vu.full_name as verified_by, v.verified_at
@@ -125,9 +133,13 @@ export async function listSanitation(userId: string, orgId: string, siteId: stri
       left join sanitation_verifications v on v.record_id = r.id left join users vu on vu.id = v.verified_by
       where r.organization_id = $1 and r.site_id = $2 and r.done_at > now() - interval '7 days' order by r.done_at desc limit 300`, [orgId, sid])).rows
       .map((r) => ({ ...r, kind_label: PLAN_KIND[r.kind], concentration: r.concentration === null ? null : Number(r.concentration) }));
-    const disinfectants = (await tx.query(`select x.id, x.name, x.purpose, x.concentration_min, x.concentration_max, x.exposure, x.basis, x.status, x.approved_at, u.full_name as approved_by
+    const regimes = await listRegimes(tx, orgId);
+    const files = new Set((await tx.query(`select distinct entity_id from evidence_files where organization_id = $1 and entity_type = 'disinfectant'`, [orgId])).rows.map((r) => r.entity_id as string));
+    const disinfectants = (await tx.query(`select x.id, x.name, x.purpose, x.concentration_min, x.concentration_max, x.exposure, x.basis, x.status, x.approved_at, u.full_name as approved_by,
+        x.agent_kind, x.manufacturer, x.active_substance, x.concentrate_shelf, x.safety, x.storage
       from disinfectants x left join users u on u.id = x.approved_by where x.organization_id = $1 and x.status <> 'archived' order by x.status, x.name`, [orgId])).rows
-      .map((x) => ({ ...x, range: range(x) }));
+      .map((x) => ({ ...x, range: range(x), kind_label: x.agent_kind ? AGENT_KIND[x.agent_kind] : null, has_instruction: files.has(x.id),
+        regimes: regimes.filter((r) => r.disinfectant_id === x.id).map((r) => ({ ...r, range: range(r) })) }));
     return { today, plans, records, disinfectants };
   }, sid);
 }
@@ -139,11 +151,14 @@ const DoneInput = z.object({ concentration: pct.optional().nullable(), note: opt
 export async function recordDone(userId: string, orgId: string, planId: string, input: unknown) {
   const d = parse(DoneInput, input ?? {});
   return inOrg(userId, orgId, 'sanitation.record', async (tx, m) => {
-    const p = (await tx.query(`select p.*, p.next_due::text as next_due, x.name as disinfectant, x.concentration_min, x.concentration_max, x.status as dis_status from sanitation_plans p left join disinfectants x on x.id = p.disinfectant_id
+    const p = (await tx.query(`select p.*, p.next_due::text as next_due, x.name as disinfectant, coalesce(rg.concentration_min, x.concentration_min) as concentration_min,
+        coalesce(rg.concentration_max, x.concentration_max) as concentration_max, x.status as dis_status, rg.status as regime_status, rg.object as regime_object
+      from sanitation_plans p left join disinfectants x on x.id = p.disinfectant_id left join disinfectant_regimes rg on rg.id = p.regime_id
       where p.id = $1 and p.organization_id = $2 and p.status = 'active' for update of p`, [planId, orgId])).rows[0];
     if (!p) throw Errors.notFound('Пункт плана не найден.');
     assertSiteAccess(m, p.site_id);
     if (p.disinfectant_id && p.dis_status !== 'approved') throw Errors.conflict(`Средство «${p.disinfectant}» больше не утверждено — обратитесь к ответственному за санитарию.`);
+    if (p.regime_id && p.regime_status !== 'approved') throw Errors.conflict(`Режим «${p.disinfectant}: ${p.regime_object}» больше не утверждён — обратитесь к ответственному за санитарию.`);
     if (p.check_concentration && d.concentration == null) throw Errors.validation(`Измерьте концентрацию рабочего раствора «${p.disinfectant}» и внесите (%).`);
     let ok: boolean | null = null;
     if (d.concentration != null && p.disinfectant_id) {
