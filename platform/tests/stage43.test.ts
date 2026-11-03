@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { closePool, withSystem } from '../src/server/db/pool';
 import { createOrganization, inviteMember, acceptInvitation } from '../src/server/org/organizations';
 import { createPlan, getPlan, savePlan, decideRisk, approvePlan } from '../src/server/ops/floorplan';
-import { specification, findRisks, centerFromCorner, type PlanObject } from '../src/lib/floorplan';
+import { specification, findRisks, passages, centerFromCorner, type PlanObject } from '../src/lib/floorplan';
 import { makeUser, lastLinkToken } from './helpers';
 
 /** ТЗ 3.0 §15.2, §15.4; мастер-промт, раздел 4: 2D-план в мм, спецификация, риски, решения специалиста, версии. */
@@ -59,6 +59,20 @@ describe('Геометрия и спецификация (чистые функ�
   });
 });
 
+describe('Проходы', () => {
+  it('расстояние до ближайшего соседа справа и снизу; без перекрытия по другой оси — не проход; минимум задаёт специалист', () => {
+    const a = at('table', 0, 0, 1000, 700, { label: 'Стол 1' }), b = at('table', 1950, 100, 1000, 700, { label: 'Стол 2' });
+    const c = at('fridge', 0, 1500, 700, 700, { label: 'Шкаф' }), far = at('rack', 3200, 3000, 500, 500);
+    const g = passages([room, a, b, c, far]);
+    expect(g.map((x) => [x.label, x.axis, x.gap])).toEqual(expect.arrayContaining([['Стол 1 — Стол 2', 'x', 950], ['Стол 1 — Шкаф', 'y', 800]]));
+    expect(g.some((x) => x.b === far.id && x.a === a.id)).toBe(false);
+    expect(findRisks([room, a, b, c], []).some((r) => r.type === 'narrow')).toBe(false);          // минимум не задан — проверки нет
+    const narrow = findRisks([room, a, b, c], [], { minPassage: 900, basis: 'Проект, лист 3' }).filter((r) => r.type === 'narrow');
+    expect(narrow.map((r) => r.title)).toEqual(['Проход 800 мм меньше заданного минимума 900 мм: Стол 1 — Шкаф']);
+    expect(narrow[0].basis).toBe('Минимальная ширина прохода: 900 мм — Проект, лист 3');
+  });
+});
+
 describe('План на сервере', () => {
   it('сохранение с ревизией, права, версия только после решений специалиста по рискам', async () => {
     await expect(createPlan(cook.id, orgId, { siteId, name: 'Цех', width_mm: 6000, height_mm: 10000 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
@@ -70,6 +84,7 @@ describe('План на сервере', () => {
     await expect(savePlan(cook.id, orgId, planId, { revision: 2, objects: [room], routes: [] })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(savePlan(tech.id, orgId, planId, { revision: 2, objects: [{ ...room, kind: 'ракета' }], routes: [] })).rejects.toThrow(/Неизвестный тип объекта/);
 
+    await expect(savePlan(tech.id, orgId, planId, { revision: 2, objects: [room, t1, t2], routes: [], passage: { min_mm: 900, basis: '' } })).rejects.toThrow(/основание минимальной ширины прохода/);
     const p = await getPlan(cook.id, orgId, planId);                                         // повар видит план
     expect(p.objects.map((o) => o.id).sort()).toEqual([room.id, t1.id, t2.id].sort());      // идентификаторы стабильны между сохранениями
     const overlap = p.risks.find((x) => x.type === 'overlap')!;

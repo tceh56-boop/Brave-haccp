@@ -128,15 +128,19 @@ function segHitsPoly(a: P, b: P, poly: P[]): P | null {
   return null;
 }
 
-export interface Risk { key: string; type: 'overlap' | 'flow_cross' | 'flow_zone' | 'outside' | 'unconfirmed_size'; severity: 'high' | 'medium' | 'low';
+export interface Risk { key: string; type: 'overlap' | 'flow_cross' | 'flow_zone' | 'outside' | 'unconfirmed_size' | 'narrow'; severity: 'high' | 'medium' | 'low';
   title: string; at: P | null; objects: string[]; routes: string[]; basis: string }
 
 const label = (o: PlanObject) => o.label || KINDS[o.kind]?.label || o.kind;
 const mid = (a: P[]) => [a.reduce((s, p) => s + p[0], 0) / a.length, a.reduce((s, p) => s + p[1], 0) / a.length] as P;
 
 /** Потенциальные риски плана: детерминированные ключи — решения специалиста привязываются к ним. */
-export function findRisks(objects: PlanObject[], routes: PlanRoute[]): Risk[] {
+export function findRisks(objects: PlanObject[], routes: PlanRoute[], opts: { minPassage?: number | null; basis?: string | null } = {}): Risk[] {
   const out: Risk[] = [];
+  if (opts.minPassage) for (const p of passages(objects)) {
+    if (p.gap < opts.minPassage) out.push({ key: `narrow:${p.key}`, type: 'narrow', severity: 'high', title: `Проход ${p.gap} мм меньше заданного минимума ${opts.minPassage} мм: ${p.label}`,
+      at: p.mid, objects: [p.a, p.b], routes: [], basis: `Минимальная ширина прохода: ${opts.minPassage} мм — ${opts.basis || 'основание не указано'}` });
+  }
   const solid = objects.filter((o) => KINDS[o.kind]?.solid);
   for (let i = 0; i < solid.length; i++) for (let j = i + 1; j < solid.length; j++) {
     const a = solid[i], b = solid[j];
@@ -238,6 +242,40 @@ export function centerFromCorner(room: PlanObject | null, x: number, y: number, 
   const turned = Math.round(rotation / 90) % 2 === 1;
   const bw = turned ? h : w, bh = turned ? w : h;
   return { x_mm: rb.x1 + x + bw / 2, y_mm: rb.y1 + y + bh / 2 };
+}
+
+export interface Passage { key: string; a: string; b: string; axis: 'x' | 'y'; from: P; to: P; mid: P; gap: number; label: string }
+
+/**
+ * Проходы между соседним оборудованием (зелёные размеры чертежа): от каждого объекта вправо и вниз до ближайшего
+ * объекта, перекрывающегося с ним по другой оси, в том же помещении. Только для объектов без поворота «по диагонали».
+ * Расстояния до стен — в спецификации (X, Y, до прав., до низа).
+ */
+export function passages(objects: PlanObject[]): Passage[] {
+  const items = objects.filter((o) => KINDS[o.kind]?.layer === 'equipment' && Math.round(o.rotation) % 90 === 0)
+    .map((o) => ({ o, b: bbox(o), room: roomOf(o, objects)?.id ?? null }));
+  const out: Passage[] = [];
+  for (const A of items) {
+    for (const axis of ['x', 'y'] as const) {
+      let best: { B: (typeof items)[number]; gap: number } | null = null;
+      for (const B of items) {
+        if (B === A || B.room !== A.room) continue;
+        const overlap = axis === 'x' ? Math.min(A.b.y2, B.b.y2) - Math.max(A.b.y1, B.b.y1) : Math.min(A.b.x2, B.b.x2) - Math.max(A.b.x1, B.b.x1);
+        if (overlap <= 0) continue;
+        const gap = axis === 'x' ? B.b.x1 - A.b.x2 : B.b.y1 - A.b.y2;
+        if (gap < -0.5) continue;                                                     // позади или внахлёст
+        if (!best || gap < best.gap) best = { B, gap };
+      }
+      if (!best || best.gap <= 0.5) continue;                                          // ближайший сосед вплотную — прохода нет
+      const B = best.B;
+      const lo = axis === 'x' ? Math.max(A.b.y1, B.b.y1) : Math.max(A.b.x1, B.b.x1), hi = axis === 'x' ? Math.min(A.b.y2, B.b.y2) : Math.min(A.b.x2, B.b.x2);
+      const c = (lo + hi) / 2;
+      const from: P = axis === 'x' ? [A.b.x2, c] : [c, A.b.y2], to: P = axis === 'x' ? [B.b.x1, c] : [c, B.b.y1];
+      out.push({ key: `${A.o.id}:${B.o.id}:${axis}`, a: A.o.id, b: B.o.id, axis, from, to, mid: [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2], gap: Math.round(best.gap),
+        label: `${label(A.o)} — ${label(B.o)}` });
+    }
+  }
+  return out;
 }
 
 export function areaM2(o: Pick<PlanObject, 'w_mm' | 'h_mm'>) { return Math.round((o.w_mm * o.h_mm) / 1e4) / 100; }

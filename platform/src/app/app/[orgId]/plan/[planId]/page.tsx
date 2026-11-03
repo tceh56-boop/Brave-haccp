@@ -5,7 +5,7 @@ import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
-import { KINDS, LAYERS, ZONE_CLASS, FLOWS, corners, swingZone, specification, findRisks, roomOf, bbox, centerFromCorner, areaM2,
+import { KINDS, LAYERS, ZONE_CLASS, FLOWS, corners, swingZone, specification, findRisks, passages, roomOf, bbox, centerFromCorner, areaM2,
   type PlanObject, type PlanRoute, type Layer, type Risk } from '@/lib/floorplan';
 
 /**
@@ -14,7 +14,7 @@ import { KINDS, LAYERS, ZONE_CLASS, FLOWS, corners, swingZone, specification, fi
  */
 
 type P = [number, number];
-interface Plan { id: string; name: string; width_mm: number; height_mm: number; revision: number; background_file_id: string | null; bg_mm_per_px: string | null; bg_offset_x: string; bg_offset_y: string }
+interface Plan { id: string; name: string; width_mm: number; height_mm: number; revision: number; min_passage_mm: number | null; min_passage_basis: string | null; background_file_id: string | null; bg_mm_per_px: string | null; bg_offset_x: string; bg_offset_y: string }
 interface Decision { decision: string; rationale: string; measure: string | null; decided_by: string; decided_at: string }
 interface Data { plan: Plan; objects: PlanObject[]; routes: PlanRoute[]; risks: (Risk & { decision: Decision | null })[];
   versions: { version: number; change_note: string; approved_at: string; approved_by: string; content_hash: string }[]; equipment: { id: string; name: string }[] }
@@ -34,13 +34,15 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
   const [bg, setBg] = useState<{ file_id: string | null; mm_per_px: number | null; offset_x: number; offset_y: number }>({ file_id: null, mm_per_px: null, offset_x: 0, offset_y: 0 });
   const [bgSize, setBgSize] = useState<{ w: number; h: number } | null>(null);
   const [bgOpacity, setBgOpacity] = useState(0.5);
+  const [pass, setPass] = useState<{ min_mm: number | null; basis: string }>({ min_mm: null, basis: '' });
+  const [showUpTo, setShowUpTo] = useState(2000);   // только отображение
   const [dirty, setDirty] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ t: 'select' });
   const [placeKind, setPlaceKind] = useState('table');
   const [flow, setFlow] = useState('raw');
   const [snap, setSnap] = useState(50);
-  const [layers, setLayers] = useState<Record<Layer | 'routes' | 'risks' | 'background' | 'dims', boolean>>({ rooms: true, building: true, zones: true, equipment: true, engineering: true, routes: true, risks: true, background: true, dims: true });
+  const [layers, setLayers] = useState<Record<Layer | 'routes' | 'risks' | 'background' | 'dims' | 'passages', boolean>>({ rooms: true, building: true, zones: true, equipment: true, engineering: true, routes: true, risks: true, background: true, dims: true, passages: true });
   const [view, setView] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -50,7 +52,7 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
 
   const load = useCallback(() => api<Data>(`/orgs/${org.id}/plans/${planId}`).then((d) => {
     setData(d); setObjects(d.objects); setRoutes(d.routes);
-    setBg({ file_id: d.plan.background_file_id, mm_per_px: d.plan.bg_mm_per_px === null ? null : Number(d.plan.bg_mm_per_px), offset_x: Number(d.plan.bg_offset_x), offset_y: Number(d.plan.bg_offset_y) });
+    setPass({ min_mm: d.plan.min_passage_mm, basis: d.plan.min_passage_basis || '' }); setBg({ file_id: d.plan.background_file_id, mm_per_px: d.plan.bg_mm_per_px === null ? null : Number(d.plan.bg_mm_per_px), offset_x: Number(d.plan.bg_offset_x), offset_y: Number(d.plan.bg_offset_y) });
     setView((v) => v || { x: -500, y: -500, w: d.plan.width_mm + 1000, h: d.plan.height_mm + 1000 }); setDirty(false);
   }).catch((e) => setError(e.message)), [org.id, planId, setError]);
   useEffect(() => { load(); }, [load]);
@@ -63,7 +65,8 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
     window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h);
   }, [dirty]);
 
-  const risks = useMemo(() => findRisks(objects, routes), [objects, routes]);
+  const risks = useMemo(() => findRisks(objects, routes, { minPassage: pass.min_mm, basis: pass.basis }), [objects, routes, pass]);
+  const gaps = useMemo(() => passages(objects), [objects]);
   const spec = useMemo(() => specification(objects), [objects]);
   const noOf = useMemo(() => new Map(spec.map((s) => [s.id, s.no])), [spec]);
   if (!data || !view) return error ? <div className="err">{error}</div> : <p className="muted">Загрузка…</p>;
@@ -119,7 +122,7 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
   const onUp = () => { drag.current = null; };
 
   const save = () => run(async () => {
-    const r = await api<{ revision: number }>(`/orgs/${org.id}/plans/${planId}`, { method: 'PUT', body: { revision: plan.revision, objects, routes, background: bg } });
+    const r = await api<{ revision: number }>(`/orgs/${org.id}/plans/${planId}`, { method: 'PUT', body: { revision: plan.revision, objects, routes, background: bg, passage: { min_mm: pass.min_mm, basis: pass.basis || null } } });
     setMsg(`Сохранено (ревизия ${r.revision}).`); await load();
   });
   const upload = (f: File) => run(async () => {
@@ -175,9 +178,9 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
       {mode.t === 'calibrate' && <div className="note noprint">Калибровка: кликните по двум концам известного размера на чертеже ({mode.points.length}/2).</div>}
 
       <div className="small noprint" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '6px 0' }}>
-        {([...Object.keys(LAYERS), 'routes', 'risks', 'dims', 'background'] as (keyof typeof layers)[]).map((k) => (
+        {([...Object.keys(LAYERS), 'routes', 'passages', 'risks', 'dims', 'background'] as (keyof typeof layers)[]).map((k) => (
           <label key={k} style={{ fontWeight: 400 }}><input type="checkbox" style={{ width: 16, minHeight: 16 }} checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} />
-            {' '}{(LAYERS as Record<string, string>)[k] || { routes: 'Потоки', risks: 'Риски', dims: 'Размеры', background: 'Подложка' }[k as string]}</label>))}
+            {' '}{(LAYERS as Record<string, string>)[k] || { routes: 'Потоки', passages: 'Проходы', risks: 'Риски', dims: 'Размеры', background: 'Подложка' }[k as string]}</label>))}
       </div>
 
       <div style={{ border: '1px solid var(--line, #ddd)', borderRadius: 8, background: '#fff', touchAction: 'none' }}>
@@ -236,6 +239,13 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
                   strokeWidth={view.w / (sel === o.id ? 250 : 700)} strokeDasharray={o.size_confirmed ? undefined : `${fs / 2} ${fs / 4}`} />
               </g>
               {noOf.has(o.id) && <g><circle cx={o.x_mm} cy={o.y_mm} r={fs * 0.9} fill="#fff" stroke="#2b6cb0" strokeWidth={view.w / 1500} /><text x={o.x_mm} y={o.y_mm + fs * 0.35} fontSize={fs} textAnchor="middle" fill="#1f1a14">{noOf.get(o.id)}</text></g>}
+            </g>); })}
+          {/* проходы между оборудованием — зелёные размеры; уже минимума — красные */}
+          {layers.passages && gaps.filter((g) => g.gap <= showUpTo || (!!pass.min_mm && g.gap < pass.min_mm)).map((g) => { const narrow = !!pass.min_mm && g.gap < pass.min_mm, col = narrow ? '#c0392b' : '#2e8b57', e = fs / 3;
+            const tick = g.axis === 'x' ? [[g.from[0], g.from[1] - e, g.from[0], g.from[1] + e], [g.to[0], g.to[1] - e, g.to[0], g.to[1] + e]] : [[g.from[0] - e, g.from[1], g.from[0] + e, g.from[1]], [g.to[0] - e, g.to[1], g.to[0] + e, g.to[1]]];
+            return (<g key={g.key} stroke={col} strokeWidth={view.w / 1500}>
+              <line x1={g.from[0]} y1={g.from[1]} x2={g.to[0]} y2={g.to[1]} />{tick.map((t, i) => <line key={i} x1={t[0]} y1={t[1]} x2={t[2]} y2={t[3]} />)}
+              <text x={g.mid[0] + (g.axis === 'y' ? fs / 3 : 0)} y={g.mid[1] - (g.axis === 'x' ? fs / 4 : 0)} fontSize={fs * 0.85} fill={col} stroke="none" textAnchor={g.axis === 'x' ? 'middle' : 'start'}>{g.gap}</text>
             </g>); })}
           {/* маршруты потоков */}
           {layers.routes && routes.map((r) => (
@@ -312,6 +322,22 @@ export default function PlanEditor({ params }: { params: Promise<{ planId: strin
           </div>}
         </div>
       )}
+
+      <div className="card noprint">
+        <h2>Проходы</h2>
+        <p className="small muted">Расстояния между соседним оборудованием считаются по плану автоматически (зелёные размеры). Минимальную ширину прохода система не задаёт:
+          укажите её и основание — норматив, проект или инструкцию оборудования. Проходы уже минимума станут рисками.</p>
+        <fieldset disabled={!manage} style={{ border: 0, padding: 0, margin: 0 }}>
+          <div className="grid2">
+            <div><label htmlFor="mp">Минимальная ширина прохода, мм</label><input id="mp" inputMode="numeric" value={pass.min_mm ?? ''} placeholder="не задана"
+              onChange={(e) => change(() => setPass({ ...pass, min_mm: e.target.value ? Number(e.target.value) : null }))} /></div>
+            <div><label htmlFor="mpb">Основание</label><input id="mpb" value={pass.basis} onChange={(e) => change(() => setPass({ ...pass, basis: e.target.value }))} placeholder="документ и пункт" /></div>
+          </div>
+        </fieldset>
+        <label className="small">Показывать на плане проходы до <select value={showUpTo} onChange={(e) => setShowUpTo(Number(e.target.value))} style={{ width: 'auto' }}>
+          {[1000, 1500, 2000, 3000, 100000].map((v) => <option key={v} value={v}>{v > 10000 ? 'все' : `${v} мм`}</option>)}</select> (настройка вида, не норма)</label>
+        {gaps.length > 0 && <p className="small">Самый узкий проход: {Math.min(...gaps.map((g) => g.gap))} мм{pass.min_mm ? ` · уже ${pass.min_mm} мм: ${gaps.filter((g) => g.gap < pass.min_mm!).length}` : ''}.</p>}
+      </div>
 
       <div className="card">
         <h2>Спецификация (мм)</h2>

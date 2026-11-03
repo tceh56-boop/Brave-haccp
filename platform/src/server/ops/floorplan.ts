@@ -30,6 +30,8 @@ const SaveIn = z.object({
   width_mm: z.coerce.number().int().min(1000).max(500000).optional(), height_mm: z.coerce.number().int().min(1000).max(500000).optional(),
   objects: z.array(ObjIn).max(2000), routes: z.array(RouteIn).max(300),
   background: z.object({ file_id: z.uuid().nullable(), mm_per_px: z.coerce.number().positive().nullable(), offset_x: mm.default(0), offset_y: mm.default(0) }).optional(),
+  passage: z.object({ min_mm: z.coerce.number().int().min(300, 'Минимальный проход — от 300 мм.').max(5000).nullable(), basis: optText(300) })
+    .refine((x) => x.min_mm === null || (x.basis && x.basis.length >= 5), 'Укажите основание минимальной ширины прохода: норматив, проект или инструкцию.').optional(),
 });
 
 async function planFor(tx: Tx, orgId: string, id: string, lock = false) {
@@ -73,7 +75,7 @@ export async function getPlan(userId: string, orgId: string, planId: string) {
     const c = await content(tx, p.id);
     const decisions = (await tx.query(`select d.risk_key, d.decision, d.rationale, d.measure, d.decided_at, u.full_name as decided_by from plan_risk_decisions d join users u on u.id = d.decided_by
       where d.plan_id = $1`, [p.id])).rows;
-    const risks = findRisks(c.objects, c.routes).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
+    const risks = findRisks(c.objects, c.routes, { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
     const versions = (await tx.query(`select v.version, v.change_note, v.approved_at, v.content_hash, u.full_name as approved_by from floor_plan_versions v join users u on u.id = v.approved_by
       where v.plan_id = $1 order by v.version desc`, [p.id])).rows;
     const equipment = (await tx.query(`select id, name from equipment where organization_id = $1 and site_id = $2 and status <> 'retired' order by name`, [orgId, p.site_id])).rows;
@@ -108,8 +110,10 @@ export async function savePlan(userId: string, orgId: string, planId: string, in
     }
     const row = (await tx.query(`update floor_plans set revision = revision + 1, updated_at = now(), name = coalesce($2, name), width_mm = coalesce($3, width_mm), height_mm = coalesce($4, height_mm),
         background_file_id = case when $5::boolean then $6::uuid else background_file_id end, bg_mm_per_px = case when $5::boolean then $7::numeric else bg_mm_per_px end,
-        bg_offset_x = case when $5::boolean then $8::numeric else bg_offset_x end, bg_offset_y = case when $5::boolean then $9::numeric else bg_offset_y end
-      where id = $1 returning revision`, [p.id, d.name ?? null, d.width_mm ?? null, d.height_mm ?? null, !!bg, bg?.file_id ?? null, bg?.mm_per_px ?? null, bg?.offset_x ?? 0, bg?.offset_y ?? 0])).rows[0];
+        bg_offset_x = case when $5::boolean then $8::numeric else bg_offset_x end, bg_offset_y = case when $5::boolean then $9::numeric else bg_offset_y end,
+        min_passage_mm = case when $10::boolean then $11::int else min_passage_mm end, min_passage_basis = case when $10::boolean then $12::text else min_passage_basis end
+      where id = $1 returning revision`, [p.id, d.name ?? null, d.width_mm ?? null, d.height_mm ?? null, !!bg, bg?.file_id ?? null, bg?.mm_per_px ?? null, bg?.offset_x ?? 0, bg?.offset_y ?? 0,
+        !!d.passage, d.passage?.min_mm ?? null, d.passage?.min_mm ? d.passage.basis : null])).rows[0];
     await audit.record(tx, { organizationId: orgId, siteId: p.site_id, actorUserId: userId, action: 'plan.save', entityType: 'floor_plan', entityId: p.id,
       after: { revision: row.revision, objects: d.objects.length, routes: d.routes.length } });
     return { revision: row.revision as number };
@@ -125,7 +129,7 @@ export async function decideRisk(userId: string, orgId: string, planId: string, 
     const p = await planFor(tx, orgId, planId);
     assertSiteAccess(m, p.site_id);
     const c = await content(tx, p.id);
-    if (!findRisks(c.objects, c.routes).some((r) => r.key === d.riskKey)) throw Errors.conflict('Такого риска в текущем плане нет — план изменился. Обновите страницу.');
+    if (!findRisks(c.objects, c.routes, { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).some((r) => r.key === d.riskKey)) throw Errors.conflict('Такого риска в текущем плане нет — план изменился. Обновите страницу.');
     await tx.query(`insert into plan_risk_decisions (organization_id, plan_id, risk_key, decision, rationale, measure, decided_by) values ($1, $2, $3, $4, $5, $6, $7)
       on conflict (plan_id, risk_key) do update set decision = excluded.decision, rationale = excluded.rationale, measure = excluded.measure, decided_by = excluded.decided_by, decided_at = now()`,
     [orgId, p.id, d.riskKey, d.decision, d.rationale, d.measure, userId]);
@@ -143,7 +147,7 @@ export async function approvePlan(userId: string, orgId: string, planId: string,
     const c = await content(tx, p.id);
     if (!c.objects.some((o) => o.kind === 'room')) throw Errors.conflict('На плане нет ни одного помещения — утверждать нечего.');
     const decisions = (await tx.query(`select risk_key, decision, rationale, measure from plan_risk_decisions where plan_id = $1`, [p.id])).rows;
-    const risks = findRisks(c.objects, c.routes).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
+    const risks = findRisks(c.objects, c.routes, { minPassage: p.min_passage_mm, basis: p.min_passage_basis }).map((r) => ({ ...r, decision: decisions.find((x) => x.risk_key === r.key) || null }));
     const open = risks.filter((r) => r.severity === 'high' && !r.decision);
     if (open.length) throw Errors.conflict(`Нет решения специалиста по рискам (${open.length}): ${open.slice(0, 3).map((r) => r.title).join('; ')}${open.length > 3 ? '…' : ''}. Подтвердите с мерой или отклоните с обоснованием.`);
     const snapshot = { name: p.name, width_mm: p.width_mm, height_mm: p.height_mm, background_file_id: p.background_file_id, bg_mm_per_px: p.bg_mm_per_px, ...c, risks, revision: p.revision };
