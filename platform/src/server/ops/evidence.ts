@@ -32,12 +32,13 @@ const ENTITY: Record<string, { table: string; site: string | null; read?: Permis
   equipment_event: { table: 'equipment_events', site: 'site_id' },
   contract: { table: 'contracts', site: 'site_id', read: 'contract.read', add: 'contract.manage', docx: true },
   declaration: { table: 'declarations', site: 'site_id', read: 'decl.read', add: 'decl.manage' },
-  ttk_version: { table: 'ttk_versions', site: null, read: 'menu.read', add: 'ttk.manage' },
-  disinfectant: { table: 'disinfectants', site: null, read: 'sanitation.record', add: 'sanitation.manage' },   // инструкция производителя (ТЗ 3.0 §16.1)   // файл основания рецептуры (ТЗ 5.2)
+  ttk_version: { table: 'ttk_versions', site: null, read: 'menu.read', add: 'ttk.manage' },   // файл основания рецептуры (ТЗ 5.2)
+  disinfectant: { table: 'disinfectants', site: null, read: 'sanitation.record', add: 'sanitation.manage' },   // инструкция производителя (ТЗ 3.0 §16.1)
+  floor_plan: { table: 'floor_plans', site: 'site_id', read: 'plan.read', add: 'plan.manage' },   // подложка плана: чертёж PNG/JPG
 };
 export const ENTITY_LABEL: Record<string, string> = {
   incident: 'Отклонение', capa: 'CAPA', receipt: 'Приёмка', lot: 'Партия', measurement: 'Замер', journal_entry: 'Запись журнала',
-  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование', equipment: 'Оборудование', equipment_event: 'ТО / поверка / ремонт', contract: 'Договор', declaration: 'Декларация о соответствии', ttk_version: 'Основание рецептуры ТТК', disinfectant: 'Инструкция дезсредства',
+  haccp_step: 'Этап ХАССП', haccp_hazard: 'Опасность ХАССП', reg_version: 'Редакция норматива', lab_result: 'Лабораторное исследование', equipment: 'Оборудование', equipment_event: 'ТО / поверка / ремонт', contract: 'Договор', declaration: 'Декларация о соответствии', ttk_version: 'Основание рецептуры ТТК', disinfectant: 'Инструкция дезсредства', floor_plan: 'Подложка плана',
 };
 
 /** Тип по сигнатуре файла. */
