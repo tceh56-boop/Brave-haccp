@@ -192,11 +192,13 @@ export function effectivePermissions(role: string, modules: string[] | null | un
 
 /**
  * Кого может назначать роль: владелец — любую роль; администратор — любую, кроме владельца;
- * HR — линейные и специалистов, но не владельца, администратора и аудитора.
+ * HR — только явный белый список, согласованный владельцем 03.11.2026 (промт доработки, этап 0, вопрос 1).
  */
+export const HR_ASSIGNABLE: readonly Role[] = ['line_staff', 'cashier', 'storekeeper', 'chef'];
+
 export function canAssignRole(actor: string, target: Role): boolean {
   if (actor === 'owner') return true;
   if (actor === 'enterprise_admin') return target !== 'owner';
-  if (actor === 'hr') return !['owner', 'enterprise_admin', 'auditor', 'hr'].includes(target);
+  if (actor === 'hr') return HR_ASSIGNABLE.includes(target);
   return false;
 }
