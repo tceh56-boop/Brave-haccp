@@ -72,6 +72,7 @@ describe('Блокировка и отзыв партии', () => {
   it('блокировка: вся цепочка дочерних партий с остатком, продажи, блюда, поставщик, перечень действий, задача ответственному', async () => {
     await expect(blockLot(cook.id, orgId, lotA, { hazard: 'Сальмонелла в протоколе', source: 'laboratory' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(blockLot(keeper.id, orgId, lotA, { hazard: 'x', source: 'laboratory' })).rejects.toThrow(/Опишите опасность/);
+    const planned = await createProduction(chef.id, orgId, { siteId, dishId: (await withSystem((tx) => tx.query(`select id from dishes where organization_id = $1 and name = 'Фарш'`, [orgId]))).rows[0].id, plannedKg: 1, plannedFor: today() });
     const r = await blockLot(keeper.id, orgId, lotA, { hazard: 'Поставщик сообщил об отзыве партии Г-1: листерии', source: 'supplier' });
     expect(r).toMatchObject({ blocked: 3, lots: 3, sales: 1 });                       // Г-1, п/ф, вскрытая тара
     for (const id of [lotA, semiLot, opened]) expect((await status(id)).status).toBe('blocked');
@@ -82,6 +83,8 @@ describe('Блокировка и отзыв партии', () => {
     const a = rc.affected;
     expect(a.origin).toMatchObject({ supplier: 'ООО «Мясо»', supplier_inn: '7700000000', document_no: 'УПД-Г-1' });
     expect(a.dishes.map((d: { name: string }) => d.name)).toEqual(['Фарш']);
+    expect(a.open_orders).toEqual([expect.objectContaining({ id: planned.id, dish: 'Фарш', status: 'planned' })]);                // Д-3
+    expect(a.actions.join('\n')).toMatch(/открытые производственные задания на этой позиции: Фарш \(план/);
     expect(a.sold_dishes).toEqual([expect.objectContaining({ name: 'Котлеты', qty: 2 })]);
     expect(a.actions.join('\n')).toMatch(/Изолировать.*Говядина, партия Г-1[\s\S]*Фарш[\s\S]*Оценить риск.*Котлеты × 2[\s\S]*Сообщить поставщику ООО «Мясо» \(ИНН 7700000000\)[\s\S]*Принять решение/);
     const t = (await listTasks(haccp.id, orgId, { all: true })).find((x: { kind: string }) => x.kind === 'recall_decision');

@@ -54,7 +54,13 @@ async function affectedOf(tx: Tx, orgId: string, lots: TreeLot[]) {
   const possible = (await tx.query(`select distinct s.id, s.name, s.qty::float8 as qty, s.sold_at, st.name as site from consumption_estimates e join sales s on s.id = e.ref_id join sites st on st.id = s.site_id
       where e.organization_id = $1 and e.kind = 'sale' and e.product_id = any($2::uuid[]) and s.site_id = any($3::uuid[]) and s.sold_at >= $4
         and s.id <> all($5::uuid[]) order by s.sold_at`, [orgId, products, sites, since, sales.map((x) => x.id)])).rows;
-  return { lots, in_stock: inStock, dishes, sales, sold_dishes: sold, possible_sales: possible, origin };
+  // Д-3: открытые производственные задания, в ТТК которых есть позиции цепочки, на площадках цепочки
+  const orders = (await tx.query(`select distinct o.id, d.name as dish, o.status, o.planned_for, (o.planned_g / 1000.0)::float8 as planned_kg, st.name as site
+      from production_orders o join dishes d on d.id = o.dish_id join sites st on st.id = o.site_id join ttk_lines tl on tl.version_id = o.ttk_version_id
+      where o.organization_id = $1 and o.status in ('planned', 'in_progress') and o.site_id = any($3::uuid[])
+        and (tl.product_id = any($2::uuid[]) or tl.sub_dish_id in (select id from dishes where product_id = any($2::uuid[])))
+      order by o.planned_for`, [orgId, products, sites])).rows;
+  return { lots, in_stock: inStock, dishes, sales, sold_dishes: sold, possible_sales: possible, open_orders: orders, origin };
 }
 
 /** Перечень действий — только из найденных данных. */
@@ -65,6 +71,7 @@ function actionsFor(a: Awaited<ReturnType<typeof affectedOf>>): string[] {
   if (a.sales.length) out.push(`Оценить риск для реализованной продукции: ${a.sales.length} продаж(и) с ${new Date(a.sales[0].sold_at).toLocaleDateString('ru-RU')} — ${a.sold_dishes.map((d) => `${d.name} × ${fmtNum(d.qty)}`).join(', ')}.`);
   if (a.possible_sales?.length) out.push(`Проверить продажи, где партия могла использоваться (расчёт по ТТК, списание по продажам не ведётся): ${a.possible_sales.length} с ${new Date(a.possible_sales[0].sold_at).toLocaleDateString('ru-RU')} — ${[...new Set(a.possible_sales.map((x) => x.name))].join(', ')}.`);
   if (a.origin?.supplier) out.push(`Сообщить поставщику ${a.origin.supplier}${a.origin.supplier_inn ? ` (ИНН ${a.origin.supplier_inn})` : ''} о блокировке партии; запросить документы и сведения о партии.`);
+  if (a.open_orders?.length) out.push(`Проверить открытые производственные задания на этой позиции: ${a.open_orders.map((o) => `${o.dish} (${o.status === 'in_progress' ? 'в работе' : 'план'}, ${o.site})`).join(', ')} — заблокированные партии в выпуск не пойдут; при необходимости отменить или взять другую партию.`);
   if (a.dishes.length) out.push(`Проверить продукцию, в которую входила партия: ${a.dishes.map((d) => d.name).join(', ')}.`);
   out.push('Принять решение: вернуть в оборот (с обоснованием) или списать остатки.');
   return out;

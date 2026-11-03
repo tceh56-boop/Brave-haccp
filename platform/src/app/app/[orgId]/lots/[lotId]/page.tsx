@@ -96,10 +96,49 @@ export default function LotPage({ params }: { params: Promise<{ lotId: string }>
         {c.recall.status === 'open' ? 'Партия заблокирована по отзыву' : 'Партия была в отзыве'}: {c.recall.hazard}. <Link href={`/app/${org.id}/recalls/${c.recall.id}`}>Открыть отзыв →</Link></div>}
       {can('recall.block') && ['available', 'quarantine', 'blocked'].includes(l.status) && Number(l.quantity) > 0 && c.recall?.status !== 'open' && <BlockLot lotId={lotId} />}
       <Marking c={c} onDone={load} />
+      <LotBalance lotId={lotId} reload={c} />
       <LotActions lotId={lotId} status={l.status} quantity={l.quantity} unit={l.unit} onDone={load} />
       {c.tasks.length > 0 && <div className="card"><h3>Открытые задачи</h3><ul className="list">{c.tasks.map((t) => <li key={t.id}>{t.title}</li>)}</ul></div>}
       <Evidence entityType="lot" entityId={lotId} title="Фото маркировки и документы" />
     </>
+  );
+}
+
+interface Balance { rows: { kind: string; label: string; quantity: number; operations: number; value: number | null }[]; totals: { in: number; out: number; losses: number; adjust: number };
+  closing: number; actual: number; mismatch: number | null; losses: { class: string; label: string; quantity: number; value: number | null }[]; value: { remaining: number; losses: number } | null;
+  cost_basis: { source: string; formula?: string; method?: string; document_no?: string; unit_price?: number | null; total?: number | null; output?: number; output_unit?: string; receipt_id?: string;
+    inputs?: { lot_id: string; lot_no: string | null; product: string; quantity: number; unit: string; unit_price: number | null; amount: number | null }[]; missing_prices?: string[] } | null;
+  cost_visible: boolean; lot: { unit: string; unit_price: number | null } }
+
+/** Баланс партии по движениям, потери по классам, себестоимость с раскрытием до исходных партий (ТЗ 3.0 §9.3, §10.3, §13.4). */
+function LotBalance({ lotId, reload }: { lotId: string; reload: unknown }) {
+  const { org } = useOrg();
+  const [b, setB] = useState<Balance | null>(null);
+  useEffect(() => { api<Balance>(`/orgs/${org.id}/lots/${lotId}/balance`).then(setB).catch(() => setB(null)); }, [org.id, lotId, reload]);
+  if (!b) return null;
+  const u = b.lot.unit, money = (v: number | null) => (v === null ? '' : ` · ${n(v)} ₽`);
+  const cb = b.cost_basis;
+  return (
+    <div className="card">
+      <h2>Баланс и экономика партии</h2>
+      <div className="scroll"><table className="tbl"><thead><tr><th>Движение</th><th>Кол-во, {u}</th>{b.cost_visible && <th>Сумма, ₽</th>}</tr></thead>
+        <tbody>{b.rows.map((r) => <tr key={r.label}><td>{r.label}{r.operations > 1 ? <span className="muted"> · {r.operations} опер.</span> : ''}</td><td>{r.quantity > 0 ? '+' : ''}{n(r.quantity)}</td>{b.cost_visible && <td>{r.value === null ? '—' : n(r.value)}</td>}</tr>)}</tbody></table></div>
+      <p className="small">Приход {n(b.totals.in)} − расход {n(b.totals.out)} − потери {n(b.totals.losses)}{b.totals.adjust ? ` ± инвентаризация ${n(b.totals.adjust)}` : ''} = <b>{n(b.closing)} {u}</b>;
+        остаток партии {n(b.actual)} {u}{b.mismatch === null ? ' — сходится.' : ''}</p>
+      {b.mismatch !== null && <div className="err">Баланс не сходится на {n(b.mismatch)} {u} — нужен разбор.</div>}
+      {b.losses.length > 0 && <><h3>Потери по классам</h3><ul className="list small">{b.losses.map((x) => <li key={x.class}>{x.label}: {n(x.quantity)} {u}{money(x.value)}</li>)}</ul></>}
+      {b.cost_visible && cb && <>
+        <h3>Себестоимость</h3>
+        {cb.source === 'production' ? <>
+          <p className="small">{cb.formula} = {cb.total === null ? 'неизвестно (нет цены у части сырья)' : `${n(cb.total!)} ₽ ÷ ${n(cb.output!)} ${cb.output_unit} = ${n(cb.unit_price ?? 0)} ₽/${cb.output_unit}`} <span className="muted">· метод {cb.method}</span></p>
+          <div className="scroll"><table className="tbl"><thead><tr><th>Партия сырья</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead>
+            <tbody>{cb.inputs!.map((x) => <tr key={x.lot_id}><td><Link href={`/app/${org.id}/lots/${x.lot_id}`}>{x.product}{x.lot_no ? ` ${x.lot_no}` : ''}</Link></td><td>{n(x.quantity)} {x.unit}</td>
+              <td>{x.unit_price === null ? 'нет цены' : `${n(x.unit_price)} ₽`}</td><td>{x.amount === null ? '—' : `${n(x.amount)} ₽`}</td></tr>)}</tbody></table></div>
+        </> : <p className="small">Цена {b.lot.unit_price === null ? 'не указана' : `${n(b.lot.unit_price)} ₽/${u}`} — {cb.source === 'receipt' ? 'по строке приёмки' : cb.source}
+          {cb.receipt_id && <> (<Link href={`/app/${org.id}/receipts/${cb.receipt_id}`}>{cb.document_no ? `УПД № ${cb.document_no}` : 'приёмка'}</Link>)</>}.</p>}
+        {b.value && <p className="small muted">Стоимость остатка {n(b.value.remaining)} ₽ · стоимость потерь {n(b.value.losses)} ₽. Цена партии фиксируется при поступлении или выпуске и не пересчитывается задним числом.</p>}
+      </>}
+    </div>
   );
 }
 
@@ -134,7 +173,10 @@ function BlockLot({ lotId }: { lotId: string }) {
 }
 
 const REASONS: [string, string][] = [['expired', 'Истёк срок годности'], ['spoiled', 'Порча (признаки порчи)'], ['damaged', 'Повреждение упаковки'], ['quality', 'Несоответствие качества'],
-  ['quarantine_reject', 'Забракована по карантину'], ['production_loss', 'Технологические потери (по факту)'], ['other', 'Другое']];
+  ['quarantine_reject', 'Забракована по карантину'], ['production_loss', 'Технологические потери (по факту)'], ['recall', 'Отзыв партии (опасность)'], ['other', 'Другое']];
+// класс потерь — та же функция, что loss_class в БД (миграция 051)
+const LOSS_OF: Record<string, string> = { production_loss: 'технологические', spoiled: 'санитарные', quality: 'санитарные', quarantine_reject: 'санитарные', recall: 'санитарные',
+  damaged: 'аварийные', expired: 'коммерческие', other: 'необъяснённые — опишите причину' };
 const KIND: Record<string, string> = { receipt: 'Приход', consume: 'Расход', write_off: 'Списание', transfer_out: 'Перемещено', transfer_in: 'Получено', count_adjust: 'Инвентаризация', return_to_supplier: 'Возврат',
   open_out: 'Вскрыто', open_in: 'Из вскрытой тары' };
 
@@ -212,6 +254,7 @@ function LotActions({ lotId, status, quantity, unit, onDone }: { lotId: string; 
               <div><label htmlFor="wr">Причина</label><select id="wr" value={wo.reasonCode} onChange={(e) => setWo({ ...wo, reasonCode: e.target.value })}>{REASONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
               <div><label htmlFor="wq">Сколько, {unit}</label><input id="wq" inputMode="decimal" value={wo.quantity} onChange={(e) => setWo({ ...wo, quantity: e.target.value })} placeholder={`вся партия: ${n(quantity)}`} /></div>
             </div>
+            <p className="small muted">Класс потерь: {LOSS_OF[wo.reasonCode]}.</p>
             <label htmlFor="wc">Комментарий</label><input id="wc" value={wo.comment} onChange={(e) => setWo({ ...wo, comment: e.target.value })} required={wo.reasonCode === 'other'} />
             <button className="btn block danger" disabled={busy}>Списать</button>
           </form>

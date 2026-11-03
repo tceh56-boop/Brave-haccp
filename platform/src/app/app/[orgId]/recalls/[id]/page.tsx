@@ -12,7 +12,8 @@ interface TreeLot { id: string; parent_id: string | null; link: string | null; d
 interface Sale { id: string; name: string; qty: number; sold_at: string; site: string; from_chain: number; unit: string }
 interface Recall { id: string; status: string; hazard: string; source_label: string; opened_at: string; opened_by_name: string; decision: string | null; decision_note: string | null;
   decided_by_name: string | null; decided_at: string | null; root_lot_id: string;
-  affected: { lots: TreeLot[]; dishes: { id: string; name: string }[]; sales: Sale[]; possible_sales?: { id: string; name: string; qty: number; sold_at: string; site: string }[]; sold_dishes: { id: string; name: string; qty: number }[];
+  affected: { lots: TreeLot[]; dishes: { id: string; name: string }[]; sales: Sale[]; possible_sales?: { id: string; name: string; qty: number; sold_at: string; site: string }[];
+    open_orders?: { id: string; dish: string; status: string; planned_for: string; planned_kg: number; site: string }[]; sold_dishes: { id: string; name: string; qty: number }[];
     origin: { receipt_id: string; document_no: string | null; supplier: string | null; supplier_inn: string | null; supplier_phone: string | null; manufacturer: string | null } | null; actions: string[] };
   held: { lot_id: string; prev_status: string; quantity_at_block: number; quantity: number; status: string; unit: string; lot_no: string | null; product: string; site: string }[] }
 const LINK: Record<string, string> = { opened: 'вскрытие', transfer: 'перемещение', production: 'производство' };
@@ -65,6 +66,11 @@ export default function RecallPage({ params }: { params: Promise<{ id: string }>
           })}</tbody>
         </table></div>
       </div>
+
+      {(a.open_orders?.length ?? 0) > 0 && <div className="card">
+        <h2>Открытые производственные задания · {a.open_orders!.length}</h2>
+        <ul className="list small">{a.open_orders!.map((o) => <li key={o.id}><Link href={`/app/${org.id}/production/${o.id}`}>{o.dish}</Link> · {o.status === 'in_progress' ? 'в работе' : 'план'} · {n(o.planned_kg)} кг · {o.site}</li>)}</ul>
+      </div>}
 
       <div className="card">
         <h2>Продукция и продажи</h2>

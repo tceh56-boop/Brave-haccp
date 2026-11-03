@@ -230,7 +230,7 @@ export async function completeProduction(userId: string, orgId: string, id: stri
 
     // фактический расход: только указанные партии этой площадки, годные, из позиций утверждённой ТТК (с п/ф)
     const allowed = await allowedProducts(tx, orgId, o, productId);
-    const taken: { lotId: string; qty: number; unit: string; productId: string; name: string }[] = [];
+    const taken: { lotId: string; qty: number; unit: string; productId: string; name: string; lotNo: string | null; price: number | null }[] = [];
     const seen = new Set<string>();
     let cost: number | null = 0;
     for (const c of d.consumed) {
@@ -247,7 +247,7 @@ export async function completeProduction(userId: string, orgId: string, id: stri
       await move(tx, { orgId, siteId: o.site_id, lotId: l.id, productId: l.product_id, kind: 'consume', quantity: -c.quantity, unit: l.unit,
         reason: `производство: ${o.dish_name} (факт)`, refType: 'production', refId: o.id, operationId: d.operationId, userId });
       cost = cost === null || l.unit_price === null ? null : cost + c.quantity * Number(l.unit_price);
-      taken.push({ lotId: l.id, qty: c.quantity, unit: l.unit, productId: l.product_id, name: l.product });
+      taken.push({ lotId: l.id, qty: c.quantity, unit: l.unit, productId: l.product_id, name: l.product, lotNo: l.lot_no, price: l.unit_price === null ? null : Number(l.unit_price) });
     }
     // норма по ТТК на фактический выход — расчёт, отдельно от факта
     const norm = (await explode(tx, orgId, o.dish_id, { grams: d.actualKg * 1000 }, {})).needs;
@@ -286,6 +286,12 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     for (const t of taken) {
       await tx.query(`insert into lot_links (organization_id, parent_lot_id, child_lot_id, kind, quantity, unit) values ($1, $2, $3, 'production', $4, $5)`, [orgId, t.lotId, lot.id, t.qty, t.unit]);
     }
+    // снимок расчёта себестоимости партии (ТЗ 3.0 §13.5): метод, формула, входные партии и цены — не пересчитывается задним числом
+    const costBasis = { method: 'fact-v1', formula: 'Σ (фактическое количество × цена партии сырья) ÷ фактический выход', currency: 'RUB', rounding: '0,01 ₽',
+      inputs: taken.map((t) => ({ lot_id: t.lotId, lot_no: t.lotNo, product: t.name, quantity: t.qty, unit: t.unit, unit_price: t.price, amount: t.price === null ? null : Math.round(t.qty * t.price * 100) / 100 })),
+      total: cost === null ? null : Math.round(cost * 100) / 100, output: outQty, output_unit: unit, unit_price: unitPrice,
+      missing_prices: taken.filter((t) => t.price === null).map((t) => `${t.name}${t.lotNo ? ` ${t.lotNo}` : ''}`), calculated_at: now.toISOString() };
+    await tx.query(`update lots set cost_basis = $2 where id = $1`, [lot.id, JSON.stringify(costBasis)]);
     if (!expiresAt) {
       await openTask(tx, { orgId, siteId: o.site_id, kind: 'confirm_expiry', title: `Срок не подтверждён: ${o.dish_name}`,
         details: `Партия ${lotNo}: в утверждённой ТТК не указан срок хранения в часах. Укажите срок и основание — до этого партию использовать нельзя.`,
