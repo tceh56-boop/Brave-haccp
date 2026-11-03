@@ -9,7 +9,7 @@
 libvips подключается как отдельная динамическая библиотека и не изменялась; доступ к системе через интернет не является распространением её копий.
 При передаче копий системы клиентам (установка у клиента) нужно приложить этот файл и обеспечить возможность заменить libvips.
 
-Компонентов: 81. Лицензии: MIT — 55, ISC — 11, Apache-2.0 — 7, LGPL-3.0-or-later — 2, Apache-2.0 AND LGPL-3.0-or-later AND MIT — 1, CC-BY-4.0 — 1, Unlicense — 1, MIT-0 — 1, BSD-3-Clause — 1, 0BSD — 1.
+Компонентов: 80. Лицензии: MIT — 54, ISC — 11, Apache-2.0 — 7, LGPL-3.0-or-later — 2, Apache-2.0 AND LGPL-3.0-or-later AND MIT — 1, CC-BY-4.0 — 1, Unlicense — 1, MIT-0 — 1, BSD-3-Clause — 1, 0BSD — 1.
 
 | Компонент | Версия | Лицензия |
 |---|---|---|
@@ -22,9 +22,8 @@ libvips подключается как отдельная динамическ�
 | @img/sharp-linux-x64 | 0.35.5 | Apache-2.0 |
 | @img/sharp-linuxmusl-x64 | 0.35.5 | Apache-2.0 |
 | @img/sharp-wasm32 | 0.35.5 | Apache-2.0 AND LGPL-3.0-or-later AND MIT |
-| @next/env | 16.3.8 | MIT |
-| @next/swc-linux-x64-gnu | 16.3.8 | MIT |
-| @next/swc-linux-x64-musl | 16.3.8 | MIT |
+| @next/env | 16.4.5 | MIT |
+| @next/swc-linux-x64-gnu | 16.4.5 | MIT |
 | @opentelemetry/api | 1.10.0 | Apache-2.0 |
 | @stablelib/base64 | 1.0.1 | MIT |
 | @swc/helpers | 0.5.23 | Apache-2.0 |
@@ -48,8 +47,8 @@ libvips подключается как отдельная динамическ�
 | json-schema-to-ts | 3.1.1 | MIT |
 | locate-path | 5.0.0 | MIT |
 | nanoid | 3.3.20 | MIT |
-| next | 16.3.8 | MIT |
-| nodemailer | 7.0.13 | MIT-0 |
+| next | 16.4.5 | MIT |
+| nodemailer | 10.3.1 | MIT-0 |
 | p-limit | 2.3.0 | MIT |
 | p-locate | 4.1.0 | MIT |
 | p-try | 2.2.0 | MIT |
@@ -93,7 +92,7 @@ libvips подключается как отдельная динамическ�
 | y18n | 4.0.3 | ISC |
 | yargs | 15.4.1 | MIT |
 | yargs-parser | 18.1.3 | ISC |
-| zod | 4.6.5 | MIT |
+| zod | 4.6.7 | MIT |
 
 ## @anthropic-ai/sdk 0.137.0
 
@@ -861,19 +860,13 @@ third-party archives.
    limitations under the License.
 ```
 
-## @next/env 16.3.8
+## @next/env 16.4.5
 
 Лицензия: MIT · автор: Next.js Team <support@vercel.com> · https://github.com/vercel/next.js
 
 _Текст лицензии в пакете отсутствует; действует лицензия, указанная выше._
 
-## @next/swc-linux-x64-gnu 16.3.8
-
-Лицензия: MIT · https://github.com/vercel/next.js
-
-_Текст лицензии в пакете отсутствует; действует лицензия, указанная выше._
-
-## @next/swc-linux-x64-musl 16.3.8
+## @next/swc-linux-x64-gnu 16.4.5
 
 Лицензия: MIT · https://github.com/vercel/next.js
 
@@ -2465,7 +2458,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## next 16.3.8
+## next 16.4.5
 
 Лицензия: MIT · vercel/next.js
 
@@ -2493,7 +2486,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## nodemailer 7.0.13
+## nodemailer 10.3.1
 
 Лицензия: MIT-0 · автор: Andris Reinman · https://github.com/nodemailer/nodemailer.git
 
@@ -3658,7 +3651,7 @@ WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-## zod 4.6.5
+## zod 4.6.7
 
 Лицензия: MIT · автор: Colin McDonnell <zod@colinhacks.com> · https://github.com/colinhacks/zod.git
 
