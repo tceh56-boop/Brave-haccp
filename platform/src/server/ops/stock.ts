@@ -21,6 +21,8 @@ const operationId = z.string().trim().min(8, 'Нужен ключ операци
 
 /** Выполнить операцию один раз: повтор с тем же ключом возвращает сохранённый результат. */
 export async function once<T>(tx: Tx, orgId: string, opId: string, kind: string, userId: string, fn: () => Promise<T>): Promise<T> {
+  // параллельный повтор с тем же ключом ждёт первую транзакцию и получает её результат, а не ошибку уникальности
+  await tx.query(`select pg_advisory_xact_lock(hashtext('op:' || $1 || ':' || $2))`, [orgId, opId]);
   const prev = (await tx.query(`select kind, result from operations where organization_id = $1 and operation_id = $2`, [orgId, opId])).rows[0];
   if (prev) {
     if (prev.kind !== kind) throw Errors.conflict('Ключ операции уже использован для другой операции.');

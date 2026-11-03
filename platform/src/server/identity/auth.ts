@@ -145,8 +145,10 @@ export async function login(input: unknown, meta: { ip?: string | null; userAgen
   // Неудачная попытка должна сохраниться (счётчик, блокировка, аудит), поэтому транзакция
   // завершается коммитом и в случае отказа, а ошибка выбрасывается уже после неё.
   const outcome = await withSystem(async (tx): Promise<{ error: AppError } | { token: string; session: Session }> => {
-    const ipFails = Number((await tx.query(`select count(*) from login_attempts where ip = $1 and not success
-      and created_at > now() - make_interval(mins => $2)`, [ip, IP_FAILS_WINDOW_MIN])).rows[0].count);
+    // ограничение — по паре email + адрес: чужие ошибки (или неизвестный адрес без доверенного прокси) не блокируют других;
+    // учётная запись дополнительно блокируется по числу неудач (failed_logins)
+    const ipFails = Number((await tx.query(`select count(*) from login_attempts where ip = $1 and email = $3 and not success
+      and created_at > now() - make_interval(mins => $2)`, [ip, IP_FAILS_WINDOW_MIN, data.email])).rows[0].count);
     if (ipFails >= IP_FAILS_MAX) return { error: Errors.tooMany('Слишком много неудачных попыток входа. Повторите через 15 минут.') };
 
     const u = (await tx.query(`select id, email, full_name, password_hash, email_verified_at, status, failed_logins,

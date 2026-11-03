@@ -26,8 +26,16 @@ function sameOrigin(req: NextRequest): boolean {
   return allowed.has(origin);
 }
 
-export function clientIp(req: NextRequest): string | null {
-  return (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || req.headers.get('x-real-ip') || null;
+/**
+ * Адрес клиента. X-Forwarded-For учитывается только за доверенным прокси (TRUST_PROXY=N — число прокси перед
+ * приложением, обычно 1 — Caddy): берётся адрес, дописанный нашим прокси (N-й с конца). Первые значения клиент может
+ * подставить сам. Без доверенного прокси заголовок не учитывается — адрес неизвестен (null).
+ */
+export function clientIp(req: { headers: { get(name: string): string | null } }): string | null {
+  const hops = Number(process.env.TRUST_PROXY || 0);
+  if (!(hops > 0)) return null;
+  const chain = (req.headers.get('x-forwarded-for') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return chain.length >= hops ? chain[chain.length - hops] : null;
 }
 
 export function handler<P = Record<string, never>>(fn: (ctx: Ctx<P>) => Promise<unknown | NextResponse>, opts: { auth?: boolean } = {}) {

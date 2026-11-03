@@ -54,7 +54,7 @@ export function sniff(b: Buffer): string | null {
 }
 
 async function entitySite(tx: Tx, orgId: string, m: Membership, type: string, id: string): Promise<string | null> {
-  const e = ENTITY[type];
+  const e = Object.hasOwn(ENTITY, type) ? ENTITY[type] : undefined;
   if (!e) throw Errors.validation('К этой записи доказательства не прикрепляются.');
   const r = (await tx.query(`select ${e.site ? `${e.site} as site_id` : 'null::uuid as site_id'} from ${e.table} where id = $1 and organization_id = $2`, [id, orgId])).rows[0];
   if (!r) throw Errors.notFound('Запись не найдена.');
@@ -72,7 +72,7 @@ export async function addEvidence(userId: string, orgId: string, input: unknown,
   const d = parse(AddInput, input);
   if (!bytes.length) throw Errors.validation('Файл пустой.');
   if (bytes.length > MAX_BYTES) throw Errors.validation('Файл больше 10 МБ — уменьшите фото или разделите документ.');
-  const e = ENTITY[d.entityType];
+  const e = Object.hasOwn(ENTITY, d.entityType) ? ENTITY[d.entityType] : undefined;
   if (!e) throw Errors.validation('К этой записи доказательства не прикрепляются.');
   const mime = sniff(bytes);
   if (!mime || (mime === DOCX && !e.docx)) throw Errors.validation(e.docx ? 'Поддерживаются PDF, DOCX и фото (JPEG, PNG, WebP, HEIC).' : 'Поддерживаются фото (JPEG, PNG, WebP, HEIC) и PDF.');
@@ -91,7 +91,7 @@ export async function addEvidence(userId: string, orgId: string, input: unknown,
 
 export async function listEvidence(userId: string, orgId: string, entityType: string, entityId: unknown) {
   const id = parse(z.uuid(), entityId);
-  return inOrg(userId, orgId, ENTITY[entityType]?.read || 'evidence.read', async (tx, m) => {
+  return inOrg(userId, orgId, (Object.hasOwn(ENTITY, entityType) ? ENTITY[entityType].read : undefined) || 'evidence.read', async (tx, m) => {
     await entitySite(tx, orgId, m, entityType, id);
     return (await tx.query(`select f.id, f.filename, f.mime, f.size_bytes, f.sha256, f.note, f.uploaded_at, u.full_name as uploaded_by_name
       from evidence_files f join users u on u.id = f.uploaded_by where f.organization_id = $1 and f.entity_type = $2 and f.entity_id = $3 order by f.uploaded_at`, [orgId, entityType, id])).rows;
@@ -103,7 +103,7 @@ export async function getEvidenceFile(userId: string, orgId: string, fileId: unk
   return inOrg(userId, orgId, 'org.read', async (tx, m) => {
     const f = (await tx.query(`select * from evidence_files where id = $1 and organization_id = $2`, [id, orgId])).rows[0];
     if (!f) throw Errors.notFound('Файл не найден.');
-    if (!roleHas(m.role, ENTITY[f.entity_type]?.read || 'evidence.read')) throw Errors.forbidden('Нет доступа к этому файлу.');
+    if (!roleHas(m.role, (Object.hasOwn(ENTITY, f.entity_type) ? ENTITY[f.entity_type].read : undefined) || 'evidence.read')) throw Errors.forbidden('Нет доступа к этому файлу.');
     if (f.site_id) assertSiteAccess(m, f.site_id);
     return f as { id: string; filename: string; mime: string; size_bytes: number; sha256: string; content: Buffer; entity_type: string; entity_id: string };
   });

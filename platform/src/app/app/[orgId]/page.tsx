@@ -271,7 +271,7 @@ function OrgForm({ org, canEdit, onSaved }: { org: Org; canEdit: boolean; onSave
   return (
     <div className="card">
       <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-        onSaved(await api<Org>(`/orgs/${org.id}`, { method: 'PATCH', body: Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v || undefined])) })); setSaved(true);
+        onSaved(await api<Org>(`/orgs/${org.id}`, { method: 'PATCH', body: f }));   // пустое поле очищает значение setSaved(true);
       }); }}>
         <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0 }}>
           <label htmlFor="on">Название</label><input id="on" value={f.name} onChange={set('name')} />

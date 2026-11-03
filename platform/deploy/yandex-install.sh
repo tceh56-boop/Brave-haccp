@@ -59,6 +59,8 @@ MAIL_UI_AUTH=admin:$MAIL_PASS
 SMTP_URL='${SMTP_URL:-smtp://mail:1025}'
 MAIL_FROM='${MAIL_FROM:-ЦЕХ <no-reply@$DOMAIN>}'
 DEMO=$DEMO
+CEH_SECRET_KEY=$(openssl rand -base64 32)
+TRUST_PROXY=1
 S3_BUCKET=$S3_BUCKET
 S3_ACCESS_KEY_ID=$S3_ACCESS_KEY_ID
 S3_SECRET_ACCESS_KEY=$S3_SECRET_ACCESS_KEY
@@ -69,6 +71,9 @@ YANDEX_GPT_MODEL=yandexgpt/latest
 ENV
   echo "Сохранено в $DIR/.env (доступ только у root)."
 fi
+# установка до появления этих настроек: дописать недостающие, не трогая существующие значения
+grep -q '^CEH_SECRET_KEY=.\+' .env || { sed -i '/^CEH_SECRET_KEY=$/d' .env; echo "CEH_SECRET_KEY=$(openssl rand -base64 32)" >> .env; }
+grep -q '^TRUST_PROXY=' .env || echo "TRUST_PROXY=1" >> .env
 set -a; . ./.env; set +a
 
 say "3/5 Сборка и запуск (первый раз 3–7 минут)"

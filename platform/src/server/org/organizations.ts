@@ -99,12 +99,15 @@ export async function updateOrganization(userId: string, orgId: string, input: u
       await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.sales_consumption', entityType: 'organization', entityId: orgId,
         before: { sales_consumption: before.sales_consumption }, after: { sales_consumption: d.salesConsumption } });
     }
-    const after = (await tx.query(`update organizations set name = coalesce($2, name), legal_form = coalesce($3, legal_form), inn = coalesce($4, inn),
-        phone = coalesce($5, phone), region = coalesce($6, region), timezone = coalesce($7, timezone),
-        ogrn = coalesce($8, ogrn), legal_address = coalesce($9, legal_address), email = coalesce($10, email), head_position = coalesce($11, head_position),
-        head_name = coalesce($12, head_name), head_basis = coalesce($13, head_basis), activity_notice = coalesce($14, activity_notice), updated_at = now()
-      where id = $1 returning *`, [orgId, d.name ?? null, d.legalForm ?? null, d.inn ?? null, d.phone ?? null, d.region ?? null, d.timezone ?? null,
-        d.ogrn ?? null, d.legalAddress ?? null, d.email ?? null, d.headPosition ?? null, d.headName ?? null, d.headBasis ?? null, d.activityNotice ?? null])).rows[0];
+    // поля, переданные в запросе, записываются как есть: пустое значение очищает поле (раньше coalesce не давал очистить)
+    const CLEARABLE: [keyof typeof d, string][] = [['inn', 'inn'], ['phone', 'phone'], ['region', 'region'], ['ogrn', 'ogrn'], ['legalAddress', 'legal_address'], ['email', 'email'],
+      ['headPosition', 'head_position'], ['headName', 'head_name'], ['headBasis', 'head_basis'], ['activityNotice', 'activity_notice']];
+    const given = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+    const sets: string[] = [], vals: unknown[] = [orgId];
+    const put = (col: string, v: unknown) => { vals.push(v); sets.push(col + ' = $' + vals.length); };
+    for (const [k, col] of [['name', 'name'], ['legalForm', 'legal_form'], ['timezone', 'timezone']] as [keyof typeof d, string][]) if (d[k] != null) put(col, d[k]);
+    for (const [k, col] of CLEARABLE) if (Object.hasOwn(given, k)) put(col, d[k] ?? null);
+    const after = (await tx.query('update organizations set ' + [...sets, 'updated_at = now()'].join(', ') + ' where id = $1 returning *', vals)).rows[0];
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.update', entityType: 'organization', entityId: orgId, before, after });
     return after;
   });
