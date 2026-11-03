@@ -5,7 +5,7 @@ const MicroGroupCode = z.string().refine((c) => c === 'custom' || MICRO_GROUPS.s
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, closeTasksFor } from './common';
+import { inOrg, parse, optText, closeTasksFor, orgToday } from './common';
 import { convertUnits } from './recipes';
 import { semiGrams } from './bom';
 import { effectiveParams } from './dishgroups';
@@ -261,7 +261,7 @@ export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params
   if (special && micro.mode === 'law' && !gDoc) warnings.push(`По составу продукция — ${SPECIAL_DOC[special]} (мясных ингредиентов ${meat!.meat_pct} %). Группа «${micro.group}» ТР ТС 021/2011 (п. 1.8) — нормативы продукции общественного питания. Для продажи вне зала выберите группу из приложения 1 ${SPECIAL_DOC[special]}, если продукция в ней названа (охлаждённые готовые кулинарные изделия ТР ТС 034/2013 не называет).`);
 
   // Нормативные ссылки — из встроенной нормативной базы (norms/library.ts): действует ли документ, загружен ли текст.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await orgToday(tx, orgId);
   const lib = Object.values(DOCS);
   const usedMicro = new Set(micro.indicators.filter((m) => m.norm).map((m) => m.code));
   const stateOf = (code: string) => {

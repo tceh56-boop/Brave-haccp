@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { Errors } from '../http/errors';
-import { inOrg, parse } from './common';
+import { inOrg, parse, orgToday } from './common';
 import { calcTechSpec } from './techspec';
 import { effectiveParams } from './dishgroups';
 import { activeDeclarationFor, meatProfile, DECL_STATUS, declStatus } from './declarations';
@@ -53,7 +53,7 @@ export async function getProductCard(userId: string, orgId: string, dishIdInput:
         (select row_to_json(a) from (select accepted_at from declaration_acceptances where declaration_id = d.id) a) as acceptance,
         (select row_to_json(r) from (select reg_number, reg_date::text, valid_to::text from declaration_registrations where declaration_id = d.id) r) as registration,
         (select row_to_json(t) from (select terminated_on::text from declaration_terminations where declaration_id = d.id) t) as termination,
-        current_date::text as today from declarations d where d.dish_id = $1 order by d.number desc`, [dishId]))
+        org_today(d.organization_id)::text as today from declarations d where d.dish_id = $1 order by d.number desc`, [dishId]))
       .map((r) => ({ id: r.id, number: r.number, scheme: r.scheme, registration: r.registration, status: DECL_STATUS[declStatus(r, r.today)] }));
     const active = await activeDeclarationFor(tx, orgId, dishId);
     const meat = ttk ? await meatProfile(tx, dishId) : null;
@@ -74,7 +74,8 @@ export async function getProductCard(userId: string, orgId: string, dishIdInput:
     const comp = ttk ? await composition(tx, orgId, dishId) : null;
     if (comp && 'allergens_complete' in comp && !comp.allergens_complete) issues.push('Профиль аллергенов неполный — «не содержит» не утверждается.');
     if (meat?.unknown.length) issues.push(`Не указан вид сырья (ТР ТС 034 / ТР ЕАЭС 051): ${meat.unknown.map((x) => x.name).join(', ')}.`);
-    for (const s of sto) if (s.review_due && s.review_due < new Date().toISOString().slice(0, 10)) issues.push(`СТО «${s.title}»: срок актуализации прошёл.`);
+    const today = await orgToday(tx, orgId);
+    for (const s of sto) if (s.review_due && s.review_due < today) issues.push(`СТО «${s.title}»: срок актуализации прошёл.`);
 
     return {
       dish: { id: dish.id, name: dish.name, kind: dish.kind, card_no: dish.card_no, sale_price: dish.sale_price, status: dish.status },

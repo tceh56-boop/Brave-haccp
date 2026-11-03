@@ -10,7 +10,7 @@ import {
   createDeclaration, getDeclaration, updateDeclaration, setMeatKind, acceptDeclaration, registerDeclaration, terminateDeclaration, listDeclarations,
   activeDeclarationFor, suggestMeatKind,
 } from '../src/server/ops/declarations';
-import { makeUser, lastLinkToken } from './helpers';
+import { makeUser, lastLinkToken, orgDate } from './helpers';
 
 /** Декларация о соответствии: ТР ТС 021/2011 ст. 21–23, ТР ТС 034/2013, решения ЕЭК N 293 и N 44, приказ МЭР N 478. */
 
@@ -20,7 +20,7 @@ let owner: U, tech: U, orgId: string, siteId: string;
 const P = { beef: '', onion: '', rice: '', chicken: '', salt: '' };
 const D = { meatballs: '', chickenCutlet: '', soup: '' };
 const PDF = Buffer.from('%PDF-1.4\n% протокол испытаний\n');
-const inDays = (n: number) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+const inDays = (n: number) => orgDate(n);   // дата в поясе организации
 
 async function invite(role: string) {
   const u = await makeUser();

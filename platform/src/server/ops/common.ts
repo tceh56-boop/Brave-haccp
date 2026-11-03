@@ -6,6 +6,16 @@ import { Errors } from '../http/errors';
 import { admissionGate } from '../access/admission';
 
 /** Операция в организации: контекст изоляции + проверка права (и площадки, если она известна заранее). */
+/** «Сегодня» (ГГГГ-ММ-ДД) в часовом поясе организации — единственный источник даты для правил «на сегодня». */
+export async function orgToday(tx: Tx, orgId: string): Promise<string> {
+  return (await tx.query(`select org_today($1)::text as d`, [orgId])).rows[0].d as string;
+}
+
+/** День события в часовом поясе организации. */
+export async function orgDay(tx: Tx, orgId: string, at: Date | string): Promise<string> {
+  return (await tx.query(`select org_day($1, $2::timestamptz)::text as d`, [orgId, at])).rows[0].d as string;
+}
+
 export function inOrg<T>(userId: string, orgId: string, permission: Permission, fn: (tx: Tx, m: Membership) => Promise<T>, siteId?: string | null): Promise<T> {
   return withTenant({ userId, orgId }, async (tx) => {
     const m = await requirePermission(tx, userId, orgId, permission, siteId);

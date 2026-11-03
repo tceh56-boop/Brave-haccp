@@ -83,7 +83,7 @@ export async function updateCapa(userId: string, orgId: string, id: string, inpu
         responsible_user_id = $7, due_at = $8, check_due_at = $9, status = 'in_progress' where id = $1`,
       [id, d.risk, d.rootCause, d.correctiveAction, d.preventiveAction, d.effectivenessCriterion, d.responsibleUserId || null, d.dueAt || null, d.checkDueAt || null]);
     if (d.responsibleUserId) {
-      await tx.query(`update tasks set assignee_user_id = $3, due_at = coalesce($4::date::timestamptz, due_at) where organization_id = $1 and kind = 'capa' and entity_id = $2 and status = 'open'`,
+      await tx.query(`update tasks set assignee_user_id = $3, due_at = coalesce(($4::date::timestamp at time zone (select timezone from organizations where id = $1)), due_at) where organization_id = $1 and kind = 'capa' and entity_id = $2 and status = 'open'`,
         [orgId, id, d.responsibleUserId, d.dueAt || null]);
     }
     await addEvent(tx, orgId, id, userId, 'updated', null);

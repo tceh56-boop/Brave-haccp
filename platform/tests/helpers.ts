@@ -32,3 +32,15 @@ export async function fact(userId: string, orgId: string, orderId: string) {
   const p = await getProduction(userId, orgId, orderId);
   return p.lots.filter((l) => l.suggest > 0).map((l) => ({ lotId: l.lot_id, quantity: l.suggest }));
 }
+
+/** Дата в часовом поясе организации со сдвигом в днях (по умолчанию — Москва, как у тестовых организаций). */
+export function orgDate(n = 0, tz = 'Europe/Moscow') {
+  return new Date(Date.now() + n * 864e5).toLocaleDateString('sv-SE', { timeZone: tz });
+}
+
+/** «n минут назад», но не раньше начала текущих суток организации: тест на стыке суток не уходит во вчера. */
+export function minutesAgoSameDay(n: number, tz = 'Europe/Moscow') {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const sinceMidnight = Number(p.find((x) => x.type === 'hour')!.value) * 60 + Number(p.find((x) => x.type === 'minute')!.value);
+  return new Date(Date.now() - Math.max(0, Math.min(n, sinceMidnight - 1)) * 60e3).toISOString();
+}

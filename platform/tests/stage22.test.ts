@@ -37,16 +37,16 @@ async function fill() {
   const obj = (await sys(`insert into control_objects (organization_id, site_id, name, kind, code) values ($1, $2, 'Холодильник 1', 'fridge', 'X1') returning id`, [orgId, siteId])).rows[0].id;
   await sys(`insert into control_rules (organization_id, control_object_id, parameter, unit, min_value, max_value, source_ref, status, created_by) values ($1, $2, 'temperature', '°C', 2, 6, 'маркировка', 'approved', $3)`, [orgId, obj, owner.id]);
   for (const [t, g, p] of [['Вода питьевая', 'Кран, горячий цех', 180], ['Микроклимат', 'Горячий цех', 365]] as const)
-    await sys(`insert into lab_programs (organization_id, site_id, test_type, target, period_days, next_due, basis, created_by) values ($1, $2, $3, $4, $5, current_date + 30, 'ППК', $6)`, [orgId, siteId, t, g, p, owner.id]);
+    await sys(`insert into lab_programs (organization_id, site_id, test_type, target, period_days, next_due, basis, created_by) values ($1, $2, $3, $4, $5, org_today($1) + 30, 'ППК', $6)`, [orgId, siteId, t, g, p, owner.id]);
   const dis = (await sys(`insert into disinfectants (organization_id, name, purpose, basis, status, created_by, approved_by, approved_at) values ($1, 'Део-хлор', 'поверхности', 'инструкция', 'approved', $2, $2, now()) returning id`, [orgId, owner.id])).rows[0].id;
-  await sys(`insert into sanitation_plans (organization_id, site_id, area, work, kind, period_days, next_due, disinfectant_id, check_concentration, created_by) values ($1, $2, 'Горячий цех', 'Дезинфекция столов', 'disinfection', 1, current_date + 1, $3, true, $4)`, [orgId, siteId, dis, owner.id]);
+  await sys(`insert into sanitation_plans (organization_id, site_id, area, work, kind, period_days, next_due, disinfectant_id, check_concentration, created_by) values ($1, $2, 'Горячий цех', 'Дезинфекция столов', 'disinfection', 1, org_today($1) + 1, $3, true, $4)`, [orgId, siteId, dis, owner.id]);
   for (const k of ['lab', 'pest_control', 'waste']) {
-    const c = (await sys(`insert into contracts (organization_id, kind, title, counterparty, number, signed_on, valid_from, valid_to, created_by) values ($1, $2, 'Договор', $3, '1', current_date - 10, current_date - 10, current_date + 300, $4) returning id`, [orgId, k, `ООО «${k}»`, owner.id])).rows[0].id;
+    const c = (await sys(`insert into contracts (organization_id, kind, title, counterparty, number, signed_on, valid_from, valid_to, created_by) values ($1, $2, 'Договор', $3, '1', org_today($1) - 10, org_today($1) - 10, org_today($1) + 300, $4) returning id`, [orgId, k, `ООО «${k}»`, owner.id])).rows[0].id;
     await sys(`insert into evidence_files (organization_id, entity_type, entity_id, filename, mime, size_bytes, sha256, content, uploaded_by) values ($1, 'contract', $2, 'd.pdf', 'application/pdf', 4, $3, '\\x25504446', $4)`, [orgId, c, `h${k}${orgId}`, owner.id]);
   }
   const dish = (await sys(`insert into dishes (organization_id, name) values ($1, 'Котлета') returning id`, [orgId])).rows[0].id;
   await sys(`insert into ttk_versions (organization_id, dish_id, version, status, created_by, approved_by, approved_at) values ($1, $2, 1, 'approved', $3, $3, now())`, [orgId, dish, owner.id]);
-  await sys(`insert into staff_medical (organization_id, user_id, exam_due, hygiene_due, recorded_by) values ($1, $2, current_date + 300, current_date + 300, $3)`, [orgId, cook.id, owner.id]);
+  await sys(`insert into staff_medical (organization_id, user_id, exam_due, hygiene_due, recorded_by) values ($1, $2, org_today($1) + 300, org_today($1) + 300, $3)`, [orgId, cook.id, owner.id]);
 }
 
 describe('Программа производственного контроля', () => {
@@ -118,8 +118,8 @@ describe('ППК на едином движке готовности', () => {
     const r0 = await getPpk(owner.id, orgId);
     const g0 = r0.doc.gaps.map((g) => g.text).join(' | ');
     expect(g0).not.toMatch(/медосмотр/);
-    await sys(`insert into staff_medical (organization_id, user_id, exam_due, hygiene_due, recorded_by) values ($1, $2, current_date - 1, current_date + 300, $3)`, [orgId, cook.id, owner.id]);
-    await sys(`insert into equipment (organization_id, site_id, name, kind, measuring, calibration_due, created_by) values ($1, $2, 'Термометр контрольный', 'instrument', true, current_date - 3, $3)`, [orgId, siteId, owner.id]);
+    await sys(`insert into staff_medical (organization_id, user_id, exam_due, hygiene_due, recorded_by) values ($1, $2, org_today($1) - 1, org_today($1) + 300, $3)`, [orgId, cook.id, owner.id]);
+    await sys(`insert into equipment (organization_id, site_id, name, kind, measuring, calibration_due, created_by) values ($1, $2, 'Термометр контрольный', 'instrument', true, org_today($1) - 3, $3)`, [orgId, siteId, owner.id]);
     const g = (await getPpk(owner.id, orgId)).doc.gaps.map((x) => x.text).join(' | ');
     expect(g).toMatch(/Медосмотр истёк: 1 из 1\. Петров Пётр: истёк/);
     expect(g).toMatch(/Поверка истекла: 1 из 1/);

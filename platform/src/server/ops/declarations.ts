@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, getSite, assertSiteAccess } from './common';
+import { inOrg, parse, optText, getSite, assertSiteAccess, orgDay } from './common';
 import { convertUnits } from './recipes';
 import { semiGrams } from './bom';
 import { assertSnapshotIntact } from './integrity';
@@ -291,7 +291,7 @@ export async function buildDeclaration(tx: Tx, orgId: string, declId: string) {
   let validTo = input.validTo || null;
   if (scheme === '4д' && r.special) {
     if (lot?.expires_at) {
-      const exp = new Date(lot.expires_at).toISOString().slice(0, 10);
+      const exp = await orgDay(tx, orgId, lot.expires_at);
       if (validTo && validTo !== exp) err('9', `Схема 4д: срок действия равен сроку годности партии (${dmy(exp)}) — ${SNAME}.`, TREF);
       validTo = exp;
     } else if (!validTo) err('9', `Схема 4д: срок действия декларации соответствует сроку годности партии — выберите партию со сроком годности или укажите дату (${SNAME}).`, TREF);
@@ -384,8 +384,8 @@ export const DECL_STATUS: Record<string, string> = { draft: 'проект', acce
 export async function activeDeclarationFor(tx: Tx, orgId: string, dishId: string, lotId?: string | null) {
   const rows = (await tx.query(`select d.id, d.input, r.reg_number, r.reg_date::text, r.valid_to::text, a.snapshot->>'object' as object
     from declarations d join declaration_registrations r on r.declaration_id = d.id join declaration_acceptances a on a.declaration_id = d.id
-    where d.organization_id = $1 and d.dish_id = $2 and r.reg_date <= current_date and (r.valid_to is null or r.valid_to >= current_date)
-      and not exists (select 1 from declaration_terminations t where t.declaration_id = d.id and t.terminated_on <= current_date)
+    where d.organization_id = $1 and d.dish_id = $2 and r.reg_date <= org_today($1) and (r.valid_to is null or r.valid_to >= org_today($1))
+      and not exists (select 1 from declaration_terminations t where t.declaration_id = d.id and t.terminated_on <= org_today($1))
     order by r.reg_date desc`, [orgId, dishId])).rows;
   return rows.find((x) => x.object !== 'batch' || (lotId && x.input?.batch?.lotId === lotId)) || null;
 }
@@ -502,7 +502,7 @@ export async function registerDeclaration(userId: string, orgId: string, id: str
     // решение N 293, разд. II п. 5 «л»: номер с аббревиатурой «ЕАЭС» и двухбуквенным кодом государства
     if (!/^ЕАЭС N [A-Z]{2} Д-[A-ZА-Я]{2}\.\S+$/.test(num)) throw Errors.validation('Регистрационный номер — как в реестре: «ЕАЭС N RU Д-RU.…» (решение ЕЭК N 293, разд. II п. 5 «л»).');
     const today = (await tx.query(`select (now() at time zone $1)::date::text as d`, [c.org.timezone || 'Europe/Moscow'])).rows[0].d as string;
-    const accDay = new Date(c.acceptance.accepted_at).toISOString().slice(0, 10);
+    const accDay = await orgDay(tx, orgId, c.acceptance.accepted_at);
     if (d.regDate > today) throw Errors.validation('Дата регистрации не может быть позже сегодняшней.');
     if (d.regDate < accDay) throw Errors.validation('Дата регистрации раньше даты принятия декларации.');
     const s = c.acceptance.snapshot;

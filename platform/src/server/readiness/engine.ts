@@ -1,3 +1,4 @@
+import { orgToday } from '../ops/common';
 import type { Tx } from '../db/pool';
 import { requiredContractsState } from '../ops/contracts';
 import { CLAUSES, DOCS, applies, clauseById, samplesRequired, type NormProfile } from '../norms/library';
@@ -360,7 +361,7 @@ export const READINESS_KEYS = DEFS.map((d) => d.key);
 export async function contextFor(tx: Tx, orgId: string, siteIds?: string[] | null, asOf?: string | null): Promise<Ctx> {
   const org = (await tx.query(`select timezone, region from organizations where id = $1`, [orgId])).rows[0];
   await tx.query(`select set_config('timezone', $1, true)`, [org.timezone || 'Europe/Moscow']);
-  const today = asOf || (await tx.query(`select current_date::text as d`)).rows[0].d as string;
+  const today = asOf || await orgToday(tx, orgId);
   const sites = siteIds && siteIds.length ? siteIds : (await tx.query(`select id from sites where organization_id = $1 and status = 'active'`, [orgId])).rows.map((s) => s.id);
   const pr = (await tx.query(`select object_types, sales_modes, seats, features from org_regulatory_profiles where organization_id = $1`, [orgId])).rows[0];
   const profile: NormProfile = { objectTypes: pr?.object_types || [], salesModes: pr?.sales_modes || [], seats: pr?.seats ?? null, features: pr?.features || [], region: org.region || null };

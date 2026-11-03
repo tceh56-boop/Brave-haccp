@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, assertSiteAccess, getSite, openTask, fmtNum } from './common';
+import { inOrg, parse, optText, assertSiteAccess, getSite, openTask, fmtNum, orgToday } from './common';
 import { once, move } from './stock';
 import { approvedRecipe, convertUnits } from './recipes';
 import { explode, availability, USABLE, type Need } from './bom';
@@ -58,7 +58,7 @@ export async function listProduction(userId: string, orgId: string, siteId: stri
     from production_orders o join dishes d on d.id = o.dish_id join ttk_versions v on v.id = o.ttk_version_id
     join users cu on cu.id = o.created_by left join users su on su.id = o.started_by
     where o.organization_id = $1 and o.site_id = $2
-      and (o.planned_for = coalesce($3::date, current_date) or (o.status in ('planned', 'in_progress') and o.planned_for < coalesce($3::date, current_date)))
+      and (o.planned_for = coalesce($3::date, org_today($1)) or (o.status in ('planned', 'in_progress') and o.planned_for < coalesce($3::date, org_today($1))))
     order by case o.status when 'in_progress' then 0 when 'planned' then 1 when 'done' then 2 else 3 end, o.planned_for, o.created_at`,
   [orgId, d.siteId, d.date || null])).rows.map((r) => ({ ...r, status_label: ORDER_STATUS[r.status] })), d.siteId);
 }
@@ -280,7 +280,7 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     const unitPrice = cost === null || outQty <= 0 ? null : Math.round((cost / outQty) * 100) / 100;
     const lot = (await tx.query(`insert into lots (organization_id, site_id, product_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, status, status_reason, unit_price, storage_conditions)
       values ($1, $2, $3, $4, 0, $5, $6, $7, $8, $10, $11, $9, $12) returning id`,
-      [orgId, o.site_id, productId, lotNo, unit, now.toISOString().slice(0, 10), expiresAt, basis, unitPrice, rejected ? 'quarantine' : 'available',
+      [orgId, o.site_id, productId, lotNo, unit, await orgToday(tx, orgId), expiresAt, basis, unitPrice, rejected ? 'quarantine' : 'available',
         rejected ? `бракераж: не допущено к реализации — ${d.organoleptic}` : o.dish_kind === 'dish' ? 'выпуск готовой продукции' : 'выпуск п/ф', v.storage_conditions || null])).rows[0];
     await move(tx, { orgId, siteId: o.site_id, lotId: lot.id, productId, kind: 'produce', quantity: outQty, unit, refType: 'production', refId: o.id, operationId: d.operationId, userId, reason: `выпуск: ${o.dish_name}` });
     for (const t of taken) {

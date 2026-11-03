@@ -7,7 +7,7 @@ import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { isRole, roleHas, ROLES } from '../access/roles';
-import { inOrg, parse, optText, openTask, fmtNum } from './common';
+import { inOrg, parse, optText, openTask, fmtNum, orgToday } from './common';
 import { versionState, STATE_LABEL } from './regulatory';
 import { SEVERITY_LABEL, STATUS_LABEL as INC_STATUS } from './incidents';
 import { CAPA_STATUS } from './capa';
@@ -109,8 +109,9 @@ async function findSources(tx: Tx, orgId: string, text: string, pinned: string[]
     where r.organization_id = $1 and v.workflow_status = 'approved' and coalesce(a.applicable, true)
       and (r.id = any($3::uuid[]) or ($2 <> '' and to_tsvector('russian', r.text || ' ' || r.clause || ' ' || r.scope || ' ' || s.title) @@ to_tsquery('russian', $2)))
     order by pinned desc, (a.applicable is true) desc, rank desc limit 30`, [orgId, q, pinned])).rows;
-  return rows.filter((r) => ['in_force', 'upcoming'].includes(versionState(r))).slice(0, limit).map((r, i) => {
-    const st = versionState(r);
+  const today = await orgToday(tx, orgId);
+  return rows.filter((r) => ['in_force', 'upcoming'].includes(versionState(r, today))).slice(0, limit).map((r, i) => {
+    const st = versionState(r, today);
     return { id: `S${i + 1}`, requirement_id: r.requirement_id, code: r.code, title: r.title, clause: r.clause, text: r.text, scope: r.scope, edition: r.edition,
       state: st, state_label: STATE_LABEL[st], last_checked_at: r.last_checked_at, next_check_at: r.next_check_at, applicable: r.applicable };
   });

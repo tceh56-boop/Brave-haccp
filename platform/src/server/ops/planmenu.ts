@@ -146,7 +146,7 @@ async function itemsOf(tx: Tx, eventId: string) {
 /** Годный остаток на день мероприятия: партии, срок которых не истекает раньше этого дня. */
 async function stockOn(tx: Tx, orgId: string, siteId: string, productId: string, date: string) {
   return Number((await tx.query(`select coalesce(sum(l.quantity), 0) as q from lots l where l.organization_id = $1 and l.site_id = $2 and l.product_id = $3
-    and l.status = 'available' and l.expires_at is not null and l.expiry_basis is not null and l.quantity > 0 and l.expires_at > greatest(now(), $4::date)`,
+    and l.status = 'available' and l.expires_at is not null and l.expiry_basis is not null and l.quantity > 0 and l.expires_at > greatest(now(), ($4::date::timestamp at time zone (select timezone from organizations where id = $1)))`,   // начало дня мероприятия в поясе организации
   [orgId, siteId, productId, date])).rows[0].q);
 }
 

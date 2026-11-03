@@ -73,23 +73,23 @@ describe('Статусы пунктов: пустое не считается в
   });
 
   it('договор без файла — incomplete, истёкший — expired', async () => {
-    const c = (await sys(`insert into contracts (organization_id, kind, title, counterparty, number, signed_on, valid_from, valid_to, created_by) values ($1, 'pest_control', 'Договор', 'ООО «Дезинфектор»', '1', current_date - 10, current_date - 10, current_date + 100, $2) returning id`, [orgId, owner.id])).rows[0].id;
+    const c = (await sys(`insert into contracts (organization_id, kind, title, counterparty, number, signed_on, valid_from, valid_to, created_by) values ($1, 'pest_control', 'Договор', 'ООО «Дезинфектор»', '1', org_today($1) - 10, org_today($1) - 10, org_today($1) + 100, $2) returning id`, [orgId, owner.id])).rows[0].id;
     expect((await st('contract_pest')).status).toBe('incomplete');
     await sys(`insert into evidence_files (organization_id, entity_type, entity_id, filename, mime, size_bytes, sha256, content, uploaded_by) values ($1, 'contract', $2, 'd.pdf', 'application/pdf', 4, $3, '\\x25504446', $4)`, [orgId, c, `h${c}`, owner.id]);
     expect((await st('contract_pest')).status).toBe('ok');
   });
 
   it('лабораторная программа без протокола за прошедший период — incomplete; просроченная — overdue', async () => {
-    const p = (await sys(`insert into lab_programs (organization_id, site_id, test_type, target, period_days, next_due, basis, created_by, created_at) values ($1, $2, 'Смывы на БГКП', 'Руки персонала', 30, current_date + 5, 'ППК', $3, now() - interval '40 days') returning id`, [orgId, siteId, owner.id])).rows[0].id;
+    const p = (await sys(`insert into lab_programs (organization_id, site_id, test_type, target, period_days, next_due, basis, created_by, created_at) values ($1, $2, 'Смывы на БГКП', 'Руки персонала', 30, org_today($1) + 5, 'ППК', $3, now() - interval '40 days') returning id`, [orgId, siteId, owner.id])).rows[0].id;
     expect((await st('lab_program')).status).toBe('incomplete');
-    await sys(`update lab_programs set next_due = current_date - 1 where id = $1`, [p]);
+    await sys(`update lab_programs set next_due = org_today(organization_id) - 1 where id = $1`, [p]);
     expect((await st('lab_program')).status).toBe('overdue');
   });
 
   it('поверка: срок не указан — incomplete, истёк — expired', async () => {
     await sys(`insert into equipment (organization_id, site_id, name, kind, measuring, created_by) values ($1, $2, 'Термометр щуп', 'instrument', true, $3)`, [orgId, siteId, owner.id]);
     expect((await st('instruments')).status).toBe('incomplete');
-    await sys(`update equipment set calibration_due = current_date - 1 where organization_id = $1`, [orgId]);
+    await sys(`update equipment set calibration_due = org_today($1) - 1 where organization_id = $1`, [orgId]);
     expect((await st('instruments')).status).toBe('expired');
   });
 

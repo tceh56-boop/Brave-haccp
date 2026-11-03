@@ -72,8 +72,8 @@ export async function calcSto(tx: Tx, orgId: string, sto: Record<string, any>) {
   if (!p.packaging) warnings.push('Заполните раздел «Упаковка и маркировка».');
   if (!p.okpo) warnings.push('Для обозначения СТО укажите ОКПО предприятия.');
   const sanpin = (await tx.query(`select s.code, s.title from reg_sources s where s.organization_id = $1 and s.kind = 'СанПиН'
-      and exists (select 1 from reg_source_versions x where x.source_id = s.id and x.workflow_status = 'approved' and (x.effective_from is null or x.effective_from <= current_date)
-        and (x.effective_to is null or x.effective_to > current_date)) order by s.code`, [orgId])).rows;
+      and exists (select 1 from reg_source_versions x where x.source_id = s.id and x.workflow_status = 'approved' and (x.effective_from is null or x.effective_from <= org_today($1))
+        and (x.effective_to is null or x.effective_to > org_today($1))) order by s.code`, [orgId])).rows;
   if (!sanpin.length) warnings.push('В нормативном реестре нет действующих санитарных правил — стандарт не может на них сослаться.');
   const org = (await tx.query(`select name, legal_form, inn from organizations where id = $1`, [orgId])).rows[0];
   const year = new Date().getFullYear();

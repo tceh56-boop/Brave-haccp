@@ -3,7 +3,7 @@ import { FEATURES } from '../norms/library';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, openTask } from './common';
+import { inOrg, parse, optText, openTask, orgToday } from './common';
 
 /**
  * Нормативный реестр (ТЗ v2 §7–8). Принципы:
@@ -121,18 +121,18 @@ async function versionsWithState(tx: Tx, where: string, params: unknown[]) {
   const rows = (await tx.query(`select v.*, s.code, s.title, s.kind, s.binding, s.official_url, s.issuer, s.jurisdiction,
       cu.full_name as checked_by_name, au.full_name as approved_by_name, ou.full_name as owner_name,
       (select min(n.effective_from) from reg_source_versions n where n.supersedes_version_id = v.id and n.workflow_status = 'approved') as replaced_from,
-      (select count(*) from reg_requirements r where r.version_id = v.id)::int as requirements
+      (select count(*) from reg_requirements r where r.version_id = v.id)::int as requirements, org_today(v.organization_id)::text as org_today
     from reg_source_versions v join reg_sources s on s.id = v.source_id
     left join users cu on cu.id = v.checked_by left join users au on au.id = v.approved_by left join users ou on ou.id = v.owner_user_id
     where ${where} order by v.created_at`, params)).rows;
-  return rows.map((v) => { const st = versionState(v); return { ...v, state: st, state_label: STATE_LABEL[st] }; });
+  return rows.map((v) => { const st = versionState(v, v.org_today); return { ...v, state: st, state_label: STATE_LABEL[st] }; });
 }
 
 export async function listSources(userId: string, orgId: string) {
   return inOrg(userId, orgId, 'reg.read', async (tx) => {
     const sources = (await tx.query(`select * from reg_sources where organization_id = $1 order by kind, code`, [orgId])).rows;
     const versions = await versionsWithState(tx, 'v.organization_id = $1', [orgId]);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = await orgToday(tx, orgId);
     return sources.map((s) => {
       const vs = versions.filter((v) => v.source_id === s.id);
       const current = vs.find((v) => v.state === 'in_force') || vs.find((v) => v.state === 'upcoming') || vs[vs.length - 1] || null;
@@ -253,7 +253,7 @@ export async function markChecked(userId: string, orgId: string, versionId: stri
   return inOrg(userId, orgId, 'reg.verify', async (tx) => {
     const v = await editableVersion(tx, orgId, versionId);
     if (!['draft', 'needs_review'].includes(v.workflow_status)) throw Errors.conflict('Редакция уже проверена.');
-    if (d.nextCheckAt <= new Date().toISOString().slice(0, 10)) throw Errors.validation('Дата следующей проверки — в будущем.');
+    if (d.nextCheckAt <= await orgToday(tx, orgId)) throw Errors.validation('Дата следующей проверки — в будущем.');
     if (d.ownerUserId && !(await tx.query(`select 1 from memberships where organization_id = $1 and user_id = $2 and status = 'active'`, [orgId, d.ownerUserId])).rowCount)
       throw Errors.validation('Владелец актуализации — сотрудник этой организации.');
     const after = (await tx.query(`update reg_source_versions set workflow_status = 'checked', check_evidence = $2, last_checked_at = now(), checked_by = $3, next_check_at = $4,
@@ -396,7 +396,7 @@ export async function requirementRef(tx: Tx, orgId: string, requirementId: strin
     from reg_requirements r join reg_source_versions v on v.id = r.version_id join reg_sources s on s.id = v.source_id
     left join reg_applicability a on a.requirement_id = r.id where r.id = $1 and r.organization_id = $2`, [requirementId, orgId])).rows[0];
   if (!r) throw Errors.notFound('Требование не найдено.');
-  const st = versionState(r);
+  const st = versionState(r, await orgToday(tx, orgId));
   if (st !== 'in_force' && st !== 'upcoming') throw Errors.validation(`Требование из редакции в статусе «${STATE_LABEL[st]}» — сослаться можно только на действующую или вступающую в силу утверждённую редакцию.`);
   if (r.applicable !== true) throw Errors.validation('Применимость требования к предприятию не подтверждена специалистом.');
   return `${r.code}, ${r.clause} (ред. ${r.edition})`;

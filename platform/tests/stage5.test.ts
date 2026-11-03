@@ -26,7 +26,10 @@ const ALL_OK = { packaging: true, labeling: true, documents: true, quality: true
 const minutesAgo = (n: number) => new Date(Date.now() - n * 60e3).toISOString();
 const inDays = (n: number) => new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
 const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
-const P = () => ({ siteId, from: today, to: today });
+// запись «40 минут назад» после полуночи по Москве попадает во вчерашний день — период начинается с её дня
+const LATE40 = new Date(Date.now() - 40 * 60e3).toISOString();
+const dayOf = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+const P = () => ({ siteId, from: dayOf(LATE40) < today ? dayOf(LATE40) : today, to: today });
 
 beforeAll(async () => {
   owner = await makeUser({ name: 'Ольга Владелец' });
@@ -63,7 +66,7 @@ describe('Перечень форм J01–J53 и семейства', () => {
 describe('Одна операция → все формы (ТЗ v2 §0, §12)', () => {
   it('замер температуры появляется в J01, J25 и месячной сетке J42; ручной ввод в эти журналы запрещён', async () => {
     await recordMeasurement(cook.id, orgId, { controlObjectId: fridgeId, value: 4.2 });
-    await recordMeasurement(cook.id, orgId, { controlObjectId: fridgeId, value: '3,9', measuredAt: minutesAgo(40), comment: 'записано на бумаге' });
+    await recordMeasurement(cook.id, orgId, { controlObjectId: fridgeId, value: '3,9', measuredAt: LATE40, comment: 'записано на бумаге' });
     const j01 = await getJournal(cook.id, orgId, 'J01', P());
     const j25 = await getJournal(cook.id, orgId, 'J25', P());
     const j42 = await getJournal(cook.id, orgId, 'J42', P());
@@ -73,10 +76,10 @@ describe('Одна операция → все формы (ТЗ v2 §0, §12)', 
     expect(j01.rows[0].at(-1)).toMatch(/внесено позже/);
     expect(j01.rows[1][3]).toMatch(/2.*6/);
     expect(j42.grid).toBe(true);
-    const day = String(Number(today.slice(8)));
-    const col = j42.columns.indexOf(day);
     expect(j42.rows).toHaveLength(1);
-    expect(j42.rows[0][col]).toBe('3,9/4,2');
+    const cell = (iso: string) => j42.rows[0][j42.columns.indexOf(String(Number(iso.slice(8))))];
+    if (dayOf(LATE40) === today) expect(cell(today)).toBe('3,9/4,2');
+    else { expect(cell(dayOf(LATE40))).toBe('3,9'); expect(cell(today)).toBe('4,2'); }   // запуск сразу после полуночи
     await expect(addEntry(cook.id, orgId, 'J01', { siteId, values: { 0: 'a', 1: 'b' } })).rejects.toThrow(/автоматически/);
   });
 

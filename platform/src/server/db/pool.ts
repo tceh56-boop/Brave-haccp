@@ -1,4 +1,8 @@
-import { Pool, type PoolClient } from 'pg';
+import { Pool, types, type PoolClient } from 'pg';
+
+// date (OID 1082) приходит строкой «ГГГГ-ММ-ДД»: без превращения в Date в полночь часового пояса процесса,
+// иначе при поясе сервера восточнее UTC дата сдвигалась на день (этап 0 промта доработки).
+types.setTypeParser(1082, (v: string) => v);
 
 /**
  * Подключение к PostgreSQL.

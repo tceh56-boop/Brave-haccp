@@ -142,7 +142,7 @@ export async function getProblems(userId: string, orgId: string, siteId?: string
     // Нормативный реестр: утверждённая редакция с наступившей датой проверки актуальности (ТЗ v2 §7).
     if (roleHas(m.role, 'reg.read')) {
       const due = (await tx.query(`select v.id, v.edition, v.next_check_at, s.id as source_id, s.code, u.full_name as owner from reg_source_versions v join reg_sources s on s.id = v.source_id
-        left join users u on u.id = v.owner_user_id where v.organization_id = $1 and v.workflow_status = 'approved' and v.next_check_at <= current_date`, [orgId])).rows;
+        left join users u on u.id = v.owner_user_id where v.organization_id = $1 and v.workflow_status = 'approved' and v.next_check_at <= org_today($1)`, [orgId])).rows;
       for (const v of due) cards.push({ key: `reg:${v.id}`, priority: 7, tone: 'warn', title: `Пора проверить актуальность: ${v.code}`, what: `Редакция «${v.edition}» — плановая проверка по официальному источнику.`,
         where: 'Нормативный реестр', at: null, risk: 'Предупреждение', responsible: v.owner, due_at: v.next_check_at, source: null, action: 'Проверить редакцию', href: `/app/${orgId}/regulatory/${v.source_id}` });
     }
@@ -177,7 +177,7 @@ export async function getShift(userId: string, orgId: string, siteId: string) {
     const myTasks = Number((await tx.query(`select count(*) from tasks where organization_id = $1 and status = 'open' and (site_id is null or site_id = $2)
       and (assignee_user_id = $3 or assignee_role = $4)`, [orgId, siteId, userId, m.role])).rows[0].count);
     const openIncidents = Number((await tx.query(`select count(*) from incidents where organization_id = $1 and site_id = $2 and status <> 'closed'`, [orgId, siteId])).rows[0].count);
-    const production = Number((await tx.query(`select count(*) from production_orders where organization_id = $1 and site_id = $2 and status in ('planned', 'in_progress') and planned_for <= current_date`, [orgId, siteId])).rows[0].count);
+    const production = Number((await tx.query(`select count(*) from production_orders where organization_id = $1 and site_id = $2 and status in ('planned', 'in_progress') and planned_for <= org_today($1)`, [orgId, siteId])).rows[0].count);
     // Рабочий экран смены (ТЗ доработки, 10): состояние смены одним взглядом; каждый блок — только при праве на него.
     const tz = (await tx.query(`select timezone from organizations where id = $1`, [orgId])).rows[0].timezone as string;
     const one = async (sql: string, a: unknown[]) => (await tx.query(sql, a)).rows[0];

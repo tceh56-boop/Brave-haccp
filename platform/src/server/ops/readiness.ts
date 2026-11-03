@@ -73,7 +73,7 @@ export async function getReadiness(userId: string, orgId: string, siteIdInput?: 
     const plan = (await tx.query(`select version, approved_at from haccp_plans where organization_id = $1 and status = 'approved'`, [orgId])).rows[0];
     add({ key: 'haccp', group: 'Контроль и ХАССП', title: 'План ХАССП утверждён', status: plan ? 'pass' : 'fail',
       detail: plan ? `версия ${plan.version}` : 'Нет утверждённого плана ХАССП.', href: `${base}/haccp` });
-    const reg = (await tx.query(`select count(*) filter (where workflow_status = 'approved')::int as approved, count(*) filter (where workflow_status = 'approved' and next_check_at < current_date)::int as overdue,
+    const reg = (await tx.query(`select count(*) filter (where workflow_status = 'approved')::int as approved, count(*) filter (where workflow_status = 'approved' and next_check_at < org_today($1))::int as overdue,
         count(*) filter (where workflow_status in ('draft', 'needs_review', 'checked'))::int as pending from reg_source_versions where organization_id = $1`, [orgId])).rows[0];
     add({ key: 'regulatory', group: 'Контроль и ХАССП', title: 'Нормативный реестр: утверждённые редакции, проверки актуальности в срок',
       status: !reg.approved ? 'warn' : reg.overdue ? 'warn' : 'pass',
@@ -82,7 +82,7 @@ export async function getReadiness(userId: string, orgId: string, siteIdInput?: 
     const openInc = (await tx.query(`select count(*)::int as n from incidents where organization_id = $1 and status <> 'closed' and (site_id is null or site_id = any($2::uuid[]))`, [orgId, siteIds])).rows[0].n;
     add({ key: 'incidents', group: 'Контроль и ХАССП', title: 'Нет открытых критических отклонений', status: crit ? 'fail' : openInc ? 'warn' : 'pass',
       detail: `критических: ${crit}; всего открытых: ${openInc}`, href: `${base}/problems` });
-    const capa = (await tx.query(`select count(*)::int as n from capas where organization_id = $1 and status in ('open', 'in_progress') and due_at < current_date`, [orgId])).rows[0].n;
+    const capa = (await tx.query(`select count(*)::int as n from capas where organization_id = $1 and status in ('open', 'in_progress') and due_at < org_today($1)`, [orgId])).rows[0].n;
     add({ key: 'capa', group: 'Контроль и ХАССП', title: 'Нет просроченных CAPA', status: capa ? 'warn' : 'pass', detail: `просрочено: ${capa}`, href: `${base}/capa` });
     const signed = (await tx.query(`select count(*)::int as n from journal_signoffs where organization_id = $1 and signed_at > now() - interval '7 days'`, [orgId])).rows[0].n;
     add({ key: 'journals', group: 'Контроль и ХАССП', title: 'Журналы подписываются ответственным', status: signed ? 'pass' : 'warn',
