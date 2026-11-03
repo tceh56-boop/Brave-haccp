@@ -37,6 +37,7 @@ export default function LotPage({ params }: { params: Promise<{ lotId: string }>
     <>
       <p className="small"><Link href={`/app/${org.id}/lots`}>← Сроки</Link></p>
       <h1 style={{ marginBottom: 4 }}>{l.product}</h1>
+      {can('trace.read') && <p className="small" style={{ margin: '0 0 4px' }}><Link href={`/app/${org.id}/lots/${lotId}/passport`}>Паспорт продукта →</Link></p>}
       <p style={{ marginTop: 0 }}><span className={`badge ${tone}`}>{l.status !== 'available' ? l.status_label : l.expiry_label}</span></p>
       <div className="card">
         <dl className="kv">
