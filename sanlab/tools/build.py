@@ -5,7 +5,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'src'); DIST = os.path.join(ROOT, 'dist')
 CORE = [f for f in json.load(open(os.path.join(ROOT, 'tests', 'order.json'))) if f.startswith('core/')]
 GAS = ['gas/Code.gs', 'gas/SheetsStore.gs', 'gas/GoogleIntegrations.gs', 'gas/Setup.gs']
-UI = ['ui/Index.html', 'ui/Styles.html', 'ui/App.html', 'ui/PagesHome.html', 'ui/PagesVisits.html', 'ui/PagesWork.html', 'ui/PagesBiz.html']
+UI = ['ui/Index.html', 'ui/Styles.html', 'ui/App.html', 'ui/PagesHome.html', 'ui/PagesVisits.html', 'ui/PagesWork.html', 'ui/PagesBiz.html', 'ui/PagesDocs.html']
 read = lambda p: open(os.path.join(SRC, p), encoding='utf-8').read()
 
 shutil.rmtree(DIST, ignore_errors=True)

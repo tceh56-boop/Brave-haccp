@@ -1,0 +1,311 @@
+<script>
+/* ================= Нормативная база, программы ПК, технические условия ================= */
+var DOC_ST = { DRAFT: ['Черновик', 'warn'], APPROVED: ['Утверждена', 'ok'], ARCHIVED: ['Архив', 'mute'] };
+function docPill(st, fem) { var x = DOC_ST[st] || [st, '']; return pill(fem === false && st === 'APPROVED' ? 'Утверждены' : x[0], x[1]); }
+function unvPill(n) { n = Number(n) || 0; return n ? pill('не сверено: ' + n, 'warn') : pill('всё сверено', 'ok'); }
+function canDocs() { return ['OWNER', 'COORDINATOR'].indexOf(S.me.role) >= 0; }
+function canApproveDocs() { return ['OWNER', 'QC'].indexOf(S.me.role) >= 0; }
+var TU_TEXT_KEYS = { intro: 'Вводная часть', general: 'Технические требования', packaging: 'Упаковка', safety: 'Требования безопасности', environment: 'Охрана окружающей среды', acceptance: 'Правила приёмки', transport: 'Хранение и транспортирование', warranty: 'Гарантии изготовителя' };
+function verPill(v) { return String(v) === 'true' || v === true ? pill('сверено', 'ok') : pill('требует сверки', 'warn'); }
+
+/* ---------- Редактор разделов документа (общий для ППК и ТУ) ---------- */
+function docEditorHtml(content, editable) {
+  return (content.sections || []).map(function (s, si) {
+    var body;
+    if (s.type === 'text') {
+      body = (s.v === false ? '<div class="alert warn small">Положение не сверено с официальным текстом' + (s.ref ? ': ' + esc(s.ref) : '') + '</div>' : (s.ref ? '<div class="small muted">Основание: ' + esc(s.ref) + '</div>' : '')) +
+        (editable ? '<textarea class="inp" rows="' + Math.min(14, Math.max(3, String(s.text || '').split('\n').length + 1)) + '" data-doc-text>' + esc(s.text) + '</textarea>' : '<p style="white-space:pre-wrap;margin:0">' + esc(s.text) + '</p>');
+    } else {
+      var head = '<tr><th style="width:28px">№</th>' + s.cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '<th style="width:190px">Основание</th>' + (editable ? '<th></th>' : '') + '</tr>';
+      var rows = (s.rows || []).map(function (r, i) { return docRowHtml(s, r, i, editable); }).join('');
+      body = '<div class="tbl-wrap"><table class="tbl doc-tbl"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
+        (!(s.rows || []).length ? '<div class="empty small">Нет строк: для объекта или продукции подходящих положений в базе не найдено.</div>' : '') +
+        (editable ? '<div style="margin-top:8px"><button class="btn sm" data-a="docRowAdd" data-si="' + si + '">' + ic('plus') + 'Строка</button></div>' : '') +
+        (s.note ? '<p class="small muted" style="margin:8px 0 0">' + esc(s.note) + '</p>' : '');
+    }
+    return '<section class="card doc-sec" data-key="' + esc(s.key) + '" data-type="' + s.type + '"><header><h2>' + esc(s.title) + '</h2></header><div class="body">' + body + '</div></section>';
+  }).join('');
+}
+function docRowHtml(s, r, i, editable) {
+  var cells = s.cols.map(function (c, ci) {
+    var v = (r.c || [])[ci] || '';
+    return '<td>' + (editable ? '<textarea class="inp cell" rows="' + Math.min(6, Math.max(1, Math.ceil(String(v).length / 42))) + '" data-ci="' + ci + '">' + esc(v) + '</textarea>' : esc(v).replace(/\n/g, '<br>')) + '</td>';
+  }).join('');
+  var ref = r.manual ? '<span class="small muted">' + (r.src === 'input' ? 'данные организации' : 'добавлено вручную') + '</span>' : '<span class="small">' + esc(r.ref || '') + '</span><br>' + (r.v === false ? pill('не сверено', 'warn') : pill('сверено', 'ok'));
+  return '<tr data-i="' + (i === null ? '' : i) + '"' + (r.v === false ? ' class="unv"' : '') + '><td class="num">' + (i === null ? '+' : i + 1) + '</td>' + cells + '<td>' + ref + '</td>' + (editable ? '<td><button class="icon-btn sm" title="Удалить строку" data-a="docRowDel">' + ic('x') + '</button></td>' : '') + '</tr>';
+}
+function readDocEditor(root) {
+  return { sections: $$('.doc-sec', root).map(function (sec) {
+    var key = sec.getAttribute('data-key');
+    if (sec.getAttribute('data-type') === 'text') { var t = $('[data-doc-text]', sec); return t ? { key: key, text: t.value } : { key: key }; }
+    return { key: key, rows: $$('tbody tr', sec).map(function (tr) {
+      var i = tr.getAttribute('data-i');
+      return { i: i === '' ? null : Number(i), c: $$('[data-ci]', tr).map(function (x) { return x.value; }) };
+    }) };
+  }) };
+}
+A.docRowAdd = function (el) {
+  var s = S.data.content.sections[Number(el.getAttribute('data-si'))];
+  var tb = $('tbody', el.closest('.doc-sec'));
+  tb.insertAdjacentHTML('beforeend', docRowHtml(s, { c: s.cols.map(function () { return ''; }), manual: true, v: true }, null, true));
+  var t = $('tr:last-child textarea', tb); if (t) t.focus();
+  S.dirty.doc = 1;
+};
+A.docRowDel = function (el) { el.closest('tr').remove(); S.dirty.doc = 1; };
+/* Поля редактора растут по высоте текста */
+function growTa(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
+function autosizeDoc(root) { $$('.doc-sec textarea', root).forEach(growTa); }
+document.addEventListener('input', function (ev) { if (ev.target.closest && ev.target.closest('.doc-sec')) { S.dirty.doc = 1; if (ev.target.tagName === 'TEXTAREA') growTa(ev.target); } });
+
+/* Утверждение: обычное или с обоснованием (несверенные положения — только руководитель) */
+function approveDoc(kind, id, unverified, label) {
+  var action = kind === 'ppc' ? 'programs.approve' : 'specs.approve', key = kind === 'ppc' ? 'program_id' : 'spec_id';
+  var done = function () { toast(label + ' утверждена, PDF сохранён в «Документах»', 'ok'); render(true); };
+  if (!unverified) return confirmBox('Утвердить ' + label.toLowerCase() + '?', 'Будет сформирован PDF и сохранён в папке клиента и в «Документах». Утверждённую версию изменить нельзя — только через новую версию.', 'Утвердить', 'go')
+    .then(function () { var p = {}; p[key] = id; return call(action, p); }).then(done, showErr);
+  if (S.me.role !== 'OWNER') return modal({ title: 'Есть несверенные положения', body: '<div class="alert warn">В документе ' + unverified + ' положений не сверены с официальным текстом нормативов. Сверьте их в разделе «Нормативная база» и пересоберите документ. Утвердить документ с несверенными положениями может только руководитель.</div>', actions: [['Понятно', 'close', 'pri']] });
+  openForm({ title: 'Утвердить с несверенными положениями', okText: 'Утвердить', okTone: 'danger',
+    intro: '<div class="alert warn">В документе ' + unverified + ' положений не сверены с официальным текстом нормативов. В PDF они будут выделены, а обоснование будет напечатано на титульном листе и записано в журнал аудита.</div>',
+    fields: [{ name: 'reason', label: 'Обоснование', type: 'textarea', required: true, placeholder: 'Например: нормативы сверяются, документ нужен для согласования с заказчиком' }],
+    submit: function (v) { var p = { accept_unverified: true, reason: v.reason }; p[key] = id; return call(action, p); }, done: done });
+}
+function docWarnings(d, unv) {
+  var h = (d.warnings || []).map(function (w) { return '<div class="alert warn small">' + esc(w) + '</div>'; }).join('');
+  if (unv) h += '<div class="alert small">Строки с отметкой «не сверено» взяты из положений нормативной базы, которые ещё не сверены с официальным текстом. Сверьте их в «Нормативной базе» и нажмите «Пересобрать из базы» — отметки обновятся.</div>';
+  return h;
+}
+
+/* ---------- Нормативная база ---------- */
+Pages.norms = {
+  title: 'Нормативная база',
+  load: function () { return call('norms.list', {}); },
+  sub: function (d) { var n = d.docs.filter(function (x) { return String(x.verified) === 'true'; }).length; return 'Документов: ' + d.docs.length + ' · сверено: ' + n; },
+  view: function (d, p) {
+    var f = p.f || 'all';
+    var rows = d.docs.filter(function (x) { return f === 'all' || (f === 'unv' ? x.unverified_count > 0 : (',' + x.scopes + ',').indexOf(',' + f + ',') >= 0); });
+    var chips = '<div class="chips">' + [['all', 'Все'], ['PPC', 'Для ППК'], ['TU', 'Для ТУ'], ['unv', 'Требуют сверки']].map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-a="vf" data-k="f" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var tbl = rows.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Документ</th><th>Вид</th><th>Срок действия</th><th>Применяется</th><th class="r">Положений</th><th>Сверка</th></tr></thead><tbody>' + rows.map(function (x) {
+      var term = !x.in_force ? pill(d.statuses[x.status] === 'Действует' ? 'не действует' : d.statuses[x.status], 'bad') : x.valid_until ? (x.expiring ? pill('до ' + fD(x.valid_until), 'warn') : 'до ' + fD(x.valid_until)) : '<span class="muted">без срока</span>';
+      return '<tr class="click" ' + link('norm', { norm_id: x.norm_id }) + '><td><b>' + esc(x.code) + '</b><span class="t2">' + esc(x.title) + '</span></td><td class="small">' + esc(d.kinds[x.kind] || x.kind) + '</td><td>' + term + '</td><td class="small">' + csvList(x.scopes).map(function (s) { return s === 'PPC' ? 'ППК' : s === 'TU' ? 'ТУ' : s; }).join(', ') + '</td><td class="r num">' + x.items_count + '</td><td>' + (x.unverified_count ? pill('не сверено: ' + x.unverified_count, 'warn') : pill('сверено', 'ok')) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : emptyLine('Документов нет');
+    return '<div class="filters">' + chips + '<div class="grow"></div>' + (S.me.role === 'OWNER' ? '<button class="btn pri" data-a="normDoc">' + ic('plus') + 'Документ</button>' : '') + '</div>' +
+      '<div class="alert small">Программы ПК и ТУ собираются из положений этой базы. Положение «требует сверки» — внесено как проект: сверьте формулировку и номер пункта с официальным текстом и отметьте сверку. Документы с несверенными положениями утверждает только руководитель с обоснованием.</div>' +
+      '<section class="card">' + tbl + '</section>';
+  }
+};
+function normDocFields(d) {
+  return [{ name: 'code', label: 'Обозначение', required: true, placeholder: 'СанПиН 2.3/2.4.3590-20' }, { name: 'kind', label: 'Вид документа', type: 'select', required: true, options: dictOpts(d.kinds) },
+    { name: 'title', label: 'Наименование', required: true, full: true }, { name: 'status', label: 'Статус', type: 'select', options: dictOpts(d.statuses), value: 'ACTIVE' },
+    { name: 'valid_from', label: 'Действует с', type: 'date' }, { name: 'valid_until', label: 'Действует до', type: 'date', hint: 'Пусто — без ограничения срока. За ' + 90 + ' дней до окончания руководитель получит уведомление.' },
+    { name: 'scopes', label: 'Где применяется', type: 'checks', options: dictOpts(d.scopes), full: true },
+    { name: 'source_url', label: 'Источник официального текста', full: true, placeholder: 'Ссылка на pravo.gov.ru, eaeunion.org или реквизиты публикации' },
+    { name: 'notes', label: 'Примечание', type: 'textarea' }];
+}
+A.normDoc = function (el, ev, cur) {
+  var d = S.data.kinds ? S.data : null;
+  var meta = d ? Promise.resolve(d) : call('norms.list', {});
+  meta.then(function (m) {
+    openForm({ title: cur ? cur.code : 'Новый нормативный документ', wide: true, fields: normDocFields(m), values: cur || { status: 'ACTIVE' },
+      intro: cur ? '<div class="alert small">После сохранения отметка «сверено» снимается — подтвердите сверку заново.</div>' : '',
+      submit: function (v) { if (cur) { v.norm_id = cur.norm_id; v.row_version = cur.row_version; } return call('norms.saveDoc', v); },
+      done: function (r) { toast('Сохранено', 'ok'); if (cur) render(true); else go('norm', { norm_id: r.norm_id }); } });
+  }, showErr);
+};
+
+Pages.norm = {
+  menu: 'norms',
+  title: function (p, d) { return d ? d.doc.code : 'Нормативный документ'; },
+  sub: function (d) { return d.doc.norm_id + ' · ' + d.items.length + ' положений'; },
+  load: function (p) { return Promise.all([call('norms.get', { norm_id: p.norm_id }), call('norms.list', {})]).then(function (r) { var o = r[0]; o.kinds = r[1].kinds; o.statuses = r[1].statuses; o.scopes = r[1].scopes; return o; }); },
+  view: function (d) {
+    var doc = d.doc, own = S.me.role === 'OWNER', bySec = groupBy(d.items, 'section');
+    var flagName = function (a) { return csvList(a).map(function (x) { return x === 'all' ? 'все объекты' : (d.flags[x] || x); }).join(', '); };
+    var items = Object.keys(d.sections).filter(function (k) { return bySec[k]; }).map(function (k) {
+      return '<tr class="sec-row"><td colspan="6"><b>' + esc(d.sections[k]) + '</b></td></tr>' + bySec[k].map(function (i) {
+        var det = [i.indicator ? (i.section === 'TU_TEXT' ? 'Раздел ТУ: ' + esc(TU_TEXT_KEYS[i.indicator] || i.indicator) : 'Показатель: ' + esc(i.indicator)) : '', i.norm_value ? 'Норматив: <b>' + esc(i.norm_value) + '</b>' : '', i.frequency ? 'Периодичность: ' + esc(i.frequency) : '', i.volume ? esc(i.volume) : ''].filter(String).join(' · ');
+        return '<tr' + (String(i.active) === 'false' ? ' class="muted"' : '') + '><td class="mono small">' + esc(i.clause || '—') + '</td><td>' + esc(i.text) + (det ? '<span class="t2">' + det + '</span>' : '') + '</td><td class="small">' + esc(flagName(i.applies)) + '</td><td class="small">' + esc(i.product_group || '') + '</td><td>' + verPill(i.verified) + (String(i.active) === 'false' ? '<br>' + pill('отключено', 'mute') : '') + '</td><td>' + (own ? '<button class="btn sm" data-a="normItem" data-id="' + i.norm_item_id + '">Изменить</button>' : '') + '</td></tr>';
+      }).join('');
+    }).join('');
+    var tbl = d.items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:120px">Пункт</th><th>Положение</th><th>Объекты</th><th>Группа продукции</th><th>Сверка</th><th></th></tr></thead><tbody>' + items + '</tbody></table></div>' : emptyLine('Положений нет');
+    var kv = '<dl class="kv"><dt>Наименование</dt><dd>' + esc(doc.title) + '</dd><dt>Вид</dt><dd>' + esc(d.kinds[doc.kind] || doc.kind) + '</dd><dt>Статус</dt><dd>' + esc(d.statuses[doc.status] || doc.status) + '</dd><dt>Срок действия</dt><dd>' + (doc.valid_from ? 'с ' + fD(doc.valid_from) + ' ' : '') + (doc.valid_until ? 'до ' + fD(doc.valid_until) : 'без ограничения') + '</dd>' +
+      '<dt>Применяется</dt><dd>' + csvList(doc.scopes).map(function (s) { return d.scopes[s] || s; }).join('; ') + '</dd><dt>Сверка</dt><dd>' + verPill(doc.verified) + (doc.verified_at ? ' <span class="small muted">' + esc(empName(doc.verified_by)) + ', ' + fDT(doc.verified_at) + '</span>' : '') + '</dd><dt>Источник</dt><dd class="small" style="overflow-wrap:anywhere">' + esc(doc.source_url || '—') + '</dd>' + (doc.notes ? '<dt>Примечание</dt><dd class="small">' + esc(doc.notes) + '</dd>' : '') + '</dl>';
+    return '<div class="row"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' +
+      (own ? '<button class="btn" data-a="normDocEdit">Изменить</button><button class="btn" data-a="normItem">' + ic('plus') + 'Положение</button>' : '') +
+      (canApproveDocs() ? '<button class="btn go" data-a="normVerify">Сверено с первоисточником</button>' : '') + '</div>' +
+      '<div class="stack" style="gap:16px">' + card('Реквизиты', kv) + card('Положения', tbl) + '</div>';
+  }
+};
+A.normDocEdit = function () { var d = S.data; A.normDoc(null, null, (function () { var c = JSON.parse(JSON.stringify(d.doc)); c.row_version = d.doc.row_version; return c; })()); };
+A.normItem = function (el) {
+  var d = S.data, id = el.getAttribute('data-id'), cur = id ? d.items.filter(function (i) { return i.norm_item_id === id; })[0] : null;
+  var flags = [['all', 'Все объекты']].concat(dictOpts(d.flags));
+  openForm({ title: cur ? 'Положение ' + (cur.clause || '') : 'Новое положение', wide: true,
+    intro: cur ? '<div class="alert small">После сохранения положение получит отметку «требует сверки».</div>' : '',
+    fields: [{ name: 'section', label: 'Вид положения (куда попадает)', type: 'select', required: true, options: dictOpts(d.sections), full: true }, { name: 'clause', label: 'Пункт документа', placeholder: 'п. 2.1, Приложение № 1, п. 5а' },
+      { name: 'product_group', label: 'Группа продукции (для ТУ)', hint: 'Пусто — любая продукция. «~слово» — все группы, в названии которых есть слово.' },
+      { name: 'text', label: 'Текст положения / объект контроля / процесс', type: 'textarea', required: true, rows: 4 },
+      { name: 'indicator', label: 'Показатель / опасный фактор / ответственный', hint: 'Для вида «ТУ: текст раздела» — ключ раздела: ' + Object.keys(TU_TEXT_KEYS).map(function (k) { return k + ' (' + TU_TEXT_KEYS[k] + ')'; }).join(', ') + '. В тексте можно использовать {product}, {designation}, {shelf_life}, {storage}.' }, { name: 'norm_value', label: 'Норматив / критический предел / действия' },
+      { name: 'frequency', label: 'Периодичность' }, { name: 'volume', label: 'Объём / примечание' },
+      { name: 'applies', label: 'Для каких объектов (ППК)', type: 'checks', options: flags, full: true }, { name: 'active', label: 'Положение действует', type: 'checkbox', value: true }],
+    values: cur || { applies: 'all', active: true },
+    submit: function (v) { v.norm_id = d.doc.norm_id; if (cur) { v.norm_item_id = cur.norm_item_id; v.row_version = cur.row_version; } return call('norms.saveItem', v); },
+    done: function () { toast('Положение сохранено', 'ok'); render(true); } });
+};
+A.normVerify = function () {
+  var d = S.data, n = d.items.filter(function (i) { return String(i.verified) !== 'true'; }).length;
+  openForm({ title: 'Сверка: ' + d.doc.code, okText: 'Подтвердить сверку', okTone: 'go',
+    intro: '<div class="alert small">Подтвердите, что обозначение, наименование, сроки действия и все положения документа (несверенных: ' + n + ') проверены по официальному тексту. Сверка записывается в журнал аудита с вашим именем.</div>',
+    fields: [{ name: 'source_url', label: 'Источник официального текста', required: true, full: true, value: d.doc.source_url || '', placeholder: 'https://pravo.gov.ru/... или реквизиты публикации' }],
+    submit: function (v) { return call('norms.verify', { norm_id: d.doc.norm_id, source_url: v.source_url }); }, done: function () { toast('Сверка подтверждена', 'ok'); render(true); } });
+};
+
+/* ---------- Программы производственного контроля ---------- */
+function ppcProfileFields(m) {
+  return [{ name: 'object_type', label: 'Тип объекта', type: 'select', required: true, options: dictOpts(m.object_types) }, { name: 'seats', label: 'Посадочных мест', type: 'number' },
+    { name: 'staff_count', label: 'Работников', type: 'number' }, { name: 'work_mode', label: 'Режим работы', placeholder: 'ежедневно 10:00–22:00' },
+    { name: 'flags', label: 'Особенности объекта — определяют лабораторный контроль, ККТ и журналы', type: 'checks', options: dictOpts(m.flags), full: true },
+    { name: 'water_source', label: 'Водоснабжение', placeholder: 'централизованное' }, { name: 'lab_name', label: 'Аккредитованная лаборатория' },
+    { name: 'head_name', label: 'Руководитель (утверждает программу)' }, { name: 'head_position', label: 'Должность руководителя', value: 'Директор' },
+    { name: 'responsible', label: 'Ответственные за производственный контроль', type: 'textarea', rows: 3, placeholder: 'ФИО; должность; функции — по одному на строку' },
+    { name: 'positions', label: 'Должности работников (медосмотры, гигобучение)', type: 'textarea', rows: 2, placeholder: 'повар, кухонный рабочий, мойщик посуды, официант…' },
+    { name: 'assortment', label: 'Ассортимент и виды деятельности', type: 'textarea', rows: 2 },
+    { name: 'pest_control', label: 'Дезинсекция и дератизация (организация, договор)' }, { name: 'waste', label: 'Вывоз отходов (организация)' },
+    { name: 'extra', label: 'Дополнительные положения', type: 'textarea', rows: 2 }];
+}
+Pages.ppc = {
+  title: 'Программы производственного контроля',
+  load: function (p) { return call('programs.list', { all: p.all === '1' }); },
+  sub: function (d) { return 'Программ: ' + d.rows.length; },
+  view: function (d, p) {
+    var tbl = d.rows.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Объект</th><th>Версия</th><th>Статус</th><th>Сверка</th><th>Пересмотр до</th><th>Изменено</th></tr></thead><tbody>' + d.rows.map(function (x) {
+      var due = x.review_due_date && x.status === 'APPROVED' ? (new Date(x.review_due_date) < new Date(Date.now() + 30 * 864e5) ? pill(fD(x.review_due_date), 'warn') : fD(x.review_due_date)) : '—';
+      return '<tr class="click" ' + link('ppcdoc', { program_id: x.program_id }) + '><td><b>' + esc(x.site_name) + '</b><span class="t2">' + esc(x.client_name) + ' · <span class="mono">' + x.program_id + '</span></span></td><td>v' + x.version + '</td><td>' + docPill(x.status) + '</td><td>' + unvPill(x.unverified_count) + '</td><td>' + due + '</td><td class="num small">' + fDT(x.updated_at) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : emptyLine('Программ пока нет. Нажмите «Программа», выберите объект и заполните его особенности — система соберёт программу из нормативной базы.');
+    return '<div class="filters"><div class="chips"><button class="' + (p.all !== '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="0">Действующие и черновики</button><button class="' + (p.all === '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="1">Включая архив</button></div><div class="grow"></div>' +
+      (canDocs() ? '<button class="btn pri" data-a="ppcNew">' + ic('plus') + 'Программа</button>' : '') + '</div><section class="card">' + tbl + '</section>';
+  }
+};
+A.ppcNew = function () {
+  var m = S.data;
+  var sites = (S.lk.sites || []).filter(function (s) { return s.active !== false; }).map(function (s) { var c = (S.lk.clients || []).filter(function (x) { return x.id === s.client_id; })[0]; return [s.id, (c ? c.name + ' — ' : '') + s.name]; });
+  openForm({ title: 'Новая программа производственного контроля', wide: true, okText: 'Собрать программу',
+    intro: '<div class="alert small">Система подберёт из нормативной базы требования, лабораторный контроль, критические точки, журналы и мероприятия под особенности объекта. Затем программу можно отредактировать и утвердить.</div>',
+    fields: [{ name: 'site_id', label: 'Объект', type: 'select', required: true, options: sites, full: true }].concat(ppcProfileFields(m)), values: { object_type: 'CAFE', head_position: 'Директор' },
+    submit: function (v) { var site = v.site_id; delete v.site_id; return call('programs.build', { site_id: site, profile: v }); },
+    onError: function (e, api) { if (e.code === 'DUPLICATE' && e.details && e.details.program_id) { toast(e.message, 'bad'); api.close(); go('ppcdoc', { program_id: e.details.program_id }); return true; } },
+    done: function (r) { toast('Программа собрана: ' + r.program.program_id, 'ok'); go('ppcdoc', { program_id: r.program.program_id }); } });
+};
+
+Pages.ppcdoc = {
+  menu: 'ppc',
+  title: function (p, d) { return d ? 'ППК: ' + d.program.site_name : 'Программа ПК'; },
+  sub: function (d) { return d.program.program_id + ' · версия ' + d.program.version + ' · ' + d.program.client_name; },
+  load: function (p) { S.dirty = {}; return call('programs.get', { program_id: p.program_id }); },
+  view: function (d) {
+    var x = d.program, draft = x.status === 'DRAFT', ed = draft && canDocs(), unv = Number(x.unverified_count) || 0;
+    var acts = '<button class="btn" data-a="ppcPrint">Предпросмотр и печать</button>' +
+      (ed ? '<button class="btn" data-a="ppcProfile">Данные объекта</button><button class="btn" data-a="ppcRebuild">' + ic('refresh') + 'Пересобрать из базы</button><button class="btn pri" data-a="ppcSave">Сохранить правки</button>' : '') +
+      (draft && canApproveDocs() ? '<button class="btn go" data-a="ppcApprove">Утвердить</button>' : '') +
+      (!draft && canDocs() ? '<button class="btn" data-a="ppcNewVersion">Новая версия</button>' : '') +
+      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '');
+    var info = '<dl class="kv"><dt>Статус</dt><dd>' + docPill(x.status) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.review_due_date ? '<dt>Пересмотр до</dt><dd>' + fD(x.review_due_date) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '<dt>Собрано</dt><dd class="small">' + fDT(d.content.built_at) + '</dd></dl>';
+    var hist = d.history.length > 1 ? '<div class="list">' + d.history.map(function (h) { return '<div class="li click" ' + link('ppcdoc', { program_id: h.program_id }) + '><div class="txt"><b>v' + h.version + '</b> ' + docPill(h.status) + '<div class="t2 mono">' + h.program_id + '</div></div></div>'; }).join('') + '</div>' : emptyLine('Других версий нет');
+    return '<div class="row wrap"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + acts + '</div>' + docWarnings(d, unv) +
+      '<div class="doc-meta">' + card('Программа', info) + card('Версии', hist) + '</div><div class="stack" style="gap:16px">' + docEditorHtml(d.content, ed) + '</div>';
+  },
+  after: function (d, p, c) { autosizeDoc(c); }
+};
+A.ppcPrint = function () { call('programs.html', { program_id: S.data.program.program_id }).then(function (r) { printHtml(r.html); }, showErr); };
+A.ppcSave = function (el) {
+  el.classList.add('busy');
+  call('programs.save', { program_id: S.data.program.program_id, row_version: S.data.row_version, content: readDocEditor($('#content')) }).then(function () { S.dirty = {}; toast('Правки сохранены', 'ok'); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); });
+};
+A.ppcRebuild = function () {
+  var go2 = function () { call('programs.build', { program_id: S.data.program.program_id }).then(function () { S.dirty = {}; toast('Программа пересобрана по текущей нормативной базе', 'ok'); render(true); }, showErr); };
+  confirmBox('Пересобрать из нормативной базы?', 'Разделы будут собраны заново по актуальной базе и особенностям объекта. Ручные правки таблиц и текстов будут потеряны.', 'Пересобрать').then(go2);
+};
+A.ppcProfile = function () {
+  var d = S.data;
+  openForm({ title: 'Данные объекта', wide: true, okText: 'Сохранить и пересобрать', intro: '<div class="alert small">После сохранения программа будет собрана заново; ручные правки разделов будут потеряны.</div>',
+    fields: ppcProfileFields(d), values: d.profile,
+    submit: function (v) { return call('programs.build', { program_id: d.program.program_id, profile: v }); }, done: function () { S.dirty = {}; toast('Программа пересобрана', 'ok'); render(true); } });
+};
+A.ppcApprove = function () {
+  if (Object.keys(S.dirty).length) return toast('Сначала сохраните правки', 'bad');
+  approveDoc('ppc', S.data.program.program_id, Number(S.data.program.unverified_count) || 0, 'Программа');
+};
+A.ppcNewVersion = function () { call('programs.newVersion', { program_id: S.data.program.program_id }).then(function (r) { toast('Создан черновик v' + r.program.version, 'ok'); go('ppcdoc', { program_id: r.program.program_id }); }, function (e) { if (e.details && e.details.program_id) return go('ppcdoc', { program_id: e.details.program_id }); showErr(e); }); };
+
+/* ---------- Технические условия ---------- */
+function tuProfileFields(groups, okpo) {
+  return [{ name: 'product_name', label: 'Наименование продукции', required: true, full: true, placeholder: 'Котлеты «Домашние» из говядины и свинины' },
+    { name: 'product_group', label: 'Группа продукции (определяет показатели безопасности и маркировку)', type: 'select', required: true, full: true, options: groups.map(function (g) { return [g, g]; }).concat([['__other', 'Другая группа — ввести ниже']]) },
+    { name: 'product_group_other', label: 'Другая группа продукции', full: true, hint: 'Для групп, которых нет в базе (например, роллы и суши), микробиологические нормативы внесите в «Нормативной базе».' },
+    { name: 'okpd2', label: 'Код ОКПД2', placeholder: '10.13.14', hint: 'Первые три группы цифр войдут в обозначение ТУ' }, { name: 'okpo', label: 'Код ОКПО разработчика', value: okpo || '', placeholder: '8 цифр' },
+    { name: 'purpose', label: 'Назначение / область применения', full: true },
+    { name: 'composition', label: 'Рецептура', type: 'textarea', rows: 4, placeholder: 'Сырьё; масса нетто, г — по одному на строку' },
+    { name: 'organoleptic', label: 'Органолептические показатели', type: 'textarea', rows: 3, placeholder: 'Показатель; характеристика — по одному на строку' },
+    { name: 'physchem', label: 'Физико-химические показатели', type: 'textarea', rows: 3, placeholder: 'Показатель; норма — по одному на строку' },
+    { name: 'shelf_life', label: 'Срок годности' }, { name: 'storage', label: 'Условия хранения' },
+    { name: 'packaging', label: 'Упаковка' }, { name: 'net_mass', label: 'Масса нетто' }, { name: 'transport', label: 'Транспортирование', full: true },
+    { name: 'head_name', label: 'Руководитель (утверждает ТУ)' }, { name: 'head_position', label: 'Должность руководителя', value: 'Директор' }];
+}
+function tuReadGroup(v) { if (v.product_group === '__other') v.product_group = v.product_group_other; delete v.product_group_other; if (!v.product_group) throw { message: 'Укажите группу продукции' }; return v; }
+Pages.tu = {
+  title: 'Технические условия',
+  load: function (p) { return call('specs.list', { all: p.all === '1' }); },
+  sub: function (d) { return 'ТУ: ' + d.rows.length; },
+  view: function (d, p) {
+    var tbl = d.rows.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Продукция</th><th>Обозначение</th><th>Версия</th><th>Статус</th><th>Сверка</th><th>Изменено</th></tr></thead><tbody>' + d.rows.map(function (x) {
+      return '<tr class="click" ' + link('tudoc', { spec_id: x.spec_id }) + '><td><b>' + esc(x.product_name) + '</b><span class="t2">' + esc(x.client_name) + ' · ' + esc(x.product_group) + '</span></td><td class="mono small">' + esc(x.designation) + '</td><td>v' + x.version + '</td><td>' + docPill(x.status, false) + '</td><td>' + unvPill(x.unverified_count) + '</td><td class="num small">' + fDT(x.updated_at) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : emptyLine('ТУ пока нет. Нажмите «ТУ», выберите клиента и группу продукции — система соберёт ТУ по ГОСТ 2.114 с показателями из нормативной базы.');
+    return '<div class="filters"><div class="chips"><button class="' + (p.all !== '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="0">Действующие и черновики</button><button class="' + (p.all === '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="1">Включая архив</button></div><div class="grow"></div>' +
+      (canDocs() ? '<button class="btn pri" data-a="tuNew">' + ic('plus') + 'ТУ</button>' : '') + '</div><section class="card">' + tbl + '</section>';
+  }
+};
+A.tuNew = function () {
+  var d = S.data;
+  openForm({ title: 'Новые технические условия', wide: true, okText: 'Собрать ТУ',
+    intro: '<div class="alert small">Разделы ТУ — по ГОСТ 2.114-2016 (п. 5.1.1). Микробиологические показатели, маркировка и методы контроля подставляются из нормативной базы по группе продукции. Обозначение: ТУ ОКПД2-номер-ОКПО-год.</div>',
+    fields: [{ name: 'client_id', label: 'Клиент (изготовитель)', type: 'select', required: true, full: true, options: (S.lk.clients || []).map(function (c) { return [c.id, c.name]; }) }].concat(tuProfileFields(d.groups, d.okpo)), values: { head_position: 'Директор', okpo: d.okpo },
+    submit: function (v) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } var cl = v.client_id; delete v.client_id; return call('specs.build', { client_id: cl, profile: v }); },
+    done: function (r) { toast('ТУ собраны: ' + r.spec.designation, 'ok'); go('tudoc', { spec_id: r.spec.spec_id }); } });
+};
+Pages.tudoc = {
+  menu: 'tu',
+  title: function (p, d) { return d ? d.spec.product_name : 'Технические условия'; },
+  sub: function (d) { return d.spec.designation + ' · версия ' + d.spec.version + ' · ' + d.spec.client_name; },
+  load: function (p) { S.dirty = {}; return call('specs.get', { spec_id: p.spec_id }); },
+  view: function (d) {
+    var x = d.spec, draft = x.status === 'DRAFT', ed = draft && canDocs(), unv = Number(x.unverified_count) || 0;
+    var acts = '<button class="btn" data-a="tuPrint">Предпросмотр и печать</button>' +
+      (ed ? '<button class="btn" data-a="tuProfile">Данные продукции</button><button class="btn" data-a="tuRebuild">' + ic('refresh') + 'Пересобрать из базы</button><button class="btn pri" data-a="tuSave">Сохранить правки</button>' : '') +
+      (draft && canApproveDocs() ? '<button class="btn go" data-a="tuApprove">Утвердить</button>' : '') +
+      (!draft && canDocs() ? '<button class="btn" data-a="tuNewVersion">Изменение ТУ</button>' : '') +
+      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '');
+    var info = '<dl class="kv"><dt>Обозначение</dt><dd class="mono">' + esc(x.designation) + '</dd><dt>Группа</dt><dd class="small">' + esc(x.product_group) + '</dd><dt>Статус</dt><dd>' + docPill(x.status, false) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '</dl>';
+    var hist = d.history.length > 1 ? '<div class="list">' + d.history.map(function (h) { return '<div class="li click" ' + link('tudoc', { spec_id: h.spec_id }) + '><div class="txt"><b>v' + h.version + '</b> ' + docPill(h.status, false) + '<div class="t2 mono">' + h.spec_id + '</div></div></div>'; }).join('') + '</div>' : emptyLine('Изменений нет');
+    return '<div class="row wrap"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + acts + '</div>' + docWarnings(d, unv) +
+      '<div class="doc-meta">' + card('Технические условия', info) + card('Версии', hist) + '</div><div class="stack" style="gap:16px">' + docEditorHtml(d.content, ed) + '</div>';
+  },
+  after: function (d, p, c) { autosizeDoc(c); }
+};
+A.tuPrint = function () { call('specs.html', { spec_id: S.data.spec.spec_id }).then(function (r) { printHtml(r.html); }, showErr); };
+A.tuSave = function (el) {
+  el.classList.add('busy');
+  call('specs.save', { spec_id: S.data.spec.spec_id, row_version: S.data.row_version, content: readDocEditor($('#content')) }).then(function () { S.dirty = {}; toast('Правки сохранены', 'ok'); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); });
+};
+A.tuRebuild = function () { confirmBox('Пересобрать из нормативной базы?', 'Разделы будут собраны заново по актуальной базе и данным продукции. Ручные правки будут потеряны.', 'Пересобрать').then(function () { call('specs.build', { spec_id: S.data.spec.spec_id }).then(function () { S.dirty = {}; toast('ТУ пересобраны', 'ok'); render(true); }, showErr); }); };
+A.tuProfile = function () {
+  var d = S.data, vals = JSON.parse(JSON.stringify(d.profile));
+  if (vals.product_group && d.groups.indexOf(vals.product_group) < 0) { vals.product_group_other = vals.product_group; vals.product_group = '__other'; }
+  openForm({ title: 'Данные продукции', wide: true, okText: 'Сохранить и пересобрать', intro: '<div class="alert small">Обозначение ТУ не меняется. После сохранения ТУ будут собраны заново; ручные правки будут потеряны.</div>',
+    fields: tuProfileFields(d.groups, ''), values: vals,
+    submit: function (v) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } return call('specs.build', { spec_id: d.spec.spec_id, profile: v }); }, done: function () { S.dirty = {}; toast('ТУ пересобраны', 'ok'); render(true); } });
+};
+A.tuApprove = function () {
+  if (Object.keys(S.dirty).length) return toast('Сначала сохраните правки', 'bad');
+  approveDoc('tu', S.data.spec.spec_id, Number(S.data.spec.unverified_count) || 0, 'ТУ');
+};
+A.tuNewVersion = function () { call('specs.newVersion', { spec_id: S.data.spec.spec_id }).then(function (r) { toast('Создан черновик изменения (v' + r.spec.version + ')', 'ok'); go('tudoc', { spec_id: r.spec.spec_id }); }, function (e) { if (e.details && e.details.spec_id) return go('tudoc', { spec_id: e.details.spec_id }); showErr(e); }); };
+</script>

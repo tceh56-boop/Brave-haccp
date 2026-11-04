@@ -13,7 +13,7 @@ var ID_PREFIX = {
   Services: 'SRV', Visits: 'VIS', Checklists: 'CHK', ChecklistItems: 'CI',
   VisitResults: 'RES', Reports: 'REP', LabSamples: 'LAB', Tasks: 'TSK',
   Documents: 'DOC', Finance: 'FIN', AuditLog: 'LOG', Notifications: 'NTF',
-  SystemErrors: 'ERR'
+  SystemErrors: 'ERR', NormDocs: 'NRM', NormItems: 'NRI', Programs: 'PPC', TechSpecs: 'TUS'
 };
 
 var AUDIT_COLS = ['created_at', 'created_by', 'updated_at', 'updated_by', 'record_status', 'row_version'];
@@ -42,7 +42,13 @@ var SCHEMA = {
   Settings: ['setting_key', 'value', 'description', 'updated_by', 'updated_at'],
   Notifications: ['notification_id', 'recipient_id', 'recipient_email', 'type', 'entity_type', 'entity_id', 'title', 'message', 'dedupe_key', 'scheduled_at', 'status', 'attempts', 'last_error', 'sent_at', 'read_at', 'created_at'],
   SystemErrors: ['error_id', 'timestamp', 'function_name', 'request_id', 'error_code', 'safe_message', 'details', 'entity_id', 'resolved_status', 'resolved_by', 'resolved_at'],
-  Requests: ['request_id', 'action', 'actor_email', 'response_json', 'created_at']
+  Requests: ['request_id', 'action', 'actor_email', 'response_json', 'created_at'],
+  /* Нормативная база: документы и их положения. verified — сверено с официальным текстом */
+  NormDocs: ['norm_id', 'code', 'title', 'kind', 'valid_from', 'valid_until', 'status', 'scopes', 'verified', 'verified_by', 'verified_at', 'source_url', 'notes'].concat(AUDIT_COLS),
+  NormItems: ['norm_item_id', 'norm_id', 'section', 'clause', 'text', 'applies', 'product_group', 'indicator', 'norm_value', 'frequency', 'volume', 'sort_order', 'active', 'verified'].concat(AUDIT_COLS),
+  /* Программы производственного контроля и технические условия: содержимое — JSON разделов */
+  Programs: ['program_id', 'client_id', 'site_id', 'title', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'review_due_date', 'prev_program_id'].concat(AUDIT_COLS),
+  TechSpecs: ['spec_id', 'client_id', 'designation', 'product_name', 'product_group', 'okpd2', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'prev_spec_id'].concat(AUDIT_COLS)
 };
 
 /* Подписи листов для интерфейса */
@@ -51,7 +57,8 @@ var TABLE_LABELS = {
   Services: 'Услуги', Visits: 'Выезды', Checklists: 'Чек-листы', ChecklistItems: 'Пункты чек-листов',
   VisitResults: 'Результаты осмотра', Reports: 'Отчёты', LabSamples: 'Пробы', Tasks: 'Задачи',
   Documents: 'Документы', Finance: 'Финансы', AuditLog: 'Журнал аудита', Settings: 'Настройки',
-  Notifications: 'Уведомления', SystemErrors: 'Ошибки', Requests: 'Запросы'
+  Notifications: 'Уведомления', SystemErrors: 'Ошибки', Requests: 'Запросы',
+  NormDocs: 'Нормативные документы', NormItems: 'Положения нормативов', Programs: 'Программы ПК', TechSpecs: 'Технические условия'
 };
 
 function isDateColumn(col) {
@@ -150,26 +157,47 @@ var PERMS = {
   'jobs.run': ['OWNER'],
   'analytics.get': ['OWNER', 'COORDINATOR'],
   'tasks.close': ['*'],
-  'reports.html': ['OWNER', 'QC', 'COORDINATOR', 'SPECIALIST']
+  'reports.html': ['OWNER', 'QC', 'COORDINATOR', 'SPECIALIST'],
+
+  'norms.list': ['OWNER', 'COORDINATOR', 'QC', 'LAB'],
+  'norms.get': ['OWNER', 'COORDINATOR', 'QC', 'LAB'],
+  'norms.saveDoc': ['OWNER'],
+  'norms.saveItem': ['OWNER'],
+  'norms.verify': ['OWNER', 'QC'],
+  'programs.list': ['OWNER', 'COORDINATOR', 'QC'],
+  'programs.get': ['OWNER', 'COORDINATOR', 'QC'],
+  'programs.html': ['OWNER', 'COORDINATOR', 'QC'],
+  'programs.build': ['OWNER', 'COORDINATOR'],
+  'programs.save': ['OWNER', 'COORDINATOR'],
+  'programs.approve': ['OWNER', 'QC'],
+  'programs.newVersion': ['OWNER', 'COORDINATOR'],
+  'specs.list': ['OWNER', 'COORDINATOR', 'QC'],
+  'specs.get': ['OWNER', 'COORDINATOR', 'QC'],
+  'specs.html': ['OWNER', 'COORDINATOR', 'QC'],
+  'specs.build': ['OWNER', 'COORDINATOR'],
+  'specs.save': ['OWNER', 'COORDINATOR'],
+  'specs.approve': ['OWNER', 'QC'],
+  'specs.newVersion': ['OWNER', 'COORDINATOR']
 };
 
 /* Дополнительные права сотрудника (колонка extra_perms, через запятую) */
 var EXTRA_PERMS = {
   finance: ['finance.list', 'finance.summary'],
   finance_edit: ['finance.list', 'finance.summary', 'finance.accrue', 'finance.invoice', 'finance.payment', 'finance.expense', 'finance.adjust'],
-  settings: ['settings.get', 'settings.save', 'checklists.saveVersion', 'services.save'],
+  settings: ['settings.get', 'settings.save', 'checklists.saveVersion', 'services.save', 'norms.saveDoc', 'norms.saveItem', 'norms.verify'],
+  docs: ['norms.list', 'norms.get', 'programs.list', 'programs.get', 'programs.html', 'programs.build', 'programs.save', 'programs.newVersion', 'specs.list', 'specs.get', 'specs.html', 'specs.build', 'specs.save', 'specs.newVersion'],
   approve_reports: ['reports.approve', 'reports.return', 'reports.queue', 'results.waivePhoto'],
   lab: ['lab.list', 'lab.register', 'lab.advance', 'lab.review']
 };
 
 /* Меню по ролям (карта окон, раздел 2 инструкции) */
 var ROLE_MENU = {
-  OWNER: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'finance', 'documents', 'analytics', 'staff', 'settings', 'audit'],
-  COORDINATOR: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'documents', 'analytics', 'audit'],
+  OWNER: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'finance', 'ppc', 'tu', 'norms', 'documents', 'analytics', 'staff', 'settings', 'audit'],
+  COORDINATOR: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'ppc', 'tu', 'norms', 'documents', 'analytics', 'audit'],
   SPECIALIST: ['home', 'myvisits', 'tasks', 'lab', 'documents'],
-  QC: ['home', 'review', 'visits', 'tasks', 'lab', 'documents', 'audit'],
+  QC: ['home', 'review', 'visits', 'tasks', 'lab', 'ppc', 'tu', 'norms', 'documents', 'audit'],
   FINANCE: ['home', 'finance', 'clients', 'tasks', 'documents', 'audit'],
-  LAB: ['home', 'lab', 'visits', 'tasks', 'documents', 'audit']
+  LAB: ['home', 'lab', 'visits', 'tasks', 'norms', 'documents', 'audit']
 };
 
 /* ---------- Статусы (Приложение A ТЗ) ---------- */
@@ -224,8 +252,26 @@ var PRIORITY = { LOW: 'Низкий', NORMAL: 'Обычный', HIGH: 'Высо�
 var TASK_SOURCES = { CHECKLIST: 'Замечание чек-листа', LAB: 'Лабораторный результат', REPORT_RETURN: 'Возврат отчёта', REPORT_REVIEW: 'Проверка отчёта', DOCUMENT: 'Срок документа', CLIENT: 'Запрос клиента', INTERNAL: 'Внутреннее поручение' };
 var FIN_TYPES = { ACCRUAL: 'Начисление', INVOICE: 'Счёт', PAYMENT: 'Поступление', EXPENSE: 'Расход', ADJUSTMENT: 'Корректировка' };
 var EXPENSE_CATEGORIES = ['Лаборатория', 'Транспорт', 'Расходные материалы', 'Зарплата', 'Аренда', 'Связь и ПО', 'Прочее'];
-var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', OTHER: 'Прочее' };
+var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', PPC: 'Программа производственного контроля', TU: 'Технические условия', OTHER: 'Прочее' };
 var SAMPLE_TYPES = ['Смыв', 'Вода', 'Продукты', 'Воздух', 'Готовые блюда'];
+
+/* ---------- Нормативная база, ППК, ТУ ---------- */
+var NORM_KINDS = { FZ: 'Федеральный закон', TR: 'Технический регламент ЕАЭС', SANPIN: 'СанПиН', SP: 'Санитарные правила (СП)', GOST: 'ГОСТ / ГОСТ Р', MU: 'МУ / МУК', ORDER: 'Приказ', OTHER: 'Прочее' };
+var NORM_STATUS = { ACTIVE: 'Действует', PLANNED: 'Вступает в силу', EXPIRED: 'Утратил силу', DRAFT: 'Проект' };
+var NORM_SCOPES = { PPC: 'Программа производственного контроля', TU: 'Технические условия', CHECKLIST: 'Чек-листы' };
+/* Вид положения определяет раздел документа, куда оно попадает */
+var NORM_SECTIONS = {
+  DOCS: 'ППК: требование к программе', LAB: 'ППК: лабораторный и инструментальный контроль', PROF: 'ППК: медосмотры и гигиеническое обучение',
+  CCP: 'ППК: опасные факторы и критические контрольные точки', EMERG: 'ППК: аварийные ситуации', JOURNAL: 'ППК: формы учёта и отчётности', MEASURE: 'ППК: мероприятия производственного контроля',
+  TU_TEXT: 'ТУ: текст раздела', MICRO: 'ТУ: микробиологический показатель', TOX: 'ТУ: показатель безопасности (контаминанты)', METHOD: 'ТУ: метод контроля', LABEL: 'ТУ: маркировка'
+};
+/* Признаки объекта: положение с applies = 'all' или содержащее признак попадает в ППК объекта */
+var SITE_FLAGS = {
+  hot_shop: 'Горячий цех', cold_shop: 'Холодный цех', meat_fish: 'Мясо-рыбный (заготовочный) цех', confectionery: 'Кондитерский цех', bakery: 'Выпечка',
+  buffet: 'Только реализация (буфет, раздача без приготовления)', delivery: 'Доставка готовых блюд', children: 'Питание детей / организованных групп',
+  own_water: 'Собственный источник водоснабжения', ventilation: 'Механическая вентиляция', noise: 'Источники шума и вибрации'
+};
+var OBJECT_TYPES = { CAFE: 'Кафе', RESTAURANT: 'Ресторан', CANTEEN: 'Столовая', SCHOOL: 'Пищеблок школы', KINDERGARTEN: 'Пищеблок детского сада', BAR: 'Бар, кофейня', FASTFOOD: 'Предприятие быстрого обслуживания', PRODUCTION: 'Цех полуфабрикатов / кулинарии', OTHER: 'Иное' };
 
 /* ---------- Настройки по умолчанию (лист Settings) ---------- */
 var SETTINGS_DEFAULTS = {
@@ -252,5 +298,8 @@ var SETTINGS_DEFAULTS = {
   BACKUP_KEEP: ['14', 'Сколько резервных копий хранить'],
   INVOICE_PREFIX: ['СЧ', 'Префикс номера счёта'],
   DRIVE_ROOT_ID: ['', 'ID корневой папки San.Lab в Drive (заполняется при установке)'],
+  PPC_REVIEW_MONTHS: ['12', 'Через сколько месяцев пересматривать утверждённую ППК'],
+  NORM_EXPIRY_WARN_DAYS: ['90', 'За сколько дней предупреждать об окончании действия нормативного документа'],
+  ORG_OKPO: ['', 'Код ОКПО организации-разработчика ТУ (8 цифр, для обозначения ТУ)'],
   TIMEZONE: ['Asia/Yekaterinburg', 'Часовой пояс отчётов']
 };

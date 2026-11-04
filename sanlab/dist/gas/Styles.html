@@ -287,4 +287,16 @@ textarea.inp { height: auto; min-height: 76px; padding: 8px 10px; resize: vertic
   .tbl.cards td { display: block; border: 0; padding: 2px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Документы: ППК и ТУ */
+.row.wrap { flex-wrap: wrap; gap: 8px; }
+.doc-tbl td { vertical-align: top; }
+.doc-tbl textarea.cell { min-height: 34px; padding: 6px 8px; font-size: 13px; resize: none; overflow: hidden; width: 100%; min-width: 140px; }
+.doc-tbl tr.unv td:first-child, .tbl tr.unv td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.doc-meta { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 820px) { .doc-meta { grid-template-columns: 1fr; } }
+.doc-sec textarea { line-height: 1.45; }
+.tbl tr.sec-row td { background: var(--surface-2); }
+.icon-btn.sm { width: 28px; height: 28px; }
+.icon-btn.sm svg { width: 15px; height: 15px; }
 </style>

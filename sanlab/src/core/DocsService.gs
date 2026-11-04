@@ -14,7 +14,7 @@ var Norms = {
     if (d.valid_until && !isBefore(iso, d.valid_until)) return false;
     return true;
   },
-  ref: function (doc, item) { return (doc ? doc.code : '') + (item && V.str(item.clause) ? ', ' + V.str(item.clause) : ''); },
+  ref: function (doc, item) { var cl = item ? V.str(item.clause) : ''; return (doc ? doc.code : '') + (cl && cl !== '—' && cl !== '-' ? ', ' + cl : ''); },
 
   list: function (ctx, p) {
     p = p || {};
@@ -122,7 +122,9 @@ var Norms = {
 var DocContent = {
   MAX: 45000,
   row: function (cells, doc, item, manual) {
-    return { c: cells, ref: manual ? '' : Norms.ref(doc, item), nid: item ? item.norm_item_id : '', v: manual ? true : !!(item && V.bool(item.verified) && doc && V.bool(doc.verified)) };
+    var r = { c: cells, ref: manual ? '' : Norms.ref(doc, item), nid: item ? item.norm_item_id : '', v: manual ? true : !!(item && V.bool(item.verified) && doc && V.bool(doc.verified)) };
+    if (manual) { r.manual = true; r.src = 'input'; }
+    return r;
   },
   table: function (key, title, cols, rows, note) { return { key: key, title: title, type: 'table', cols: cols, rows: rows, note: note || '' }; },
   text: function (key, title, text, v, ref) { return { key: key, title: title, type: 'text', text: text, v: v !== false, ref: ref || '' }; },
@@ -179,7 +181,7 @@ var DocContent = {
       h.push('<table><tr><th style="width:26px">№</th>' + s.cols.map(function (c) { return '<th>' + e(c) + '</th>'; }).join('') + '<th style="width:22%">Основание</th></tr>');
       s.rows.forEach(function (r, i) {
         h.push('<tr' + (r.v === false ? ' class="unv"' : '') + '><td>' + (i + 1) + '</td>' + r.c.map(function (c) { return '<td>' + DocContent.multiline(c) + '</td>'; }).join('') +
-          '<td class="ref">' + e(r.ref || (r.manual ? 'по решению организации' : '')) + (r.v === false ? '<br><span class="flag">не сверено</span>' : '') + '</td></tr>');
+          '<td class="ref">' + e(r.ref || (r.manual ? (r.src === 'input' ? 'данные организации' : 'по решению организации') : '')) + (r.v === false ? '<br><span class="flag">не сверено</span>' : '') + '</td></tr>');
       });
       h.push('</table>');
       if (s.note) h.push('<p class="small muted">' + DocContent.multiline(s.note) + '</p>');

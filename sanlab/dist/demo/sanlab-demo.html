@@ -290,6 +290,18 @@ textarea.inp { height: auto; min-height: 76px; padding: 8px 10px; resize: vertic
   .tbl.cards td { display: block; border: 0; padding: 2px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Документы: ППК и ТУ */
+.row.wrap { flex-wrap: wrap; gap: 8px; }
+.doc-tbl td { vertical-align: top; }
+.doc-tbl textarea.cell { min-height: 34px; padding: 6px 8px; font-size: 13px; resize: none; overflow: hidden; width: 100%; min-width: 140px; }
+.doc-tbl tr.unv td:first-child, .tbl tr.unv td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.doc-meta { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 820px) { .doc-meta { grid-template-columns: 1fr; } }
+.doc-sec textarea { line-height: 1.45; }
+.tbl tr.sec-row td { background: var(--surface-2); }
+.icon-btn.sm { width: 28px; height: 28px; }
+.icon-btn.sm svg { width: 15px; height: 15px; }
 </style>
 
 <div id="app"></div>
@@ -310,7 +322,7 @@ var ID_PREFIX = {
   Services: 'SRV', Visits: 'VIS', Checklists: 'CHK', ChecklistItems: 'CI',
   VisitResults: 'RES', Reports: 'REP', LabSamples: 'LAB', Tasks: 'TSK',
   Documents: 'DOC', Finance: 'FIN', AuditLog: 'LOG', Notifications: 'NTF',
-  SystemErrors: 'ERR'
+  SystemErrors: 'ERR', NormDocs: 'NRM', NormItems: 'NRI', Programs: 'PPC', TechSpecs: 'TUS'
 };
 
 var AUDIT_COLS = ['created_at', 'created_by', 'updated_at', 'updated_by', 'record_status', 'row_version'];
@@ -339,7 +351,13 @@ var SCHEMA = {
   Settings: ['setting_key', 'value', 'description', 'updated_by', 'updated_at'],
   Notifications: ['notification_id', 'recipient_id', 'recipient_email', 'type', 'entity_type', 'entity_id', 'title', 'message', 'dedupe_key', 'scheduled_at', 'status', 'attempts', 'last_error', 'sent_at', 'read_at', 'created_at'],
   SystemErrors: ['error_id', 'timestamp', 'function_name', 'request_id', 'error_code', 'safe_message', 'details', 'entity_id', 'resolved_status', 'resolved_by', 'resolved_at'],
-  Requests: ['request_id', 'action', 'actor_email', 'response_json', 'created_at']
+  Requests: ['request_id', 'action', 'actor_email', 'response_json', 'created_at'],
+  /* Нормативная база: документы и их положения. verified — сверено с официальным текстом */
+  NormDocs: ['norm_id', 'code', 'title', 'kind', 'valid_from', 'valid_until', 'status', 'scopes', 'verified', 'verified_by', 'verified_at', 'source_url', 'notes'].concat(AUDIT_COLS),
+  NormItems: ['norm_item_id', 'norm_id', 'section', 'clause', 'text', 'applies', 'product_group', 'indicator', 'norm_value', 'frequency', 'volume', 'sort_order', 'active', 'verified'].concat(AUDIT_COLS),
+  /* Программы производственного контроля и технические условия: содержимое — JSON разделов */
+  Programs: ['program_id', 'client_id', 'site_id', 'title', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'review_due_date', 'prev_program_id'].concat(AUDIT_COLS),
+  TechSpecs: ['spec_id', 'client_id', 'designation', 'product_name', 'product_group', 'okpd2', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'prev_spec_id'].concat(AUDIT_COLS)
 };
 
 /* Подписи листов для интерфейса */
@@ -348,7 +366,8 @@ var TABLE_LABELS = {
   Services: 'Услуги', Visits: 'Выезды', Checklists: 'Чек-листы', ChecklistItems: 'Пункты чек-листов',
   VisitResults: 'Результаты осмотра', Reports: 'Отчёты', LabSamples: 'Пробы', Tasks: 'Задачи',
   Documents: 'Документы', Finance: 'Финансы', AuditLog: 'Журнал аудита', Settings: 'Настройки',
-  Notifications: 'Уведомления', SystemErrors: 'Ошибки', Requests: 'Запросы'
+  Notifications: 'Уведомления', SystemErrors: 'Ошибки', Requests: 'Запросы',
+  NormDocs: 'Нормативные документы', NormItems: 'Положения нормативов', Programs: 'Программы ПК', TechSpecs: 'Технические условия'
 };
 
 function isDateColumn(col) {
@@ -447,26 +466,47 @@ var PERMS = {
   'jobs.run': ['OWNER'],
   'analytics.get': ['OWNER', 'COORDINATOR'],
   'tasks.close': ['*'],
-  'reports.html': ['OWNER', 'QC', 'COORDINATOR', 'SPECIALIST']
+  'reports.html': ['OWNER', 'QC', 'COORDINATOR', 'SPECIALIST'],
+
+  'norms.list': ['OWNER', 'COORDINATOR', 'QC', 'LAB'],
+  'norms.get': ['OWNER', 'COORDINATOR', 'QC', 'LAB'],
+  'norms.saveDoc': ['OWNER'],
+  'norms.saveItem': ['OWNER'],
+  'norms.verify': ['OWNER', 'QC'],
+  'programs.list': ['OWNER', 'COORDINATOR', 'QC'],
+  'programs.get': ['OWNER', 'COORDINATOR', 'QC'],
+  'programs.html': ['OWNER', 'COORDINATOR', 'QC'],
+  'programs.build': ['OWNER', 'COORDINATOR'],
+  'programs.save': ['OWNER', 'COORDINATOR'],
+  'programs.approve': ['OWNER', 'QC'],
+  'programs.newVersion': ['OWNER', 'COORDINATOR'],
+  'specs.list': ['OWNER', 'COORDINATOR', 'QC'],
+  'specs.get': ['OWNER', 'COORDINATOR', 'QC'],
+  'specs.html': ['OWNER', 'COORDINATOR', 'QC'],
+  'specs.build': ['OWNER', 'COORDINATOR'],
+  'specs.save': ['OWNER', 'COORDINATOR'],
+  'specs.approve': ['OWNER', 'QC'],
+  'specs.newVersion': ['OWNER', 'COORDINATOR']
 };
 
 /* Дополнительные права сотрудника (колонка extra_perms, через запятую) */
 var EXTRA_PERMS = {
   finance: ['finance.list', 'finance.summary'],
   finance_edit: ['finance.list', 'finance.summary', 'finance.accrue', 'finance.invoice', 'finance.payment', 'finance.expense', 'finance.adjust'],
-  settings: ['settings.get', 'settings.save', 'checklists.saveVersion', 'services.save'],
+  settings: ['settings.get', 'settings.save', 'checklists.saveVersion', 'services.save', 'norms.saveDoc', 'norms.saveItem', 'norms.verify'],
+  docs: ['norms.list', 'norms.get', 'programs.list', 'programs.get', 'programs.html', 'programs.build', 'programs.save', 'programs.newVersion', 'specs.list', 'specs.get', 'specs.html', 'specs.build', 'specs.save', 'specs.newVersion'],
   approve_reports: ['reports.approve', 'reports.return', 'reports.queue', 'results.waivePhoto'],
   lab: ['lab.list', 'lab.register', 'lab.advance', 'lab.review']
 };
 
 /* Меню по ролям (карта окон, раздел 2 инструкции) */
 var ROLE_MENU = {
-  OWNER: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'finance', 'documents', 'analytics', 'staff', 'settings', 'audit'],
-  COORDINATOR: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'documents', 'analytics', 'audit'],
+  OWNER: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'finance', 'ppc', 'tu', 'norms', 'documents', 'analytics', 'staff', 'settings', 'audit'],
+  COORDINATOR: ['home', 'clients', 'visits', 'review', 'lab', 'tasks', 'ppc', 'tu', 'norms', 'documents', 'analytics', 'audit'],
   SPECIALIST: ['home', 'myvisits', 'tasks', 'lab', 'documents'],
-  QC: ['home', 'review', 'visits', 'tasks', 'lab', 'documents', 'audit'],
+  QC: ['home', 'review', 'visits', 'tasks', 'lab', 'ppc', 'tu', 'norms', 'documents', 'audit'],
   FINANCE: ['home', 'finance', 'clients', 'tasks', 'documents', 'audit'],
-  LAB: ['home', 'lab', 'visits', 'tasks', 'documents', 'audit']
+  LAB: ['home', 'lab', 'visits', 'tasks', 'norms', 'documents', 'audit']
 };
 
 /* ---------- Статусы (Приложение A ТЗ) ---------- */
@@ -521,8 +561,26 @@ var PRIORITY = { LOW: 'Низкий', NORMAL: 'Обычный', HIGH: 'Высо�
 var TASK_SOURCES = { CHECKLIST: 'Замечание чек-листа', LAB: 'Лабораторный результат', REPORT_RETURN: 'Возврат отчёта', REPORT_REVIEW: 'Проверка отчёта', DOCUMENT: 'Срок документа', CLIENT: 'Запрос клиента', INTERNAL: 'Внутреннее поручение' };
 var FIN_TYPES = { ACCRUAL: 'Начисление', INVOICE: 'Счёт', PAYMENT: 'Поступление', EXPENSE: 'Расход', ADJUSTMENT: 'Корректировка' };
 var EXPENSE_CATEGORIES = ['Лаборатория', 'Транспорт', 'Расходные материалы', 'Зарплата', 'Аренда', 'Связь и ПО', 'Прочее'];
-var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', OTHER: 'Прочее' };
+var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', PPC: 'Программа производственного контроля', TU: 'Технические условия', OTHER: 'Прочее' };
 var SAMPLE_TYPES = ['Смыв', 'Вода', 'Продукты', 'Воздух', 'Готовые блюда'];
+
+/* ---------- Нормативная база, ППК, ТУ ---------- */
+var NORM_KINDS = { FZ: 'Федеральный закон', TR: 'Технический регламент ЕАЭС', SANPIN: 'СанПиН', SP: 'Санитарные правила (СП)', GOST: 'ГОСТ / ГОСТ Р', MU: 'МУ / МУК', ORDER: 'Приказ', OTHER: 'Прочее' };
+var NORM_STATUS = { ACTIVE: 'Действует', PLANNED: 'Вступает в силу', EXPIRED: 'Утратил силу', DRAFT: 'Проект' };
+var NORM_SCOPES = { PPC: 'Программа производственного контроля', TU: 'Технические условия', CHECKLIST: 'Чек-листы' };
+/* Вид положения определяет раздел документа, куда оно попадает */
+var NORM_SECTIONS = {
+  DOCS: 'ППК: требование к программе', LAB: 'ППК: лабораторный и инструментальный контроль', PROF: 'ППК: медосмотры и гигиеническое обучение',
+  CCP: 'ППК: опасные факторы и критические контрольные точки', EMERG: 'ППК: аварийные ситуации', JOURNAL: 'ППК: формы учёта и отчётности', MEASURE: 'ППК: мероприятия производственного контроля',
+  TU_TEXT: 'ТУ: текст раздела', MICRO: 'ТУ: микробиологический показатель', TOX: 'ТУ: показатель безопасности (контаминанты)', METHOD: 'ТУ: метод контроля', LABEL: 'ТУ: маркировка'
+};
+/* Признаки объекта: положение с applies = 'all' или содержащее признак попадает в ППК объекта */
+var SITE_FLAGS = {
+  hot_shop: 'Горячий цех', cold_shop: 'Холодный цех', meat_fish: 'Мясо-рыбный (заготовочный) цех', confectionery: 'Кондитерский цех', bakery: 'Выпечка',
+  buffet: 'Только реализация (буфет, раздача без приготовления)', delivery: 'Доставка готовых блюд', children: 'Питание детей / организованных групп',
+  own_water: 'Собственный источник водоснабжения', ventilation: 'Механическая вентиляция', noise: 'Источники шума и вибрации'
+};
+var OBJECT_TYPES = { CAFE: 'Кафе', RESTAURANT: 'Ресторан', CANTEEN: 'Столовая', SCHOOL: 'Пищеблок школы', KINDERGARTEN: 'Пищеблок детского сада', BAR: 'Бар, кофейня', FASTFOOD: 'Предприятие быстрого обслуживания', PRODUCTION: 'Цех полуфабрикатов / кулинарии', OTHER: 'Иное' };
 
 /* ---------- Настройки по умолчанию (лист Settings) ---------- */
 var SETTINGS_DEFAULTS = {
@@ -549,6 +607,9 @@ var SETTINGS_DEFAULTS = {
   BACKUP_KEEP: ['14', 'Сколько резервных копий хранить'],
   INVOICE_PREFIX: ['СЧ', 'Префикс номера счёта'],
   DRIVE_ROOT_ID: ['', 'ID корневой папки San.Lab в Drive (заполняется при установке)'],
+  PPC_REVIEW_MONTHS: ['12', 'Через сколько месяцев пересматривать утверждённую ППК'],
+  NORM_EXPIRY_WARN_DAYS: ['90', 'За сколько дней предупреждать об окончании действия нормативного документа'],
+  ORG_OKPO: ['', 'Код ОКПО организации-разработчика ТУ (8 цифр, для обозначения ТУ)'],
   TIMEZONE: ['Asia/Yekaterinburg', 'Часовой пояс отчётов']
 };
 
@@ -2907,10 +2968,584 @@ var Jobs = {
     Store.all('Reports').forEach(function (rep) {
       if (rep.status === 'APPROVED' && !rep.document_id) { if (Reports.makePdf(ctx, rep)) r.pdf_retry++; }
     });
+    var dj = DocJobs.daily(ctx); for (var dk in dj) r[dk] = dj[dk];
     Audit.log(ctx, 'JOB_DAILY', 'System', day, null, r);
     return r;
   },
   frequent: function (ctx) { return { sent: Notify.processQueue(ctx) }; }
+};
+
+/* ==== core/DocsService.gs ==== */
+/**
+ * San.Lab — DocsService.gs
+ * Нормативная база, программа производственного контроля (ППК) и технические условия (ТУ).
+ * Документы собираются из положений нормативной базы. Каждое положение помечено: сверено ли оно
+ * с официальным текстом. Документ с несверенными положениями утверждается только руководителем
+ * с обоснованием, а в PDF это видно.
+ */
+
+var Norms = {
+  /* Документ действует на дату iso */
+  inForce: function (d, iso) {
+    if (d.status !== 'ACTIVE' && d.status !== 'PLANNED') return false;
+    if (d.valid_from && isBefore(iso, d.valid_from)) return false;
+    if (d.valid_until && !isBefore(iso, d.valid_until)) return false;
+    return true;
+  },
+  ref: function (doc, item) { var cl = item ? V.str(item.clause) : ''; return (doc ? doc.code : '') + (cl && cl !== '—' && cl !== '-' ? ', ' + cl : ''); },
+
+  list: function (ctx, p) {
+    p = p || {};
+    var items = groupBy(Store.all('NormItems'), 'norm_id');
+    var warnDays = Settings.num('NORM_EXPIRY_WARN_DAYS') || 90;
+    var rows = Store.all('NormDocs').filter(function (d) { return !p.scope || csvList(d.scopes).indexOf(p.scope) >= 0; });
+    return sortBy(rows, 'code').map(function (d) {
+      var its = filterBy(items[d.norm_id] || [], function (i) { return V.bool(i.active); });
+      var o = stripSecrets(d);
+      o.items_count = its.length;
+      o.unverified_count = filterBy(its, function (i) { return !V.bool(i.verified); }).length + (V.bool(d.verified) ? 0 : 1);
+      o.in_force = Norms.inForce(d, ctx.now);
+      o.expiring = !!(d.valid_until && o.in_force && isBefore(d.valid_until, isoAddDays(ctx.now, warnDays)));
+      return o;
+    });
+  },
+
+  get: function (ctx, p) {
+    var d = Repo.must('NormDocs', p.norm_id, 'Нормативный документ');
+    var items = Repo.where('NormItems', function (i) { return i.norm_id === d.norm_id; })
+      .sort(function (a, b) { return (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0); });
+    return { doc: d, items: items };
+  },
+
+  /* Любая правка снимает отметку «сверено»: сверку нужно подтвердить заново */
+  saveDoc: function (ctx, p) {
+    V.required(p, ['code', 'title', 'kind'], { code: 'Обозначение', title: 'Наименование', kind: 'Вид документа' });
+    V.oneOf(p.kind, NORM_KINDS, 'Вид документа');
+    var status = p.status || 'ACTIVE';
+    V.oneOf(status, NORM_STATUS, 'Статус');
+    var data = {
+      code: V.str(p.code), title: V.str(p.title), kind: p.kind, status: status,
+      valid_from: p.valid_from ? V.date(p.valid_from, 'Действует с') : '', valid_until: p.valid_until ? V.date(p.valid_until, 'Действует до') : '',
+      scopes: csvList(p.scopes).filter(function (s) { return NORM_SCOPES.hasOwnProperty(s); }).join(','), source_url: V.str(p.source_url), notes: V.str(p.notes),
+      verified: false, verified_by: '', verified_at: ''
+    };
+    if (data.valid_from && data.valid_until && !isBefore(data.valid_from, data.valid_until)) fail('VALIDATION', 'Дата окончания действия раньше даты начала');
+    var dup = Repo.where('NormDocs', function (d) { return d.code.toLowerCase() === data.code.toLowerCase() && d.norm_id !== p.norm_id; })[0];
+    if (dup) fail('DUPLICATE', 'Документ ' + dup.code + ' уже есть в базе: ' + dup.norm_id, { norm_id: dup.norm_id });
+    if (p.norm_id) return Repo.update(ctx, 'NormDocs', p.norm_id, data, { action: 'NORM_DOC_SAVE', expectedVersion: p.row_version });
+    return Repo.create(ctx, 'NormDocs', data, { action: 'NORM_DOC_SAVE' });
+  },
+
+  saveItem: function (ctx, p) {
+    V.required(p, ['norm_id', 'section', 'text'], { section: 'Вид положения', text: 'Текст положения' });
+    V.oneOf(p.section, NORM_SECTIONS, 'Вид положения');
+    Repo.must('NormDocs', p.norm_id, 'Нормативный документ');
+    var applies = csvList(p.applies).filter(function (a) { return a === 'all' || SITE_FLAGS.hasOwnProperty(a); });
+    var data = {
+      norm_id: p.norm_id, section: p.section, clause: V.str(p.clause), text: V.str(p.text), applies: (applies.length ? applies : ['all']).join(','),
+      product_group: V.str(p.product_group), indicator: V.str(p.indicator), norm_value: V.str(p.norm_value), frequency: V.str(p.frequency), volume: V.str(p.volume),
+      active: p.active === undefined ? true : V.bool(p.active), verified: false
+    };
+    if (p.norm_item_id) return Repo.update(ctx, 'NormItems', p.norm_item_id, data, { action: 'NORM_ITEM_SAVE', expectedVersion: p.row_version });
+    var n = Repo.where('NormItems', function (i) { return i.norm_id === p.norm_id; }).length;
+    data.sort_order = (n + 1) * 10;
+    return Repo.create(ctx, 'NormItems', data, { action: 'NORM_ITEM_SAVE' });
+  },
+
+  /* Подтверждение сверки с официальным текстом: документ и выбранные положения (по умолчанию — все) */
+  verify: function (ctx, p) {
+    var d = Repo.must('NormDocs', p.norm_id, 'Нормативный документ');
+    if (!V.str(d.source_url) && !V.str(p.source_url)) fail('VALIDATION', 'Укажите источник официального текста (ссылка или реквизиты публикации), с которым проведена сверка');
+    var ids = p.item_ids && p.item_ids.length ? p.item_ids : null;
+    var items = Repo.where('NormItems', function (i) { return i.norm_id === d.norm_id && !V.bool(i.verified) && (!ids || ids.indexOf(i.norm_item_id) >= 0); });
+    for (var i = 0; i < items.length; i++) Repo.update(ctx, 'NormItems', items[i].norm_item_id, { verified: true }, { noAudit: true });
+    var patch = { verified_by: ctx.actorId, verified_at: ctx.now };
+    if (!ids) patch.verified = true;
+    if (V.str(p.source_url)) patch.source_url = V.str(p.source_url);
+    Repo.update(ctx, 'NormDocs', d.norm_id, patch, { noAudit: true });
+    Audit.log(ctx, 'NORM_VERIFY', 'NormDocs', d.norm_id, null, { items: items.length, whole_doc: !ids, source: patch.source_url || d.source_url });
+    return Norms.get(ctx, { norm_id: d.norm_id });
+  },
+
+  /* Действующие положения нужного вида для документа (ППК — с учётом признаков объекта) */
+  pick: function (ctx, scope, sections, flags) {
+    var docs = indexBy(filterBy(Store.all('NormDocs'), function (d) { return Norms.inForce(d, ctx.now) && csvList(d.scopes).indexOf(scope) >= 0; }), 'norm_id');
+    var out = filterBy(Store.all('NormItems'), function (i) {
+      if (!V.bool(i.active) || !docs[i.norm_id] || sections.indexOf(i.section) < 0) return false;
+      if (!flags) return true;
+      var ap = csvList(i.applies);
+      if (!ap.length || ap.indexOf('all') >= 0) return true;
+      for (var k = 0; k < ap.length; k++) if (flags.indexOf(ap[k]) >= 0) return true;
+      return false;
+    });
+    out.sort(function (a, b) { return a.norm_id === b.norm_id ? (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) : (docs[a.norm_id].code < docs[b.norm_id].code ? -1 : 1); });
+    return { items: out, docs: docs };
+  },
+
+  /* Ежедневно: предупредить руководителя об окончании действия документов */
+  checkExpiry: function (ctx) {
+    var warnDays = Settings.num('NORM_EXPIRY_WARN_DAYS') || 90, n = 0;
+    var owners = filterBy(Store.all('Employees'), function (e) { return e.role === 'OWNER' && V.bool(e.active); });
+    Store.all('NormDocs').forEach(function (d) {
+      if (!d.valid_until || !Norms.inForce(d, ctx.now) || !isBefore(d.valid_until, isoAddDays(ctx.now, warnDays))) return;
+      owners.forEach(function (o) {
+        if (Notify.push(ctx, o.employee_id, 'NORM_EXPIRING', 'NormDocs', d.norm_id, 'Заканчивается действие: ' + d.code, d.title + ' — действует до ' + fmtD(d.valid_until) + '. Внесите заменяющий документ и пересоберите ППК и ТУ, которые на него ссылаются.', 'normexp:' + d.norm_id + ':' + d.valid_until)) n++;
+      });
+    });
+    return n;
+  }
+};
+
+/* ---------- Общая часть ППК и ТУ: разделы, подсчёт несверенного, PDF ---------- */
+var DocContent = {
+  MAX: 45000,
+  row: function (cells, doc, item, manual) {
+    var r = { c: cells, ref: manual ? '' : Norms.ref(doc, item), nid: item ? item.norm_item_id : '', v: manual ? true : !!(item && V.bool(item.verified) && doc && V.bool(doc.verified)) };
+    if (manual) { r.manual = true; r.src = 'input'; }
+    return r;
+  },
+  table: function (key, title, cols, rows, note) { return { key: key, title: title, type: 'table', cols: cols, rows: rows, note: note || '' }; },
+  text: function (key, title, text, v, ref) { return { key: key, title: title, type: 'text', text: text, v: v !== false, ref: ref || '' }; },
+  unverified: function (content) {
+    var n = 0;
+    (content.sections || []).forEach(function (s) {
+      if (s.type === 'text' && s.v === false) n++;
+      (s.rows || []).forEach(function (r) { if (r.v === false) n++; });
+    });
+    return n;
+  },
+  /* Правка черновика: принимаются только известные разделы; новые строки — ручные (без основания) */
+  merge: function (oldC, newC) {
+    var byKey = indexBy(oldC.sections || [], 'key');
+    var out = [];
+    (newC.sections || []).forEach(function (s) {
+      var o = byKey[s.key]; if (!o) return;
+      var t = JSON.parse(JSON.stringify(o));
+      if (t.type === 'text') { if (s.text !== undefined) { t.text = V.str(s.text); } }
+      else {
+        var oldRows = indexBy((o.rows || []).map(function (r, i) { var x = JSON.parse(JSON.stringify(r)); x._i = i; return x; }), '_i');
+        t.rows = (s.rows || []).map(function (r) {
+          var cells = (r.c || []).slice(0, t.cols.length).map(V.str);
+          while (cells.length < t.cols.length) cells.push('');
+          var src = r.i !== undefined && r.i !== null && r.i !== '' ? oldRows[r.i] : null;
+          if (src) { delete src._i; src.c = cells; return src; }
+          return { c: cells, ref: '', nid: '', v: true, manual: true };
+        });
+      }
+      out.push(t);
+    });
+    return { sections: out, built_at: oldC.built_at, norms: oldC.norms };
+  },
+  serialize: function (content) {
+    var s = JSON.stringify(content);
+    if (s.length > DocContent.MAX) fail('VALIDATION', 'Документ слишком большой для хранения (' + s.length + ' символов). Сократите тексты или разделите таблицы.');
+    return s;
+  },
+  esc: function (s) { return ReportHtml.esc(s); },
+  multiline: function (s) { return DocContent.esc(s).replace(/\n/g, '<br>'); },
+  css: 'body{font-family:"Times New Roman",Times,serif;color:#111;font-size:12pt;margin:36px 44px;line-height:1.35}h1{font-size:15pt;text-align:center;margin:18px 0 6px}h2{font-size:12.5pt;margin:20px 0 8px}' +
+    '.c{text-align:center}.r{text-align:right}.muted{color:#555}.small{font-size:10pt}table{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:10.5pt}td,th{border:1px solid #444;padding:4px 6px;vertical-align:top;text-align:left}th{background:#eee}' +
+    '.ref{font-size:9pt;color:#444}.unv{background:#fff3cd}.flag{color:#8a5a00;font-size:9pt}.appr{width:46%;margin-left:auto;margin-top:6px}.title{margin-top:120px}.warn{border:1.5px solid #b7791f;background:#fff8e6;padding:8px 10px;margin:10px 0;font-size:10.5pt}.pb{page-break-before:always}',
+  sectionsHtml: function (sections, numbered) {
+    var e = DocContent.esc, h = [], n = 0;
+    sections.forEach(function (s) {
+      n++;
+      h.push('<h2>' + (numbered ? n + ' ' : '') + e(s.title) + '</h2>');
+      if (s.type === 'text') {
+        h.push('<div' + (s.v === false ? ' class="unv"' : '') + '>' + DocContent.multiline(s.text) + (s.v === false ? ' <span class="flag">[не сверено' + (s.ref ? ': ' + e(s.ref) : '') + ']</span>' : '') + '</div>');
+        return;
+      }
+      if (!(s.rows || []).length) { h.push('<p class="muted">Не применяется для данного объекта / продукции.</p>'); return; }
+      h.push('<table><tr><th style="width:26px">№</th>' + s.cols.map(function (c) { return '<th>' + e(c) + '</th>'; }).join('') + '<th style="width:22%">Основание</th></tr>');
+      s.rows.forEach(function (r, i) {
+        h.push('<tr' + (r.v === false ? ' class="unv"' : '') + '><td>' + (i + 1) + '</td>' + r.c.map(function (c) { return '<td>' + DocContent.multiline(c) + '</td>'; }).join('') +
+          '<td class="ref">' + e(r.ref || (r.manual ? (r.src === 'input' ? 'данные организации' : 'по решению организации') : '')) + (r.v === false ? '<br><span class="flag">не сверено</span>' : '') + '</td></tr>');
+      });
+      h.push('</table>');
+      if (s.note) h.push('<p class="small muted">' + DocContent.multiline(s.note) + '</p>');
+    });
+    return h.join('');
+  },
+  approvalBlock: function (who, position, org) {
+    var e = DocContent.esc;
+    return '<div class="appr"><b>УТВЕРЖДАЮ</b><br>' + e(position || 'Руководитель') + '<br>' + e(org || '') + '<br><br>_______________ / ' + e(who || '________________') + '<br>«___» ____________ 20___ г.<br>М.П.</div>';
+  },
+  /* Сохранить PDF в папку клиента и зарегистрировать в «Документах» */
+  savePdf: function (ctx, entityType, entityId, clientId, folderName, docType, fileBase, title, version, html) {
+    var fileName = fileBase + '_v' + pad2(Number(version)) + '.pdf';
+    var folder = Integr.ensureFolder(['01_CLIENTS', clientId || 'NO_CLIENT', folderName]);
+    var saved = Integr.makePdf(folder, fileName, html);
+    var prev = Repo.where('Documents', function (d) { return d.entity_type === entityType && d.document_type === docType && d.approval_status === 'APPROVED' && d.document_no.indexOf(fileBase.split('_')[0]) === 0; });
+    return Repo.create(ctx, 'Documents', {
+      entity_type: entityType, entity_id: entityId, document_type: docType, document_no: entityId + '/v' + version, title: title, file_name: fileName, mime_type: 'application/pdf',
+      size_bytes: saved.size || 0, drive_file_id: saved.fileId, version: Number(version), approval_status: 'APPROVED', is_actual: true, prev_document_id: prev.length ? prev[prev.length - 1].document_id : ''
+    }, { action: docType + '_PDF' });
+  },
+  /* Утверждение: проверка независимости и несверенных положений */
+  checkApproval: function (ctx, rec, p, label) {
+    if (rec.status !== 'DRAFT') fail('INVALID_STATUS', 'Утверждается только черновик. Для изменений создайте новую версию.');
+    if (Settings.bool('INDEPENDENT_REVIEW') && rec.created_by === ctx.actorId && ctx.user.role !== 'OWNER') denied('Нельзя утверждать ' + label + ', которую вы составили сами');
+    var n = Number(rec.unverified_count) || 0;
+    if (!n) return '';
+    if (!p.accept_unverified) fail('UNVERIFIED', 'В документе ' + n + ' положений не сверены с официальным текстом нормативов. Сверьте их в «Нормативной базе» и пересоберите документ, либо утвердите с обоснованием (только руководитель).', { unverified: n });
+    if (ctx.user.role !== 'OWNER') denied('Утвердить документ с несверенными положениями может только руководитель');
+    if (V.str(p.reason).length < 10) fail('VALIDATION', 'Опишите обоснование утверждения с несверенными положениями (не короче 10 символов)');
+    return V.str(p.reason);
+  }
+};
+
+/* ---------- Программа производственного контроля ---------- */
+var Programs = {
+  SECTIONS: ['DOCS', 'LAB', 'PROF', 'CCP', 'EMERG', 'JOURNAL', 'MEASURE'],
+  profile: function (p) {
+    var pr = p || {};
+    var flags = csvList(pr.flags).filter(function (f) { return SITE_FLAGS.hasOwnProperty(f); });
+    var ot = OBJECT_TYPES.hasOwnProperty(pr.object_type) ? pr.object_type : 'CAFE';
+    if ((ot === 'SCHOOL' || ot === 'KINDERGARTEN') && flags.indexOf('children') < 0) flags.push('children');
+    return {
+      object_type: ot, flags: flags.join(','), seats: V.str(pr.seats), staff_count: V.str(pr.staff_count), work_mode: V.str(pr.work_mode),
+      water_source: V.str(pr.water_source), head_name: V.str(pr.head_name), head_position: V.str(pr.head_position) || 'Руководитель',
+      responsible: V.str(pr.responsible), positions: V.str(pr.positions), lab_name: V.str(pr.lab_name), pest_control: V.str(pr.pest_control),
+      waste: V.str(pr.waste), assortment: V.str(pr.assortment), extra: V.str(pr.extra)
+    };
+  },
+  build: function (ctx, p) {
+    var old = p.program_id ? Repo.must('Programs', p.program_id, 'Программа') : null;
+    if (old && old.status !== 'DRAFT') fail('INVALID_STATUS', 'Пересобрать можно только черновик. Создайте новую версию.');
+    var site = Repo.must('Sites', old ? old.site_id : p.site_id, 'Объект');
+    var client = Repo.must('Clients', site.client_id, 'Клиент');
+    if (!old) {
+      var draft = Repo.where('Programs', function (x) { return x.site_id === site.site_id && x.status === 'DRAFT'; })[0];
+      if (draft) fail('DUPLICATE', 'Для объекта уже есть черновик программы: ' + draft.program_id + '. Откройте его.', { program_id: draft.program_id });
+    }
+    var prof = Programs.profile(p.profile || (old ? safeJson(old.profile_json, {}) : {}));
+    var content = Programs.compose(ctx, client, site, prof);
+    var data = { profile_json: JSON.stringify(prof), content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content), title: 'Программа производственного контроля: ' + site.site_name };
+    if (old) return Programs.get(ctx, { program_id: Repo.update(ctx, 'Programs', old.program_id, data, { action: 'PPC_REBUILD' }).program_id });
+    var prev = Repo.where('Programs', function (x) { return x.site_id === site.site_id; });
+    var ver = 1; prev.forEach(function (x) { ver = Math.max(ver, Number(x.version) + 1); });
+    data.client_id = client.client_id; data.site_id = site.site_id; data.version = ver; data.status = 'DRAFT';
+    var rec = Repo.create(ctx, 'Programs', data, { action: 'PPC_CREATE' });
+    return Programs.get(ctx, { program_id: rec.program_id });
+  },
+
+  compose: function (ctx, client, site, prof) {
+    var flags = csvList(prof.flags);
+    var pk = Norms.pick(ctx, 'PPC', Programs.SECTIONS, flags);
+    var by = groupBy(pk.items, 'section'), D = pk.docs, R = DocContent.row;
+    var sec = [];
+    var flagNames = flags.map(function (f) { return SITE_FLAGS[f]; }).join(', ');
+    sec.push(DocContent.text('general', 'Общие сведения',
+      'Наименование организации: ' + client.legal_name + (client.inn ? ', ИНН ' + client.inn : '') + '.\n' +
+      'Юридический адрес: ' + (client.legal_address || '—') + '.\n' +
+      'Объект: ' + site.site_name + ', ' + site.address + '.\n' +
+      'Тип объекта: ' + OBJECT_TYPES[prof.object_type] + (prof.seats ? ', посадочных мест: ' + prof.seats : '') + (prof.staff_count ? ', работников: ' + prof.staff_count : '') + '.\n' +
+      (prof.work_mode ? 'Режим работы: ' + prof.work_mode + '.\n' : '') +
+      (flagNames ? 'Особенности: ' + flagNames + '.\n' : '') +
+      (prof.water_source ? 'Водоснабжение: ' + prof.water_source + '.\n' : '') +
+      (prof.assortment ? 'Ассортимент и виды деятельности: ' + prof.assortment + '.\n' : '') +
+      'Цель производственного контроля — обеспечение безопасности для человека выпускаемой продукции и оказываемых услуг, соблюдение санитарных правил и выполнение санитарно-противоэпидемических (профилактических) мероприятий.'));
+    var usedDocs = {};
+    pk.items.forEach(function (i) { usedDocs[i.norm_id] = true; });
+    filterBy(Store.all('NormDocs'), function (d) { return Norms.inForce(d, ctx.now) && csvList(d.scopes).indexOf('PPC') >= 0; }).forEach(function (d) { usedDocs[d.norm_id] = true; });
+    var docRows = sortBy(Object.keys(usedDocs).map(function (id) { return Repo.get('NormDocs', id); }), 'code').map(function (d) {
+      return { c: [d.code, d.title, d.valid_until ? 'до ' + fmtD(d.valid_until) : 'без ограничения срока'], ref: d.code, nid: '', v: V.bool(d.verified), doc: d.norm_id };
+    });
+    (by.DOCS || []).forEach(function (i) { docRows.push(R([i.text, i.indicator || '', ''], D[i.norm_id], i)); });
+    sec.push(DocContent.table('docs', 'Перечень официально изданных нормативных документов', ['Обозначение', 'Наименование', 'Срок действия'], docRows));
+    var resp = V.str(prof.responsible).split('\n').filter(function (l) { return V.str(l); }).map(function (l) { var a = l.split(';'); return R([V.str(a[0]), V.str(a[1]), V.str(a.slice(2).join(';'))], null, null, true); });
+    if (!resp.length) resp.push(R([prof.head_name || '', prof.head_position || 'Руководитель', 'Общее руководство и ответственность за организацию производственного контроля'], null, null, true));
+    sec.push(DocContent.table('officials', 'Должностные лица, ответственные за осуществление производственного контроля', ['ФИО', 'Должность', 'Функции'], resp));
+    sec.push(DocContent.table('lab', 'Лабораторные и инструментальные исследования: объекты, показатели, точки отбора, периодичность', ['Объект контроля / точка отбора', 'Показатели', 'Периодичность', 'Объём'],
+      (by.LAB || []).map(function (i) { return R([i.text, i.indicator, i.frequency, i.volume], D[i.norm_id], i); }),
+      'Исследования проводит аккредитованная лаборатория' + (prof.lab_name ? ': ' + prof.lab_name : '') + '. Периодичность установлена организацией в соответствии с нормативными документами, указанными в графе «Основание».'));
+    var positions = V.str(prof.positions) || 'все работники, занятые приготовлением, раздачей, хранением пищевой продукции, мойкой посуды и инвентаря';
+    sec.push(DocContent.table('prof', 'Должности работников, подлежащих медицинским осмотрам, профессиональной гигиенической подготовке и аттестации', ['Требование', 'Должности', 'Периодичность'],
+      (by.PROF || []).map(function (i) { return R([i.text, i.indicator || positions, i.frequency], D[i.norm_id], i); })));
+    sec.push(DocContent.table('ccp', 'Опасные факторы, процессы и критические контрольные точки (принципы ХАССП)', ['Процесс / этап', 'Опасный фактор', 'Критический предел / требование', 'Мониторинг'],
+      (by.CCP || []).map(function (i) { return R([i.text, i.indicator, i.norm_value, i.frequency], D[i.norm_id], i); })));
+    sec.push(DocContent.table('emerg', 'Возможные аварийные ситуации и действия персонала', ['Ситуация', 'Действия'],
+      (by.EMERG || []).map(function (i) { return R([i.text, i.norm_value], D[i.norm_id], i); })));
+    sec.push(DocContent.table('journals', 'Формы учёта и отчётности по производственному контролю', ['Форма учёта', 'Периодичность заполнения', 'Ответственный'],
+      (by.JOURNAL || []).map(function (i) { return R([i.text, i.frequency, i.indicator], D[i.norm_id], i); })));
+    var meas = (by.MEASURE || []).map(function (i) { return R([i.text, i.frequency, i.indicator], D[i.norm_id], i); });
+    if (prof.pest_control) meas.push(R(['Дезинсекция и дератизация по договору со специализированной организацией: ' + prof.pest_control, 'по договору', ''], null, null, true));
+    if (prof.waste) meas.push(R(['Вывоз отходов по договору: ' + prof.waste, 'по графику вывоза', ''], null, null, true));
+    sec.push(DocContent.table('measures', 'Мероприятия производственного контроля', ['Мероприятие', 'Периодичность', 'Ответственный'], meas));
+    sec.push(DocContent.text('final', 'Заключительные положения', 'Программа вступает в силу с даты утверждения. Программа пересматривается при изменении вида деятельности, ассортимента, технологии, нормативных документов, а также не реже одного раза в ' + (Settings.num('PPC_REVIEW_MONTHS') || 12) + ' мес. Результаты производственного контроля фиксируются в формах учёта и хранятся в организации.' + (prof.extra ? '\n' + prof.extra : '')));
+    return { sections: sec, built_at: ctx.now, norms: Object.keys(usedDocs) };
+  },
+
+  enrich: function (rec) {
+    var o = stripSecrets(rec); delete o.content_json; delete o.profile_json;
+    var c = Repo.get('Clients', rec.client_id) || {}, s = Repo.get('Sites', rec.site_id) || {};
+    o.client_name = c.legal_name || ''; o.site_name = s.site_name || ''; o.site_address = s.address || '';
+    return o;
+  },
+  list: function (ctx, p) {
+    p = p || {};
+    var rows = Repo.where('Programs', function (x) { return (!p.site_id || x.site_id === p.site_id) && (!p.client_id || x.client_id === p.client_id) && (p.all || x.status !== 'ARCHIVED'); });
+    return sortBy(rows, 'updated_at', true).map(Programs.enrich);
+  },
+  get: function (ctx, p) {
+    var rec = Repo.must('Programs', p.program_id, 'Программа');
+    var content = safeJson(rec.content_json, { sections: [] });
+    var warn = [], warnDays = Settings.num('NORM_EXPIRY_WARN_DAYS') || 90;
+    (content.norms || []).forEach(function (id) {
+      var d = Repo.get('NormDocs', id); if (!d) return;
+      if (!Norms.inForce(d, ctx.now)) warn.push(d.code + ' больше не действует — пересоберите программу или создайте новую версию.');
+      else if (d.valid_until && isBefore(d.valid_until, isoAddDays(ctx.now, warnDays))) warn.push(d.code + ' действует до ' + fmtD(d.valid_until) + '.');
+    });
+    return { program: Programs.enrich(rec), row_version: rec.row_version, profile: safeJson(rec.profile_json, {}), content: content, warnings: warn,
+      history: sortBy(Repo.where('Programs', function (x) { return x.site_id === rec.site_id; }), 'version', true).map(Programs.enrich) };
+  },
+  save: function (ctx, p) {
+    var rec = Repo.must('Programs', p.program_id, 'Программа');
+    if (rec.status !== 'DRAFT') fail('INVALID_STATUS', 'Утверждённую программу изменить нельзя. Создайте новую версию.');
+    var content = DocContent.merge(safeJson(rec.content_json, { sections: [] }), p.content || {});
+    var patch = { content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content) };
+    if (p.profile) patch.profile_json = JSON.stringify(Programs.profile(p.profile));
+    Repo.update(ctx, 'Programs', rec.program_id, patch, { action: 'PPC_EDIT', expectedVersion: p.row_version });
+    return Programs.get(ctx, { program_id: rec.program_id });
+  },
+  approve: function (ctx, p) {
+    var rec = Repo.must('Programs', p.program_id, 'Программа');
+    var reason = DocContent.checkApproval(ctx, rec, p, 'программу');
+    var content = safeJson(rec.content_json, { sections: [] });
+    var due = isoAddDays(ctx.now, Math.round((Settings.num('PPC_REVIEW_MONTHS') || 12) * 30.4));
+    (content.norms || []).forEach(function (id) { var d = Repo.get('NormDocs', id); if (d && d.valid_until && isBefore(d.valid_until, due)) due = d.valid_until; });
+    Repo.where('Programs', function (x) { return x.site_id === rec.site_id && x.status === 'APPROVED'; }).forEach(function (x) {
+      Repo.update(ctx, 'Programs', x.program_id, { status: 'ARCHIVED' }, { action: 'PPC_ARCHIVE' });
+      if (x.document_id) Repo.update(ctx, 'Documents', x.document_id, { approval_status: 'ARCHIVED' }, { action: 'DOC_ARCHIVE' });
+    });
+    rec = Repo.update(ctx, 'Programs', rec.program_id, { status: 'APPROVED', approved_by: ctx.actorId, approved_at: ctx.now, review_due_date: due, unverified_reason: reason }, { action: 'PPC_APPROVE' });
+    Programs.makePdf(ctx, rec);
+    return Programs.get(ctx, { program_id: rec.program_id });
+  },
+  makePdf: function (ctx, rec) {
+    try {
+      var doc = DocContent.savePdf(ctx, 'Programs', rec.program_id, rec.client_id, 'PPC', 'PPC', rec.program_id + '_PPC', 'Программа производственного контроля ' + rec.program_id + ', версия ' + rec.version, rec.version, Programs.render(ctx, rec));
+      Repo.update(ctx, 'Programs', rec.program_id, { document_id: doc.document_id }, { noAudit: true });
+      return doc;
+    } catch (e) {
+      Errors.record(ctx, 'Programs.makePdf', 'PDF_ERROR', 'PDF программы не создан, повтор в фоновой задаче', e && e.message, rec.program_id);
+      return null;
+    }
+  },
+  newVersion: function (ctx, p) {
+    var rec = Repo.must('Programs', p.program_id, 'Программа');
+    if (rec.status === 'DRAFT') fail('INVALID_STATUS', 'Это уже черновик — редактируйте его.');
+    var draft = Repo.where('Programs', function (x) { return x.site_id === rec.site_id && x.status === 'DRAFT'; })[0];
+    if (draft) fail('DUPLICATE', 'Для объекта уже есть черновик: ' + draft.program_id, { program_id: draft.program_id });
+    var ver = 1; Repo.where('Programs', function (x) { return x.site_id === rec.site_id; }).forEach(function (x) { ver = Math.max(ver, Number(x.version) + 1); });
+    var n = Repo.create(ctx, 'Programs', { client_id: rec.client_id, site_id: rec.site_id, title: rec.title, version: ver, status: 'DRAFT', profile_json: rec.profile_json, content_json: rec.content_json, unverified_count: rec.unverified_count, prev_program_id: rec.program_id }, { action: 'PPC_NEW_VERSION' });
+    return Programs.get(ctx, { program_id: n.program_id });
+  },
+  render: function (ctx, rec) {
+    var e = DocContent.esc, prof = safeJson(rec.profile_json, {}), content = safeJson(rec.content_json, { sections: [] });
+    var client = Repo.get('Clients', rec.client_id) || {}, site = Repo.get('Sites', rec.site_id) || {};
+    var draft = rec.status !== 'APPROVED' && rec.status !== 'ARCHIVED', unv = Number(rec.unverified_count) || 0;
+    var h = ['<html><head><meta charset="utf-8"><title>' + e(rec.program_id) + '</title><style>' + DocContent.css + '</style></head><body>'];
+    h.push(DocContent.approvalBlock(prof.head_name, prof.head_position, client.legal_name));
+    h.push('<div class="c title"><h1>ПРОГРАММА<br>производственного контроля</h1><div>за соблюдением санитарных правил и выполнением санитарно-противоэпидемических (профилактических) мероприятий</div><br><div><b>' + e(client.legal_name) + '</b></div><div>' + e(site.site_name) + ', ' + e(site.address) + '</div><br><div class="small muted">' + e(rec.program_id) + ' · версия ' + e(rec.version) + (draft ? ' · ПРОЕКТ' : '') + '</div></div>');
+    if (draft) h.push('<div class="warn">Проект документа. Не утверждён.</div>');
+    if (unv) h.push('<div class="warn">Документ содержит положений, не сверенных с официальным текстом нормативов: ' + unv + ' (выделены цветом).' + (rec.unverified_reason ? ' Утверждён с обоснованием: ' + e(rec.unverified_reason) : '') + '</div>');
+    h.push('<div class="pb"></div>');
+    h.push(DocContent.sectionsHtml(content.sections || [], true));
+    h.push('<h2>Лист ознакомления</h2><table><tr><th>ФИО</th><th>Должность</th><th>Дата</th><th>Подпись</th></tr>' + new Array(8).join('<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>') + '</table>');
+    h.push('<p class="small muted">Сформировано системой ' + e(Settings.get('COMPANY_NAME')) + ' ' + fmtDT(ctx.now) + '. Нормативная база по состоянию на ' + fmtD(content.built_at || ctx.now) + '.</p></body></html>');
+    return h.join('');
+  },
+  html: function (ctx, p) { return { html: Programs.render(ctx, Repo.must('Programs', p.program_id, 'Программа')) }; }
+};
+
+/* ---------- Технические условия ---------- */
+var Specs = {
+  SECTIONS: ['TU_TEXT', 'MICRO', 'TOX', 'METHOD', 'LABEL'],
+  groups: function () {
+    var g = {};
+    Store.all('NormItems').forEach(function (i) { var pg = V.str(i.product_group); if (V.bool(i.active) && (i.section === 'MICRO' || i.section === 'TOX') && pg && pg !== 'all' && pg.charAt(0) !== '~') g[pg] = true; });
+    return Object.keys(g).sort();
+  },
+  /* Группа положения: пусто/all — любая продукция; «~слово» — группы, содержащие слово; иначе точное совпадение */
+  match: function (itemGroup, grp) {
+    var g = V.str(itemGroup);
+    if (!g || g === 'all') return true;
+    if (g.charAt(0) === '~') return String(grp).toLowerCase().indexOf(g.slice(1).toLowerCase()) >= 0;
+    return g === grp;
+  },
+  lines: function (s, n) {
+    return V.str(s).split('\n').filter(function (l) { return V.str(l); }).map(function (l) {
+      var a = l.split(';').map(V.str); while (a.length < n) a.push('');
+      return DocContent.row(a.slice(0, n - 1).concat([a.slice(n - 1).join('; ')]), null, null, true);
+    });
+  },
+  profile: function (p) {
+    var pr = p || {};
+    return {
+      product_name: V.str(pr.product_name), product_group: V.str(pr.product_group), okpd2: V.str(pr.okpd2), okpo: V.str(pr.okpo) || Settings.get('ORG_OKPO'),
+      purpose: V.str(pr.purpose), composition: V.str(pr.composition), organoleptic: V.str(pr.organoleptic), physchem: V.str(pr.physchem),
+      shelf_life: V.str(pr.shelf_life), storage: V.str(pr.storage), packaging: V.str(pr.packaging), net_mass: V.str(pr.net_mass), transport: V.str(pr.transport),
+      head_name: V.str(pr.head_name), head_position: V.str(pr.head_position) || 'Руководитель'
+    };
+  },
+  designation: function (prof, clientId, existing) {
+    if (existing) return existing;
+    var n = Repo.where('TechSpecs', function (x) { return x.client_id === clientId && !x.prev_spec_id; }).length + 1;
+    var okpd = /^\d{2}\.\d{2}\.\d{2}/.test(prof.okpd2) ? prof.okpd2.slice(0, 8) : 'ХХ.ХХ.ХХ';
+    var okpo = /^\d{8}$/.test(prof.okpo) ? prof.okpo : 'ХХХХХХХХ';
+    var s = String(n); while (s.length < 3) s = '0' + s;
+    return 'ТУ ' + okpd + '-' + s + '-' + okpo + '-' + new Date().getFullYear();
+  },
+  build: function (ctx, p) {
+    var old = p.spec_id ? Repo.must('TechSpecs', p.spec_id, 'ТУ') : null;
+    if (old && old.status !== 'DRAFT') fail('INVALID_STATUS', 'Пересобрать можно только черновик. Создайте новую версию.');
+    var client = Repo.must('Clients', old ? old.client_id : p.client_id, 'Клиент');
+    var prof = Specs.profile(p.profile || (old ? safeJson(old.profile_json, {}) : {}));
+    V.required(prof, ['product_name', 'product_group'], { product_name: 'Наименование продукции', product_group: 'Группа продукции' });
+    var designation = Specs.designation(prof, client.client_id, old ? old.designation : '');
+    var content = Specs.compose(ctx, client, prof, designation);
+    var data = { profile_json: JSON.stringify(prof), content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content), product_name: prof.product_name, product_group: prof.product_group, okpd2: prof.okpd2 };
+    if (old) return Specs.get(ctx, { spec_id: Repo.update(ctx, 'TechSpecs', old.spec_id, data, { action: 'TU_REBUILD' }).spec_id });
+    data.client_id = client.client_id; data.designation = designation; data.version = 1; data.status = 'DRAFT';
+    var rec = Repo.create(ctx, 'TechSpecs', data, { action: 'TU_CREATE' });
+    return Specs.get(ctx, { spec_id: rec.spec_id });
+  },
+  fill: function (t, prof, designation) {
+    return String(t || '').replace(/\{product\}/g, prof.product_name).replace(/\{designation\}/g, designation)
+      .replace(/\{shelf_life\}/g, prof.shelf_life || '[срок годности]').replace(/\{storage\}/g, prof.storage || '[условия хранения]')
+      .replace(/\{packaging\}/g, prof.packaging || '[вид упаковки]').replace(/\{net_mass\}/g, prof.net_mass || '[масса нетто]');
+  },
+  compose: function (ctx, client, prof, designation) {
+    var pk = Norms.pick(ctx, 'TU', Specs.SECTIONS, null);
+    var D = pk.docs, R = DocContent.row, grp = prof.product_group;
+    var forGroup = function (sec) { return filterBy(pk.items, function (i) { return i.section === sec && Specs.match(i.product_group, grp); }); };
+    var texts = {}; forGroup('TU_TEXT').forEach(function (i) { (texts[i.indicator] = texts[i.indicator] || []).push(i); });
+    var textSec = function (key, title, extra) {
+      var its = texts[key] || [];
+      var body = its.map(function (i) { return Specs.fill(i.text, prof, designation); }).join('\n');
+      if (extra) body = body ? body + '\n' + extra : extra;
+      var v = its.every(function (i) { return V.bool(i.verified) && D[i.norm_id] && V.bool(D[i.norm_id].verified); });
+      return DocContent.text(key, title, body || '[заполните раздел]', v && !!body, its.map(function (i) { return Norms.ref(D[i.norm_id], i); }).join('; '));
+    };
+    /* Порядок разделов — ГОСТ 2.114-2016, п. 5.1.1; подразделы технических требований — п. 5.3.1 */
+    var sec = [];
+    sec.push(textSec('intro', 'Вводная часть', 'Пример записи продукции при заказе и в документации: «' + prof.product_name + ' ' + designation + '».' + (prof.purpose ? '\nНазначение: ' + prof.purpose + '.' : '')));
+    sec.push(textSec('general', '1 Технические требования'));
+    sec.push(DocContent.table('organoleptic', '1.1 Основные параметры и характеристики. Органолептические показатели', ['Показатель', 'Характеристика'], Specs.lines(prof.organoleptic, 2)));
+    sec.push(DocContent.table('physchem', '1.1 (продолжение) Физико-химические показатели', ['Показатель', 'Норма'], Specs.lines(prof.physchem, 2)));
+    sec.push(DocContent.table('micro', '1.1 (продолжение) Микробиологические показатели безопасности', ['Показатель', 'Допустимый уровень, не более'],
+      forGroup('MICRO').map(function (i) { var r = R([i.indicator || i.text, (i.norm_value || '[внесите норматив]') + (V.str(i.volume) ? ' (' + i.volume + ')' : '')], D[i.norm_id], i); if (!i.norm_value) r.v = false; return r; }),
+      'Группа продукции: ' + grp + '. Патогенные микроорганизмы, в том числе сальмонеллы и L. monocytogenes, нормируются по ТР ТС 021/2011.'));
+    sec.push(DocContent.table('tox', '1.1 (продолжение) Содержание потенциально опасных веществ', ['Показатель', 'Допустимый уровень'],
+      forGroup('TOX').map(function (i) { var r = R([i.indicator || i.text, i.norm_value || '[внесите норматив]'], D[i.norm_id], i); if (!i.norm_value) r.v = false; return r; })));
+    sec.push(DocContent.table('recipe', '1.2 Требования к сырью и материалам. Рецептура', ['Наименование сырья', 'Масса нетто, г / требования'], Specs.lines(prof.composition, 2),
+      'Сырьё, используемое для изготовления продукции, должно соответствовать требованиям технических регламентов ЕАЭС и сопровождаться документами, подтверждающими его безопасность и прослеживаемость.'));
+    sec.push(DocContent.table('labeling', '1.3 Маркировка', ['Требование к маркировке'], forGroup('LABEL').map(function (i) { return R([Specs.fill(i.text, prof, designation)], D[i.norm_id], i); })));
+    sec.push(textSec('packaging', '1.4 Упаковка', prof.packaging ? 'Продукцию упаковывают: ' + prof.packaging + (prof.net_mass ? '. Масса нетто: ' + prof.net_mass : '') + '.' : ''));
+    sec.push(textSec('safety', '2 Требования безопасности'));
+    sec.push(textSec('environment', '3 Требования охраны окружающей среды'));
+    sec.push(textSec('acceptance', '4 Правила приёмки'));
+    sec.push(DocContent.table('methods', '5 Методы контроля (испытаний)', ['Показатель', 'Метод (нормативный документ)'], forGroup('METHOD').map(function (i) { return R([i.indicator || i.text, i.text], D[i.norm_id], i); })));
+    sec.push(textSec('transport', '6 Указания по эксплуатации, в том числе требования хранения, транспортирования и утилизации', 'Срок годности: ' + (prof.shelf_life || '[укажите]') + '. Условия хранения: ' + (prof.storage || '[укажите]') + '.' + (prof.transport ? '\nТранспортирование: ' + prof.transport + '.' : '')));
+    sec.push(textSec('warranty', '7 Гарантии изготовителя'));
+    var refs = {}; pk.items.forEach(function (i) { if (Specs.match(i.product_group, grp)) refs[i.norm_id] = true; });
+    sec.push(DocContent.table('references', 'Перечень документов, на которые даны ссылки', ['Обозначение', 'Наименование'], sortBy(Object.keys(refs).map(function (id) { return D[id]; }), 'code').map(function (d) { return { c: [d.code, d.title], ref: d.code, nid: '', v: V.bool(d.verified) }; })));
+    if (/ХХ/.test(designation)) sec[0].v = false;
+    return { sections: sec, built_at: ctx.now, norms: Object.keys(refs), designation: designation };
+  },
+  enrich: function (rec) {
+    var o = stripSecrets(rec); delete o.content_json; delete o.profile_json;
+    o.client_name = (Repo.get('Clients', rec.client_id) || {}).legal_name || '';
+    return o;
+  },
+  list: function (ctx, p) {
+    p = p || {};
+    return sortBy(Repo.where('TechSpecs', function (x) { return (!p.client_id || x.client_id === p.client_id) && (p.all || x.status !== 'ARCHIVED'); }), 'updated_at', true).map(Specs.enrich);
+  },
+  get: function (ctx, p) {
+    var rec = Repo.must('TechSpecs', p.spec_id, 'ТУ');
+    var content = safeJson(rec.content_json, { sections: [] }), warn = [];
+    (content.norms || []).forEach(function (id) { var d = Repo.get('NormDocs', id); if (d && !Norms.inForce(d, ctx.now)) warn.push(d.code + ' больше не действует — пересоберите ТУ.'); });
+    if (/ХХ/.test(rec.designation)) warn.push('В обозначении ТУ не заполнены код ОКПД2 или ОКПО — укажите их в данных продукции и пересоберите черновик (для нового обозначения создайте ТУ заново).');
+    return { spec: Specs.enrich(rec), row_version: rec.row_version, profile: safeJson(rec.profile_json, {}), content: content, warnings: warn, groups: Specs.groups(),
+      history: sortBy(Repo.where('TechSpecs', function (x) { return x.designation === rec.designation; }), 'version', true).map(Specs.enrich) };
+  },
+  save: function (ctx, p) {
+    var rec = Repo.must('TechSpecs', p.spec_id, 'ТУ');
+    if (rec.status !== 'DRAFT') fail('INVALID_STATUS', 'Утверждённые ТУ изменить нельзя. Создайте новую версию (изменение).');
+    var content = DocContent.merge(safeJson(rec.content_json, { sections: [] }), p.content || {});
+    content.designation = rec.designation;
+    Repo.update(ctx, 'TechSpecs', rec.spec_id, { content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content) }, { action: 'TU_EDIT', expectedVersion: p.row_version });
+    return Specs.get(ctx, { spec_id: rec.spec_id });
+  },
+  approve: function (ctx, p) {
+    var rec = Repo.must('TechSpecs', p.spec_id, 'ТУ');
+    if (/ХХ/.test(rec.designation)) fail('VALIDATION', 'В обозначении ТУ не заполнены коды ОКПД2/ОКПО. Создайте ТУ заново с кодами.');
+    var reason = DocContent.checkApproval(ctx, rec, p, 'ТУ');
+    Repo.where('TechSpecs', function (x) { return x.designation === rec.designation && x.status === 'APPROVED'; }).forEach(function (x) {
+      Repo.update(ctx, 'TechSpecs', x.spec_id, { status: 'ARCHIVED' }, { action: 'TU_ARCHIVE' });
+      if (x.document_id) Repo.update(ctx, 'Documents', x.document_id, { approval_status: 'ARCHIVED' }, { action: 'DOC_ARCHIVE' });
+    });
+    rec = Repo.update(ctx, 'TechSpecs', rec.spec_id, { status: 'APPROVED', approved_by: ctx.actorId, approved_at: ctx.now, unverified_reason: reason }, { action: 'TU_APPROVE' });
+    Specs.makePdf(ctx, rec);
+    return Specs.get(ctx, { spec_id: rec.spec_id });
+  },
+  makePdf: function (ctx, rec) {
+    try {
+      var doc = DocContent.savePdf(ctx, 'TechSpecs', rec.spec_id, rec.client_id, 'TU', 'TU', rec.spec_id + '_TU', rec.designation + ' «' + rec.product_name + '», версия ' + rec.version, rec.version, Specs.render(ctx, rec));
+      Repo.update(ctx, 'TechSpecs', rec.spec_id, { document_id: doc.document_id }, { noAudit: true });
+      return doc;
+    } catch (e) {
+      Errors.record(ctx, 'Specs.makePdf', 'PDF_ERROR', 'PDF технических условий не создан, повтор в фоновой задаче', e && e.message, rec.spec_id);
+      return null;
+    }
+  },
+  newVersion: function (ctx, p) {
+    var rec = Repo.must('TechSpecs', p.spec_id, 'ТУ');
+    if (rec.status === 'DRAFT') fail('INVALID_STATUS', 'Это уже черновик — редактируйте его.');
+    var draft = Repo.where('TechSpecs', function (x) { return x.designation === rec.designation && x.status === 'DRAFT'; })[0];
+    if (draft) fail('DUPLICATE', 'Уже есть черновик изменения: ' + draft.spec_id, { spec_id: draft.spec_id });
+    var ver = 1; Repo.where('TechSpecs', function (x) { return x.designation === rec.designation; }).forEach(function (x) { ver = Math.max(ver, Number(x.version) + 1); });
+    var n = Repo.create(ctx, 'TechSpecs', { client_id: rec.client_id, designation: rec.designation, product_name: rec.product_name, product_group: rec.product_group, okpd2: rec.okpd2, version: ver, status: 'DRAFT', profile_json: rec.profile_json, content_json: rec.content_json, unverified_count: rec.unverified_count, prev_spec_id: rec.spec_id }, { action: 'TU_NEW_VERSION' });
+    return Specs.get(ctx, { spec_id: n.spec_id });
+  },
+  render: function (ctx, rec) {
+    var e = DocContent.esc, prof = safeJson(rec.profile_json, {}), content = safeJson(rec.content_json, { sections: [] });
+    var client = Repo.get('Clients', rec.client_id) || {};
+    var draft = rec.status !== 'APPROVED' && rec.status !== 'ARCHIVED', unv = Number(rec.unverified_count) || 0;
+    var secs = content.sections || [], intro = secs[0] || { text: '' };
+    var h = ['<html><head><meta charset="utf-8"><title>' + e(rec.designation) + '</title><style>' + DocContent.css + '</style></head><body>'];
+    h.push('<div class="r small">ОКПД2 ' + e(rec.okpd2 || '—') + '</div>');
+    h.push(DocContent.approvalBlock(prof.head_name, prof.head_position, client.legal_name));
+    h.push('<div class="c title"><h1>' + e(String(rec.product_name).toUpperCase()) + '</h1><div>Технические условия</div><br><div><b>' + e(rec.designation) + '</b></div><br><div>Введены впервые' + (Number(rec.version) > 1 ? ' · изменение ' + (Number(rec.version) - 1) : '') + '</div><div>Дата введения: «___» ____________ 20___ г.</div><br><div>Разработчик: ' + e(client.legal_name) + '</div>' + (draft ? '<div class="small muted">ПРОЕКТ · ' + e(rec.spec_id) + '</div>' : '') + '</div>');
+    if (draft) h.push('<div class="warn">Проект документа. Не утверждён.</div>');
+    if (unv) h.push('<div class="warn">Документ содержит положений, не сверенных с официальным текстом нормативов: ' + unv + ' (выделены цветом).' + (rec.unverified_reason ? ' Утверждён с обоснованием: ' + e(rec.unverified_reason) : '') + '</div>');
+    h.push('<div class="pb"></div><div' + (intro.v === false ? ' class="unv"' : '') + '>' + DocContent.multiline(intro.text) + '</div>');
+    h.push(DocContent.sectionsHtml(secs.slice(1), false));
+    h.push('<h2>Лист регистрации изменений</h2><table><tr><th>Изм.</th><th>Номера листов (страниц)</th><th>Номер документа</th><th>Подпись</th><th>Дата</th></tr>' + new Array(6).join('<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>') + '</table>');
+    h.push('<p class="small muted">Сформировано системой ' + e(Settings.get('COMPANY_NAME')) + ' ' + fmtDT(ctx.now) + '. Нормативная база по состоянию на ' + fmtD(content.built_at || ctx.now) + '.</p></body></html>');
+    return h.join('');
+  },
+  html: function (ctx, p) { return { html: Specs.render(ctx, Repo.must('TechSpecs', p.spec_id, 'ТУ')) }; }
+};
+
+/* Фоновая проверка: сроки нормативов, пересмотр ППК, повтор PDF */
+var DocJobs = {
+  daily: function (ctx) {
+    var r = { norms_expiring: Norms.checkExpiry(ctx), ppc_review: 0, docs_pdf_retry: 0 };
+    var owners = filterBy(Store.all('Employees'), function (e) { return e.role === 'OWNER' && V.bool(e.active); });
+    Store.all('Programs').forEach(function (x) {
+      if (x.status !== 'APPROVED') return;
+      if (!x.document_id && Programs.makePdf(ctx, x)) r.docs_pdf_retry++;
+      if (x.review_due_date && isBefore(x.review_due_date, isoAddDays(ctx.now, 30))) {
+        var site = Repo.get('Sites', x.site_id) || {};
+        owners.forEach(function (o) { if (Notify.push(ctx, o.employee_id, 'PPC_REVIEW', 'Programs', x.program_id, 'Пересмотр программы ПК: ' + (site.site_name || x.site_id), 'Срок пересмотра программы ' + x.program_id + ' — ' + fmtD(x.review_due_date) + '. Создайте новую версию и пересоберите её по актуальной нормативной базе.', 'ppcrev:' + x.program_id + ':' + x.review_due_date)) r.ppc_review++; });
+      }
+    });
+    Store.all('TechSpecs').forEach(function (x) { if (x.status === 'APPROVED' && !x.document_id && Specs.makePdf(ctx, x)) r.docs_pdf_retry++; });
+    return r;
+  }
 };
 
 /* ==== core/Api.gs ==== */
@@ -3009,7 +3644,27 @@ var ROUTES = {
   'settings.save': function (ctx, p) { return Settings.save(ctx, p); },
   'errors.list': function (ctx, p) { return Errors.list(ctx, p); },
   'errors.resolve': function (ctx, p) { return Errors.resolve(ctx, p); },
-  'jobs.run': function (ctx, p) { return p.job === 'frequent' ? Jobs.frequent(ctx) : Jobs.daily(ctx); }
+  'jobs.run': function (ctx, p) { return p.job === 'frequent' ? Jobs.frequent(ctx) : Jobs.daily(ctx); },
+
+  'norms.list': function (ctx, p) { return { docs: Norms.list(ctx, p), sections: NORM_SECTIONS, kinds: NORM_KINDS, statuses: NORM_STATUS, scopes: NORM_SCOPES, flags: SITE_FLAGS }; },
+  'norms.get': function (ctx, p) { var r = Norms.get(ctx, p); r.sections = NORM_SECTIONS; r.flags = SITE_FLAGS; return r; },
+  'norms.saveDoc': function (ctx, p) { return Norms.saveDoc(ctx, p); },
+  'norms.saveItem': function (ctx, p) { return Norms.saveItem(ctx, p); },
+  'norms.verify': function (ctx, p) { return Norms.verify(ctx, p); },
+  'programs.list': function (ctx, p) { return { rows: Programs.list(ctx, p), object_types: OBJECT_TYPES, flags: SITE_FLAGS }; },
+  'programs.get': function (ctx, p) { var r = Programs.get(ctx, p); r.object_types = OBJECT_TYPES; r.flags = SITE_FLAGS; return r; },
+  'programs.html': function (ctx, p) { return Programs.html(ctx, p); },
+  'programs.build': function (ctx, p) { return Programs.build(ctx, p); },
+  'programs.save': function (ctx, p) { return Programs.save(ctx, p); },
+  'programs.approve': function (ctx, p) { return Programs.approve(ctx, p); },
+  'programs.newVersion': function (ctx, p) { return Programs.newVersion(ctx, p); },
+  'specs.list': function (ctx, p) { return { rows: Specs.list(ctx, p), groups: Specs.groups(), okpo: Settings.get('ORG_OKPO') }; },
+  'specs.get': function (ctx, p) { return Specs.get(ctx, p); },
+  'specs.html': function (ctx, p) { return Specs.html(ctx, p); },
+  'specs.build': function (ctx, p) { return Specs.build(ctx, p); },
+  'specs.save': function (ctx, p) { return Specs.save(ctx, p); },
+  'specs.approve': function (ctx, p) { return Specs.approve(ctx, p); },
+  'specs.newVersion': function (ctx, p) { return Specs.newVersion(ctx, p); }
 };
 
 /* Чтение — без блокировки и без записи в Requests */
@@ -3168,6 +3823,7 @@ var Seed = {
     } else {
       Store.all('Services').forEach(function (s) { if (/Плановый/.test(s.name)) srv.plan = s.service_id; if (/проб/.test(s.name)) srv.lab = s.service_id; if (/ХАССП/.test(s.name)) srv.haccp = s.service_id; if (/Внеплан/.test(s.name)) srv.unplanned = s.service_id; if (/абонемент/.test(s.name)) srv.sub = s.service_id; });
     }
+    NormSeed.run(ownerEmp);
     return { checklists: ids, services: srv };
   },
 
@@ -3401,6 +4057,18 @@ var Seed = {
     var someInv = filterBy(Store.all('Finance'), function (f) { return f.operation_type === 'INVOICE'; })[2];
     if (someInv) Finance.adjust(Seed.ctx(E.fin, A(-1, 15)), { invoice_id: someInv.finance_id, amount: -1500, operation_date: A(-1, 15), basis: 'Скидка за перенос выезда по вине исполнителя (письмо клиента от ' + fmtD(A(-2, 9)) + ')' });
 
+    /* Пример ППК и ТУ для демонстрации модулей */
+    var ctxC = C('coord', -1, 11);
+    var ppcSite = sites[0];
+    Programs.build(ctxC, { site_id: ppcSite.site_id, profile: { object_type: 'CAFE', seats: '48', staff_count: '12', work_mode: 'ежедневно 10:00–22:00', flags: 'hot_shop,cold_shop,ventilation', water_source: 'централизованное', head_name: 'Гаврилова Елена Викторовна', head_position: 'Директор',
+      responsible: 'Гаврилова Е. В.; директор; общее руководство производственным контролем\nСоколова М. И.; координатор San.Lab; организация лабораторных исследований, ведение документации',
+      positions: 'повар, кухонный рабочий, мойщик посуды, официант, бармен, администратор', lab_name: 'ИЛЦ «Центр гигиены и эпидемиологии»', pest_control: 'ООО «Дезсервис», договор № 14-Д', waste: 'региональный оператор', assortment: 'блюда русской и европейской кухни, выпечка' } });
+    Specs.build(ctxC, { client_id: ppcSite.client_id, profile: { product_name: 'Котлеты «Домашние» из говядины и свинины', product_group: 'Полуфабрикаты мясные (мясосодержащие) рубленые формованные, в т. ч. панированные', okpd2: '10.13.14', okpo: '12345678',
+      purpose: 'для реализации на предприятиях общественного питания', composition: 'Говядина жилованная; 400\nСвинина жилованная; 300\nХлеб пшеничный; 130\nЛук репчатый; 80\nВода питьевая; 80\nСоль поваренная пищевая; 10',
+      organoleptic: 'Внешний вид; изделия овально-приплюснутой формы, без разорванных и ломаных краёв\nВкус и запах; свойственные доброкачественному сырью, без посторонних\nКонсистенция; однородная, сочная', physchem: 'Массовая доля жира, %, не более; 20\nМассовая доля поваренной соли, %, не более; 1,5\nМасса одного изделия, г; 100 ± 3',
+      shelf_life: '48 ч (охлаждённые), 3 мес. (замороженные)', storage: 'охлаждённые — от минус 1,5 до плюс 6 °С; замороженные — не выше минус 18 °С', packaging: 'лотки из полимерных материалов с плёнкой', net_mass: '500 г, 1000 г', transport: 'охлаждаемым транспортом',
+      head_name: 'Гаврилова Е. В.', head_position: 'Директор' } });
+
     /* Уведомления прошлых дней считаем прочитанными и отправленными */
     var cutoff = A(-1, 0);
     Store.all('Notifications').forEach(function (n) { if (isBefore(n.created_at, cutoff)) Store.update('Notifications', n.notification_id, { read_at: n.created_at, status: 'SENT', sent_at: n.created_at, attempts: 1 }); });
@@ -3422,6 +4090,192 @@ var Seed = {
     ];
     for (var i = 0; i < map.length; i++) if (map[i][0].test(text)) return map[i][1][Math.floor(rnd() * map[i][1].length)];
     return 'Выявлено несоответствие, требуется устранение';
+  }
+};
+
+/* ==== core/NormSeed.gs ==== */
+/**
+ * San.Lab — NormSeed.gs
+ * Стартовое наполнение нормативной базы.
+ * v: true — положение сверено с официальным текстом (источник указан в документе);
+ * v: false — внесено как проект: сверьте формулировку и номер пункта и нажмите «Сверено» в «Нормативной базе».
+ * Позиция строки положения: [вид, пункт, текст, признаки объекта, группа продукции, показатель, норматив, периодичность, объём/примечание]
+ * Группа продукции «~слово» — положение применяется ко всем группам, в названии которых есть это слово.
+ */
+
+var NORM_SEED_SOURCE_USER = 'Текст документа, предоставленный заказчиком San.Lab (выгрузка справочной системы), сверено 03.11.2026';
+var NORM_SEED_TODO = 'Внесено как проект. Сверьте формулировку и номер пункта с официальным текстом (pravo.gov.ru, eaeunion.org, КонсультантПлюс) и нажмите «Сверено».';
+
+var NORM_SEED = [
+  /* ---------- Сверено по документам заказчика ---------- */
+  { code: 'ТР ТС 034/2013', title: 'Технический регламент Таможенного союза «О безопасности мяса и мясной продукции» (принят Решением Совета ЕЭК от 09.10.2013 № 68, ред. от 27.09.2023, действует с 10.07.2024)', kind: 'TR', scopes: 'TU,PPC', v: true, source: NORM_SEED_SOURCE_USER,
+    notes: 'Приложение № 1 сверено по изображению страниц: показатели степени в выгрузке переданы картинками.',
+    items: [
+      ['MICRO', 'Приложение № 1, п. 3', 'Полуфабрикаты мясные для питания дошкольников и школьников', '', 'Полуфабрикаты мясные для питания дошкольников и школьников', 'КМАФАнМ, КОЕ/г', '5×10⁵', '', 'для рубленых полуфабрикатов'],
+      ['MICRO', 'Приложение № 1, п. 3', 'Полуфабрикаты мясные для питания дошкольников и школьников', '', 'Полуфабрикаты мясные для питания дошкольников и школьников', 'КМАФАнМ, КОЕ/г', '1×10⁵', '', 'для кусковых полуфабрикатов'],
+      ['MICRO', 'Приложение № 1, п. 3', 'Полуфабрикаты мясные для питания дошкольников и школьников', '', 'Полуфабрикаты мясные для питания дошкольников и школьников', 'БГКП (колиформы) в 0,001 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 3', 'Полуфабрикаты мясные для питания дошкольников и школьников', '', 'Полуфабрикаты мясные для питания дошкольников и школьников', 'S. aureus в 0,1 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 3', 'Полуфабрикаты мясные для питания дошкольников и школьников', '', 'Полуфабрикаты мясные для питания дошкольников и школьников', 'Плесени, КОЕ/г', '250', '', 'для полуфабрикатов в панировке'],
+      ['MICRO', 'Приложение № 1, п. 4а', 'Полуфабрикаты бескостные крупнокусковые', '', 'Полуфабрикаты мясные (мясосодержащие) бескостные крупнокусковые, в т. ч. в маринаде', 'КМАФАнМ, КОЕ/г', '5×10⁵', '', ''],
+      ['MICRO', 'Приложение № 1, п. 4а', 'Полуфабрикаты бескостные крупнокусковые', '', 'Полуфабрикаты мясные (мясосодержащие) бескостные крупнокусковые, в т. ч. в маринаде', 'БГКП (колиформы) в 0,001 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 4б', 'Полуфабрикаты бескостные мелкокусковые', '', 'Полуфабрикаты мясные (мясосодержащие) бескостные мелкокусковые, в т. ч. в маринаде', 'КМАФАнМ, КОЕ/г', '1×10⁶', '', ''],
+      ['MICRO', 'Приложение № 1, п. 4б', 'Полуфабрикаты бескостные мелкокусковые', '', 'Полуфабрикаты мясные (мясосодержащие) бескостные мелкокусковые, в т. ч. в маринаде', 'БГКП (колиформы) в 0,001 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 5а', 'Полуфабрикаты рубленые формованные', '', 'Полуфабрикаты мясные (мясосодержащие) рубленые формованные, в т. ч. панированные', 'КМАФАнМ, КОЕ/г', '5×10⁶', '', ''],
+      ['MICRO', 'Приложение № 1, п. 5а', 'Полуфабрикаты рубленые формованные', '', 'Полуфабрикаты мясные (мясосодержащие) рубленые формованные, в т. ч. панированные', 'БГКП (колиформы) в 0,0001 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 5а', 'Полуфабрикаты рубленые формованные', '', 'Полуфабрикаты мясные (мясосодержащие) рубленые формованные, в т. ч. панированные', 'Плесени, КОЕ/г', '500', '', 'для полуфабрикатов панированных со сроком годности более 1 месяца'],
+      ['MICRO', 'Приложение № 1, п. 5б', 'Полуфабрикаты рубленые в тестовой оболочке, фаршированные', '', 'Полуфабрикаты мясные (мясосодержащие) рубленые в тестовой оболочке, фаршированные', 'КМАФАнМ, КОЕ/г', '2×10⁶', '', ''],
+      ['MICRO', 'Приложение № 1, п. 5б', 'Полуфабрикаты рубленые в тестовой оболочке, фаршированные', '', 'Полуфабрикаты мясные (мясосодержащие) рубленые в тестовой оболочке, фаршированные', 'БГКП (колиформы) в 0,0001 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 5б', 'Полуфабрикаты рубленые в тестовой оболочке, фаршированные', '', 'Полуфабрикаты мясные (мясосодержащие) рубленые в тестовой оболочке, фаршированные', 'Плесени, КОЕ/г', '500', '', 'для полуфабрикатов со сроком годности более 1 месяца'],
+      ['MICRO', 'Приложение № 1, п. 5в', 'Фарш', '', 'Фарш мясной (мясосодержащий)', 'КМАФАнМ, КОЕ/г', '5×10⁶', '', ''],
+      ['MICRO', 'Приложение № 1, п. 5в', 'Фарш', '', 'Фарш мясной (мясосодержащий)', 'БГКП (колиформы) в 0,0001 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 6', 'Полуфабрикаты мясокостные', '', 'Полуфабрикаты мясокостные (крупнокусковые, порционные, мелкокусковые)', 'КМАФАнМ, КОЕ/г', '5×10⁶', '', ''],
+      ['MICRO', 'Приложение № 1, п. 6', 'Полуфабрикаты мясокостные', '', 'Полуфабрикаты мясокостные (крупнокусковые, порционные, мелкокусковые)', 'БГКП (колиформы) в 0,0001 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 21', 'Кулинарные изделия для дошкольников и школьников', '', 'Кулинарные изделия мясные для питания дошкольников и школьников', 'КМАФАнМ, КОЕ/г', '1×10³', '', ''],
+      ['MICRO', 'Приложение № 1, п. 21', 'Кулинарные изделия для дошкольников и школьников', '', 'Кулинарные изделия мясные для питания дошкольников и школьников', 'БГКП (колиформы) в 1 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 21', 'Кулинарные изделия для дошкольников и школьников', '', 'Кулинарные изделия мясные для питания дошкольников и школьников', 'E. coli в 1 г', 'не допускаются', '', 'для продуктов со сроком годности более 72 ч'],
+      ['MICRO', 'Приложение № 1, п. 21', 'Кулинарные изделия для дошкольников и школьников', '', 'Кулинарные изделия мясные для питания дошкольников и школьников', 'S. aureus в 1 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 21', 'Кулинарные изделия для дошкольников и школьников', '', 'Кулинарные изделия мясные для питания дошкольников и школьников', 'Сульфитредуцирующие клостридии в 0,1 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 21', 'Кулинарные изделия для дошкольников и школьников', '', 'Кулинарные изделия мясные для питания дошкольников и школьников', 'Дрожжи, КОЕ/г', '100', '', 'для продуктов со сроком годности более 72 ч'],
+      ['MICRO', 'Приложение № 1, п. 21', 'Кулинарные изделия для дошкольников и школьников', '', 'Кулинарные изделия мясные для питания дошкольников и школьников', 'Плесени, КОЕ/г', '100', '', 'для продуктов со сроком годности более 72 ч'],
+      ['MICRO', 'Приложение № 1, п. 22а', 'Кулинарные изделия мясные замороженные', '', 'Кулинарные изделия мясные замороженные', 'КМАФАнМ, КОЕ/г', '1×10⁴', '', ''],
+      ['MICRO', 'Приложение № 1, п. 22а', 'Кулинарные изделия мясные замороженные', '', 'Кулинарные изделия мясные замороженные', 'БГКП (колиформы) в 0,01 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 22а', 'Кулинарные изделия мясные замороженные', '', 'Кулинарные изделия мясные замороженные', 'S. aureus в 0,1 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 22а', 'Кулинарные изделия мясные замороженные', '', 'Кулинарные изделия мясные замороженные', 'Бактерии рода Enterococcus, КОЕ/г', '1×10³', '', ''],
+      ['MICRO', 'Приложение № 1, п. 22б', 'Кулинарные изделия мясосодержащие замороженные', '', 'Кулинарные изделия мясосодержащие замороженные', 'КМАФАнМ, КОЕ/г', '2×10⁴', '', ''],
+      ['MICRO', 'Приложение № 1, п. 22б', 'Кулинарные изделия мясосодержащие замороженные', '', 'Кулинарные изделия мясосодержащие замороженные', 'БГКП (колиформы) в 0,01 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 22б', 'Кулинарные изделия мясосодержащие замороженные', '', 'Кулинарные изделия мясосодержащие замороженные', 'S. aureus в 0,1 г', 'не допускаются', '', ''],
+      ['MICRO', 'Приложение № 1, п. 22б', 'Кулинарные изделия мясосодержащие замороженные', '', 'Кулинарные изделия мясосодержащие замороженные', 'Бактерии рода Enterococcus, КОЕ/г', '1×10³', '', ''],
+      ['TU_TEXT', 'п. 74 а', 'Не допускается производство мясных и мясосодержащих полуфабрикатов, предназначенных для реализации, в том числе на предприятиях общественного питания, с применением нитрита натрия (нитрита калия).', '', '~полуфабрикат', 'general', '', '', ''],
+      ['TU_TEXT', 'п. 74 в', 'Не допускается выпускать в реализацию полуфабрикаты с температурой выше плюс 6 °С в любой точке измерения.', '', '~полуфабрикат', 'transport', '', '', ''],
+      ['LABEL', 'п. 106', 'Маркировка мясной продукции должна соответствовать требованиям ТР ТС 022/2011 «Пищевая продукция в части ее маркировки», а также пунктам 107–126 ТР ТС 034/2013.', '', '~мяс', '', '', '', ''],
+      ['LABEL', 'п. 109', 'В наименовании мясной продукции указывается или помещается в непосредственной близости от наименования информация о группе («мясной», «мясосодержащий», «мясорастительный», «растительно-мясной») и виде («полуфабрикат», «кулинарное изделие» и др.) мясной продукции.', '', '~мяс', '', '', '', ''],
+      ['LABEL', 'п. 110', 'В случае использования мяса механической обвалки (дообвалки) информация об этом указывается в составе продукции.', '', '~мяс', '', '', '', ''],
+      ['LABEL', 'п. 111', 'В составе продукции указывается вода при любом способе ее добавления (в виде льда, рассола, раствора и пр.).', '', '~мяс', '', '', '', ''],
+      ['LABEL', 'п. 112', 'В составе продукции не должно содержаться название комплексных пищевых добавок, а также маринадов и рассолов без указания входящих в них компонентов.', '', '~мяс', '', '', '', ''],
+      ['LABEL', 'п. 115', 'Для продукции, упакованной под вакуумом или в условиях модифицированной атмосферы, указывается соответствующая информация («упаковано под вакуумом», «упаковано в модифицированной атмосфере»).', '', '~мяс', '', '', '', ''],
+      ['LABEL', 'п. 120 а', 'Для полуфабрикатов и кулинарных изделий указываются группа, вид продукции, вид полуфабриката («рубленые», «в тесте», «фаршированные», «фарш», «формованные», «крупнокусковые», «панированные», «мелкокусковые») и термическое состояние: «охлажденные» — от минус 1,5 °С до плюс 6 °С в любой точке измерения; «замороженные» — не выше минус 8 °С в любой точке измерения.', '', '~мяс', '', '', '', ''],
+      ['LABEL', 'п. 120 б', 'Если охлажденная продукция изготовлена из замороженных продуктов убоя, это указывается в маркировке (например, «изготовлено из замороженного сырья»).', '', '~мяс', '', '', '', '']
+    ] },
+  { code: 'Решение КТС № 711', title: 'Положение о едином знаке обращения продукции на рынке государств — членов Таможенного союза (утв. Решением Комиссии Таможенного союза от 15.07.2011 № 711, с изм. от 23.09.2011 № 800)', kind: 'OTHER', scopes: 'TU', v: true, source: NORM_SEED_SOURCE_USER,
+    items: [
+      ['LABEL', 'пп. 2, 4, 5.1–5.2, 3.3', 'Продукция, прошедшая все установленные техническими регламентами ЕАЭС процедуры оценки (подтверждения) соответствия, маркируется единым знаком обращения ЕАС. Знак наносится на каждую единицу продукции, упаковку или сопроводительную документацию; изображение одноцветное, контрастирующее с поверхностью; базовый размер — не менее 5 мм.', '', '', '', '', '', '']
+    ] },
+  { code: 'ГОСТ 2.114-2016', title: 'Единая система конструкторской документации. Технические условия', kind: 'GOST', scopes: 'TU', v: true, source: NORM_SEED_SOURCE_USER,
+    notes: 'Порядок разделов ТУ (п. 5.1.1) и подразделы технических требований (п. 5.3.1) заложены в шаблон ТУ системы. Для немашиностроительной продукции стандарт применяется по п. 4.12; для пищевой продукции рекомендуется также ГОСТ Р 1.3-2018.',
+    items: [
+      ['TU_TEXT', 'п. 5.2.3', 'Настоящие технические условия распространяются на {product}.', '', '', 'intro', '', '', ''],
+      ['TU_TEXT', 'п. 4.4', 'Требования, установленные в настоящих ТУ, не противоречат требованиям стандартов, распространяющихся на данную продукцию; требования стандартов не повторяются и заменены ссылками на них.', '', '', 'general', '', '', '']
+    ] },
+
+  /* ---------- Проект: требует сверки с первоисточником ---------- */
+  { code: 'ТР ТС 021/2011', title: 'Технический регламент Таможенного союза «О безопасности пищевой продукции»', kind: 'TR', scopes: 'PPC,TU', v: false, notes: NORM_SEED_TODO + ' Нужны статьи 10–11 и приложения с микробиологическими нормативами и нормативами контаминантов.',
+    items: [
+      ['DOCS', 'ст. 10, 11', 'Разработка, внедрение и поддержание процедур, основанных на принципах ХАССП', 'all', '', '', '', '', ''],
+      ['CCP', 'ст. 11', 'Приёмка сырья и пищевой продукции', 'all', '', 'Микробиологическое и химическое загрязнение, нарушение сроков годности, отсутствие документов', 'Наличие документов о безопасности и прослеживаемости; соответствие маркировки; сроки годности; температура доставки по маркировке изготовителя', 'Каждая партия; журнал бракеража скоропортящейся продукции'],
+      ['CCP', 'ст. 11', 'Хранение сырья и продукции', 'all', '', 'Рост микроорганизмов при нарушении температуры', 'Температура хранения по маркировке изготовителя; товарное соседство', 'Ежедневно; журнал температурного режима холодильного оборудования'],
+      ['CCP', 'ст. 11', 'Тепловая обработка', 'hot_shop,meat_fish,confectionery,bakery', '', 'Выживание патогенных микроорганизмов', 'Режим по технологической документации (ТТК); контроль температуры в толще продукта', 'Каждая партия; запись в журнале'],
+      ['CCP', 'ст. 11', 'Охлаждение и хранение готовых блюд, раздача', 'all', '', 'Рост микроорганизмов, вторичное загрязнение', 'Температура и сроки по технологической документации и СанПиН', 'Ежедневно; бракераж готовой продукции'],
+      ['CCP', 'ст. 11', 'Приготовление блюд без тепловой обработки (салаты, холодные закуски, роллы)', 'cold_shop', '', 'Вторичное микробиологическое загрязнение', 'Раздельный инвентарь, обработка овощей и зелени, сроки реализации', 'Ежедневно'],
+      ['TOX', 'Приложение 3', 'Свинец', '', 'all', 'Свинец, мг/кг', '', '', ''],
+      ['TOX', 'Приложение 3', 'Кадмий', '', 'all', 'Кадмий, мг/кг', '', '', ''],
+      ['TOX', 'Приложение 3', 'Ртуть', '', 'all', 'Ртуть, мг/кг', '', '', ''],
+      ['TOX', 'Приложение 3', 'Мышьяк', '', 'all', 'Мышьяк, мг/кг', '', '', ''],
+      ['TU_TEXT', 'ст. 7', 'Продукция должна быть безопасной для потребителя в течение срока годности при соблюдении условий хранения, транспортирования и реализации и соответствовать требованиям ТР ТС 021/2011 и других распространяющихся на неё технических регламентов ЕАЭС.', '', '', 'safety', '', '', ''],
+      ['TU_TEXT', 'ст. 21', 'Продукцию принимают партиями. Партией считают продукцию одного наименования, изготовленную одним изготовителем по одним ТУ за одну смену и оформленную одним документом, обеспечивающим прослеживаемость. Каждую партию сопровождают документом, обеспечивающим прослеживаемость, и сведениями о подтверждении соответствия.', '', '', 'acceptance', '', '', ''],
+      ['TU_TEXT', '—', 'Отходы производства утилизируют в соответствии с требованиями законодательства в области обращения с отходами; упаковка должна допускать утилизацию.', '', '', 'environment', '', '', ''],
+      ['TU_TEXT', '—', 'Изготовитель гарантирует соответствие продукции требованиям настоящих ТУ при соблюдении условий транспортирования и хранения в течение срока годности.', '', '', 'warranty', '', '', '']
+    ] },
+  { code: 'ТР ТС 022/2011', title: 'Технический регламент Таможенного союза «Пищевая продукция в части ее маркировки»', kind: 'TR', scopes: 'TU', v: false, notes: NORM_SEED_TODO + ' Нужна статья 4.',
+    items: [
+      ['LABEL', 'ст. 4.1', 'Маркировка содержит: наименование продукции; состав; количество; дату изготовления; срок годности; условия хранения (а после вскрытия упаковки — при необходимости); наименование и место нахождения изготовителя; рекомендации и (или) ограничения по использованию (при необходимости); пищевую ценность; сведения о наличии ГМО (при необходимости); единый знак обращения продукции на рынке ЕАЭС.', '', '', '', '', '', '']
+    ] },
+  { code: 'ТР ТС 005/2011', title: 'Технический регламент Таможенного союза «О безопасности упаковки»', kind: 'TR', scopes: 'TU', v: false, notes: NORM_SEED_TODO,
+    items: [['TU_TEXT', '—', 'Упаковка, контактирующая с продукцией, должна соответствовать требованиям ТР ТС 005/2011 и обеспечивать сохранность продукции в течение срока годности.', '', '', 'packaging', '', '', '']] },
+  { code: 'СанПиН 2.3/2.4.3590-20', title: 'Санитарно-эпидемиологические требования к организации общественного питания населения', kind: 'SANPIN', scopes: 'PPC', v: false, validUntil: '2027-01-01T00:00:00+05:00',
+    notes: NORM_SEED_TODO + ' Действует до 01.01.2027 — заранее внесите заменяющий документ. Нужно Приложение № 1 (номенклатура и периодичность исследований) и формы журналов.',
+    items: [
+      ['DOCS', 'п. 2.1', 'Производственный контроль, включая лабораторные исследования и испытания, осуществляется в порядке и с периодичностью, установленными организацией общественного питания', 'all', '', '', '', '', ''],
+      ['LAB', 'Приложение № 1', 'Готовые блюда собственного производства', 'all', '', 'Микробиологические показатели (КМАФАнМ, БГКП, S. aureus, бактерии рода Proteus, патогенные микроорганизмы)', '', '1 раз в квартал', '2–3 блюда исследуемого приёма пищи'],
+      ['LAB', 'Приложение № 1', 'Рационы питания (готовые блюда)', 'children', '', 'Калорийность, выход, химический состав, вложение витамина С', '', '1 раз в год', '1 рацион'],
+      ['LAB', 'Приложение № 1', 'Смывы с объектов производственного окружения, рук и спецодежды персонала', 'all', '', 'БГКП', '', '1 раз в квартал', 'не менее 10 смывов'],
+      ['LAB', 'Приложение № 1', 'Смывы с объектов производственного окружения', 'children', '', 'Яйца гельминтов', '', '1 раз в год', '10 смывов'],
+      ['LAB', 'Приложение № 1', 'Питьевая вода из разводящей сети помещений', 'all', '', 'Микробиологические и органолептические показатели', '', '2 раза в год', '1 проба'],
+      ['LAB', 'Приложение № 1', 'Питьевая вода из собственного источника', 'own_water', '', 'Микробиологические, органолептические и химические показатели', '', '1 раз в квартал', '1 проба'],
+      ['LAB', 'Приложение № 1', 'Микроклимат рабочих мест (температура, относительная влажность, скорость движения воздуха)', 'all', '', 'Параметры микроклимата', '', '2 раза в год (холодный и тёплый периоды)', 'на рабочих местах'],
+      ['LAB', 'Приложение № 1', 'Искусственная освещённость рабочих мест', 'all', '', 'Освещённость', '', '1 раз в год', 'на рабочих местах'],
+      ['LAB', '—', 'Уровни шума и вибрации на рабочих местах', 'noise', '', 'Шум, вибрация', '', '1 раз в год', 'на рабочих местах у источников'],
+      ['LAB', '—', 'Эффективность работы вентиляции', 'ventilation', '', 'Кратность воздухообмена', '', '1 раз в год', 'по системам'],
+      ['JOURNAL', 'Приложение', 'Гигиенический журнал (сотрудники)', 'all', '', 'Ответственный за смену', '', 'Ежедневно перед сменой', ''],
+      ['JOURNAL', 'Приложение', 'Журнал учёта температурного режима холодильного оборудования', 'all', '', 'Ответственный за склад / цех', '', 'Ежедневно', ''],
+      ['JOURNAL', 'Приложение', 'Журнал учёта температуры и влажности в складских помещениях', 'all', '', 'Кладовщик', '', 'Ежедневно', ''],
+      ['JOURNAL', 'Приложение', 'Журнал бракеража готовой пищевой продукции', 'all', '', 'Бракеражная комиссия', '', 'Каждая партия', ''],
+      ['JOURNAL', 'Приложение', 'Журнал бракеража скоропортящейся пищевой продукции', 'all', '', 'Ответственный за приёмку', '', 'Каждая поставка', ''],
+      ['JOURNAL', 'Приложение', 'Журнал учёта использования фритюрных жиров', 'hot_shop', '', 'Повар', '', 'При каждом использовании', ''],
+      ['MEASURE', '—', 'Ежедневный осмотр работников на наличие гнойничковых заболеваний и признаков инфекционных заболеваний с записью в гигиеническом журнале', 'all', '', 'Ответственный за смену', '', 'Ежедневно', ''],
+      ['MEASURE', '—', 'Отбор и хранение суточной пробы готовых блюд', 'children', '', 'Повар / медработник', '', 'Каждый приём пищи', ''],
+      ['MEASURE', '—', 'Контроль сроков годности и условий хранения пищевой продукции', 'all', '', 'Заведующий производством', '', 'Ежедневно', ''],
+      ['MEASURE', '—', 'Генеральная уборка с применением моющих и дезинфицирующих средств', 'all', '', 'Заведующий производством', '', '1 раз в месяц', ''],
+      ['MEASURE', '—', 'Поверка (калибровка) средств измерений: термометры, весы', 'all', '', 'Руководитель', '', 'По графику поверки', ''],
+      ['EMERG', '—', 'Отключение электроэнергии', 'all', '', '', 'Прекратить приготовление; контролировать температуру в холодильниках; при превышении допустимого времени без охлаждения — бракераж скоропортящейся продукции; запись в журнале', '', ''],
+      ['EMERG', '—', 'Отключение холодного или горячего водоснабжения', 'all', '', '', 'Приостановить работу цехов, где невозможно соблюдение санитарных требований; не допускать мытьё посуды без горячей воды; возобновить после восстановления подачи и уборки', '', ''],
+      ['EMERG', '—', 'Авария канализации', 'all', '', '', 'Прекратить работу; вызвать аварийную службу; после устранения — уборка с дезинфекцией помещений', '', ''],
+      ['EMERG', '—', 'Выход из строя холодильного оборудования', 'all', '', '', 'Переместить продукцию в исправное оборудование; бракераж продукции с нарушением температурного режима; ремонт оборудования', '', ''],
+      ['EMERG', '—', 'Выявление у работника признаков инфекционного заболевания, подозрение на пищевое отравление', 'all', '', '', 'Отстранить работника; сохранить суточные пробы и продукцию; сообщить в территориальный орган Роспотребнадзора; провести дезинфекцию', '', ''],
+      ['EMERG', '—', 'Обнаружение грызунов или насекомых', 'all', '', '', 'Вызвать специализированную организацию для внеплановой обработки; проверить продукцию на порчу; устранить причины проникновения', '', '']
+    ] },
+  { code: 'СП 1.1.1058-01', title: 'Организация и проведение производственного контроля за соблюдением санитарных правил и выполнением санитарно-противоэпидемических (профилактических) мероприятий', kind: 'SP', scopes: 'PPC', v: false, notes: NORM_SEED_TODO + ' Проверьте текущий статус документа. Перечни раздела 3 положены в структуру ППК системы.', items: [] },
+  { code: 'Федеральный закон № 52-ФЗ', title: 'О санитарно-эпидемиологическом благополучии населения (от 30.03.1999)', kind: 'FZ', scopes: 'PPC', v: false, notes: NORM_SEED_TODO,
+    items: [['DOCS', 'ст. 11, 32', 'Обязанность юридических лиц и индивидуальных предпринимателей осуществлять производственный контроль', 'all', '', '', '', '', '']] },
+  { code: 'Федеральный закон № 29-ФЗ', title: 'О качестве и безопасности пищевых продуктов (от 02.01.2000)', kind: 'FZ', scopes: 'PPC,TU', v: false, notes: NORM_SEED_TODO, items: [] },
+  { code: 'Приказ Минздрава России № 29н', title: 'Об утверждении Порядка проведения обязательных предварительных и периодических медицинских осмотров работников (от 28.01.2021)', kind: 'ORDER', scopes: 'PPC', v: false, notes: NORM_SEED_TODO,
+    items: [
+      ['PROF', '—', 'Обязательные предварительные (при поступлении на работу) и периодические медицинские осмотры', 'all', '', '', '', 'При приёме на работу и далее периодически — уточните по Порядку', ''],
+      ['PROF', '—', 'Профессиональная гигиеническая подготовка и аттестация', 'all', '', '', '', 'При приёме на работу и далее периодически — уточните по действующему порядку', '']
+    ] },
+  { code: 'СанПиН 3.3686-21', title: 'Санитарно-эпидемиологические требования по профилактике инфекционных болезней', kind: 'SANPIN', scopes: 'PPC', v: false, notes: NORM_SEED_TODO,
+    items: [['MEASURE', '—', 'Профилактическая дезинсекция и дератизация', 'all', '', 'Руководитель', '', 'По договору со специализированной организацией', '']] },
+  { code: 'СанПиН 1.2.3685-21', title: 'Гигиенические нормативы и требования к обеспечению безопасности и (или) безвредности для человека факторов среды обитания', kind: 'SANPIN', scopes: 'PPC', v: false, notes: NORM_SEED_TODO, items: [] },
+  { code: 'СП 2.2.3670-20', title: 'Санитарно-эпидемиологические требования к условиям труда', kind: 'SP', scopes: 'PPC', v: false, notes: NORM_SEED_TODO, items: [] },
+  { code: 'СП 2.4.3648-20', title: 'Санитарно-эпидемиологические требования к организациям воспитания и обучения, отдыха и оздоровления детей и молодежи', kind: 'SP', scopes: '', v: false, notes: NORM_SEED_TODO + ' Включите область «ППК», если обслуживаете детские учреждения.', items: [] },
+  { code: 'ГОСТ Р 1.3-2018', title: 'Стандартизация в Российской Федерации. Технические условия на продукцию. Общие требования к содержанию, оформлению, обозначению и обновлению', kind: 'GOST', scopes: 'TU', v: false, notes: NORM_SEED_TODO + ' Обозначение ТУ в системе: ТУ ХХ.ХХ.ХХ-ХХХ-ХХХХХХХХ-ГГГГ (ОКПД2 — порядковый номер — ОКПО — год).', items: [] },
+  { code: 'ГОСТ 30390-2013', title: 'Услуги общественного питания. Продукция общественного питания, реализуемая населению. Общие технические условия', kind: 'GOST', scopes: 'TU', v: false, notes: NORM_SEED_TODO, items: [] },
+  { code: 'МУК 4.2.1847-04', title: 'Санитарно-эпидемиологическая оценка обоснования сроков годности и условий хранения пищевых продуктов', kind: 'MU', scopes: 'TU', v: false, notes: NORM_SEED_TODO,
+    items: [['TU_TEXT', '—', 'Срок годности продукции установлен изготовителем и обоснован по результатам исследований (испытаний) в соответствии с МУК 4.2.1847-04.', '', '', 'transport', '', '', '']] },
+  { code: 'Методы испытаний (ГОСТ)', title: 'Межгосударственные стандарты на методы микробиологических и органолептических испытаний пищевой продукции', kind: 'GOST', scopes: 'TU', v: false, notes: NORM_SEED_TODO + ' Проверьте актуальные редакции стандартов.',
+    items: [
+      ['METHOD', '—', 'ГОСТ 31904-2012', '', '', 'Отбор проб для микробиологических испытаний', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 31986-2012', '', '', 'Органолептические показатели (продукция общественного питания)', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 10444.15-94', '', '', 'КМАФАнМ', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 31747-2012', '', '', 'БГКП (колиформы)', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 31746-2012', '', '', 'S. aureus', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 10444.12-2013', '', '', 'Дрожжи и плесневые грибы', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 29185-2014', '', '', 'Сульфитредуцирующие клостридии', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 30726-2001', '', '', 'E. coli', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 28566-90', '', '', 'Бактерии рода Enterococcus', '', '', ''],
+      ['METHOD', '—', 'ГОСТ 31659-2012', '', '', 'Бактерии рода Salmonella', '', '', '']
+    ] }
+];
+
+var NormSeed = {
+  /* Однократно: при пустой нормативной базе */
+  run: function (ownerEmp) {
+    if (Store.all('NormDocs').length) return 0;
+    var ctx = Seed.ctx(ownerEmp, Integr.now()), n = 0;
+    NORM_SEED.forEach(function (d) {
+      var doc = Repo.create(ctx, 'NormDocs', {
+        code: d.code, title: d.title, kind: d.kind, status: 'ACTIVE', scopes: d.scopes, valid_from: '', valid_until: d.validUntil ? new Date(d.validUntil).toISOString() : '',
+        verified: !!d.v, verified_by: d.v ? ctx.actorId : '', verified_at: d.v ? ctx.now : '', source_url: d.source || '', notes: d.notes || ''
+      }, { action: 'NORM_SEED', noAudit: true });
+      (d.items || []).forEach(function (it, i) {
+        Repo.create(ctx, 'NormItems', {
+          norm_id: doc.norm_id, section: it[0], clause: it[1], text: it[2], applies: it[3] || 'all', product_group: it[4], indicator: it[5], norm_value: it[6],
+          frequency: it[7], volume: it[8], sort_order: (i + 1) * 10, active: true, verified: !!d.v
+        }, { noAudit: true });
+        n++;
+      });
+    });
+    Audit.log(ctx, 'NORM_SEED', 'NormDocs', 'seed', null, { docs: NORM_SEED.length, items: n });
+    return n;
   }
 };
 
@@ -3628,6 +4482,9 @@ var IC = {
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
   alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
+  shield: '<path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>',
+  book: '<path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20v3H6.5"/>',
+  spec: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"/>'
 };
 function ic(name, cls) { return '<svg' + (cls ? ' class="' + cls + '"' : '') + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[name] || '') + '</svg>'; }
@@ -3636,6 +4493,7 @@ var LOGO_MARK = '<svg viewBox="0 0 34 38" aria-hidden="true"><path d="M17 1.5 2.
 var MENU = {
   home: ['Главная', 'home'], myvisits: ['Мои выезды', 'myvisits'], clients: ['Клиенты и объекты', 'clients'], visits: ['Выезды и календарь', 'visits'],
   review: ['Проверка отчётов', 'review'], lab: ['Лаборатория', 'lab'], tasks: ['Задачи', 'tasks'], finance: ['Финансы', 'finance'],
+  ppc: ['Программы ПК', 'shield'], tu: ['Технические условия', 'spec'], norms: ['Нормативная база', 'book'],
   documents: ['Документы', 'documents'], analytics: ['Отчёты и аналитика', 'analytics'], staff: ['Сотрудники', 'staff'], settings: ['Настройки', 'settings'], audit: ['Журнал аудита', 'audit']
 };
 
@@ -3869,7 +4727,7 @@ function shellHtml() {
 
 function render(soft) {
   var p = Pages[S.page];
-  if (!p || S.me.menu.indexOf(S.page) < 0 && ['visit', 'client', 'report', 'sample', 'task'].indexOf(S.page) < 0) { S.page = 'home'; p = Pages.home; }
+  if (!p || S.me.menu.indexOf(S.page) < 0 && ['visit', 'client', 'report', 'sample', 'task', 'ppcdoc', 'tudoc', 'norm'].indexOf(S.page) < 0) { S.page = 'home'; p = Pages.home; }
   $$('[data-k]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-k') === (p.menu || S.page)); });
   $('#title').textContent = typeof p.title === 'function' ? p.title(S.params) : p.title;
   $('#subtitle').textContent = '';
@@ -3915,10 +4773,10 @@ A.readAll = function () { call('notifications.read', { all: true }).then(functio
 /* Глобальный поиск по ID */
 function gsearch(q) {
   q = String(q || '').trim().toUpperCase();
-  var m = q.match(/^(VIS|CLI|LAB|TSK|REP|DOC|SITE|FIN)-?(\d{1,6})$/);
+  var m = q.match(/^(VIS|CLI|LAB|TSK|REP|DOC|SITE|FIN|PPC|TUS|NRM)-?(\d{1,6})$/);
   if (!m) { toast('Введите ID, например VIS-000842 или LAB-000219'); return; }
   var id = m[1] + '-' + ('000000' + m[2]).slice(-6);
-  var map = { VIS: ['visit', 'visit_id'], CLI: ['client', 'client_id'], LAB: ['sample', 'sample_id'], TSK: ['task', 'task_id'], REP: ['report', 'report_id'] };
+  var map = { VIS: ['visit', 'visit_id'], CLI: ['client', 'client_id'], LAB: ['sample', 'sample_id'], TSK: ['task', 'task_id'], REP: ['report', 'report_id'], PPC: ['ppcdoc', 'program_id'], TUS: ['tudoc', 'spec_id'], NRM: ['norm', 'norm_id'] };
   if (m[1] === 'SITE') { var s = siteById(id); if (s.client_id) return go('client', { client_id: s.client_id }); return toast('Объект не найден или недоступен', 'bad'); }
   if (m[1] === 'DOC') return A.openFile({ getAttribute: function () { return id; } });
   if (m[1] === 'FIN') return go('finance', { tab: 'ops', q: id });
@@ -5021,6 +5879,315 @@ Pages.audit = {
   sub: function (d) { return 'Показано ' + d.rows.length + ' из ' + d.total; },
   view: function (d, p) { return '<div class="filters"><input class="inp" style="min-width:260px" placeholder="ID записи, действие, e-mail" value="' + esc(p.q || '') + '" data-enter="clQ"></div><section class="card">' + auditTable(d.rows) + '</section>'; }
 };
+/* ================= Нормативная база, программы ПК, технические условия ================= */
+var DOC_ST = { DRAFT: ['Черновик', 'warn'], APPROVED: ['Утверждена', 'ok'], ARCHIVED: ['Архив', 'mute'] };
+function docPill(st, fem) { var x = DOC_ST[st] || [st, '']; return pill(fem === false && st === 'APPROVED' ? 'Утверждены' : x[0], x[1]); }
+function unvPill(n) { n = Number(n) || 0; return n ? pill('не сверено: ' + n, 'warn') : pill('всё сверено', 'ok'); }
+function canDocs() { return ['OWNER', 'COORDINATOR'].indexOf(S.me.role) >= 0; }
+function canApproveDocs() { return ['OWNER', 'QC'].indexOf(S.me.role) >= 0; }
+var TU_TEXT_KEYS = { intro: 'Вводная часть', general: 'Технические требования', packaging: 'Упаковка', safety: 'Требования безопасности', environment: 'Охрана окружающей среды', acceptance: 'Правила приёмки', transport: 'Хранение и транспортирование', warranty: 'Гарантии изготовителя' };
+function verPill(v) { return String(v) === 'true' || v === true ? pill('сверено', 'ok') : pill('требует сверки', 'warn'); }
+
+/* ---------- Редактор разделов документа (общий для ППК и ТУ) ---------- */
+function docEditorHtml(content, editable) {
+  return (content.sections || []).map(function (s, si) {
+    var body;
+    if (s.type === 'text') {
+      body = (s.v === false ? '<div class="alert warn small">Положение не сверено с официальным текстом' + (s.ref ? ': ' + esc(s.ref) : '') + '</div>' : (s.ref ? '<div class="small muted">Основание: ' + esc(s.ref) + '</div>' : '')) +
+        (editable ? '<textarea class="inp" rows="' + Math.min(14, Math.max(3, String(s.text || '').split('\n').length + 1)) + '" data-doc-text>' + esc(s.text) + '</textarea>' : '<p style="white-space:pre-wrap;margin:0">' + esc(s.text) + '</p>');
+    } else {
+      var head = '<tr><th style="width:28px">№</th>' + s.cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '<th style="width:190px">Основание</th>' + (editable ? '<th></th>' : '') + '</tr>';
+      var rows = (s.rows || []).map(function (r, i) { return docRowHtml(s, r, i, editable); }).join('');
+      body = '<div class="tbl-wrap"><table class="tbl doc-tbl"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
+        (!(s.rows || []).length ? '<div class="empty small">Нет строк: для объекта или продукции подходящих положений в базе не найдено.</div>' : '') +
+        (editable ? '<div style="margin-top:8px"><button class="btn sm" data-a="docRowAdd" data-si="' + si + '">' + ic('plus') + 'Строка</button></div>' : '') +
+        (s.note ? '<p class="small muted" style="margin:8px 0 0">' + esc(s.note) + '</p>' : '');
+    }
+    return '<section class="card doc-sec" data-key="' + esc(s.key) + '" data-type="' + s.type + '"><header><h2>' + esc(s.title) + '</h2></header><div class="body">' + body + '</div></section>';
+  }).join('');
+}
+function docRowHtml(s, r, i, editable) {
+  var cells = s.cols.map(function (c, ci) {
+    var v = (r.c || [])[ci] || '';
+    return '<td>' + (editable ? '<textarea class="inp cell" rows="' + Math.min(6, Math.max(1, Math.ceil(String(v).length / 42))) + '" data-ci="' + ci + '">' + esc(v) + '</textarea>' : esc(v).replace(/\n/g, '<br>')) + '</td>';
+  }).join('');
+  var ref = r.manual ? '<span class="small muted">' + (r.src === 'input' ? 'данные организации' : 'добавлено вручную') + '</span>' : '<span class="small">' + esc(r.ref || '') + '</span><br>' + (r.v === false ? pill('не сверено', 'warn') : pill('сверено', 'ok'));
+  return '<tr data-i="' + (i === null ? '' : i) + '"' + (r.v === false ? ' class="unv"' : '') + '><td class="num">' + (i === null ? '+' : i + 1) + '</td>' + cells + '<td>' + ref + '</td>' + (editable ? '<td><button class="icon-btn sm" title="Удалить строку" data-a="docRowDel">' + ic('x') + '</button></td>' : '') + '</tr>';
+}
+function readDocEditor(root) {
+  return { sections: $$('.doc-sec', root).map(function (sec) {
+    var key = sec.getAttribute('data-key');
+    if (sec.getAttribute('data-type') === 'text') { var t = $('[data-doc-text]', sec); return t ? { key: key, text: t.value } : { key: key }; }
+    return { key: key, rows: $$('tbody tr', sec).map(function (tr) {
+      var i = tr.getAttribute('data-i');
+      return { i: i === '' ? null : Number(i), c: $$('[data-ci]', tr).map(function (x) { return x.value; }) };
+    }) };
+  }) };
+}
+A.docRowAdd = function (el) {
+  var s = S.data.content.sections[Number(el.getAttribute('data-si'))];
+  var tb = $('tbody', el.closest('.doc-sec'));
+  tb.insertAdjacentHTML('beforeend', docRowHtml(s, { c: s.cols.map(function () { return ''; }), manual: true, v: true }, null, true));
+  var t = $('tr:last-child textarea', tb); if (t) t.focus();
+  S.dirty.doc = 1;
+};
+A.docRowDel = function (el) { el.closest('tr').remove(); S.dirty.doc = 1; };
+/* Поля редактора растут по высоте текста */
+function growTa(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
+function autosizeDoc(root) { $$('.doc-sec textarea', root).forEach(growTa); }
+document.addEventListener('input', function (ev) { if (ev.target.closest && ev.target.closest('.doc-sec')) { S.dirty.doc = 1; if (ev.target.tagName === 'TEXTAREA') growTa(ev.target); } });
+
+/* Утверждение: обычное или с обоснованием (несверенные положения — только руководитель) */
+function approveDoc(kind, id, unverified, label) {
+  var action = kind === 'ppc' ? 'programs.approve' : 'specs.approve', key = kind === 'ppc' ? 'program_id' : 'spec_id';
+  var done = function () { toast(label + ' утверждена, PDF сохранён в «Документах»', 'ok'); render(true); };
+  if (!unverified) return confirmBox('Утвердить ' + label.toLowerCase() + '?', 'Будет сформирован PDF и сохранён в папке клиента и в «Документах». Утверждённую версию изменить нельзя — только через новую версию.', 'Утвердить', 'go')
+    .then(function () { var p = {}; p[key] = id; return call(action, p); }).then(done, showErr);
+  if (S.me.role !== 'OWNER') return modal({ title: 'Есть несверенные положения', body: '<div class="alert warn">В документе ' + unverified + ' положений не сверены с официальным текстом нормативов. Сверьте их в разделе «Нормативная база» и пересоберите документ. Утвердить документ с несверенными положениями может только руководитель.</div>', actions: [['Понятно', 'close', 'pri']] });
+  openForm({ title: 'Утвердить с несверенными положениями', okText: 'Утвердить', okTone: 'danger',
+    intro: '<div class="alert warn">В документе ' + unverified + ' положений не сверены с официальным текстом нормативов. В PDF они будут выделены, а обоснование будет напечатано на титульном листе и записано в журнал аудита.</div>',
+    fields: [{ name: 'reason', label: 'Обоснование', type: 'textarea', required: true, placeholder: 'Например: нормативы сверяются, документ нужен для согласования с заказчиком' }],
+    submit: function (v) { var p = { accept_unverified: true, reason: v.reason }; p[key] = id; return call(action, p); }, done: done });
+}
+function docWarnings(d, unv) {
+  var h = (d.warnings || []).map(function (w) { return '<div class="alert warn small">' + esc(w) + '</div>'; }).join('');
+  if (unv) h += '<div class="alert small">Строки с отметкой «не сверено» взяты из положений нормативной базы, которые ещё не сверены с официальным текстом. Сверьте их в «Нормативной базе» и нажмите «Пересобрать из базы» — отметки обновятся.</div>';
+  return h;
+}
+
+/* ---------- Нормативная база ---------- */
+Pages.norms = {
+  title: 'Нормативная база',
+  load: function () { return call('norms.list', {}); },
+  sub: function (d) { var n = d.docs.filter(function (x) { return String(x.verified) === 'true'; }).length; return 'Документов: ' + d.docs.length + ' · сверено: ' + n; },
+  view: function (d, p) {
+    var f = p.f || 'all';
+    var rows = d.docs.filter(function (x) { return f === 'all' || (f === 'unv' ? x.unverified_count > 0 : (',' + x.scopes + ',').indexOf(',' + f + ',') >= 0); });
+    var chips = '<div class="chips">' + [['all', 'Все'], ['PPC', 'Для ППК'], ['TU', 'Для ТУ'], ['unv', 'Требуют сверки']].map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-a="vf" data-k="f" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var tbl = rows.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Документ</th><th>Вид</th><th>Срок действия</th><th>Применяется</th><th class="r">Положений</th><th>Сверка</th></tr></thead><tbody>' + rows.map(function (x) {
+      var term = !x.in_force ? pill(d.statuses[x.status] === 'Действует' ? 'не действует' : d.statuses[x.status], 'bad') : x.valid_until ? (x.expiring ? pill('до ' + fD(x.valid_until), 'warn') : 'до ' + fD(x.valid_until)) : '<span class="muted">без срока</span>';
+      return '<tr class="click" ' + link('norm', { norm_id: x.norm_id }) + '><td><b>' + esc(x.code) + '</b><span class="t2">' + esc(x.title) + '</span></td><td class="small">' + esc(d.kinds[x.kind] || x.kind) + '</td><td>' + term + '</td><td class="small">' + csvList(x.scopes).map(function (s) { return s === 'PPC' ? 'ППК' : s === 'TU' ? 'ТУ' : s; }).join(', ') + '</td><td class="r num">' + x.items_count + '</td><td>' + (x.unverified_count ? pill('не сверено: ' + x.unverified_count, 'warn') : pill('сверено', 'ok')) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : emptyLine('Документов нет');
+    return '<div class="filters">' + chips + '<div class="grow"></div>' + (S.me.role === 'OWNER' ? '<button class="btn pri" data-a="normDoc">' + ic('plus') + 'Документ</button>' : '') + '</div>' +
+      '<div class="alert small">Программы ПК и ТУ собираются из положений этой базы. Положение «требует сверки» — внесено как проект: сверьте формулировку и номер пункта с официальным текстом и отметьте сверку. Документы с несверенными положениями утверждает только руководитель с обоснованием.</div>' +
+      '<section class="card">' + tbl + '</section>';
+  }
+};
+function normDocFields(d) {
+  return [{ name: 'code', label: 'Обозначение', required: true, placeholder: 'СанПиН 2.3/2.4.3590-20' }, { name: 'kind', label: 'Вид документа', type: 'select', required: true, options: dictOpts(d.kinds) },
+    { name: 'title', label: 'Наименование', required: true, full: true }, { name: 'status', label: 'Статус', type: 'select', options: dictOpts(d.statuses), value: 'ACTIVE' },
+    { name: 'valid_from', label: 'Действует с', type: 'date' }, { name: 'valid_until', label: 'Действует до', type: 'date', hint: 'Пусто — без ограничения срока. За ' + 90 + ' дней до окончания руководитель получит уведомление.' },
+    { name: 'scopes', label: 'Где применяется', type: 'checks', options: dictOpts(d.scopes), full: true },
+    { name: 'source_url', label: 'Источник официального текста', full: true, placeholder: 'Ссылка на pravo.gov.ru, eaeunion.org или реквизиты публикации' },
+    { name: 'notes', label: 'Примечание', type: 'textarea' }];
+}
+A.normDoc = function (el, ev, cur) {
+  var d = S.data.kinds ? S.data : null;
+  var meta = d ? Promise.resolve(d) : call('norms.list', {});
+  meta.then(function (m) {
+    openForm({ title: cur ? cur.code : 'Новый нормативный документ', wide: true, fields: normDocFields(m), values: cur || { status: 'ACTIVE' },
+      intro: cur ? '<div class="alert small">После сохранения отметка «сверено» снимается — подтвердите сверку заново.</div>' : '',
+      submit: function (v) { if (cur) { v.norm_id = cur.norm_id; v.row_version = cur.row_version; } return call('norms.saveDoc', v); },
+      done: function (r) { toast('Сохранено', 'ok'); if (cur) render(true); else go('norm', { norm_id: r.norm_id }); } });
+  }, showErr);
+};
+
+Pages.norm = {
+  menu: 'norms',
+  title: function (p, d) { return d ? d.doc.code : 'Нормативный документ'; },
+  sub: function (d) { return d.doc.norm_id + ' · ' + d.items.length + ' положений'; },
+  load: function (p) { return Promise.all([call('norms.get', { norm_id: p.norm_id }), call('norms.list', {})]).then(function (r) { var o = r[0]; o.kinds = r[1].kinds; o.statuses = r[1].statuses; o.scopes = r[1].scopes; return o; }); },
+  view: function (d) {
+    var doc = d.doc, own = S.me.role === 'OWNER', bySec = groupBy(d.items, 'section');
+    var flagName = function (a) { return csvList(a).map(function (x) { return x === 'all' ? 'все объекты' : (d.flags[x] || x); }).join(', '); };
+    var items = Object.keys(d.sections).filter(function (k) { return bySec[k]; }).map(function (k) {
+      return '<tr class="sec-row"><td colspan="6"><b>' + esc(d.sections[k]) + '</b></td></tr>' + bySec[k].map(function (i) {
+        var det = [i.indicator ? (i.section === 'TU_TEXT' ? 'Раздел ТУ: ' + esc(TU_TEXT_KEYS[i.indicator] || i.indicator) : 'Показатель: ' + esc(i.indicator)) : '', i.norm_value ? 'Норматив: <b>' + esc(i.norm_value) + '</b>' : '', i.frequency ? 'Периодичность: ' + esc(i.frequency) : '', i.volume ? esc(i.volume) : ''].filter(String).join(' · ');
+        return '<tr' + (String(i.active) === 'false' ? ' class="muted"' : '') + '><td class="mono small">' + esc(i.clause || '—') + '</td><td>' + esc(i.text) + (det ? '<span class="t2">' + det + '</span>' : '') + '</td><td class="small">' + esc(flagName(i.applies)) + '</td><td class="small">' + esc(i.product_group || '') + '</td><td>' + verPill(i.verified) + (String(i.active) === 'false' ? '<br>' + pill('отключено', 'mute') : '') + '</td><td>' + (own ? '<button class="btn sm" data-a="normItem" data-id="' + i.norm_item_id + '">Изменить</button>' : '') + '</td></tr>';
+      }).join('');
+    }).join('');
+    var tbl = d.items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:120px">Пункт</th><th>Положение</th><th>Объекты</th><th>Группа продукции</th><th>Сверка</th><th></th></tr></thead><tbody>' + items + '</tbody></table></div>' : emptyLine('Положений нет');
+    var kv = '<dl class="kv"><dt>Наименование</dt><dd>' + esc(doc.title) + '</dd><dt>Вид</dt><dd>' + esc(d.kinds[doc.kind] || doc.kind) + '</dd><dt>Статус</dt><dd>' + esc(d.statuses[doc.status] || doc.status) + '</dd><dt>Срок действия</dt><dd>' + (doc.valid_from ? 'с ' + fD(doc.valid_from) + ' ' : '') + (doc.valid_until ? 'до ' + fD(doc.valid_until) : 'без ограничения') + '</dd>' +
+      '<dt>Применяется</dt><dd>' + csvList(doc.scopes).map(function (s) { return d.scopes[s] || s; }).join('; ') + '</dd><dt>Сверка</dt><dd>' + verPill(doc.verified) + (doc.verified_at ? ' <span class="small muted">' + esc(empName(doc.verified_by)) + ', ' + fDT(doc.verified_at) + '</span>' : '') + '</dd><dt>Источник</dt><dd class="small" style="overflow-wrap:anywhere">' + esc(doc.source_url || '—') + '</dd>' + (doc.notes ? '<dt>Примечание</dt><dd class="small">' + esc(doc.notes) + '</dd>' : '') + '</dl>';
+    return '<div class="row"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' +
+      (own ? '<button class="btn" data-a="normDocEdit">Изменить</button><button class="btn" data-a="normItem">' + ic('plus') + 'Положение</button>' : '') +
+      (canApproveDocs() ? '<button class="btn go" data-a="normVerify">Сверено с первоисточником</button>' : '') + '</div>' +
+      '<div class="stack" style="gap:16px">' + card('Реквизиты', kv) + card('Положения', tbl) + '</div>';
+  }
+};
+A.normDocEdit = function () { var d = S.data; A.normDoc(null, null, (function () { var c = JSON.parse(JSON.stringify(d.doc)); c.row_version = d.doc.row_version; return c; })()); };
+A.normItem = function (el) {
+  var d = S.data, id = el.getAttribute('data-id'), cur = id ? d.items.filter(function (i) { return i.norm_item_id === id; })[0] : null;
+  var flags = [['all', 'Все объекты']].concat(dictOpts(d.flags));
+  openForm({ title: cur ? 'Положение ' + (cur.clause || '') : 'Новое положение', wide: true,
+    intro: cur ? '<div class="alert small">После сохранения положение получит отметку «требует сверки».</div>' : '',
+    fields: [{ name: 'section', label: 'Вид положения (куда попадает)', type: 'select', required: true, options: dictOpts(d.sections), full: true }, { name: 'clause', label: 'Пункт документа', placeholder: 'п. 2.1, Приложение № 1, п. 5а' },
+      { name: 'product_group', label: 'Группа продукции (для ТУ)', hint: 'Пусто — любая продукция. «~слово» — все группы, в названии которых есть слово.' },
+      { name: 'text', label: 'Текст положения / объект контроля / процесс', type: 'textarea', required: true, rows: 4 },
+      { name: 'indicator', label: 'Показатель / опасный фактор / ответственный', hint: 'Для вида «ТУ: текст раздела» — ключ раздела: ' + Object.keys(TU_TEXT_KEYS).map(function (k) { return k + ' (' + TU_TEXT_KEYS[k] + ')'; }).join(', ') + '. В тексте можно использовать {product}, {designation}, {shelf_life}, {storage}.' }, { name: 'norm_value', label: 'Норматив / критический предел / действия' },
+      { name: 'frequency', label: 'Периодичность' }, { name: 'volume', label: 'Объём / примечание' },
+      { name: 'applies', label: 'Для каких объектов (ППК)', type: 'checks', options: flags, full: true }, { name: 'active', label: 'Положение действует', type: 'checkbox', value: true }],
+    values: cur || { applies: 'all', active: true },
+    submit: function (v) { v.norm_id = d.doc.norm_id; if (cur) { v.norm_item_id = cur.norm_item_id; v.row_version = cur.row_version; } return call('norms.saveItem', v); },
+    done: function () { toast('Положение сохранено', 'ok'); render(true); } });
+};
+A.normVerify = function () {
+  var d = S.data, n = d.items.filter(function (i) { return String(i.verified) !== 'true'; }).length;
+  openForm({ title: 'Сверка: ' + d.doc.code, okText: 'Подтвердить сверку', okTone: 'go',
+    intro: '<div class="alert small">Подтвердите, что обозначение, наименование, сроки действия и все положения документа (несверенных: ' + n + ') проверены по официальному тексту. Сверка записывается в журнал аудита с вашим именем.</div>',
+    fields: [{ name: 'source_url', label: 'Источник официального текста', required: true, full: true, value: d.doc.source_url || '', placeholder: 'https://pravo.gov.ru/... или реквизиты публикации' }],
+    submit: function (v) { return call('norms.verify', { norm_id: d.doc.norm_id, source_url: v.source_url }); }, done: function () { toast('Сверка подтверждена', 'ok'); render(true); } });
+};
+
+/* ---------- Программы производственного контроля ---------- */
+function ppcProfileFields(m) {
+  return [{ name: 'object_type', label: 'Тип объекта', type: 'select', required: true, options: dictOpts(m.object_types) }, { name: 'seats', label: 'Посадочных мест', type: 'number' },
+    { name: 'staff_count', label: 'Работников', type: 'number' }, { name: 'work_mode', label: 'Режим работы', placeholder: 'ежедневно 10:00–22:00' },
+    { name: 'flags', label: 'Особенности объекта — определяют лабораторный контроль, ККТ и журналы', type: 'checks', options: dictOpts(m.flags), full: true },
+    { name: 'water_source', label: 'Водоснабжение', placeholder: 'централизованное' }, { name: 'lab_name', label: 'Аккредитованная лаборатория' },
+    { name: 'head_name', label: 'Руководитель (утверждает программу)' }, { name: 'head_position', label: 'Должность руководителя', value: 'Директор' },
+    { name: 'responsible', label: 'Ответственные за производственный контроль', type: 'textarea', rows: 3, placeholder: 'ФИО; должность; функции — по одному на строку' },
+    { name: 'positions', label: 'Должности работников (медосмотры, гигобучение)', type: 'textarea', rows: 2, placeholder: 'повар, кухонный рабочий, мойщик посуды, официант…' },
+    { name: 'assortment', label: 'Ассортимент и виды деятельности', type: 'textarea', rows: 2 },
+    { name: 'pest_control', label: 'Дезинсекция и дератизация (организация, договор)' }, { name: 'waste', label: 'Вывоз отходов (организация)' },
+    { name: 'extra', label: 'Дополнительные положения', type: 'textarea', rows: 2 }];
+}
+Pages.ppc = {
+  title: 'Программы производственного контроля',
+  load: function (p) { return call('programs.list', { all: p.all === '1' }); },
+  sub: function (d) { return 'Программ: ' + d.rows.length; },
+  view: function (d, p) {
+    var tbl = d.rows.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Объект</th><th>Версия</th><th>Статус</th><th>Сверка</th><th>Пересмотр до</th><th>Изменено</th></tr></thead><tbody>' + d.rows.map(function (x) {
+      var due = x.review_due_date && x.status === 'APPROVED' ? (new Date(x.review_due_date) < new Date(Date.now() + 30 * 864e5) ? pill(fD(x.review_due_date), 'warn') : fD(x.review_due_date)) : '—';
+      return '<tr class="click" ' + link('ppcdoc', { program_id: x.program_id }) + '><td><b>' + esc(x.site_name) + '</b><span class="t2">' + esc(x.client_name) + ' · <span class="mono">' + x.program_id + '</span></span></td><td>v' + x.version + '</td><td>' + docPill(x.status) + '</td><td>' + unvPill(x.unverified_count) + '</td><td>' + due + '</td><td class="num small">' + fDT(x.updated_at) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : emptyLine('Программ пока нет. Нажмите «Программа», выберите объект и заполните его особенности — система соберёт программу из нормативной базы.');
+    return '<div class="filters"><div class="chips"><button class="' + (p.all !== '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="0">Действующие и черновики</button><button class="' + (p.all === '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="1">Включая архив</button></div><div class="grow"></div>' +
+      (canDocs() ? '<button class="btn pri" data-a="ppcNew">' + ic('plus') + 'Программа</button>' : '') + '</div><section class="card">' + tbl + '</section>';
+  }
+};
+A.ppcNew = function () {
+  var m = S.data;
+  var sites = (S.lk.sites || []).filter(function (s) { return s.active !== false; }).map(function (s) { var c = (S.lk.clients || []).filter(function (x) { return x.id === s.client_id; })[0]; return [s.id, (c ? c.name + ' — ' : '') + s.name]; });
+  openForm({ title: 'Новая программа производственного контроля', wide: true, okText: 'Собрать программу',
+    intro: '<div class="alert small">Система подберёт из нормативной базы требования, лабораторный контроль, критические точки, журналы и мероприятия под особенности объекта. Затем программу можно отредактировать и утвердить.</div>',
+    fields: [{ name: 'site_id', label: 'Объект', type: 'select', required: true, options: sites, full: true }].concat(ppcProfileFields(m)), values: { object_type: 'CAFE', head_position: 'Директор' },
+    submit: function (v) { var site = v.site_id; delete v.site_id; return call('programs.build', { site_id: site, profile: v }); },
+    onError: function (e, api) { if (e.code === 'DUPLICATE' && e.details && e.details.program_id) { toast(e.message, 'bad'); api.close(); go('ppcdoc', { program_id: e.details.program_id }); return true; } },
+    done: function (r) { toast('Программа собрана: ' + r.program.program_id, 'ok'); go('ppcdoc', { program_id: r.program.program_id }); } });
+};
+
+Pages.ppcdoc = {
+  menu: 'ppc',
+  title: function (p, d) { return d ? 'ППК: ' + d.program.site_name : 'Программа ПК'; },
+  sub: function (d) { return d.program.program_id + ' · версия ' + d.program.version + ' · ' + d.program.client_name; },
+  load: function (p) { S.dirty = {}; return call('programs.get', { program_id: p.program_id }); },
+  view: function (d) {
+    var x = d.program, draft = x.status === 'DRAFT', ed = draft && canDocs(), unv = Number(x.unverified_count) || 0;
+    var acts = '<button class="btn" data-a="ppcPrint">Предпросмотр и печать</button>' +
+      (ed ? '<button class="btn" data-a="ppcProfile">Данные объекта</button><button class="btn" data-a="ppcRebuild">' + ic('refresh') + 'Пересобрать из базы</button><button class="btn pri" data-a="ppcSave">Сохранить правки</button>' : '') +
+      (draft && canApproveDocs() ? '<button class="btn go" data-a="ppcApprove">Утвердить</button>' : '') +
+      (!draft && canDocs() ? '<button class="btn" data-a="ppcNewVersion">Новая версия</button>' : '') +
+      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '');
+    var info = '<dl class="kv"><dt>Статус</dt><dd>' + docPill(x.status) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.review_due_date ? '<dt>Пересмотр до</dt><dd>' + fD(x.review_due_date) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '<dt>Собрано</dt><dd class="small">' + fDT(d.content.built_at) + '</dd></dl>';
+    var hist = d.history.length > 1 ? '<div class="list">' + d.history.map(function (h) { return '<div class="li click" ' + link('ppcdoc', { program_id: h.program_id }) + '><div class="txt"><b>v' + h.version + '</b> ' + docPill(h.status) + '<div class="t2 mono">' + h.program_id + '</div></div></div>'; }).join('') + '</div>' : emptyLine('Других версий нет');
+    return '<div class="row wrap"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + acts + '</div>' + docWarnings(d, unv) +
+      '<div class="doc-meta">' + card('Программа', info) + card('Версии', hist) + '</div><div class="stack" style="gap:16px">' + docEditorHtml(d.content, ed) + '</div>';
+  },
+  after: function (d, p, c) { autosizeDoc(c); }
+};
+A.ppcPrint = function () { call('programs.html', { program_id: S.data.program.program_id }).then(function (r) { printHtml(r.html); }, showErr); };
+A.ppcSave = function (el) {
+  el.classList.add('busy');
+  call('programs.save', { program_id: S.data.program.program_id, row_version: S.data.row_version, content: readDocEditor($('#content')) }).then(function () { S.dirty = {}; toast('Правки сохранены', 'ok'); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); });
+};
+A.ppcRebuild = function () {
+  var go2 = function () { call('programs.build', { program_id: S.data.program.program_id }).then(function () { S.dirty = {}; toast('Программа пересобрана по текущей нормативной базе', 'ok'); render(true); }, showErr); };
+  confirmBox('Пересобрать из нормативной базы?', 'Разделы будут собраны заново по актуальной базе и особенностям объекта. Ручные правки таблиц и текстов будут потеряны.', 'Пересобрать').then(go2);
+};
+A.ppcProfile = function () {
+  var d = S.data;
+  openForm({ title: 'Данные объекта', wide: true, okText: 'Сохранить и пересобрать', intro: '<div class="alert small">После сохранения программа будет собрана заново; ручные правки разделов будут потеряны.</div>',
+    fields: ppcProfileFields(d), values: d.profile,
+    submit: function (v) { return call('programs.build', { program_id: d.program.program_id, profile: v }); }, done: function () { S.dirty = {}; toast('Программа пересобрана', 'ok'); render(true); } });
+};
+A.ppcApprove = function () {
+  if (Object.keys(S.dirty).length) return toast('Сначала сохраните правки', 'bad');
+  approveDoc('ppc', S.data.program.program_id, Number(S.data.program.unverified_count) || 0, 'Программа');
+};
+A.ppcNewVersion = function () { call('programs.newVersion', { program_id: S.data.program.program_id }).then(function (r) { toast('Создан черновик v' + r.program.version, 'ok'); go('ppcdoc', { program_id: r.program.program_id }); }, function (e) { if (e.details && e.details.program_id) return go('ppcdoc', { program_id: e.details.program_id }); showErr(e); }); };
+
+/* ---------- Технические условия ---------- */
+function tuProfileFields(groups, okpo) {
+  return [{ name: 'product_name', label: 'Наименование продукции', required: true, full: true, placeholder: 'Котлеты «Домашние» из говядины и свинины' },
+    { name: 'product_group', label: 'Группа продукции (определяет показатели безопасности и маркировку)', type: 'select', required: true, full: true, options: groups.map(function (g) { return [g, g]; }).concat([['__other', 'Другая группа — ввести ниже']]) },
+    { name: 'product_group_other', label: 'Другая группа продукции', full: true, hint: 'Для групп, которых нет в базе (например, роллы и суши), микробиологические нормативы внесите в «Нормативной базе».' },
+    { name: 'okpd2', label: 'Код ОКПД2', placeholder: '10.13.14', hint: 'Первые три группы цифр войдут в обозначение ТУ' }, { name: 'okpo', label: 'Код ОКПО разработчика', value: okpo || '', placeholder: '8 цифр' },
+    { name: 'purpose', label: 'Назначение / область применения', full: true },
+    { name: 'composition', label: 'Рецептура', type: 'textarea', rows: 4, placeholder: 'Сырьё; масса нетто, г — по одному на строку' },
+    { name: 'organoleptic', label: 'Органолептические показатели', type: 'textarea', rows: 3, placeholder: 'Показатель; характеристика — по одному на строку' },
+    { name: 'physchem', label: 'Физико-химические показатели', type: 'textarea', rows: 3, placeholder: 'Показатель; норма — по одному на строку' },
+    { name: 'shelf_life', label: 'Срок годности' }, { name: 'storage', label: 'Условия хранения' },
+    { name: 'packaging', label: 'Упаковка' }, { name: 'net_mass', label: 'Масса нетто' }, { name: 'transport', label: 'Транспортирование', full: true },
+    { name: 'head_name', label: 'Руководитель (утверждает ТУ)' }, { name: 'head_position', label: 'Должность руководителя', value: 'Директор' }];
+}
+function tuReadGroup(v) { if (v.product_group === '__other') v.product_group = v.product_group_other; delete v.product_group_other; if (!v.product_group) throw { message: 'Укажите группу продукции' }; return v; }
+Pages.tu = {
+  title: 'Технические условия',
+  load: function (p) { return call('specs.list', { all: p.all === '1' }); },
+  sub: function (d) { return 'ТУ: ' + d.rows.length; },
+  view: function (d, p) {
+    var tbl = d.rows.length ? '<div class="tbl-wrap"><table class="tbl cards"><thead><tr><th>Продукция</th><th>Обозначение</th><th>Версия</th><th>Статус</th><th>Сверка</th><th>Изменено</th></tr></thead><tbody>' + d.rows.map(function (x) {
+      return '<tr class="click" ' + link('tudoc', { spec_id: x.spec_id }) + '><td><b>' + esc(x.product_name) + '</b><span class="t2">' + esc(x.client_name) + ' · ' + esc(x.product_group) + '</span></td><td class="mono small">' + esc(x.designation) + '</td><td>v' + x.version + '</td><td>' + docPill(x.status, false) + '</td><td>' + unvPill(x.unverified_count) + '</td><td class="num small">' + fDT(x.updated_at) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : emptyLine('ТУ пока нет. Нажмите «ТУ», выберите клиента и группу продукции — система соберёт ТУ по ГОСТ 2.114 с показателями из нормативной базы.');
+    return '<div class="filters"><div class="chips"><button class="' + (p.all !== '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="0">Действующие и черновики</button><button class="' + (p.all === '1' ? 'on' : '') + '" data-a="vf" data-k="all" data-v="1">Включая архив</button></div><div class="grow"></div>' +
+      (canDocs() ? '<button class="btn pri" data-a="tuNew">' + ic('plus') + 'ТУ</button>' : '') + '</div><section class="card">' + tbl + '</section>';
+  }
+};
+A.tuNew = function () {
+  var d = S.data;
+  openForm({ title: 'Новые технические условия', wide: true, okText: 'Собрать ТУ',
+    intro: '<div class="alert small">Разделы ТУ — по ГОСТ 2.114-2016 (п. 5.1.1). Микробиологические показатели, маркировка и методы контроля подставляются из нормативной базы по группе продукции. Обозначение: ТУ ОКПД2-номер-ОКПО-год.</div>',
+    fields: [{ name: 'client_id', label: 'Клиент (изготовитель)', type: 'select', required: true, full: true, options: (S.lk.clients || []).map(function (c) { return [c.id, c.name]; }) }].concat(tuProfileFields(d.groups, d.okpo)), values: { head_position: 'Директор', okpo: d.okpo },
+    submit: function (v) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } var cl = v.client_id; delete v.client_id; return call('specs.build', { client_id: cl, profile: v }); },
+    done: function (r) { toast('ТУ собраны: ' + r.spec.designation, 'ok'); go('tudoc', { spec_id: r.spec.spec_id }); } });
+};
+Pages.tudoc = {
+  menu: 'tu',
+  title: function (p, d) { return d ? d.spec.product_name : 'Технические условия'; },
+  sub: function (d) { return d.spec.designation + ' · версия ' + d.spec.version + ' · ' + d.spec.client_name; },
+  load: function (p) { S.dirty = {}; return call('specs.get', { spec_id: p.spec_id }); },
+  view: function (d) {
+    var x = d.spec, draft = x.status === 'DRAFT', ed = draft && canDocs(), unv = Number(x.unverified_count) || 0;
+    var acts = '<button class="btn" data-a="tuPrint">Предпросмотр и печать</button>' +
+      (ed ? '<button class="btn" data-a="tuProfile">Данные продукции</button><button class="btn" data-a="tuRebuild">' + ic('refresh') + 'Пересобрать из базы</button><button class="btn pri" data-a="tuSave">Сохранить правки</button>' : '') +
+      (draft && canApproveDocs() ? '<button class="btn go" data-a="tuApprove">Утвердить</button>' : '') +
+      (!draft && canDocs() ? '<button class="btn" data-a="tuNewVersion">Изменение ТУ</button>' : '') +
+      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '');
+    var info = '<dl class="kv"><dt>Обозначение</dt><dd class="mono">' + esc(x.designation) + '</dd><dt>Группа</dt><dd class="small">' + esc(x.product_group) + '</dd><dt>Статус</dt><dd>' + docPill(x.status, false) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '</dl>';
+    var hist = d.history.length > 1 ? '<div class="list">' + d.history.map(function (h) { return '<div class="li click" ' + link('tudoc', { spec_id: h.spec_id }) + '><div class="txt"><b>v' + h.version + '</b> ' + docPill(h.status, false) + '<div class="t2 mono">' + h.spec_id + '</div></div></div>'; }).join('') + '</div>' : emptyLine('Изменений нет');
+    return '<div class="row wrap"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + acts + '</div>' + docWarnings(d, unv) +
+      '<div class="doc-meta">' + card('Технические условия', info) + card('Версии', hist) + '</div><div class="stack" style="gap:16px">' + docEditorHtml(d.content, ed) + '</div>';
+  },
+  after: function (d, p, c) { autosizeDoc(c); }
+};
+A.tuPrint = function () { call('specs.html', { spec_id: S.data.spec.spec_id }).then(function (r) { printHtml(r.html); }, showErr); };
+A.tuSave = function (el) {
+  el.classList.add('busy');
+  call('specs.save', { spec_id: S.data.spec.spec_id, row_version: S.data.row_version, content: readDocEditor($('#content')) }).then(function () { S.dirty = {}; toast('Правки сохранены', 'ok'); render(true); }, function (e) { el.classList.remove('busy'); showErr(e); });
+};
+A.tuRebuild = function () { confirmBox('Пересобрать из нормативной базы?', 'Разделы будут собраны заново по актуальной базе и данным продукции. Ручные правки будут потеряны.', 'Пересобрать').then(function () { call('specs.build', { spec_id: S.data.spec.spec_id }).then(function () { S.dirty = {}; toast('ТУ пересобраны', 'ok'); render(true); }, showErr); }); };
+A.tuProfile = function () {
+  var d = S.data, vals = JSON.parse(JSON.stringify(d.profile));
+  if (vals.product_group && d.groups.indexOf(vals.product_group) < 0) { vals.product_group_other = vals.product_group; vals.product_group = '__other'; }
+  openForm({ title: 'Данные продукции', wide: true, okText: 'Сохранить и пересобрать', intro: '<div class="alert small">Обозначение ТУ не меняется. После сохранения ТУ будут собраны заново; ручные правки будут потеряны.</div>',
+    fields: tuProfileFields(d.groups, ''), values: vals,
+    submit: function (v) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } return call('specs.build', { spec_id: d.spec.spec_id, profile: v }); }, done: function () { S.dirty = {}; toast('ТУ пересобраны', 'ok'); render(true); } });
+};
+A.tuApprove = function () {
+  if (Object.keys(S.dirty).length) return toast('Сначала сохраните правки', 'bad');
+  approveDoc('tu', S.data.spec.spec_id, Number(S.data.spec.unverified_count) || 0, 'ТУ');
+};
+A.tuNewVersion = function () { call('specs.newVersion', { spec_id: S.data.spec.spec_id }).then(function (r) { toast('Создан черновик изменения (v' + r.spec.version + ')', 'ok'); go('tudoc', { spec_id: r.spec.spec_id }); }, function (e) { if (e.details && e.details.spec_id) return go('tudoc', { spec_id: e.details.spec_id }); showErr(e); }); };
 /**
  * San.Lab — DemoBoot.js
  * Демо-оболочка: то же ядро и тот же интерфейс, что в Apps Script, но хранилище — в браузере (IndexedDB).

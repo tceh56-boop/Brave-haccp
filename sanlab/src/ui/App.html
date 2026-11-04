@@ -109,6 +109,9 @@ var IC = {
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
   alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
+  shield: '<path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>',
+  book: '<path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20v3H6.5"/>',
+  spec: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"/>'
 };
 function ic(name, cls) { return '<svg' + (cls ? ' class="' + cls + '"' : '') + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[name] || '') + '</svg>'; }
@@ -117,6 +120,7 @@ var LOGO_MARK = '<svg viewBox="0 0 34 38" aria-hidden="true"><path d="M17 1.5 2.
 var MENU = {
   home: ['Главная', 'home'], myvisits: ['Мои выезды', 'myvisits'], clients: ['Клиенты и объекты', 'clients'], visits: ['Выезды и календарь', 'visits'],
   review: ['Проверка отчётов', 'review'], lab: ['Лаборатория', 'lab'], tasks: ['Задачи', 'tasks'], finance: ['Финансы', 'finance'],
+  ppc: ['Программы ПК', 'shield'], tu: ['Технические условия', 'spec'], norms: ['Нормативная база', 'book'],
   documents: ['Документы', 'documents'], analytics: ['Отчёты и аналитика', 'analytics'], staff: ['Сотрудники', 'staff'], settings: ['Настройки', 'settings'], audit: ['Журнал аудита', 'audit']
 };
 
@@ -350,7 +354,7 @@ function shellHtml() {
 
 function render(soft) {
   var p = Pages[S.page];
-  if (!p || S.me.menu.indexOf(S.page) < 0 && ['visit', 'client', 'report', 'sample', 'task'].indexOf(S.page) < 0) { S.page = 'home'; p = Pages.home; }
+  if (!p || S.me.menu.indexOf(S.page) < 0 && ['visit', 'client', 'report', 'sample', 'task', 'ppcdoc', 'tudoc', 'norm'].indexOf(S.page) < 0) { S.page = 'home'; p = Pages.home; }
   $$('[data-k]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-k') === (p.menu || S.page)); });
   $('#title').textContent = typeof p.title === 'function' ? p.title(S.params) : p.title;
   $('#subtitle').textContent = '';
@@ -396,10 +400,10 @@ A.readAll = function () { call('notifications.read', { all: true }).then(functio
 /* Глобальный поиск по ID */
 function gsearch(q) {
   q = String(q || '').trim().toUpperCase();
-  var m = q.match(/^(VIS|CLI|LAB|TSK|REP|DOC|SITE|FIN)-?(\d{1,6})$/);
+  var m = q.match(/^(VIS|CLI|LAB|TSK|REP|DOC|SITE|FIN|PPC|TUS|NRM)-?(\d{1,6})$/);
   if (!m) { toast('Введите ID, например VIS-000842 или LAB-000219'); return; }
   var id = m[1] + '-' + ('000000' + m[2]).slice(-6);
-  var map = { VIS: ['visit', 'visit_id'], CLI: ['client', 'client_id'], LAB: ['sample', 'sample_id'], TSK: ['task', 'task_id'], REP: ['report', 'report_id'] };
+  var map = { VIS: ['visit', 'visit_id'], CLI: ['client', 'client_id'], LAB: ['sample', 'sample_id'], TSK: ['task', 'task_id'], REP: ['report', 'report_id'], PPC: ['ppcdoc', 'program_id'], TUS: ['tudoc', 'spec_id'], NRM: ['norm', 'norm_id'] };
   if (m[1] === 'SITE') { var s = siteById(id); if (s.client_id) return go('client', { client_id: s.client_id }); return toast('Объект не найден или недоступен', 'bad'); }
   if (m[1] === 'DOC') return A.openFile({ getAttribute: function () { return id; } });
   if (m[1] === 'FIN') return go('finance', { tab: 'ops', q: id });
