@@ -228,7 +228,10 @@ var Programs = {
       object_type: ot, flags: flags.join(','), seats: V.str(pr.seats), staff_count: V.str(pr.staff_count), work_mode: V.str(pr.work_mode),
       water_source: V.str(pr.water_source), head_name: V.str(pr.head_name), head_position: V.str(pr.head_position) || 'Руководитель',
       responsible: V.str(pr.responsible), positions: V.str(pr.positions), lab_name: V.str(pr.lab_name), pest_control: V.str(pr.pest_control),
-      waste: V.str(pr.waste), assortment: V.str(pr.assortment), extra: V.str(pr.extra)
+      waste: V.str(pr.waste), assortment: V.str(pr.assortment), extra: V.str(pr.extra),
+      /* Для комплекта документов ППК + ХАССП */
+      ogrn: V.str(pr.ogrn), area: V.str(pr.area), activity: V.str(pr.activity), utilities: V.str(pr.utilities), ventilation_desc: V.str(pr.ventilation_desc),
+      tu_declarations: V.str(pr.tu_declarations), equipment: V.str(pr.equipment), staff: V.str(pr.staff), chemicals: V.str(pr.chemicals)
     };
   },
   build: function (ctx, p) {

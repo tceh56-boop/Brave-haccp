@@ -479,6 +479,7 @@ var PERMS = {
   'programs.save': ['OWNER', 'COORDINATOR'],
   'programs.approve': ['OWNER', 'QC'],
   'programs.newVersion': ['OWNER', 'COORDINATOR'],
+  'programs.pack': ['OWNER', 'COORDINATOR', 'QC'],
   'specs.list': ['OWNER', 'COORDINATOR', 'QC'],
   'specs.get': ['OWNER', 'COORDINATOR', 'QC'],
   'specs.html': ['OWNER', 'COORDINATOR', 'QC'],
@@ -493,7 +494,7 @@ var EXTRA_PERMS = {
   finance: ['finance.list', 'finance.summary'],
   finance_edit: ['finance.list', 'finance.summary', 'finance.accrue', 'finance.invoice', 'finance.payment', 'finance.expense', 'finance.adjust'],
   settings: ['settings.get', 'settings.save', 'checklists.saveVersion', 'services.save', 'norms.saveDoc', 'norms.saveItem', 'norms.verify'],
-  docs: ['norms.list', 'norms.get', 'programs.list', 'programs.get', 'programs.html', 'programs.build', 'programs.save', 'programs.newVersion', 'specs.list', 'specs.get', 'specs.html', 'specs.build', 'specs.save', 'specs.newVersion'],
+  docs: ['norms.list', 'norms.get', 'programs.list', 'programs.get', 'programs.html', 'programs.build', 'programs.save', 'programs.newVersion', 'programs.pack', 'specs.list', 'specs.get', 'specs.html', 'specs.build', 'specs.save', 'specs.newVersion'],
   approve_reports: ['reports.approve', 'reports.return', 'reports.queue', 'results.waivePhoto'],
   lab: ['lab.list', 'lab.register', 'lab.advance', 'lab.review']
 };
@@ -560,7 +561,7 @@ var PRIORITY = { LOW: 'Низкий', NORMAL: 'Обычный', HIGH: 'Высо�
 var TASK_SOURCES = { CHECKLIST: 'Замечание чек-листа', LAB: 'Лабораторный результат', REPORT_RETURN: 'Возврат отчёта', REPORT_REVIEW: 'Проверка отчёта', DOCUMENT: 'Срок документа', CLIENT: 'Запрос клиента', INTERNAL: 'Внутреннее поручение' };
 var FIN_TYPES = { ACCRUAL: 'Начисление', INVOICE: 'Счёт', PAYMENT: 'Поступление', EXPENSE: 'Расход', ADJUSTMENT: 'Корректировка' };
 var EXPENSE_CATEGORIES = ['Лаборатория', 'Транспорт', 'Расходные материалы', 'Зарплата', 'Аренда', 'Связь и ПО', 'Прочее'];
-var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', PPC: 'Программа производственного контроля', TU: 'Технические условия', OTHER: 'Прочее' };
+var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', PPC: 'Программа производственного контроля', PPC_PACK: 'Комплект ППК + ХАССП (ZIP)', TU: 'Технические условия', OTHER: 'Прочее' };
 var SAMPLE_TYPES = ['Смыв', 'Вода', 'Продукты', 'Воздух', 'Готовые блюда'];
 
 /* ---------- Нормативная база, ППК, ТУ ---------- */
@@ -577,7 +578,9 @@ var NORM_SECTIONS = {
 var SITE_FLAGS = {
   hot_shop: 'Горячий цех', cold_shop: 'Холодный цех', meat_fish: 'Мясо-рыбный (заготовочный) цех', confectionery: 'Кондитерский цех', bakery: 'Выпечка',
   buffet: 'Только реализация (буфет, раздача без приготовления)', delivery: 'Доставка готовых блюд', children: 'Питание детей / организованных групп',
-  own_water: 'Собственный источник водоснабжения', ventilation: 'Механическая вентиляция', noise: 'Источники шума и вибрации'
+  own_water: 'Собственный источник водоснабжения', ventilation: 'Механическая вентиляция', noise: 'Источники шума и вибрации',
+  production: 'Изготовление полуфабрикатов / продукции на продажу', frying: 'Жарка, томление', sous_vide: 'Sous-vide (низкотемпературная обработка в вакууме)',
+  vacuum: 'Фасовка, вакуумирование', cooling: 'Охлаждение после термообработки', poultry: 'Сырьё: птица', fish: 'Сырьё: рыба, морепродукты', vegetables: 'Сырьё: овощи, зелень'
 };
 var OBJECT_TYPES = { CAFE: 'Кафе', RESTAURANT: 'Ресторан', CANTEEN: 'Столовая', SCHOOL: 'Пищеблок школы', KINDERGARTEN: 'Пищеблок детского сада', BAR: 'Бар, кофейня', FASTFOOD: 'Предприятие быстрого обслуживания', PRODUCTION: 'Цех полуфабрикатов / кулинарии', OTHER: 'Иное' };
 
@@ -1783,6 +1786,8 @@ var Files = {
       return !!t && (t.responsible_id === u.employee_id || Auth.can(u, 'tasks.verify'));
     }
     if (d.entity_type === 'Finance') return Auth.can(u, 'finance.list');
+    if (d.entity_type === 'Programs') return Auth.can(u, 'programs.get');
+    if (d.entity_type === 'TechSpecs') return Auth.can(u, 'specs.get');
     if (d.entity_type === 'Clients' || d.entity_type === 'Contracts' || d.entity_type === 'Sites') return Auth.isAdminLike(u) || u.role === 'FINANCE';
     return false;
   },
@@ -2974,6 +2979,167 @@ var Jobs = {
   frequent: function (ctx) { return { sent: Notify.processQueue(ctx) }; }
 };
 
+/* ==== core/DocxWriter.gs ==== */
+/**
+ * San.Lab — DocxWriter.gs
+ * Сборка документов Word (DOCX) и ZIP-архивов на чистом JavaScript: работает одинаково в Apps Script и в демо.
+ * ZIP без сжатия (метод «stored») — его открывают Word, LibreOffice, Google Документы и любой архиватор.
+ * Документ описывается блоками: title, sub, kv, h, p, table, pagebreak.
+ */
+
+var Bytes = {
+  utf8: function (s) {
+    s = String(s === null || s === undefined ? '' : s);
+    var out = [];
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.length) {
+        var d = s.charCodeAt(i + 1);
+        if (d >= 0xDC00 && d <= 0xDFFF) { c = 0x10000 + ((c - 0xD800) << 10) + (d - 0xDC00); i++; }
+      }
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+      else if (c < 0x10000) out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      else out.push(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+    return out;
+  },
+  _crcTable: null,
+  crc32: function (bytes) {
+    var t = Bytes._crcTable;
+    if (!t) {
+      t = Bytes._crcTable = [];
+      for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = t[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  },
+  base64: function (bytes) {
+    var A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/', out = [], i;
+    for (i = 0; i + 2 < bytes.length; i += 3) {
+      var n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+      out.push(A.charAt(n >> 18 & 63) + A.charAt(n >> 12 & 63) + A.charAt(n >> 6 & 63) + A.charAt(n & 63));
+    }
+    var rest = bytes.length - i;
+    if (rest === 1) { var a = bytes[i] << 16; out.push(A.charAt(a >> 18 & 63) + A.charAt(a >> 12 & 63) + '=='); }
+    else if (rest === 2) { var b = (bytes[i] << 16) | (bytes[i + 1] << 8); out.push(A.charAt(b >> 18 & 63) + A.charAt(b >> 12 & 63) + A.charAt(b >> 6 & 63) + '='); }
+    return out.join('');
+  }
+};
+
+var Zip = {
+  /* entries: [{ name, data: строка (UTF-8) или массив байт }] → массив байт архива */
+  build: function (entries, when) {
+    var out = [], central = [], offset = 0;
+    var d = when ? new Date(when) : new Date();
+    var dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (Math.floor(d.getSeconds() / 2));
+    var dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    var u16 = function (arr, v) { arr.push(v & 0xFF, (v >>> 8) & 0xFF); };
+    var u32 = function (arr, v) { arr.push(v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF); };
+    var push = function (arr, bytes) { for (var i = 0; i < bytes.length; i++) arr.push(bytes[i]); };
+    entries.forEach(function (e) {
+      var name = Bytes.utf8(e.name), data = typeof e.data === 'string' ? Bytes.utf8(e.data) : e.data, crc = Bytes.crc32(data);
+      var h = [];
+      u32(h, 0x04034B50); u16(h, 20); u16(h, 0x0800); u16(h, 0); u16(h, dosTime); u16(h, dosDate);
+      u32(h, crc); u32(h, data.length); u32(h, data.length); u16(h, name.length); u16(h, 0);
+      push(out, h); push(out, name); push(out, data);
+      var c = [];
+      u32(c, 0x02014B50); u16(c, 20); u16(c, 20); u16(c, 0x0800); u16(c, 0); u16(c, dosTime); u16(c, dosDate);
+      u32(c, crc); u32(c, data.length); u32(c, data.length); u16(c, name.length); u16(c, 0); u16(c, 0); u16(c, 0); u16(c, 0); u32(c, 0); u32(c, offset);
+      push(c, name);
+      central.push(c);
+      offset += h.length + name.length + data.length;
+    });
+    var cdStart = offset, cdSize = 0;
+    central.forEach(function (c) { push(out, c); cdSize += c.length; });
+    var e = [];
+    u32(e, 0x06054B50); u16(e, 0); u16(e, 0); u16(e, entries.length); u16(e, entries.length); u32(e, cdSize); u32(e, cdStart); u16(e, 0);
+    push(out, e);
+    return out;
+  }
+};
+
+var Docx = {
+  PAGE_W: 16838, PAGE_H: 11906, MARGIN: 737,
+  x: function (s) { return String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
+  run: function (text, o) {
+    o = o || {};
+    var rpr = '<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial" w:eastAsia="Arial"/>' + (o.bold ? '<w:b/><w:bCs/>' : '') + (o.italic ? '<w:i/>' : '') +
+      (o.color ? '<w:color w:val="' + o.color + '"/>' : '') + (o.size ? '<w:sz w:val="' + o.size + '"/><w:szCs w:val="' + o.size + '"/>' : '') + (o.caps ? '<w:caps/>' : '') + '</w:rPr>';
+    return String(text === null || text === undefined ? '' : text).split('\n').map(function (part, i) {
+      return '<w:r>' + rpr + (i ? '<w:br/>' : '') + '<w:t xml:space="preserve">' + Docx.x(part) + '</w:t></w:r>';
+    }).join('');
+  },
+  para: function (text, o) {
+    o = o || {};
+    var ppr = '<w:pPr>' + (o.style ? '<w:pStyle w:val="' + o.style + '"/>' : '') + (o.keepNext ? '<w:keepNext/>' : '') +
+      '<w:spacing w:before="' + (o.before || 0) + '" w:after="' + (o.after === undefined ? 80 : o.after) + '"/>' + (o.align ? '<w:jc w:val="' + o.align + '"/>' : '') + '</w:pPr>';
+    return '<w:p>' + ppr + Docx.run(text, o) + '</w:p>';
+  },
+  cell: function (text, w, o) {
+    o = o || {};
+    return '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/>' + (o.fill ? '<w:shd w:val="clear" w:color="auto" w:fill="' + o.fill + '"/>' : '') + '</w:tcPr>' +
+      Docx.para(text, { bold: o.bold, size: o.size || 16, after: 0 }) + '</w:tc>';
+  },
+  table: function (head, rows, widths, o) {
+    o = o || {};
+    var total = Docx.PAGE_W - 2 * Docx.MARGIN, n = (head || rows[0] || []).length;
+    var ws = widths && widths.length === n ? widths : null, sum = 0;
+    if (ws) ws.forEach(function (w) { sum += w; });
+    var cols = []; for (var i = 0; i < n; i++) cols.push(Math.floor(total * (ws ? ws[i] / sum : 1 / n)));
+    var b = '<w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (s) { return '<w:' + s + ' w:val="single" w:sz="4" w:space="0" w:color="' + (o.border || '000000') + '"/>'; }).join('') + '</w:tblBorders>';
+    var h = '<w:tbl><w:tblPr><w:tblW w:w="' + total + '" w:type="dxa"/>' + b + '<w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="70" w:type="dxa"/><w:right w:w="70" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>' +
+      cols.map(function (c) { return '<w:gridCol w:w="' + c + '"/>'; }).join('') + '</w:tblGrid>';
+    if (head) h += '<w:tr><w:trPr><w:tblHeader/></w:trPr>' + head.map(function (t, i) { return Docx.cell(t, cols[i], { bold: true, fill: o.headFill || 'DCE6F1', size: o.size }); }).join('') + '</w:tr>';
+    rows.forEach(function (r) {
+      h += '<w:tr><w:trPr><w:cantSplit/>' + (o.rowHeight ? '<w:trHeight w:val="' + o.rowHeight + '"/>' : '') + '</w:trPr>' + cols.map(function (c, i) { return Docx.cell(r[i], c, { bold: o.boldFirst && i === 0, size: o.size }); }).join('') + '</w:tr>';
+    });
+    return h + '</w:tbl>' + Docx.para('', { after: 60 });
+  },
+  body: function (blocks) {
+    return blocks.map(function (b) {
+      switch (b.t) {
+        case 'title': return Docx.para(b.text, { bold: true, size: 30, align: 'center', after: 60, caps: true });
+        case 'sub': return Docx.para(b.text, { size: 16, align: 'center', color: '444444', after: 120 });
+        case 'kv': return Docx.table(null, b.rows, [1, 1], { boldFirst: true, size: 16 });
+        case 'h': return Docx.para(b.text, { style: 'Heading2', keepNext: true, before: 200, after: 80 });
+        case 'p': return Docx.para(b.text, { bold: b.bold, italic: b.italic, size: b.small ? 16 : 18, align: b.align, after: b.after });
+        case 'table': return Docx.table(b.head, b.rows, b.widths, { size: b.size, rowHeight: b.rowHeight });
+        case 'pagebreak': return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+        default: return '';
+      }
+    }).join('');
+  },
+  /* → массив байт файла .docx */
+  build: function (blocks, opts) {
+    opts = opts || {};
+    var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    var sect = '<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="' + Docx.PAGE_W + '" w:h="' + Docx.PAGE_H + '" w:orient="landscape"/>' +
+      '<w:pgMar w:top="' + Docx.MARGIN + '" w:right="' + Docx.MARGIN + '" w:bottom="' + Docx.MARGIN + '" w:left="' + Docx.MARGIN + '" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>';
+    var doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + Docx.body(blocks) + sect + '</w:body></w:document>';
+    var footer = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ' + W + '>' + Docx.para(opts.footer || '', { size: 14, align: 'center', color: '444444', after: 0 }) + '</w:ftr>';
+    var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ' + W + '>' +
+      '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial" w:eastAsia="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="ru-RU"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="200" w:after="80"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:color w:val="2E74B5"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>' +
+      '<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>';
+    var title = Docx.x(opts.title || '');
+    var files = [
+      { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+        '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>' },
+      { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>' },
+      { name: 'docProps/core.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>' + title + '</dc:title><dc:creator>San.Lab</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">' + (opts.created || new Date().toISOString()).slice(0, 19) + 'Z</dcterms:created></cp:coreProperties>' },
+      { name: 'word/_rels/document.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>' },
+      { name: 'word/document.xml', data: doc },
+      { name: 'word/styles.xml', data: styles },
+      { name: 'word/footer1.xml', data: footer }
+    ];
+    return Zip.build(files, opts.created);
+  }
+};
+
 /* ==== core/DocsService.gs ==== */
 /**
  * San.Lab — DocsService.gs
@@ -3205,7 +3371,10 @@ var Programs = {
       object_type: ot, flags: flags.join(','), seats: V.str(pr.seats), staff_count: V.str(pr.staff_count), work_mode: V.str(pr.work_mode),
       water_source: V.str(pr.water_source), head_name: V.str(pr.head_name), head_position: V.str(pr.head_position) || 'Руководитель',
       responsible: V.str(pr.responsible), positions: V.str(pr.positions), lab_name: V.str(pr.lab_name), pest_control: V.str(pr.pest_control),
-      waste: V.str(pr.waste), assortment: V.str(pr.assortment), extra: V.str(pr.extra)
+      waste: V.str(pr.waste), assortment: V.str(pr.assortment), extra: V.str(pr.extra),
+      /* Для комплекта документов ППК + ХАССП */
+      ogrn: V.str(pr.ogrn), area: V.str(pr.area), activity: V.str(pr.activity), utilities: V.str(pr.utilities), ventilation_desc: V.str(pr.ventilation_desc),
+      tu_declarations: V.str(pr.tu_declarations), equipment: V.str(pr.equipment), staff: V.str(pr.staff), chemicals: V.str(pr.chemicals)
     };
   },
   build: function (ctx, p) {
@@ -3547,6 +3716,276 @@ var DocJobs = {
   }
 };
 
+/* ==== core/PackService.gs ==== */
+/**
+ * San.Lab — PackService.gs
+ * Комплект документов ППК + ХАССП одним ZIP-архивом (по образцу комплекта заказчика, 37 документов).
+ * Состав зависит от процессов объекта: документы про sous-vide, жарку и т. п. включаются только при наличии процесса.
+ * Источники: данные объекта (профиль программы), разделы программы (как они отредактированы), нормативная база, ТУ клиента.
+ */
+
+var Pack = {
+  ROWS: 20,
+  short: function (name) {
+    var m = String(name || '').match(/^ИП\s+(\S+)\s+(\S)\S*\s+(\S)\S*/);
+    return m ? 'ИП ' + m[1] + ' ' + m[2] + '.' + m[3] + '.' : String(name || '');
+  },
+  has: function (P, f) { return csvList(P.flags).indexOf(f) >= 0; },
+  thermal: function (P) { return Pack.has(P, 'sous_vide') || Pack.has(P, 'frying') || Pack.has(P, 'hot_shop'); },
+  chain: function (P) {
+    var t = [];
+    if (Pack.has(P, 'sous_vide')) t.push('sous-vide');
+    if (Pack.has(P, 'frying')) t.push('жарка/томление');
+    if (!t.length && Pack.has(P, 'hot_shop')) t.push('термообработка');
+    var s = ['приём сырья', 'идентификация/маркировка', 'хранение', 'подготовка'];
+    if (Pack.has(P, 'vacuum')) s.push('фасование/вакуумирование');
+    if (t.length) s.push(t.join(' и/или '));
+    if (Pack.has(P, 'cooling')) s.push('охлаждение (если предусмотрено технологией)');
+    s.push('хранение', Pack.has(P, 'buffet') || Pack.has(P, 'production') ? 'реализация' : 'реализация/раздача');
+    return s.join(' → ');
+  },
+  sections: function (content) { return indexBy(content.sections || [], 'key'); },
+  rows: function (sec, n) { return ((sec && sec.rows) || []).map(function (r) { return r.c.slice(0, n || r.c.length); }); },
+  empty: function (cols, n) { var out = []; for (var i = 1; i <= (n || Pack.ROWS); i++) { var r = [String(i)]; for (var j = 1; j < cols; j++) r.push(''); out.push(r); } return out; },
+  lines: function (s, n) { return V.str(s).split('\n').filter(function (l) { return V.str(l); }).map(function (l) { var a = l.split(';').map(V.str); while (a.length < n) a.push(''); return a.slice(0, n); }); },
+
+  /* Сборка всех документов: [{ title, blocks }] в порядке комплекта */
+  docs: function (ctx, rec) {
+    var P = safeJson(rec.profile_json, {}), content = safeJson(rec.content_json, { sections: [] }), S = Pack.sections(content);
+    var client = Repo.get('Clients', rec.client_id) || {}, site = Repo.get('Sites', rec.site_id) || {};
+    var full = client.legal_name || '', sh = Pack.short(full), date = fmtD(rec.approved_at || ctx.now), year = String(new Date(rec.approved_at || ctx.now).getFullYear());
+    var addr = site.address || '', mode = P.work_mode || '';
+    var resp = Pack.lines(P.responsible, 3), staff = Pack.lines(P.staff, 2);
+    var boss = P.head_name || full;
+    var H = function (title) { return [{ t: 'title', text: title }, { t: 'sub', text: sh + ' • редакция на ' + date }, { t: 'kv', rows: [['Предприятие', full], ['Адрес / режим', addr + (mode ? '; ' + mode : '')]] }]; };
+    var period = { t: 'p', text: 'Период: «___» __________ ' + year + ' г. — «___» __________ ' + year + ' г.  Ответственный: __________________.' };
+    var J = function (title, cols, note) { var b = H(title).concat([period]); if (note) b.push({ t: 'p', text: note, small: true }); b.push({ t: 'table', head: ['№'].concat(cols), rows: Pack.empty(cols.length + 1), widths: [1].concat(cols.map(function () { return 3; })), rowHeight: 340 }); return b; };
+    var C = function (title, items) { return H(title).concat([{ t: 'p', text: 'Отметка: ✓ выполнено / ✗ нарушение / НП — не применимо. Все нарушения сопровождаются корректирующим действием.' }, { t: 'table', head: ['№', 'Контрольный пункт', '✓/✗/НП', 'Комментарий', 'Подпись'], rows: items.map(function (t, i) { return [String(i + 1), t, '', '', '']; }), widths: [1, 12, 2, 6, 3], rowHeight: 340 }]); };
+    var approve = { t: 'p', text: 'УТВЕРЖДАЮ\n' + sh + ' __________________\n«___» __________ ' + year + ' г.' };
+    var sv = Pack.has(P, 'sous_vide'), fr = Pack.has(P, 'frying'), vac = Pack.has(P, 'vacuum'), cool = Pack.has(P, 'cooling'), th = Pack.thermal(P);
+    var procTxt = [sv ? 'sous-vide' : '', fr ? 'жарка/томление' : '', !sv && !fr && Pack.has(P, 'hot_shop') ? 'термообработка' : ''].filter(String).join(', ');
+    var D = [];
+    var add = function (title, blocks) { D.push({ title: title, blocks: blocks }); };
+
+    /* 00 — заполняется в конце, когда известен состав */
+    D.push(null);
+
+    /* 01 ППК */
+    var objLines = [full, client.inn ? 'ИНН ' + client.inn : '', P.ogrn ? 'ОГРН/ОГРНИП ' + P.ogrn : '', 'Адрес предприятия: ' + addr, client.legal_address ? 'Юридический адрес: ' + client.legal_address : '',
+      P.area ? 'Площадь: ' + P.area + ' м²' : '', P.utilities ? 'Инженерное обеспечение: ' + P.utilities : '', P.water_source ? 'Водоснабжение: ' + P.water_source : '',
+      P.ventilation_desc ? 'Вентиляция и освещение: ' + P.ventilation_desc : '', 'Деятельность: ' + (P.activity || OBJECT_TYPES[P.object_type] || ''), P.tu_declarations ? 'ТУ и декларации: ' + P.tu_declarations : '', mode ? 'Режим работы: ' + mode : ''].filter(String).join('\n');
+    var control = [['Приём сырья', 'каждая партия', 'маркировка, срок, температура, упаковка, документы', 'Журнал приёмки'], ['Холодильники/морозильники', 'каждая смена', 'температура', 'Журнал температур']];
+    if (th) control.push(['ККТ термообработки', 'каждая партия', 'температура/время по ТТК', 'Журнал ККТ']);
+    if (sv) control.push(['Sous-vide', 'каждый цикл', 'режим по валидированной карте продукта', 'Журнал sous-vide']);
+    control.push(['Дезрастворы', 'каждая порция', 'концентрация/экспозиция', 'Журнал дезрастворов'], ['Уборка', 'ежедневно/по графику', 'санитарное состояние', 'Журнал уборки'], ['Персонал', 'каждая смена', 'допуск/гигиена', 'Журнал допуска'],
+      ['Маркировка', 'каждая партия', 'состав, срок, условия, партия', 'Журнал маркировки'], ['Лабораторный контроль', 'по программе', 'вода, смывы, продукция и др. по риску', 'Протоколы'], ['Условия труда', 'по программе', 'факторы рабочей среды по применимости', 'Протоколы']);
+    Pack.rows(S.measures, 3).forEach(function (r) { control.push([r[0], r[1], 'выполнение мероприятия', r[2] || 'запись в журнале']); });
+    var ppc = H('Программа производственного контроля (ППК)').concat([
+      { t: 'h', text: '1. Общие положения' }, { t: 'p', text: 'ППК устанавливает порядок контроля санитарного состояния, безопасности пищевой продукции, технологических режимов, условий труда и документирования результатов. ППК интегрирована с системой ХАССП.' },
+      { t: 'h', text: '2. Объект и процессы' }, { t: 'p', text: objLines }, { t: 'p', text: 'Процессы: ' + Pack.chain(P) + '. Потоки сырья, готовой продукции, отходов и уборочного инвентаря организуются с исключением перекрёстного загрязнения.' },
+      { t: 'h', text: '3. Контроль' }, { t: 'table', head: ['Объект', 'Периодичность', 'Контроль', 'Запись'], rows: control, widths: [4, 3, 5, 3] },
+      { t: 'h', text: '4. Лабораторный и инструментальный контроль' }, { t: 'table', head: ['Объект / точка отбора', 'Показатели', 'Периодичность', 'Объём'], rows: Pack.rows(S.lab, 4), widths: [5, 5, 3, 3] },
+      { t: 'p', text: 'Подробно — документ «Лабораторная программа».', small: true },
+      { t: 'h', text: '5. Медицинские осмотры и гигиеническое обучение' }, { t: 'table', head: ['Требование', 'Должности', 'Периодичность'], rows: Pack.rows(S.prof, 3), widths: [5, 6, 4] },
+      { t: 'h', text: '6. Ответственные' }, { t: 'table', head: ['ФИО', 'Должность', 'Функции'], rows: Pack.rows(S.officials, 3), widths: [4, 3, 8] },
+      { t: 'p', text: 'Ответственные за отдельные журналы устанавливаются приказом.' },
+      { t: 'h', text: '7. Аварийные ситуации' }, { t: 'table', head: ['Ситуация', 'Действия'], rows: Pack.rows(S.emerg, 2), widths: [4, 10] },
+      { t: 'h', text: '8. Несоответствия' }, { t: 'p', text: 'При отклонении продукция идентифицируется и блокируется. Определяется причина, выполняется повторный контроль, принимается решение об исправлении, переработке (если допустимо), возврате или утилизации. Действия фиксируются в журнале несоответствий.' },
+      { t: 'h', text: '9. Пересмотр' }, { t: 'p', text: 'ППК пересматривается при изменении ассортимента, рецептур, оборудования, помещений, поставщиков, требований законодательства, выявлении несоответствий и по результатам внутреннего аудита' + (rec.review_due_date ? ', но не позднее ' + fmtD(rec.review_due_date) : '') + '.' },
+      { t: 'h', text: '10. Утверждение' }, approve]);
+    add('ППК программа производственного контроля', ppc);
+
+    /* 02 План ХАССП */
+    var team = [['Руководитель', boss, 'утверждение, ресурсы']];
+    if (resp.length) resp.forEach(function (r) { team.push([r[1] || 'Ответственный', r[0], r[2]]); });
+    else { team.push(['Ответственный за ХАССП', boss + '*', 'анализ рисков, записи'], ['Производственный контроль', boss + '*', 'санитария, журналы']); }
+    staff.forEach(function (s) { team.push([s[1] || 'Работник производства', s[0], 'операционный контроль']); });
+    if (!staff.length) team.push(['Работник производства', '________________', 'операционный контроль']);
+    var haz = [['Приём', 'Б: патогены; Х: химия; Ф: включения', 'документы, маркировка, срок, температура, целостность', 'КП'], ['Хранение', 'рост микроорганизмов; перекрёстная контаминация', 'температура по ТД продукта, раздельность', 'КП'], ['Подготовка', 'перекрёстное загрязнение', 'раздельный инвентарь, санитария, контроль времени', 'КП']];
+    if (vac) haz.push(['Вакуумирование', 'микробиологические риски; упаковка', 'разрешённая упаковка, герметичность, маркировка', sv ? 'КП/ККТ*' : 'КП']);
+    if (sv) haz.push(['Sous-vide', 'выживание/рост патогенов', 'валидированный режим температура-время', 'ККТ']);
+    if (fr) haz.push(['Жарка/томление', 'недостаточная термообработка', 'температура в контрольной точке и время по ТТК', 'ККТ']);
+    if (!sv && !fr && Pack.has(P, 'hot_shop')) haz.push(['Термообработка', 'выживание патогенов', 'режим по ТТК, температура в толще продукта', 'ККТ']);
+    if (cool) haz.push(['Охлаждение', 'рост микроорганизмов', 'режим охлаждения по ТТК', 'ККТ*']);
+    if (Pack.has(P, 'cold_shop')) haz.push(['Приготовление без термообработки', 'вторичное загрязнение', 'раздельный инвентарь, обработка сырья, сроки реализации', 'КП']);
+    haz.push(['Хранение', 'рост/перекрёстное загрязнение', 'температура, срок, маркировка', 'КП'], ['Продажа', 'нарушение срока/условий; аллергены', 'маркировка, срок, условия, информация', 'КП']);
+    var haccp = H('План ХАССП / система управления безопасностью пищевой продукции').concat([
+      { t: 'p', text: 'Система построена на анализе биологических, химических и физических опасностей, предварительных санитарных программах, ККТ, критических пределах, мониторинге, корректирующих действиях, верификации и документировании.' },
+      { t: 'h', text: 'Команда ХАССП' }, { t: 'table', head: ['Роль', 'ФИО', 'Функция'], rows: team, widths: [4, 5, 6] }, resp.length ? { t: 'p', text: '' } : { t: 'p', text: '* До назначения отдельного ответственного.', small: true },
+      { t: 'h', text: 'Блок-схема' }, { t: 'p', text: Pack.chain(P).replace(/^приём сырья/, 'Приём') + '. Отходы и уборочный инвентарь — отдельными потоками.' },
+      { t: 'h', text: 'Анализ опасностей' }, { t: 'table', head: ['Этап', 'Опасности', 'Меры управления', 'Статус'], rows: haz, widths: [3, 5, 6, 2] }]);
+    var ccp = Pack.rows(S.ccp, 4);
+    if (ccp.length) haccp.push({ t: 'h', text: 'Опасные факторы и критические контрольные точки по нормативной базе' }, { t: 'table', head: ['Процесс / этап', 'Опасный фактор', 'Критический предел / требование', 'Мониторинг'], rows: ccp, widths: [4, 4, 5, 4] });
+    haccp.push({ t: 'p', text: 'Критические пределы ' + (procTxt || 'термообработки') + (cool ? ' и охлаждения' : '') + ' заполняются только по конкретным ТТК/валидации продукта, толщины, упаковки и оборудования; значения из чужих документов не переносить.' },
+      { t: 'h', text: 'Верификация' }, { t: 'p', text: 'Ежедневно — проверка записей и отклонений; еженедельно — внутренний санитарный контроль; периодически — метрология, лабораторные протоколы, сроки годности и пересмотр рисков; внепланово — после изменений или серьёзного несоответствия.' });
+    add('ХАССП план безопасности пищевой продукции', haccp);
+
+    /* 03 Приказы */
+    var orders = [['01-ППК', 'Об утверждении ППК', 'Утвердить ППК и ввести в действие с ' + date + '.'], ['02-ХАССП', 'О внедрении ХАССП', 'Утвердить план ХАССП и обязательность записей ККТ.'], ['03-ХАССП', 'О назначении ответственных', 'Назначить ответственных за ХАССП, приёмку, санитарию и журналы.'], ['04-САН', 'О мойке и дезинфекции', 'Утвердить график уборки и контроль дезрастворов.']];
+    if (th) orders.push(['05-ККТ', 'О контроле термообработки', 'Регистрировать ККТ каждой партии/цикла.']);
+    orders.push(['06-ЛАБ', 'О лабораторной программе', 'Утвердить программу и хранение протоколов.'], ['07-ОТЗ', 'О несоответствиях и отзыве', 'Блокировать продукцию и оформлять корректирующие действия.'], ['08-ДОП', 'О допуске персонала', 'Соблюдать медосмотры, гигиену и недопуск заболевших.']);
+    add('Приказы и распоряжения', H('Приказы и распоряжения').concat([{ t: 'table', head: ['№', 'Документ', 'Распоряжение'], rows: orders, widths: [2, 5, 9] }, { t: 'h', text: 'Шаблон приказа' },
+      { t: 'p', text: 'ПРИКАЗ № ____ от «___» __________ ' + year + ' г.\nОснование: ППК/ХАССП предприятия.\nРАСПОРЯЖАЮСЬ: ____________________________________________\nКонтроль исполнения: ' + sh + '.\nПодпись: __________________\nОзнакомлены: ______________________________' }]));
+
+    /* 04 Схема потоков */
+    var equip = Pack.lines(P.equipment, 2);
+    if (!equip.length) { equip = [['Холодильник', '__'], ['Морозильник', '__']]; if (vac) equip.push(['Вакууматор', '__']); if (sv) equip.push(['Sous-vide', '__']); if (fr) equip.push(['Жарочное', '__'], ['Томильное', '__']); equip.push(['Весы', '__'], ['Термометры', '__'], ['Моечная ванна', '__']); }
+    add('2D план потоков и зонирование', H('2D план потоков и зонирование').concat([
+      { t: 'p', text: 'Функциональная схема для объекта' + (P.area ? ' ' + P.area + ' м²' : '') + '. Это не архитектурный план: фактические размеры, двери, окна, точки воды/канализации и оборудование необходимо сверить с объектом.' },
+      { t: 'table', head: ['Приём/вход', 'Хранение', 'Заготовка', th ? 'Термообработка' : 'Приготовление', 'Упаковка/продажа'], rows: [['↓ сырьё', 'холодильник/морозильник', 'столы/инвентарь', procTxt || 'по технологии', 'маркировка → клиент'], ['проверка', 'раздельное хранение', 'санитарный контроль', th ? 'ККТ T°/время' : 'контроль режимов', 'контроль срока'], ['документы', 'FIFO/FEFO', 'сырьё → продукт', 'партия', 'выдача']], widths: [1, 1, 1, 1, 1] },
+      { t: 'h', text: 'Потоки' }, { t: 'p', text: 'Сырьё: вход → приём → хранение → заготовка → ' + (th ? 'термообработка → ' : '') + (vac ? 'упаковка/' : '') + 'маркировка → продажа.\nОтходы: рабочая зона → закрытая промаркированная тара → вынос без пересечения с готовой продукцией.\nУборочный инвентарь хранится отдельно от пищевой продукции и упаковки.\nПерсонал: вход → гигиена рук → рабочая зона; уличная одежда отдельно.\nВстречные потоки сырого и готового продукта исключаются организационно и/или по времени.' },
+      { t: 'h', text: 'Фактический перечень оборудования' + (V.str(P.equipment) ? '' : ' — заполнить') }, { t: 'table', head: ['Оборудование', 'Кол-во', 'Место', 'Инв. №'], rows: equip.map(function (e) { return [e[0], e[1] || '__', '', '']; }), widths: [5, 2, 4, 3] }]));
+
+    /* 05 Реестр документов предприятия (+ ТУ клиента из системы) */
+    var reg = [['ППК', rec.status === 'APPROVED' ? 'утверждена' : 'утвердить', 'папка ППК', 'при изменениях/ежегодно'], ['План ХАССП', 'утвердить', 'папка ХАССП', 'при изменениях/аудите']];
+    var specs = Repo.where('TechSpecs', function (x) { return x.client_id === rec.client_id && x.status !== 'ARCHIVED'; });
+    if (specs.length) specs.forEach(function (x) { reg.push([x.designation + ' «' + x.product_name + '»', x.status === 'APPROVED' ? 'утверждены' : 'проект', 'папка соответствия', 'актуальность']); });
+    else reg.push(['ТУ', P.tu_declarations ? 'по данным предприятия' : 'внести', 'папка соответствия', 'актуальность']);
+    reg.push(['Декларации', P.tu_declarations ? 'по данным предприятия' : 'внести', 'папка соответствия', 'срок/область'], ['ТТК', 'по всему ассортименту', 'папка ТТК', 'при изменении рецептуры'], ['Документы поставщиков', 'по группам сырья', 'папка поставщиков', 'при смене'], ['Документы на химсредства', 'внести фактические', 'папка санитарии', 'при смене'],
+      ['Медицинские документы', 'по каждому работнику', 'кадровая папка', 'по срокам'], ['Лабораторные протоколы', 'по программе', 'папка ППК', 'по графику'], ['Поверка/калибровка', 'по приборам', 'папка метрологии', 'по срокам']);
+    add('Реестр нормативных и технологических документов', H('Реестр нормативных и технологических документов').concat([{ t: 'table', head: ['Документ', 'Статус', 'Хранение', 'Проверка'], rows: reg, widths: [6, 3, 3, 3] }]));
+
+    /* 06 ТТК-шаблоны и карты ККТ */
+    var kinds = [['meat_fish', 'Полуфабрикат мясной'], ['poultry', 'Полуфабрикат птицы'], ['fish', 'Полуфабрикат рыбный'], ['vegetables', 'Полуфабрикат овощной']].filter(function (k) { return Pack.has(P, k[0]); });
+    if (!kinds.length) kinds = [['', 'Продукция']];
+    var tech = 'заготовка → ' + (vac ? 'упаковка → ' : '') + (procTxt || 'приготовление') + ' → хранение', blank = '____________________________';
+    var ttk = H('ТТК шаблоны и карты ККТ');
+    kinds.forEach(function (k, i) {
+      ttk.push({ t: 'h', text: 'ТТК-' + pad2(i + 1) + '. ' + k[1] + ' — шаблон' }, { t: 'table', head: ['Поле', 'Значение'], rows: [['Наименование', blank], ['Код/артикул', blank], ['ТУ/ТТК №', blank], ['Состав/сырьё', blank], ['Аллергены', blank], ['Масса нетто', blank], ['Упаковка', blank], ['Условия хранения', blank], ['Срок годности', blank], ['Технология', tech], ['ККТ', blank], ['Критический предел', blank], ['Мониторинг', blank], ['Корректирующее действие', blank]], widths: [1, 3] });
+    });
+    var kk = [];
+    if (fr) kk.push(['____________', 'ККТ-Ж/Т', '____ °C', '____ мин', 'центр продукта', 'каждая партия']);
+    if (sv) kk.push(['____________', 'ККТ-SV', '____ °C', '____ мин', 'среда/центр', 'каждый цикл']);
+    if (!kk.length && th) kk.push(['____________', 'ККТ-Т', '____ °C', '____ мин', 'центр продукта', 'каждая партия']);
+    if (cool) kk.push(['____________', 'ККТ-О', '____ °C', '____ мин', 'центр продукта', 'каждая партия']);
+    if (kk.length) ttk.push({ t: 'h', text: 'Карта ККТ' }, { t: 'table', head: ['Продукт', 'ККТ', 'Критический предел', 'Время', 'Контроль', 'Частота'], rows: kk, widths: [4, 2, 3, 2, 3, 3] });
+    ttk.push({ t: 'p', text: 'Критические пределы должны быть подтверждены для конкретного продукта, толщины/массы, упаковки и оборудования. Не переносить значения из чужих ТТК.' });
+    add('ТТК шаблоны и карты ККТ', ttk);
+
+    /* 07 Лабораторная программа */
+    var labRows = ((S.lab && S.lab.rows) || []).map(function (r) { return [r.c[0], r.c[1], r.c[2] + (r.c[3] ? '; ' + r.c[3] : ''), 'протокол']; });
+    labRows.push(['Дезрастворы', 'концентрация', 'каждая порция/по инструкции', 'журнал']);
+    var labUnv = ((S.lab && S.lab.rows) || []).some(function (r) { return r.v === false; });
+    add('Лабораторная программа', H('Лабораторная программа').concat([
+      { t: 'p', text: (labUnv ? 'Периодичность ниже — проект по оценке риска. ' : '') + 'Окончательная программа утверждается с учётом ассортимента, объёма, результатов предыдущих исследований и применимых требований.' },
+      { t: 'table', head: ['Объект', 'Показатели', 'Периодичность', 'Документ'], rows: labRows, widths: [5, 5, 4, 2] },
+      { t: 'p', text: 'Лабораторные исследования выполняются компетентной лабораторией с необходимой областью аккредитации' + (P.lab_name ? ' (' + P.lab_name + ')' : '') + '. Протоколы хранятся в составе ППК.' }]));
+
+    /* 08–13 Инструкции */
+    var instr = function (title, parts) { var b = H(title); parts.forEach(function (x) { b.push({ t: 'h', text: x[0] }, { t: 'p', text: x[1] }); }); add(title, b); };
+    instr('Инструкция приёмка сырья', [['Порядок', 'Приём — до размещения сырья в хранение. Проверить поставщика, наименование, маркировку, дату, срок годности, условия хранения, целостность упаковки, температуру и документы.\nСырьё с истёкшим сроком, без идентификации, с нарушенной упаковкой или критическим несоответствием не принимать.\nЗапись — в Журнале приёмки; несоответствие — дополнительно в Журнале несоответствий.'], ['Температура', 'Предел берётся из маркировки и ТУ/ТТК конкретного продукта. Фиксируется фактическое измерение.'], ['Ответственный', 'Приёмщик: __________________. Замещающий: __________________.']]);
+    instr('Инструкция личная гигиена персонала', [['До работы', 'Чистая спецодежда, убранные волосы, короткие чистые ногти, отсутствие украшений, гигиена рук. Медицинские документы и гигиеническое обучение — в установленном порядке.'], ['Недопуск', 'Не допускать к работе при признаках инфекционного заболевания, желудочно-кишечных расстройствах, гнойничковых поражениях кожи и иных состояниях, препятствующих безопасной работе.'], ['Руки', 'Мыть руки до работы, после туалета, контакта с сырьём, отходами, уборочным инвентарём и по мере загрязнения.']]);
+    instr('Инструкция мойка, дезинфекция и уборка', [['Порядок', 'Удаление остатков → мойка → ополаскивание → дезинфекция → выдержка по инструкции средства → ополаскивание, если предусмотрено → сушка.'], ['Средства', 'Использовать только средства, разрешённые для соответствующего применения, строго по инструкции производителя. В журнале указывать фактическое название, концентрацию и экспозицию.' + (P.chemicals ? '\nПрименяемые средства: ' + P.chemicals + '.' : '')], ['Контроль', 'После уборки проверяется визуальная чистота; при неудовлетворительном результате обработка повторяется.']]);
+    if (sv) instr('Инструкция sous-vide', [['Подготовка', 'Использовать продукт и упаковку, предусмотренные ТТК. Проверить санитарное состояние оборудования и целостность пакета.'], ['Вакуумирование', 'Проверить герметичность шва и маркировку партии; зарегистрировать время начала цикла.'], ['Термообработка', 'Температура и время устанавливаются валидированной картой ККТ конкретного продукта. Контролировать среду и, если предусмотрено картой, центр продукта.'], ['После цикла', 'Охлаждение, если предусмотрено технологией, выполняется по утверждённому режиму. Соблюдать срок и условия хранения.'], ['Отклонение', 'При недостижении критического предела партия блокируется до решения ответственного и фиксируется в журнале.']]);
+    if (fr) instr('Инструкция жарка и томление', [['Перед началом', 'Проверить оборудование, чистоту, термометр, ТТК и карту ККТ.'], ['Процесс', 'Термообработка проводится по ТТК; регистрируются температура контрольной точки и время, если предусмотрено картой.'], ['Выпуск', 'Партия выпускается только при достижении установленного предела и отсутствии других несоответствий.'], ['Отклонения', 'Продолжение обработки допускается только если это предусмотрено ТТК; иначе партия блокируется.']]);
+    instr('Инструкция действия при отклонениях и отзыве', [['Алгоритм', '1) Остановить выпуск/продажу. 2) Идентифицировать партию. 3) Изолировать и промаркировать «КАРАНТИН». 4) Установить причину. 5) Оценить риск. 6) Решить: исправление, переработка (если допустимо), возврат или утилизация. 7) Записать результат.'], ['Отзыв', 'При необходимости установить объём партии и точки реализации, прекратить продажу, обеспечить прослеживаемость и документировать действия.']]);
+
+    /* 14–24 Журналы */
+    var jr = function (t, cols, note) { add(t, J(t, cols, note)); };
+    jr('Журнал приёмки сырья', ['Дата/время', 'Поставщик', 'Наименование/партия', 'Срок', 'T° C', 'Упаковка/маркировка', 'Документы', 'Решение', 'Подпись']);
+    jr('Журнал температур холодильников и морозильников', ['Дата', 'Время', 'Оборудование', 'Требуемая T°', 'Факт T°', 'Отклонение', 'Действие', 'Подпись']);
+    if (th) jr('Журнал ККТ термообработки', ['Дата', 'Продукт/партия', 'Процесс', 'ККТ', 'Предел', 'Факт T°', 'Время', 'Результат', 'Корр. действие', 'Подпись']);
+    if (sv) jr('Журнал sous-vide', ['Дата', 'Продукт/партия', 'Пакет/маркировка', 'T° среды', 'Старт', 'Окончание', 'T° центра*', 'Предел', 'Результат', 'Подпись'], 'Критические пределы вносятся из валидированной карты конкретного продукта. *Контроль центра — если предусмотрен картой.');
+    jr('Журнал концентрации дезрастворов', ['Дата/время', 'Средство', 'Конц. по инструкции', 'Факт. конц.', 'Экспозиция', 'Объём', 'Ответственный', 'Результат']);
+    jr('Журнал уборки и дезинфекции', ['Дата', 'Зона/оборудование', 'Вид уборки', 'Средство', 'Концентрация', 'Экспозиция', 'Результат', 'Исполнитель', 'Проверил']);
+    jr('Журнал санитарного состояния и допуска персонала', ['Дата', 'ФИО', 'Состояние/жалобы', 'Спецодежда', 'Гигиена рук', 'Допуск', 'Меры', 'Подпись']);
+    jr('Журнал бракеража и выпуска', ['Дата/время', 'Наименование', 'Партия', 'Органолептика', 'T°', 'Маркировка', 'Срок', 'Решение', 'Подпись']);
+    jr('Журнал сроков годности и маркировки', ['Дата', 'Продукт', 'Партия', 'Изготовление', 'Срок', 'Условия', 'Маркировка', 'Решение', 'Подпись']);
+    jr('Журнал калибровки и поверки термометров', ['Прибор/№', 'Диапазон', 'Дата', 'Эталон/метод', 'Результат', 'Допуск', 'Следующая дата', 'Документ', 'Подпись']);
+    jr('Журнал несоответствий и корректирующих действий', ['Дата/время', 'Проблема/этап', 'Партия', 'Блокировка', 'Причина', 'Действие', 'Ответственный', 'Проверка', 'Статус']);
+    /* Журналы из нормативной базы, которых нет в базовом наборе (например, фритюрные жиры) */
+    var covered = /приемк|приёмк|температур.*холод|бракераж|гигиеническ|допуск|уборк|дезинф|сроков|калибр|несоответств/i;
+    Pack.rows(S.journals, 3).forEach(function (r) { if (!covered.test(r[0])) jr(r[0].replace(/^Журнал /, 'Журнал '), ['Дата/время', 'Наблюдение / показатель', 'Результат', 'Действие', 'Ответственный', 'Подпись'], 'Периодичность заполнения: ' + (r[1] || 'по графику') + (r[2] ? '. Ответственный: ' + r[2] : '') + '.'); });
+
+    /* 25–29 Чек-листы */
+    add('Чек-лист открытие смены', C('Чек-лист открытие смены', ['Помещения чистые, нет следов вредителей/посторонних запахов.', 'Рабочие поверхности и оборудование чистые.', 'Температура холодильников/морозильников проверена.', 'Термометры исправны и идентифицированы.', 'Есть горячая/холодная вода, мыло, средство для гигиены рук.', 'Уборочный инвентарь промаркирован и хранится отдельно.', 'Дезраствор приготовлен по инструкции и проверен.', 'Сырьё промаркировано, сроки не истекли.', 'Упаковка пригодна и защищена.', 'Персонал допущен, спецодежда чистая.', 'ТТК и карты ККТ доступны.', 'Весы/измерительные приборы готовы.']));
+    add('Чек-лист закрытие смены', C('Чек-лист закрытие смены', ['Просроченная/неидентифицированная продукция снята с реализации.', 'Остатки промаркированы по ТТК.', 'Температура хранения проверена и записана.', 'Рабочие поверхности очищены и продезинфицированы.', 'Оборудование приведено в безопасный режим.', 'Уборочный инвентарь обработан и размещён.', 'Отходы удалены по порядку.', 'Раковины/канализация исправны.', 'Журналы заполнены.', 'Критические отклонения переданы ответственному.']));
+    add('Чек-лист приёмка сырья', C('Чек-лист приёмка сырья', ['Поставщик идентифицирован.', 'Наименование и партия соответствуют заказу.', 'Маркировка читаема.', 'Срок годности не истёк.', 'Температура соответствует ТД.', 'Упаковка целая.', 'Есть необходимые документы.', 'Органолептика приемлема.', 'Нет контакта сырого сырья с готовой продукцией.', 'Решение внесено в журнал.']));
+    var week = ['Полы, стены, потолок и поверхности чистые.', 'Светильники исправны и чистые.', 'Вентиляция/приточка работают; доступные решётки чистые.', 'Нет следов насекомых/грызунов.', 'Холодильники и уплотнители чистые.'];
+    if (sv || vac) week.push((sv ? 'Sous-vide/' : '') + 'вакууматор чистые.');
+    if (fr || Pack.has(P, 'hot_shop')) week.push('Жарочное/тепловое оборудование очищено.');
+    week.push('Инвентарь промаркирован и исправен.', 'Химические средства отдельно от пищи.', 'Журналы заполнены, отклонения разобраны.');
+    add('Чек-лист еженедельный санитарный', C('Чек-лист еженедельный санитарный', week));
+    var audit = ['ППК и ХАССП утверждены.', 'Ассортимент соответствует ТУ/ТТК/декларациям.', 'Для ККТ определены пределы, мониторинг и действия.', 'Записи ККТ ведутся по партиям.'];
+    if (sv) audit.push('Sous-vide выполняется по валидированным картам.');
+    audit.push('Приёмка и прослеживаемость документированы.', 'Температурные журналы заполнены.', 'Маркировка и сроки контролируются.', 'Санитарная обработка документируется.', 'Концентрации дезрастворов контролируются.', 'Персонал допущен и обучен.', 'Лабораторная программа выполняется.', 'Термометры имеют актуальный статус.', 'Несоответствия закрыты с проверкой эффективности.', 'Изменения отражены в ХАССП.');
+    add('Чек-лист внутренний аудит ХАССП', C('Чек-лист внутренний аудит ХАССП', audit));
+
+    /* 30 График работы */
+    var m = String(mode).match(/(\d{1,2})[:.](\d{2})\s*[–-]\s*(\d{1,2})[:.](\d{2})/), days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'], sched;
+    if (m) {
+      var o = Number(m[1]), c = Number(m[3]), hh = function (h) { return pad2(Math.max(0, h)) + ':' + m[2]; };
+      sched = days.map(function (d) { return [d, hh(o - 2) + '–' + hh(o), hh(o) + '–' + hh(c - 1), hh(o) + '–' + pad2(c) + ':' + m[4], hh(c - 1) + '–' + pad2(c) + ':' + m[4]]; });
+    } else sched = days.map(function (d) { return [d, '', '', mode, '']; });
+    add('График работы, заготовки и продажи', H('График работы, заготовки и продажи').concat([{ t: 'p', text: 'Режим реализации: ' + (mode || '__________') + '. Время заготовки ниже — проектный шаблон; перед утверждением привести в соответствие с фактическим режимом работников.' },
+      { t: 'table', head: ['День', 'Заготовка*', 'Производство', 'Продажа', 'Закрытие'], rows: sched, widths: [1, 2, 2, 2, 2] }, { t: 'p', text: '* Если фактической заготовки до открытия нет, график заменить на фактический. Заготовка не должна приводить к накоплению продукции сверх утверждённых сроков.', small: true }]));
+
+    /* 31–35 Памятка, ознакомление, реестры, график санобработки */
+    add('Памятка по маркировке и реализации', H('Памятка по маркировке и реализации').concat([{ t: 'table', head: ['Элемент', 'Что проверить'], rows: [['Наименование', 'точное наименование продукции'], ['Состав', 'по рецептуре'], ['Аллергены', 'указание по применимым требованиям'], ['Масса', 'масса нетто/количество'], ['Дата', 'дата изготовления/упаковки — по применимости'], ['Срок', 'только по утверждённой ТД'], ['Условия', 'температура/условия по ТД'], ['Производитель', sh + ' и адрес — по применимости'], ['Партия', 'идентификатор прослеживаемости'], ['Документы', 'ТУ/ТТК/декларация — по применимости']], widths: [1, 4] },
+      { t: 'p', text: 'Не устанавливать сроки годности по аналогии с чужой продукцией. Для каждой позиции срок и условия должны иметь документальное обоснование.' }]));
+    var fam = staff.map(function (s, i) { return [String(i + 1), s[0], 'ППК, план ХАССП, инструкции', '', '', '']; });
+    for (var k = fam.length + 1; k <= 15; k++) fam.push([String(k), '', '', '', '', '']);
+    add('Лист ознакомления с документами', H('Лист ознакомления с документами').concat([{ t: 'table', head: ['№', 'ФИО', 'Документ', 'Дата', 'Подпись работника', 'Подпись ответственного'], rows: fam, widths: [1, 5, 5, 2, 3, 3], rowHeight: 340 }]));
+    add('Реестр поставщиков', H('Реестр поставщиков').concat([{ t: 'table', head: ['№', 'Поставщик', 'ИНН/реквизиты', 'Сырьё', 'Документы', 'Условия доставки', 'Допуск', 'Дата проверки'], rows: Pack.empty(8, 15), widths: [1, 4, 3, 3, 3, 3, 2, 2], rowHeight: 340 }]));
+    var eqRows = equip.map(function (e, i) { return [String(i + 1), e[0], '', '', '', '', '', '']; });
+    for (var q = eqRows.length + 1; q <= 15; q++) eqRows.push([String(q), '', '', '', '', '', '', '']);
+    add('Реестр оборудования и техобслуживание', H('Реестр оборудования и техобслуживание').concat([{ t: 'table', head: ['№', 'Оборудование', 'Марка/модель', 'Инв.№', 'Критичный параметр', 'Обслуживание', 'Поверка/калибровка', 'Следующая дата'], rows: eqRows, widths: [1, 4, 3, 2, 3, 3, 3, 2], rowHeight: 340 }]));
+    var san = [['Рабочие поверхности', 'мойка+дез', '✓', 'глубокая уборка', '', '', ''], ['Полы', 'мойка', '✓', 'труднодоступные зоны', '', '', ''], ['Холодильники', 'контроль', '✓', 'детальная уборка', '', '', '']];
+    if (sv || vac) san.push([(sv ? 'Sous-vide/' : '') + 'вакууматор', 'санобработка', '✓', 'детальная', '', '', '']);
+    if (fr || Pack.has(P, 'hot_shop')) san.push(['Жарочное/тепловое оборудование', 'очистка', '✓', 'детальная', '', '', '']);
+    san.push(['Вентиляция', 'визуально', '✓', 'очистка доступных поверхностей', 'сервис', '', ''], ['Светильники', 'визуально', 'по загрязнению', 'очистка', 'по графику', '', ''], ['Уборочный инвентарь', 'обработка', '✓', 'проверка состояния', 'по износу', '', '']);
+    add('График санитарных мероприятий', H('График санитарных мероприятий').concat([{ t: 'table', head: ['Объект', 'Ежесменно', 'Ежедневно', 'Еженедельно', 'По графику', 'Средство', 'Ответственный'], rows: san, widths: [4, 2, 2, 3, 2, 3, 3] }]));
+
+    /* 36 Справка по нормативной базе */
+    var used = (content.norms || []).map(function (id) { return Repo.get('NormDocs', id); }).filter(Boolean);
+    Repo.where('NormDocs', function (d) { return Norms.inForce(d, ctx.now) && csvList(d.scopes).indexOf('TU') >= 0 && specs.length; }).forEach(function (d) { if (used.indexOf(d) < 0 && !used.some(function (u) { return u.norm_id === d.norm_id; })) used.push(d); });
+    used = sortBy(used.filter(function (d) { return Norms.inForce(d, ctx.now); }), 'code');
+    var changed = Repo.where('NormDocs', function (d) { return d.valid_until && isBefore(d.valid_until, ctx.now) && isBefore(isoAddDays(ctx.now, -400), d.valid_until); });
+    var fresh = Repo.where('NormDocs', function (d) { return d.valid_from && Norms.inForce(d, ctx.now) && isBefore(isoAddDays(ctx.now, -400), d.valid_from); });
+    var ref = H('Справка по нормативной базе на ' + fmtD(ctx.now));
+    if (fresh.length || changed.length) ref.push({ t: 'p', text: (fresh.length ? 'Недавно вступили в силу: ' + fresh.map(function (d) { return d.code + ' (с ' + fmtD(d.valid_from) + ')'; }).join('; ') + '. ' : '') + (changed.length ? 'Утратили силу: ' + changed.map(function (d) { return d.code + ' (с ' + fmtD(d.valid_until) + ')'; }).join('; ') + '.' : '') });
+    ref.push({ t: 'h', text: 'Основные документы' }, { t: 'table', head: ['Документ', 'Наименование', 'Срок действия', 'Сверка с официальным текстом'], rows: used.map(function (d) { return [d.code, d.title, d.valid_until ? 'до ' + fmtD(d.valid_until) : (d.valid_from ? 'с ' + fmtD(d.valid_from) : 'без ограничения'), V.bool(d.verified) ? 'сверено' + (d.verified_at ? ' ' + fmtD(d.verified_at) : '') : 'требует сверки']; }), widths: [3, 8, 2, 3] },
+      { t: 'p', text: 'Перед фактическим применением сверить актуальные редакции официального опубликования и конкретную применимость требований к ассортименту и способу реализации.' });
+    add('Справка по нормативной базе на ' + fmtD(ctx.now).replace(/\./g, '_'), ref);
+
+    /* 00 Паспорт комплекта */
+    var final = ['внести фактический ассортимент и номера ТТК/ТУ/деклараций;'];
+    if (th) final.push('внести фактические критические пределы по каждой ККТ' + (sv ? ', особенно sous-vide' : '') + ';');
+    final.push('внести фактические моющие/дезинфицирующие средства и режимы производителя;', 'внести фактический состав персонала и ответственных;', 'проверить 2D-план по месту и исключить встречные потоки;', 'заключить/актуализировать лабораторный договор и выполнить программу;', 'проверить поверку/калибровку термометров;', 'утвердить приказы и ознакомить работников.');
+    if (Number(rec.unverified_count)) final.push('сверить с официальным текстом положения нормативной базы, отмеченные в системе как «требует сверки» (' + rec.unverified_count + ').');
+    var names = D.slice(1).map(function (d, i) { return Pack.fileName(i + 1, d.title); });
+    D[0] = { title: 'Паспорт комплекта и порядок применения', blocks: H('Паспорт комплекта ППК + ХАССП').concat([
+      { t: 'p', text: 'Комплект подготовлен для предприятия ' + sh + (P.area ? ', ' + P.area + ' м²' : '') + ', ' + (P.activity || OBJECT_TYPES[P.object_type] || '').toLowerCase() + (procTxt ? ', процессы ' + procTxt : '') + '.' },
+      { t: 'h', text: 'Состав' }, { t: 'p', text: names.join('\n') },
+      { t: 'h', text: 'Обязательная финальная адаптация' }, { t: 'p', text: final.join('\n') },
+      { t: 'p', text: 'Сформировано системой ' + Settings.get('COMPANY_NAME') + ' по программе ' + rec.program_id + ' (версия ' + rec.version + ', ' + (DOC_ST_LABEL[rec.status] || rec.status) + ').', small: true }]) };
+    return D;
+  },
+  fileName: function (n, title) { return pad2(n) + '_' + String(title).replace(/[\\\/:*?"<>|«»]/g, '').replace(/[,]/g, '').replace(/\s+/g, '_') + '.docx'; },
+
+  /* Сформировать ZIP, сохранить на Диске и в «Документах» */
+  build: function (ctx, p) {
+    var rec = Repo.must('Programs', p.program_id, 'Программа');
+    var client = Repo.get('Clients', rec.client_id) || {};
+    var docs = Pack.docs(ctx, rec);
+    var sh = Pack.short(client.legal_name), footer = 'ППК/ХАССП • ' + sh + ' • ' + fmtD(rec.approved_at || ctx.now);
+    var entries = docs.map(function (d, i) { return { name: Pack.fileName(i, d.title), data: Docx.build(d.blocks, { footer: footer, title: d.title, created: ctx.now }) }; });
+    var zip = Zip.build(entries, ctx.now);
+    var fileName = 'Комплект_ППК_' + sh.replace(/[\\\/:*?"<>|«»'„“”]/g, '').replace(/[\s.,]+/g, '_').replace(/^_+|_+$/g, '') + '_' + fmtD(ctx.now).replace(/\./g, '-') + '.zip';
+    var folder = Integr.ensureFolder(['01_CLIENTS', rec.client_id || 'NO_CLIENT', 'PPC']);
+    var saved = Integr.saveFile(folder, fileName, 'application/zip', Bytes.base64(zip));
+    var prev = Repo.where('Documents', function (d) { return d.entity_type === 'Programs' && d.entity_id === rec.program_id && d.document_type === 'PPC_PACK' && V.bool(d.is_actual); });
+    prev.forEach(function (d) { Repo.update(ctx, 'Documents', d.document_id, { is_actual: false, invalid_reason: 'Сформирован новый комплект' }, { noAudit: true }); });
+    var doc = Repo.create(ctx, 'Documents', {
+      entity_type: 'Programs', entity_id: rec.program_id, document_type: 'PPC_PACK', document_no: rec.program_id + '/v' + rec.version, title: 'Комплект ППК + ХАССП (' + docs.length + ' документов), ' + rec.program_id + ' v' + rec.version,
+      file_name: fileName, mime_type: 'application/zip', size_bytes: saved.size || zip.length, drive_file_id: saved.fileId, version: Number(rec.version),
+      approval_status: rec.status === 'APPROVED' ? 'APPROVED' : 'DRAFT', is_actual: true, prev_document_id: prev.length ? prev[prev.length - 1].document_id : ''
+    }, { action: 'PPC_PACK' });
+    return { document_id: doc.document_id, file_name: fileName, documents: entries.map(function (e) { return e.name; }), size: zip.length };
+  }
+};
+var DOC_ST_LABEL = { DRAFT: 'проект', APPROVED: 'утверждена', ARCHIVED: 'архив' };
+
 /* ==== core/Api.gs ==== */
 /**
  * San.Lab — Api.gs
@@ -3657,6 +4096,7 @@ var ROUTES = {
   'programs.save': function (ctx, p) { return Programs.save(ctx, p); },
   'programs.approve': function (ctx, p) { return Programs.approve(ctx, p); },
   'programs.newVersion': function (ctx, p) { return Programs.newVersion(ctx, p); },
+  'programs.pack': function (ctx, p) { return Pack.build(ctx, p); },
   'specs.list': function (ctx, p) { return { rows: Specs.list(ctx, p), groups: Specs.groups(), okpo: Settings.get('ORG_OKPO') }; },
   'specs.get': function (ctx, p) { return Specs.get(ctx, p); },
   'specs.html': function (ctx, p) { return Specs.html(ctx, p); },
@@ -4190,26 +4630,24 @@ var NORM_SEED = [
     ] },
   { code: 'ТР ТС 005/2011', title: 'Технический регламент Таможенного союза «О безопасности упаковки»', kind: 'TR', scopes: 'TU', v: false, notes: NORM_SEED_TODO,
     items: [['TU_TEXT', '—', 'Упаковка, контактирующая с продукцией, должна соответствовать требованиям ТР ТС 005/2011 и обеспечивать сохранность продукции в течение срока годности.', '', '', 'packaging', '', '', '']] },
-  { code: 'СанПиН 2.3/2.4.3590-20', title: 'Санитарно-эпидемиологические требования к организации общественного питания населения', kind: 'SANPIN', scopes: 'PPC', v: false, validUntil: '2027-01-01T00:00:00+05:00',
-    notes: NORM_SEED_TODO + ' Действует до 01.01.2027 — заранее внесите заменяющий документ. Нужно Приложение № 1 (номенклатура и периодичность исследований) и формы журналов.',
+  { code: 'СанПиН 2.3/2.4.3590-20', title: 'Санитарно-эпидемиологические требования к организации общественного питания населения', kind: 'SANPIN', scopes: 'PPC', v: false, validUntil: '2026-09-01T00:00:00+05:00',
+    notes: NORM_SEED_TODO + ' По справке по нормативной базе из комплекта ППК заказчика (21.09.2026) с 01.09.2026 заменён СанПиН 2.3/2.4.4282-26. Оставлен для истории и прежних версий ППК.', items: [] },
+  { code: 'СанПиН 2.3/2.4.4282-26', title: 'Санитарно-эпидемиологические требования к организации общественного питания населения', kind: 'SANPIN', scopes: 'PPC', v: false, validFrom: '2026-09-01T00:00:00+05:00',
+    notes: NORM_SEED_TODO + ' По справке по нормативной базе из комплекта ППК заказчика (21.09.2026): вступил в силу 01.09.2026 вместо СанПиН 2.3/2.4.3590-20. Номера пунктов не внесены; периодичность исследований — проект, уточните по тексту правил и оценке риска.',
     items: [
-      ['DOCS', 'п. 2.1', 'Производственный контроль, включая лабораторные исследования и испытания, осуществляется в порядке и с периодичностью, установленными организацией общественного питания', 'all', '', '', '', '', ''],
-      ['LAB', 'Приложение № 1', 'Готовые блюда собственного производства', 'all', '', 'Микробиологические показатели (КМАФАнМ, БГКП, S. aureus, бактерии рода Proteus, патогенные микроорганизмы)', '', '1 раз в квартал', '2–3 блюда исследуемого приёма пищи'],
-      ['LAB', 'Приложение № 1', 'Рационы питания (готовые блюда)', 'children', '', 'Калорийность, выход, химический состав, вложение витамина С', '', '1 раз в год', '1 рацион'],
-      ['LAB', 'Приложение № 1', 'Смывы с объектов производственного окружения, рук и спецодежды персонала', 'all', '', 'БГКП', '', '1 раз в квартал', 'не менее 10 смывов'],
-      ['LAB', 'Приложение № 1', 'Смывы с объектов производственного окружения', 'children', '', 'Яйца гельминтов', '', '1 раз в год', '10 смывов'],
-      ['LAB', 'Приложение № 1', 'Питьевая вода из разводящей сети помещений', 'all', '', 'Микробиологические и органолептические показатели', '', '2 раза в год', '1 проба'],
-      ['LAB', 'Приложение № 1', 'Питьевая вода из собственного источника', 'own_water', '', 'Микробиологические, органолептические и химические показатели', '', '1 раз в квартал', '1 проба'],
-      ['LAB', 'Приложение № 1', 'Микроклимат рабочих мест (температура, относительная влажность, скорость движения воздуха)', 'all', '', 'Параметры микроклимата', '', '2 раза в год (холодный и тёплый периоды)', 'на рабочих местах'],
-      ['LAB', 'Приложение № 1', 'Искусственная освещённость рабочих мест', 'all', '', 'Освещённость', '', '1 раз в год', 'на рабочих местах'],
-      ['LAB', '—', 'Уровни шума и вибрации на рабочих местах', 'noise', '', 'Шум, вибрация', '', '1 раз в год', 'на рабочих местах у источников'],
-      ['LAB', '—', 'Эффективность работы вентиляции', 'ventilation', '', 'Кратность воздухообмена', '', '1 раз в год', 'по системам'],
-      ['JOURNAL', 'Приложение', 'Гигиенический журнал (сотрудники)', 'all', '', 'Ответственный за смену', '', 'Ежедневно перед сменой', ''],
-      ['JOURNAL', 'Приложение', 'Журнал учёта температурного режима холодильного оборудования', 'all', '', 'Ответственный за склад / цех', '', 'Ежедневно', ''],
-      ['JOURNAL', 'Приложение', 'Журнал учёта температуры и влажности в складских помещениях', 'all', '', 'Кладовщик', '', 'Ежедневно', ''],
-      ['JOURNAL', 'Приложение', 'Журнал бракеража готовой пищевой продукции', 'all', '', 'Бракеражная комиссия', '', 'Каждая партия', ''],
-      ['JOURNAL', 'Приложение', 'Журнал бракеража скоропортящейся пищевой продукции', 'all', '', 'Ответственный за приёмку', '', 'Каждая поставка', ''],
-      ['JOURNAL', 'Приложение', 'Журнал учёта использования фритюрных жиров', 'hot_shop', '', 'Повар', '', 'При каждом использовании', ''],
+      ['DOCS', '—', 'Производственный контроль, включая лабораторные исследования и испытания, осуществляется в порядке и с периодичностью, установленными организацией общественного питания', 'all', '', '', '', '', ''],
+      ['LAB', '—', 'Готовые блюда собственного производства', 'all', '', 'Микробиологические показатели (КМАФАнМ, БГКП, S. aureus, бактерии рода Proteus, патогенные микроорганизмы)', '', '1 раз в квартал', '2–3 блюда исследуемого приёма пищи'],
+      ['LAB', '—', 'Рационы питания (готовые блюда)', 'children', '', 'Калорийность, выход, химический состав, вложение витамина С', '', '1 раз в год', '1 рацион'],
+      ['LAB', '—', 'Смывы с объектов производственного окружения, рук и спецодежды персонала', 'all', '', 'БГКП', '', '1 раз в квартал', 'не менее 10 смывов'],
+      ['LAB', '—', 'Смывы с объектов производственного окружения', 'children', '', 'Яйца гельминтов', '', '1 раз в год', '10 смывов'],
+      ['LAB', '—', 'Питьевая вода из разводящей сети помещений', 'all', '', 'Микробиологические и органолептические показатели', '', '2 раза в год', '1 проба'],
+      ['LAB', '—', 'Питьевая вода из собственного источника', 'own_water', '', 'Микробиологические, органолептические и химические показатели', '', '1 раз в квартал', '1 проба'],
+      ['JOURNAL', '—', 'Гигиенический журнал (сотрудники)', 'all', '', 'Ответственный за смену', '', 'Ежедневно перед сменой', ''],
+      ['JOURNAL', '—', 'Журнал учёта температурного режима холодильного оборудования', 'all', '', 'Ответственный за склад / цех', '', 'Ежедневно', ''],
+      ['JOURNAL', '—', 'Журнал учёта температуры и влажности в складских помещениях', 'all', '', 'Кладовщик', '', 'Ежедневно', ''],
+      ['JOURNAL', '—', 'Журнал бракеража готовой пищевой продукции', 'all', '', 'Бракеражная комиссия', '', 'Каждая партия', ''],
+      ['JOURNAL', '—', 'Журнал бракеража скоропортящейся пищевой продукции', 'all', '', 'Ответственный за приёмку', '', 'Каждая поставка', ''],
+      ['JOURNAL', '—', 'Журнал учёта использования фритюрных жиров', 'hot_shop,frying', '', 'Повар', '', 'При каждом использовании', ''],
       ['MEASURE', '—', 'Ежедневный осмотр работников на наличие гнойничковых заболеваний и признаков инфекционных заболеваний с записью в гигиеническом журнале', 'all', '', 'Ответственный за смену', '', 'Ежедневно', ''],
       ['MEASURE', '—', 'Отбор и хранение суточной пробы готовых блюд', 'children', '', 'Повар / медработник', '', 'Каждый приём пищи', ''],
       ['MEASURE', '—', 'Контроль сроков годности и условий хранения пищевой продукции', 'all', '', 'Заведующий производством', '', 'Ежедневно', ''],
@@ -4222,6 +4660,17 @@ var NORM_SEED = [
       ['EMERG', '—', 'Выявление у работника признаков инфекционного заболевания, подозрение на пищевое отравление', 'all', '', '', 'Отстранить работника; сохранить суточные пробы и продукцию; сообщить в территориальный орган Роспотребнадзора; провести дезинфекцию', '', ''],
       ['EMERG', '—', 'Обнаружение грызунов или насекомых', 'all', '', '', 'Вызвать специализированную организацию для внеплановой обработки; проверить продукцию на порчу; устранить причины проникновения', '', '']
     ] },
+  { code: 'СП 2.1.4284-26', title: 'Санитарно-эпидемиологические требования к эксплуатации помещений, оборудования и деятельности хозяйствующих субъектов', kind: 'SP', scopes: 'PPC', v: false, validFrom: '2026-09-01T00:00:00+05:00',
+    notes: NORM_SEED_TODO + ' По справке по нормативной базе из комплекта ППК заказчика (21.09.2026): вступил в силу 01.09.2026. Проверьте точное наименование.', items: [] },
+  { code: 'СП 2.2.4285-26', title: 'Санитарно-эпидемиологические требования к условиям труда и производственному контролю условий труда', kind: 'SP', scopes: 'PPC', v: false, validFrom: '2026-09-01T00:00:00+05:00',
+    notes: NORM_SEED_TODO + ' По справке по нормативной базе из комплекта ППК заказчика (21.09.2026): вступил в силу 01.09.2026. Проверьте точное наименование и периодичность измерений.',
+    items: [
+      ['LAB', '—', 'Микроклимат рабочих мест (температура, относительная влажность, скорость движения воздуха)', 'all', '', 'Параметры микроклимата', '', '2 раза в год (холодный и тёплый периоды)', 'на рабочих местах'],
+      ['LAB', '—', 'Искусственная освещённость рабочих мест', 'all', '', 'Освещённость', '', '1 раз в год', 'на рабочих местах'],
+      ['LAB', '—', 'Уровни шума и вибрации на рабочих местах', 'noise', '', 'Шум, вибрация', '', '1 раз в год', 'на рабочих местах у источников'],
+      ['LAB', '—', 'Эффективность работы вентиляции', 'ventilation', '', 'Кратность воздухообмена', '', '1 раз в год', 'по системам']
+    ] },
+  { code: 'МР 2.3.6.0233-21', title: 'Методические рекомендации к организации общественного питания населения', kind: 'MU', scopes: 'PPC', v: false, notes: NORM_SEED_TODO, items: [] },
   { code: 'СП 1.1.1058-01', title: 'Организация и проведение производственного контроля за соблюдением санитарных правил и выполнением санитарно-противоэпидемических (профилактических) мероприятий', kind: 'SP', scopes: 'PPC', v: false, notes: NORM_SEED_TODO + ' Проверьте текущий статус документа. Перечни раздела 3 положены в структуру ППК системы.', items: [] },
   { code: 'Федеральный закон № 52-ФЗ', title: 'О санитарно-эпидемиологическом благополучии населения (от 30.03.1999)', kind: 'FZ', scopes: 'PPC', v: false, notes: NORM_SEED_TODO,
     items: [['DOCS', 'ст. 11, 32', 'Обязанность юридических лиц и индивидуальных предпринимателей осуществлять производственный контроль', 'all', '', '', '', '', '']] },
@@ -4234,7 +4683,7 @@ var NORM_SEED = [
   { code: 'СанПиН 3.3686-21', title: 'Санитарно-эпидемиологические требования по профилактике инфекционных болезней', kind: 'SANPIN', scopes: 'PPC', v: false, notes: NORM_SEED_TODO,
     items: [['MEASURE', '—', 'Профилактическая дезинсекция и дератизация', 'all', '', 'Руководитель', '', 'По договору со специализированной организацией', '']] },
   { code: 'СанПиН 1.2.3685-21', title: 'Гигиенические нормативы и требования к обеспечению безопасности и (или) безвредности для человека факторов среды обитания', kind: 'SANPIN', scopes: 'PPC', v: false, notes: NORM_SEED_TODO, items: [] },
-  { code: 'СП 2.2.3670-20', title: 'Санитарно-эпидемиологические требования к условиям труда', kind: 'SP', scopes: 'PPC', v: false, notes: NORM_SEED_TODO, items: [] },
+  { code: 'СП 2.2.3670-20', title: 'Санитарно-эпидемиологические требования к условиям труда', kind: 'SP', scopes: 'PPC', v: false, validUntil: '2026-09-01T00:00:00+05:00', notes: NORM_SEED_TODO + ' По справке по нормативной базе из комплекта ППК заказчика (21.09.2026) санитарные акты 2020 года по условиям труда заменены СП 2.2.4285-26 с 01.09.2026 — проверьте.', items: [] },
   { code: 'СП 2.4.3648-20', title: 'Санитарно-эпидемиологические требования к организациям воспитания и обучения, отдыха и оздоровления детей и молодежи', kind: 'SP', scopes: '', v: false, notes: NORM_SEED_TODO + ' Включите область «ППК», если обслуживаете детские учреждения.', items: [] },
   { code: 'ГОСТ Р 1.3-2018', title: 'Стандартизация в Российской Федерации. Технические условия на продукцию. Общие требования к содержанию, оформлению, обозначению и обновлению', kind: 'GOST', scopes: 'TU', v: false, notes: NORM_SEED_TODO + ' Обозначение ТУ в системе: ТУ ХХ.ХХ.ХХ-ХХХ-ХХХХХХХХ-ГГГГ (ОКПД2 — порядковый номер — ОКПО — год).', items: [] },
   { code: 'ГОСТ 30390-2013', title: 'Услуги общественного питания. Продукция общественного питания, реализуемая населению. Общие технические условия', kind: 'GOST', scopes: 'TU', v: false, notes: NORM_SEED_TODO, items: [] },
@@ -4258,11 +4707,20 @@ var NORM_SEED = [
 var NormSeed = {
   /* Однократно: при пустой нормативной базе */
   run: function (ownerEmp) {
-    if (Store.all('NormDocs').length) return 0;
-    var ctx = Seed.ctx(ownerEmp, Integr.now()), n = 0;
+    var have = indexBy(Store.all('NormDocs'), 'code');
+    var ctx = Seed.ctx(ownerEmp, Integr.now()), n = 0, added = 0;
+    /* Миграция: СанПиН 3590-20 и СП 3670-20, внесённые как проект со старым сроком, получают срок окончания из справки */
+    ['СанПиН 2.3/2.4.3590-20', 'СП 2.2.3670-20'].forEach(function (code) {
+      var d = have[code], seed = filterBy(NORM_SEED, function (x) { return x.code === code; })[0];
+      if (d && seed && seed.validUntil && !V.bool(d.verified) && (!d.valid_until || isBefore(seed.validUntil, d.valid_until))) {
+        Repo.update(ctx, 'NormDocs', d.norm_id, { valid_until: new Date(seed.validUntil).toISOString(), notes: seed.notes }, { action: 'NORM_SEED' });
+      }
+    });
     NORM_SEED.forEach(function (d) {
+      if (have[d.code]) return;
+      added++;
       var doc = Repo.create(ctx, 'NormDocs', {
-        code: d.code, title: d.title, kind: d.kind, status: 'ACTIVE', scopes: d.scopes, valid_from: '', valid_until: d.validUntil ? new Date(d.validUntil).toISOString() : '',
+        code: d.code, title: d.title, kind: d.kind, status: 'ACTIVE', scopes: d.scopes, valid_from: d.validFrom ? new Date(d.validFrom).toISOString() : '', valid_until: d.validUntil ? new Date(d.validUntil).toISOString() : '',
         verified: !!d.v, verified_by: d.v ? ctx.actorId : '', verified_at: d.v ? ctx.now : '', source_url: d.source || '', notes: d.notes || ''
       }, { action: 'NORM_SEED', noAudit: true });
       (d.items || []).forEach(function (it, i) {
@@ -4273,7 +4731,8 @@ var NormSeed = {
         n++;
       });
     });
-    Audit.log(ctx, 'NORM_SEED', 'NormDocs', 'seed', null, { docs: NORM_SEED.length, items: n });
+    if (!added) return 0;
+    Audit.log(ctx, 'NORM_SEED', 'NormDocs', 'seed', null, { docs: added, items: n });
     return n;
   }
 };
@@ -6049,7 +6508,15 @@ function ppcProfileFields(m) {
     { name: 'positions', label: 'Должности работников (медосмотры, гигобучение)', type: 'textarea', rows: 2, placeholder: 'повар, кухонный рабочий, мойщик посуды, официант…' },
     { name: 'assortment', label: 'Ассортимент и виды деятельности', type: 'textarea', rows: 2 },
     { name: 'pest_control', label: 'Дезинсекция и дератизация (организация, договор)' }, { name: 'waste', label: 'Вывоз отходов (организация)' },
-    { name: 'extra', label: 'Дополнительные положения', type: 'textarea', rows: 2 }];
+    { name: 'extra', label: 'Дополнительные положения', type: 'textarea', rows: 2 },
+    { name: 'pack_info', type: 'info', html: '<div class="small muted" style="margin-top:6px"><b>Для комплекта документов (ZIP)</b> — реквизиты и описание объекта попадут в паспорт, ППК, план ХАССП, схему потоков и реестры.</div>' },
+    { name: 'activity', label: 'Деятельность', placeholder: 'изготовление и продажа полуфабрикатов' }, { name: 'area', label: 'Площадь, м²', type: 'number' },
+    { name: 'ogrn', label: 'ОГРН / ОГРНИП' }, { name: 'tu_declarations', label: 'ТУ и декларации', placeholder: 'имеются / номера' },
+    { name: 'utilities', label: 'Инженерное обеспечение', full: true, placeholder: 'канализация центральная; вода холодная и горячая; теплоснабжение от газа' },
+    { name: 'ventilation_desc', label: 'Вентиляция и освещение', full: true, placeholder: 'приточно-вытяжная вентиляция; освещение светодиодное' },
+    { name: 'equipment', label: 'Оборудование', type: 'textarea', rows: 3, placeholder: 'Наименование; количество — по одному на строку' },
+    { name: 'staff', label: 'Персонал', type: 'textarea', rows: 3, placeholder: 'ФИО; должность — по одному на строку' },
+    { name: 'chemicals', label: 'Моющие и дезинфицирующие средства', full: true }];
 }
 Pages.ppc = {
   title: 'Программы производственного контроля',
@@ -6086,7 +6553,8 @@ Pages.ppcdoc = {
       (ed ? '<button class="btn" data-a="ppcProfile">Данные объекта</button><button class="btn" data-a="ppcRebuild">' + ic('refresh') + 'Пересобрать из базы</button><button class="btn pri" data-a="ppcSave">Сохранить правки</button>' : '') +
       (draft && canApproveDocs() ? '<button class="btn go" data-a="ppcApprove">Утвердить</button>' : '') +
       (!draft && canDocs() ? '<button class="btn" data-a="ppcNewVersion">Новая версия</button>' : '') +
-      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '');
+      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '') +
+      '<button class="btn go" data-a="ppcPack">' + ic('file') + 'Комплект документов (ZIP)</button>';
     var info = '<dl class="kv"><dt>Статус</dt><dd>' + docPill(x.status) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.review_due_date ? '<dt>Пересмотр до</dt><dd>' + fD(x.review_due_date) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '<dt>Собрано</dt><dd class="small">' + fDT(d.content.built_at) + '</dd></dl>';
     var hist = d.history.length > 1 ? '<div class="list">' + d.history.map(function (h) { return '<div class="li click" ' + link('ppcdoc', { program_id: h.program_id }) + '><div class="txt"><b>v' + h.version + '</b> ' + docPill(h.status) + '<div class="t2 mono">' + h.program_id + '</div></div></div>'; }).join('') + '</div>' : emptyLine('Других версий нет');
     return '<div class="row wrap"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + acts + '</div>' + docWarnings(d, unv) +
@@ -6094,6 +6562,28 @@ Pages.ppcdoc = {
   },
   after: function (d, p, c) { autosizeDoc(c); }
 };
+/* Комплект ППК + ХАССП: формируется на сервере, сохраняется на Диске и скачивается архивом */
+A.ppcPack = function (el) {
+  if (Object.keys(S.dirty).length) return toast('Сначала сохраните правки', 'bad');
+  el.classList.add('busy');
+  call('programs.pack', { program_id: S.data.program.program_id }).then(function (r) {
+    return call('files.get', { document_id: r.document_id }).then(function (f) {
+      el.classList.remove('busy');
+      var url = downloadB64(f.data_base64, f.mime_type || 'application/zip', r.file_name);
+      modal({ title: 'Комплект сформирован', body: '<div class="alert ok">Архив <b>' + esc(r.file_name) + '</b> сохранён в папке клиента на Google Диске и в «Документах», скачивание началось.</div>' +
+        '<p style="margin:10px 0 0"><a class="btn pri" href="' + url + '" download="' + esc(r.file_name) + '">' + ic('file') + 'Скачать архив</a> <span class="small muted">если скачивание не началось</span></p><div class="small muted" style="margin-top:8px">Документов: ' + r.documents.length + '</div><div class="small mono" style="max-height:40vh;overflow:auto;margin-top:6px">' + r.documents.map(esc).join('<br>') + '</div>' +
+        (Number(S.data.program.unverified_count) ? '<div class="alert warn small" style="margin-top:10px">В программе есть несверенные положения нормативной базы — они перечислены в паспорте комплекта как обязательная финальная адаптация.</div>' : ''), actions: [['Готово', 'close', 'pri']] });
+    });
+  }).catch(function (e) { el.classList.remove('busy'); showErr(e); });
+};
+/* Скачать файл из base64; ссылка живёт до перезагрузки страницы, чтобы её можно было нажать повторно */
+function downloadB64(b64, mime, name) {
+  var bin = atob(b64), arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  var url = URL.createObjectURL(new Blob([arr], { type: mime })), a = document.createElement('a');
+  a.href = url; a.download = name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1500);
+  return url;
+}
 A.ppcPrint = function () { call('programs.html', { program_id: S.data.program.program_id }).then(function (r) { printHtml(r.html); }, showErr); };
 A.ppcSave = function (el) {
   el.classList.add('busy');

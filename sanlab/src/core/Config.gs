@@ -171,6 +171,7 @@ var PERMS = {
   'programs.save': ['OWNER', 'COORDINATOR'],
   'programs.approve': ['OWNER', 'QC'],
   'programs.newVersion': ['OWNER', 'COORDINATOR'],
+  'programs.pack': ['OWNER', 'COORDINATOR', 'QC'],
   'specs.list': ['OWNER', 'COORDINATOR', 'QC'],
   'specs.get': ['OWNER', 'COORDINATOR', 'QC'],
   'specs.html': ['OWNER', 'COORDINATOR', 'QC'],
@@ -185,7 +186,7 @@ var EXTRA_PERMS = {
   finance: ['finance.list', 'finance.summary'],
   finance_edit: ['finance.list', 'finance.summary', 'finance.accrue', 'finance.invoice', 'finance.payment', 'finance.expense', 'finance.adjust'],
   settings: ['settings.get', 'settings.save', 'checklists.saveVersion', 'services.save', 'norms.saveDoc', 'norms.saveItem', 'norms.verify'],
-  docs: ['norms.list', 'norms.get', 'programs.list', 'programs.get', 'programs.html', 'programs.build', 'programs.save', 'programs.newVersion', 'specs.list', 'specs.get', 'specs.html', 'specs.build', 'specs.save', 'specs.newVersion'],
+  docs: ['norms.list', 'norms.get', 'programs.list', 'programs.get', 'programs.html', 'programs.build', 'programs.save', 'programs.newVersion', 'programs.pack', 'specs.list', 'specs.get', 'specs.html', 'specs.build', 'specs.save', 'specs.newVersion'],
   approve_reports: ['reports.approve', 'reports.return', 'reports.queue', 'results.waivePhoto'],
   lab: ['lab.list', 'lab.register', 'lab.advance', 'lab.review']
 };
@@ -252,7 +253,7 @@ var PRIORITY = { LOW: 'Низкий', NORMAL: 'Обычный', HIGH: 'Высо�
 var TASK_SOURCES = { CHECKLIST: 'Замечание чек-листа', LAB: 'Лабораторный результат', REPORT_RETURN: 'Возврат отчёта', REPORT_REVIEW: 'Проверка отчёта', DOCUMENT: 'Срок документа', CLIENT: 'Запрос клиента', INTERNAL: 'Внутреннее поручение' };
 var FIN_TYPES = { ACCRUAL: 'Начисление', INVOICE: 'Счёт', PAYMENT: 'Поступление', EXPENSE: 'Расход', ADJUSTMENT: 'Корректировка' };
 var EXPENSE_CATEGORIES = ['Лаборатория', 'Транспорт', 'Расходные материалы', 'Зарплата', 'Аренда', 'Связь и ПО', 'Прочее'];
-var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', PPC: 'Программа производственного контроля', TU: 'Технические условия', OTHER: 'Прочее' };
+var DOC_TYPES = { PHOTO: 'Фото', REPORT_PDF: 'Отчёт (PDF)', LAB_PROTOCOL: 'Протокол лаборатории', LAB_REFERRAL: 'Направление в лабораторию', CONTRACT: 'Договор', INVOICE: 'Счёт', ACT: 'Акт', EVIDENCE: 'Подтверждение', PPC: 'Программа производственного контроля', PPC_PACK: 'Комплект ППК + ХАССП (ZIP)', TU: 'Технические условия', OTHER: 'Прочее' };
 var SAMPLE_TYPES = ['Смыв', 'Вода', 'Продукты', 'Воздух', 'Готовые блюда'];
 
 /* ---------- Нормативная база, ППК, ТУ ---------- */
@@ -269,7 +270,9 @@ var NORM_SECTIONS = {
 var SITE_FLAGS = {
   hot_shop: 'Горячий цех', cold_shop: 'Холодный цех', meat_fish: 'Мясо-рыбный (заготовочный) цех', confectionery: 'Кондитерский цех', bakery: 'Выпечка',
   buffet: 'Только реализация (буфет, раздача без приготовления)', delivery: 'Доставка готовых блюд', children: 'Питание детей / организованных групп',
-  own_water: 'Собственный источник водоснабжения', ventilation: 'Механическая вентиляция', noise: 'Источники шума и вибрации'
+  own_water: 'Собственный источник водоснабжения', ventilation: 'Механическая вентиляция', noise: 'Источники шума и вибрации',
+  production: 'Изготовление полуфабрикатов / продукции на продажу', frying: 'Жарка, томление', sous_vide: 'Sous-vide (низкотемпературная обработка в вакууме)',
+  vacuum: 'Фасовка, вакуумирование', cooling: 'Охлаждение после термообработки', poultry: 'Сырьё: птица', fish: 'Сырьё: рыба, морепродукты', vegetables: 'Сырьё: овощи, зелень'
 };
 var OBJECT_TYPES = { CAFE: 'Кафе', RESTAURANT: 'Ресторан', CANTEEN: 'Столовая', SCHOOL: 'Пищеблок школы', KINDERGARTEN: 'Пищеблок детского сада', BAR: 'Бар, кофейня', FASTFOOD: 'Предприятие быстрого обслуживания', PRODUCTION: 'Цех полуфабрикатов / кулинарии', OTHER: 'Иное' };
 

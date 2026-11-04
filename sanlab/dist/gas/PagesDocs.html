@@ -170,7 +170,15 @@ function ppcProfileFields(m) {
     { name: 'positions', label: 'Должности работников (медосмотры, гигобучение)', type: 'textarea', rows: 2, placeholder: 'повар, кухонный рабочий, мойщик посуды, официант…' },
     { name: 'assortment', label: 'Ассортимент и виды деятельности', type: 'textarea', rows: 2 },
     { name: 'pest_control', label: 'Дезинсекция и дератизация (организация, договор)' }, { name: 'waste', label: 'Вывоз отходов (организация)' },
-    { name: 'extra', label: 'Дополнительные положения', type: 'textarea', rows: 2 }];
+    { name: 'extra', label: 'Дополнительные положения', type: 'textarea', rows: 2 },
+    { name: 'pack_info', type: 'info', html: '<div class="small muted" style="margin-top:6px"><b>Для комплекта документов (ZIP)</b> — реквизиты и описание объекта попадут в паспорт, ППК, план ХАССП, схему потоков и реестры.</div>' },
+    { name: 'activity', label: 'Деятельность', placeholder: 'изготовление и продажа полуфабрикатов' }, { name: 'area', label: 'Площадь, м²', type: 'number' },
+    { name: 'ogrn', label: 'ОГРН / ОГРНИП' }, { name: 'tu_declarations', label: 'ТУ и декларации', placeholder: 'имеются / номера' },
+    { name: 'utilities', label: 'Инженерное обеспечение', full: true, placeholder: 'канализация центральная; вода холодная и горячая; теплоснабжение от газа' },
+    { name: 'ventilation_desc', label: 'Вентиляция и освещение', full: true, placeholder: 'приточно-вытяжная вентиляция; освещение светодиодное' },
+    { name: 'equipment', label: 'Оборудование', type: 'textarea', rows: 3, placeholder: 'Наименование; количество — по одному на строку' },
+    { name: 'staff', label: 'Персонал', type: 'textarea', rows: 3, placeholder: 'ФИО; должность — по одному на строку' },
+    { name: 'chemicals', label: 'Моющие и дезинфицирующие средства', full: true }];
 }
 Pages.ppc = {
   title: 'Программы производственного контроля',
@@ -207,7 +215,8 @@ Pages.ppcdoc = {
       (ed ? '<button class="btn" data-a="ppcProfile">Данные объекта</button><button class="btn" data-a="ppcRebuild">' + ic('refresh') + 'Пересобрать из базы</button><button class="btn pri" data-a="ppcSave">Сохранить правки</button>' : '') +
       (draft && canApproveDocs() ? '<button class="btn go" data-a="ppcApprove">Утвердить</button>' : '') +
       (!draft && canDocs() ? '<button class="btn" data-a="ppcNewVersion">Новая версия</button>' : '') +
-      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '');
+      (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '') +
+      '<button class="btn go" data-a="ppcPack">' + ic('file') + 'Комплект документов (ZIP)</button>';
     var info = '<dl class="kv"><dt>Статус</dt><dd>' + docPill(x.status) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.review_due_date ? '<dt>Пересмотр до</dt><dd>' + fD(x.review_due_date) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '<dt>Собрано</dt><dd class="small">' + fDT(d.content.built_at) + '</dd></dl>';
     var hist = d.history.length > 1 ? '<div class="list">' + d.history.map(function (h) { return '<div class="li click" ' + link('ppcdoc', { program_id: h.program_id }) + '><div class="txt"><b>v' + h.version + '</b> ' + docPill(h.status) + '<div class="t2 mono">' + h.program_id + '</div></div></div>'; }).join('') + '</div>' : emptyLine('Других версий нет');
     return '<div class="row wrap"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + acts + '</div>' + docWarnings(d, unv) +
@@ -215,6 +224,28 @@ Pages.ppcdoc = {
   },
   after: function (d, p, c) { autosizeDoc(c); }
 };
+/* Комплект ППК + ХАССП: формируется на сервере, сохраняется на Диске и скачивается архивом */
+A.ppcPack = function (el) {
+  if (Object.keys(S.dirty).length) return toast('Сначала сохраните правки', 'bad');
+  el.classList.add('busy');
+  call('programs.pack', { program_id: S.data.program.program_id }).then(function (r) {
+    return call('files.get', { document_id: r.document_id }).then(function (f) {
+      el.classList.remove('busy');
+      var url = downloadB64(f.data_base64, f.mime_type || 'application/zip', r.file_name);
+      modal({ title: 'Комплект сформирован', body: '<div class="alert ok">Архив <b>' + esc(r.file_name) + '</b> сохранён в папке клиента на Google Диске и в «Документах», скачивание началось.</div>' +
+        '<p style="margin:10px 0 0"><a class="btn pri" href="' + url + '" download="' + esc(r.file_name) + '">' + ic('file') + 'Скачать архив</a> <span class="small muted">если скачивание не началось</span></p><div class="small muted" style="margin-top:8px">Документов: ' + r.documents.length + '</div><div class="small mono" style="max-height:40vh;overflow:auto;margin-top:6px">' + r.documents.map(esc).join('<br>') + '</div>' +
+        (Number(S.data.program.unverified_count) ? '<div class="alert warn small" style="margin-top:10px">В программе есть несверенные положения нормативной базы — они перечислены в паспорте комплекта как обязательная финальная адаптация.</div>' : ''), actions: [['Готово', 'close', 'pri']] });
+    });
+  }).catch(function (e) { el.classList.remove('busy'); showErr(e); });
+};
+/* Скачать файл из base64; ссылка живёт до перезагрузки страницы, чтобы её можно было нажать повторно */
+function downloadB64(b64, mime, name) {
+  var bin = atob(b64), arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  var url = URL.createObjectURL(new Blob([arr], { type: mime })), a = document.createElement('a');
+  a.href = url; a.download = name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1500);
+  return url;
+}
 A.ppcPrint = function () { call('programs.html', { program_id: S.data.program.program_id }).then(function (r) { printHtml(r.html); }, showErr); };
 A.ppcSave = function (el) {
   el.classList.add('busy');

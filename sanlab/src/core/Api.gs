@@ -107,6 +107,7 @@ var ROUTES = {
   'programs.save': function (ctx, p) { return Programs.save(ctx, p); },
   'programs.approve': function (ctx, p) { return Programs.approve(ctx, p); },
   'programs.newVersion': function (ctx, p) { return Programs.newVersion(ctx, p); },
+  'programs.pack': function (ctx, p) { return Pack.build(ctx, p); },
   'specs.list': function (ctx, p) { return { rows: Specs.list(ctx, p), groups: Specs.groups(), okpo: Settings.get('ORG_OKPO') }; },
   'specs.get': function (ctx, p) { return Specs.get(ctx, p); },
   'specs.html': function (ctx, p) { return Specs.html(ctx, p); },

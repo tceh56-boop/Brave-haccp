@@ -289,8 +289,10 @@ test('AT-16', 'Нормативная база: сверка и права', fun
   var nl = ok(call(OWNER, 'norms.list', {}), 'norms.list');
   var tr034 = nl.docs.filter(function (d) { return d.code === 'ТР ТС 034/2013'; })[0];
   var sanpin = nl.docs.filter(function (d) { return d.code === 'СанПиН 2.3/2.4.3590-20'; })[0];
+  var sanpin26 = nl.docs.filter(function (d) { return d.code === 'СанПиН 2.3/2.4.4282-26'; })[0];
   assert(tr034 && String(tr034.verified) === 'true' && tr034.unverified_count === 0, 'ТР ТС 034 сверен по документу заказчика');
-  assert(sanpin && sanpin.unverified_count > 0 && sanpin.expiring, 'СанПиН 3590-20 не сверен и заканчивается');
+  assert(sanpin && !sanpin.in_force, 'СанПиН 3590-20 утратил силу с 01.09.2026');
+  assert(sanpin26 && sanpin26.in_force && sanpin26.unverified_count > 0 && sanpin26.items_count > 10, 'СанПиН 4282-26 действует, положения перенесены, требует сверки');
   expectErr(call(COORD, 'norms.saveDoc', { code: 'X', title: 'Y', kind: 'OTHER' }), 'ACCESS_DENIED', 'координатор не правит базу');
   var d = ok(call(OWNER, 'norms.saveDoc', { code: 'ГОСТ Тест-2026', title: 'Тестовый документ', kind: 'GOST', scopes: 'TU' }), 'saveDoc');
   ok(call(OWNER, 'norms.saveItem', { norm_id: d.norm_id, section: 'METHOD', text: 'ГОСТ Тест-2026', indicator: 'Тест' }), 'saveItem');
@@ -359,12 +361,45 @@ test('AT-18', 'ТУ: показатели по группе продукции, 
 });
 
 test('AT-19', 'Предупреждение об окончании действия норматива', function () {
+  ok(call(OWNER, 'norms.saveDoc', { code: 'СП Тест-срок', title: 'Документ со сроком', kind: 'SP', scopes: 'PPC', valid_until: new Date(Date.now() + 40 * 86400000).toISOString() }), 'doc with term');
   var r = X.Jobs.daily({ now: Integr.now(), requestId: 'job-t', actorId: 'SYSTEM', actorEmail: 'system', user: { role: 'OWNER', employee_id: 'SYSTEM' } });
   var n = Store.all('Notifications').filter(function (x) { return x.type === 'NORM_EXPIRING'; });
-  assert(n.length >= 1 && /3590-20/.test(n[0].title), 'уведомление о СанПиН 3590-20');
+  assert(n.length >= 1 && n.some(function (x) { return /СП Тест-срок/.test(x.title); }), 'уведомление о документе со сроком');
   var again = X.Jobs.daily({ now: Integr.now(), requestId: 'job-t2', actorId: 'SYSTEM', actorEmail: 'system', user: { role: 'OWNER', employee_id: 'SYSTEM' } });
   assert(Store.all('Notifications').filter(function (x) { return x.type === 'NORM_EXPIRING'; }).length === n.length, 'без повторов');
   return 'уведомлений: ' + n.length;
+});
+
+function zipNames(b64) {
+  var b = Buffer.from(b64, 'base64'), eocd = b.lastIndexOf(Buffer.from([0x50, 0x4B, 0x05, 0x06]));
+  var n = b.readUInt16LE(eocd + 10), off = b.readUInt32LE(eocd + 16), out = [];
+  for (var i = 0; i < n; i++) { var nl = b.readUInt16LE(off + 28), xl = b.readUInt16LE(off + 30), cl = b.readUInt16LE(off + 32); out.push(b.slice(off + 46, off + 46 + nl).toString('utf8')); off += 46 + nl + xl + cl; }
+  return out;
+}
+test('AT-20', 'Комплект ППК + ХАССП одним архивом', function () {
+  var c = ok(call(COORD, 'clients.save', { legal_name: 'ИП Тестов Пётр Иванович', inn: '560000000000', legal_address: 'г. Оренбург, ул. Тестовая, д. 1' }), 'client');
+  var st = ok(call(COORD, 'sites.save', { client_id: c.client_id, site_name: 'Цех полуфабрикатов', address: 'ул. Учебная, 10' }), 'site');
+  var g = ok(call(COORD, 'programs.build', { site_id: st.site_id, profile: { object_type: 'PRODUCTION', work_mode: 'ежедневно 10:00–20:00', area: '25', activity: 'изготовление и продажа полуфабрикатов',
+    flags: 'production,frying,sous_vide,vacuum,cooling,meat_fish,poultry', head_name: 'Тестов Пётр Иванович', staff: 'Петрова Анна; повар\nСидоров Иван; повар', equipment: 'Холодильник; 2\nВакууматор; 1\nSous-vide; 1' } }), 'program');
+  var r = ok(call(COORD, 'programs.pack', { program_id: g.program.program_id }), 'pack');
+  assert(/^Комплект_ППК_ИП_Тестов_П_И_\d{2}-\d{2}-\d{4}\.zip$/.test(r.file_name), 'имя архива: ' + r.file_name);
+  assert(r.documents[0] === '00_Паспорт_комплекта_и_порядок_применения.docx' && r.documents[1] === '01_ППК_программа_производственного_контроля.docx', 'порядок документов');
+  ['Инструкция_sous-vide', 'Журнал_sous-vide', 'Инструкция_жарка_и_томление', 'Журнал_ККТ_термообработки', 'Справка_по_нормативной_базе'].forEach(function (k) { assert(r.documents.some(function (n) { return n.indexOf(k) >= 0; }), 'есть ' + k); });
+  assert(r.documents.length >= 37, 'документов: ' + r.documents.length);
+  var f = ok(call(COORD, 'files.get', { document_id: r.document_id }), 'download');
+  var names = zipNames(f.data_base64);
+  assert(names.length === r.documents.length && names[5] === r.documents[5], 'архив читается, состав совпадает');
+  var docx = Buffer.from(f.data_base64, 'base64');
+  assert(docx.indexOf(Buffer.from('word/document.xml')) > 0, 'внутри документы Word');
+  var d2 = Store.get('Documents', r.document_id); assert(d2.document_type === 'PPC_PACK' && d2.mime_type === 'application/zip', 'архив в «Документах»');
+  var st2 = ok(call(COORD, 'sites.save', { client_id: c.client_id, site_name: 'Точка продаж', address: 'ул. Учебная, 12' }), 'site2');
+  var g2 = ok(call(COORD, 'programs.build', { site_id: st2.site_id, profile: { object_type: 'BUFFET', flags: 'buffet' } }), 'program2');
+  var r2 = ok(call(QC, 'programs.pack', { program_id: g2.program.program_id }), 'pack2');
+  assert(!r2.documents.some(function (n) { return /sous-vide|жарка|ККТ_термообработки/.test(n); }), 'без процессов — без лишних документов');
+  var nums = r2.documents.map(function (n) { return Number(n.slice(0, 2)); });
+  assert(nums.every(function (v, i) { return v === i; }), 'сплошная нумерация');
+  expectErr(call(FIN, 'programs.pack', { program_id: g.program.program_id }), 'ACCESS_DENIED', 'финансы не формируют комплект');
+  return r.documents.length + ' документов, ' + Math.round(r.size / 1024) + ' КБ; без процессов — ' + r2.documents.length;
 });
 
 /* Дополнительно: доступность разделов, ошибки, производительность чтения */

@@ -111,6 +111,8 @@ var Files = {
       return !!t && (t.responsible_id === u.employee_id || Auth.can(u, 'tasks.verify'));
     }
     if (d.entity_type === 'Finance') return Auth.can(u, 'finance.list');
+    if (d.entity_type === 'Programs') return Auth.can(u, 'programs.get');
+    if (d.entity_type === 'TechSpecs') return Auth.can(u, 'specs.get');
     if (d.entity_type === 'Clients' || d.entity_type === 'Contracts' || d.entity_type === 'Sites') return Auth.isAdminLike(u) || u.role === 'FINANCE';
     return false;
   },
