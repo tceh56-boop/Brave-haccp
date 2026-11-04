@@ -94,7 +94,7 @@ Pages.norms = {
   }
 };
 function normDocFields(d) {
-  return [{ name: 'code', label: 'Обозначение', required: true, placeholder: 'СанПиН 2.3/2.4.3590-20' }, { name: 'kind', label: 'Вид документа', type: 'select', required: true, options: dictOpts(d.kinds) },
+  return [{ name: 'code', label: 'Обозначение', required: true, placeholder: 'СанПиН 2.3/2.4.4282-26' }, { name: 'kind', label: 'Вид документа', type: 'select', required: true, options: dictOpts(d.kinds) },
     { name: 'title', label: 'Наименование', required: true, full: true }, { name: 'status', label: 'Статус', type: 'select', options: dictOpts(d.statuses), value: 'ACTIVE' },
     { name: 'valid_from', label: 'Действует с', type: 'date' }, { name: 'valid_until', label: 'Действует до', type: 'date', hint: 'Пусто — без ограничения срока. За ' + 90 + ' дней до окончания руководитель получит уведомление.' },
     { name: 'scopes', label: 'Где применяется', type: 'checks', options: dictOpts(d.scopes), full: true },

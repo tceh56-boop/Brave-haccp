@@ -292,7 +292,21 @@ test('AT-16', 'Нормативная база: сверка и права', fun
   var sanpin26 = nl.docs.filter(function (d) { return d.code === 'СанПиН 2.3/2.4.4282-26'; })[0];
   assert(tr034 && String(tr034.verified) === 'true' && tr034.unverified_count === 0, 'ТР ТС 034 сверен по документу заказчика');
   assert(sanpin && !sanpin.in_force, 'СанПиН 3590-20 утратил силу с 01.09.2026');
-  assert(sanpin26 && sanpin26.in_force && sanpin26.unverified_count > 0 && sanpin26.items_count > 10, 'СанПиН 4282-26 действует, положения перенесены, требует сверки');
+  assert(sanpin26 && sanpin26.in_force && String(sanpin26.verified) === 'true' && sanpin26.unverified_count === 0 && sanpin26.items_count > 15, 'СанПиН 4282-26 действует и сверен по тексту заказчика');
+  ['СП 2.1.4284-26', 'СП 2.2.4285-26', 'ТР ТС 022/2011', 'ТР ТС 005/2011', 'ГОСТ Р 1.3-2018', 'ГОСТ 30390-2013', 'МУК 4.2.1847-04'].forEach(function (c) {
+    var x = nl.docs.filter(function (d) { return d.code === c; })[0];
+    assert(x && String(x.verified) === 'true' && x.unverified_count === 0, c + ' сверен');
+  });
+  /* Обновление установленной базы: несверенный документ из прежней поставки получает сверенные положения, старые выключаются */
+  var mig = JSON.parse(vm.runInContext("(function () { var owner = filterBy(Store.all('Employees'), function (e) { return e.role === 'OWNER'; })[0];" +
+    "var d = filterBy(Store.all('NormDocs'), function (x) { return x.code === 'ТР ТС 022/2011'; })[0]; var ctx = Seed.ctx(owner, Integr.now());" +
+    "Repo.update(ctx, 'NormDocs', d.norm_id, { verified: false, notes: 'старый проект' }, { noAudit: true });" +
+    "Store.all('NormItems').forEach(function (i) { if (i.norm_id === d.norm_id) Repo.update(ctx, 'NormItems', i.norm_item_id, { verified: false }, { noAudit: true }); });" +
+    "var old = Repo.create(ctx, 'NormItems', { norm_id: d.norm_id, section: 'LABEL', clause: '—', text: 'старое', applies: 'all', sort_order: 1, active: true, verified: false }, { noAudit: true });" +
+    "var n = NormSeed.run(owner); var d2 = Repo.get('NormDocs', d.norm_id);" +
+    "var act = filterBy(Store.all('NormItems'), function (i) { return i.norm_id === d.norm_id && V.bool(i.active); });" +
+    "return JSON.stringify({ n: n, ver: String(d2.verified), oldActive: String(Repo.get('NormItems', old.norm_item_id).active), act: act.length, allV: act.every(function (i) { return V.bool(i.verified); }), again: NormSeed.run(owner) }); })()", sandbox));
+  assert(mig.ver === 'true' && mig.oldActive === 'false' && mig.act === 5 && mig.allV && mig.again === 0, 'миграция установленной базы: ' + JSON.stringify(mig));
   expectErr(call(COORD, 'norms.saveDoc', { code: 'X', title: 'Y', kind: 'OTHER' }), 'ACCESS_DENIED', 'координатор не правит базу');
   var d = ok(call(OWNER, 'norms.saveDoc', { code: 'ГОСТ Тест-2026', title: 'Тестовый документ', kind: 'GOST', scopes: 'TU' }), 'saveDoc');
   ok(call(OWNER, 'norms.saveItem', { norm_id: d.norm_id, section: 'METHOD', text: 'ГОСТ Тест-2026', indicator: 'Тест' }), 'saveItem');
