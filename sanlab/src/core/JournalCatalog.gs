@@ -23,7 +23,7 @@ var JOURNALS = [
   { id: 'J14', title: 'Журнал дезинфекции, дезинсекции и дератизации (3-Д)', what: 'Проведение санитарных мероприятий', fill: 'Смешанный', overlap: 'J50', kind: 'J', pack: 'in', when: '', basis: 'СП 2.1.4284-26, п. 14; СанПиН 2.3/2.4.4282-26, п. 45', freq: 'по договору / при появлении вредителей', resp: 'руководитель', match: 'дезинсекц|дератизац', cols: ['Дата', 'Вид мероприятия', 'Зона / объект', 'Исполнитель / организация', 'Средство / препарат', 'Концентрация / метод', 'Результат', 'Следующая дата', 'Подтверждение'] },
   { id: 'J15', title: 'Журнал контроля концентрации моющих и дезинфицирующих растворов', what: 'Фактическая концентрация растворов', fill: 'Человек', overlap: 'J50', kind: 'J', pack: 'in', when: '', basis: 'СанПиН 2.3/2.4.4282-26, п. 47', freq: 'при каждом приготовлении раствора', resp: 'заведующий производством', match: 'концентрац|дезраствор', cols: ['Дата', 'Время', 'Средство', 'Требуемая концентрация', 'Фактическая концентрация', 'Метод проверки', 'Соответствует?', 'Корректирующее действие', 'Ответственный'] },
   { id: 'J16', title: 'Журнал санитарного минимума и инструктажей', what: 'Проведение санитарного инструктажа', fill: 'Авто + подпись человека', overlap: 'J53', kind: 'J', pack: 'in', when: '', basis: 'СанПиН 2.3/2.4.4282-26, п. 24', freq: 'при приёме и периодически', resp: 'руководитель', match: 'инструктаж', cols: ['Дата', 'Сотрудник', 'Должность', 'Тема инструктажа', 'Материал / версия', 'Результат проверки', 'Подпись сотрудника', 'Инструктирующий'] },
-  { id: 'J17', title: 'Журнал обучения ХАССП и технике безопасности', what: 'Обучение и инструктажи по ХАССП/ТБ', fill: 'Авто + подпись человека', overlap: 'J53', kind: 'J', pack: 'in', when: '', basis: 'ТР ТС 021/2011, ст. 10–11 (процедуры ХАССП)', freq: 'по плану обучения (J53)', resp: 'ответственный за ХАССП', match: 'обучени', cols: ['Дата', 'Сотрудник', 'Должность', 'Тема обучения', 'Формат', 'Результат / тест', 'Подпись сотрудника', 'Ответственный'] },
+  { id: 'J17', title: 'Журнал обучения ХАССП и технике безопасности', what: 'Обучение и инструктажи по ХАССП/ТБ', fill: 'Авто + подпись человека', overlap: 'J53', kind: 'J', pack: 'in', when: '', basis: 'ТР ТС 021/2011, ст. 10–11 (процедуры ХАССП)', freq: 'по плану обучения персонала', resp: 'ответственный за ХАССП', match: 'обучени', cols: ['Дата', 'Сотрудник', 'Должность', 'Тема обучения', 'Формат', 'Результат / тест', 'Подпись сотрудника', 'Ответственный'] },
   { id: 'J18', title: 'Журнал неисправностей и ремонта оборудования', what: 'Поломки, ремонт и возврат в работу', fill: 'Смешанный', overlap: '', kind: 'J', pack: 'in', when: '', basis: 'СанПиН 2.3/2.4.4282-26, п. 12, 18', freq: 'по факту', resp: 'руководитель', match: 'неисправност', cols: ['Дата / время', 'Оборудование', 'Неисправность', 'Влияние на безопасность продукта', 'Заявитель', 'Ответственный за ремонт', 'Выполненные работы', 'Дата закрытия', 'Допуск к работе'] },
   { id: 'J19', title: 'Журнал калибровки термометров', what: 'Проверка точности измерительных приборов', fill: 'Человек', overlap: '', kind: 'J', pack: 'in', when: '', basis: 'СанПиН 2.3/2.4.4282-26, п. 40, 48', freq: 'по графику проверки', resp: 'ответственный за ХАССП', match: 'калибров|поверк', cols: ['Дата', 'Термометр / ID', 'Метод проверки', 'Эталонное значение, °C', 'Показание прибора, °C', 'Отклонение', 'Соответствует?', 'Следующая проверка', 'Ответственный'] },
   { id: 'J20', title: 'Журнал проверки весов', what: 'Контроль исправности и точности весов', fill: 'Человек', overlap: '', kind: 'J', pack: 'in', when: '', basis: 'Типовые решения ППК (поверка средств измерений)', freq: 'по графику проверки', resp: 'ответственный за ХАССП', match: 'весов', cols: ['Дата', 'Весы / ID', 'Контрольная масса', 'Показание весов', 'Отклонение', 'Соответствует?', 'Корректирующее действие', 'Ответственный', 'Следующая проверка'] },
@@ -63,7 +63,11 @@ var JOURNALS = [
 ];
 
 var JournalCat = {
-  get: function (id) { return filterBy(JOURNALS, function (j) { return j.id === id; })[0] || null; },
+  get: function (id) { return filterBy(JOURNALS.concat(JOURNAL_EXTRA), function (j) { return j.id === id; })[0] || null; },
+  /* Пользователь видит журналы по названию; коды J — только внутренние */
+  name: function (id) { var j = JournalCat.get(id); return j ? j.title : id; },
+  names: function (list) { return csvList(list).map(function (id) { return '«' + JournalCat.name(id) + '»'; }).join(', '); },
+  unJ: function (text) { return String(text || '').replace(/\bJ\d\d[a-z]?\b/g, function (m) { return JournalCat.get(m) ? '«' + JournalCat.name(m) + '»' : m; }); },
   applies: function (j, flags) {
     var w = csvList(j.when);
     if (!w.length) return true;
@@ -73,7 +77,7 @@ var JournalCat = {
   /* Статус журнала для объекта: { use: true/false, kind, note } */
   status: function (j, flags) {
     var p = String(j.pack), a = JournalCat.applies(j, flags);
-    if (p.indexOf('dup:') === 0) return { use: false, note: 'не ведётся отдельно — дублирует ' + p.slice(4) };
+    if (p.indexOf('dup:') === 0) return { use: false, note: 'не ведётся отдельно — записи вносятся в «' + JournalCat.name(p.slice(4)) + '»' };
     if (p.indexOf('haccp:') === 0) return { use: false, note: 'в составе документа «' + p.slice(6) + '»' };
     if (p.indexOf('opt:') === 0) return { use: false, note: 'по решению предприятия: ' + p.slice(4) };
     if (!a) return { use: false, note: 'не применяется: нет признака объекта (' + csvList(j.when).map(function (f) { return SITE_FLAGS[f] || f; }).join(', ') + ')' };
@@ -103,15 +107,16 @@ var Checklists2 = {
   ],
   name: function (l) { return l[0] + ' ' + l[1] + ' — ' + l[2]; },
   /* Полное название по коду (для своих чек-листов, добавленных вручную, — сам текст) */
-  title: function (id) { var l = filterBy(Checklists2.LISTS, function (x) { return x[0] === id; })[0]; return l ? Checklists2.name(l) : id; },
+  find: function (key) { return filterBy(Checklists2.LISTS, function (x) { return x[0] === key || x[1] === key; })[0] || null; },
+  title: function (key) { var l = Checklists2.find(key); return l ? l[1] + ' — ' + l[2] : key; },
   build: function (ctx, flags, secs) {
     var pk = Norms.pick(ctx, 'PPC', ['MEASURE', 'JOURNAL', 'LAB', 'PROF', 'DOCS'], flags), D = pk.docs, R = DocContent.row, out = [];
     var has = function (f) { return flags.indexOf(f) >= 0; };
     var find = function (code, clause) { return filterBy(pk.items, function (i) { return D[i.norm_id] && D[i.norm_id].code === code && i.clause === clause; })[0]; };
     var S26 = 'СанПиН 2.3/2.4.4282-26', SP84 = 'СП 2.1.4284-26';
-    var L = {}; Checklists2.LISTS.forEach(function (l) { L[l[0]] = l[0]; });
-    var N = function (list, code, clause, text) { var i = find(code, clause); if (i) out.push(R([L[list], text || i.text], D[i.norm_id], i)); return !!i; };
-    var M = function (list, text, ref) { var r = R([L[list], text], null, null, true); r.src = 'tpl'; if (ref) r.ref = ref; out.push(r); };
+    var L = {}; Checklists2.LISTS.forEach(function (l) { L[l[0]] = l[1]; });
+    var N = function (list, code, clause, text) { var i = find(code, clause); if (i) out.push(R([L[list], JournalCat.unJ(text || i.text)], D[i.norm_id], i)); return !!i; };
+    var M = function (list, text, ref) { var r = R([L[list], JournalCat.unJ(text)], null, null, true); r.src = 'tpl'; if (ref) r.ref = ref; out.push(r); };
 
     /* J11 Открытие смены */
     M('J11', 'Помещения и оборудование чистые, нет посторонних запахов, предметов, следов насекомых и грызунов', SP84 + ', п. 14');
@@ -171,9 +176,10 @@ var Checklists2 = {
 
     /* Производственный контроль — по разделам собранной программы */
     var cell = function (r, k) { return V.str((r.c || [])[k]); };
-    var fromRow = function (r, text) { var x = JSON.parse(JSON.stringify(r)); x.c = [L['CL-ПК'], text]; delete x.manual; delete x.src; if (r.manual) { x.manual = true; x.src = r.src || 'input'; } return x; };
+    var fromRow = function (r, text) { var x = JSON.parse(JSON.stringify(r)); x.c = [L['CL-ПК'], JournalCat.unJ(text)]; delete x.manual; delete x.src; if (r.manual) { x.manual = true; x.src = r.src || 'input'; } return x; };
     var sec = function (k) { return filterBy(secs || [], function (s) { return s.key === k; })[0] || { rows: [] }; };
-    sec('journals').rows.forEach(function (r) { out.push(fromRow(r, 'Ведётся ' + (cell(r, 0) ? cell(r, 0) + ' ' : '') + '«' + cell(r, 1) + '» (' + (cell(r, 2) || 'по графику') + '), записи полные, отклонения отработаны')); });
+    sec('journals').rows.forEach(function (r) { var old = cell(r, 0) && /^J\d/.test(cell(r, 0)), t = old ? cell(r, 1) : cell(r, 0), f = old ? cell(r, 2) : cell(r, 1);
+      if (t) out.push(fromRow(r, 'Ведётся «' + t + '» (' + (f || 'по графику') + '), записи полные, отклонения отработаны')); });
     sec('lab').rows.forEach(function (r) { out.push(fromRow(r, 'Лабораторный контроль: ' + cell(r, 0) + ' — ' + (cell(r, 2) || 'по программе') + '; протоколы аккредитованной лаборатории за период в наличии')); });
     sec('prof').rows.forEach(function (r) { out.push(fromRow(r, cell(r, 0) + ': сроки у всех работников не просрочены, сведения внесены в J45')); });
     M('CL-ПК', 'Средства измерений (термометры, гигрометры, весы) проверены по графику (J19, J20)');

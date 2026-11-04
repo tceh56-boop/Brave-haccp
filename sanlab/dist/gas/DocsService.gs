@@ -304,18 +304,19 @@ var Programs = {
     JournalCat.forSite(flags).concat(filterBy(JOURNAL_EXTRA, function (j) { return JournalCat.applies(j, flags); })).forEach(function (j) {
       var re = j.match ? new RegExp(j.match, 'i') : null, hit = null;
       for (var k = 0; re && k < nj.length; k++) if (re.test(nj[k].text)) { hit = nj.splice(k, 1)[0]; break; }
-      if (hit) jrows.push(R([j.id, j.title, hit.frequency || j.freq, hit.indicator || j.resp], D[hit.norm_id], hit));
-      else { var r = R([j.id, j.title, j.freq, j.resp], null, null, true); r.src = 'tpl'; r.ref = j.basis; jrows.push(r); }
+      var r = hit ? R([j.title, hit.frequency || j.freq, hit.indicator || j.resp], D[hit.norm_id], hit) : R([j.title, j.freq, j.resp], null, null, true);
+      if (!hit) { r.src = 'tpl'; r.ref = j.basis; }
+      r.jid = j.id; jrows.push(r);
     });
-    nj.forEach(function (i) { jrows.push(R(['', i.text, i.frequency, i.indicator], D[i.norm_id], i)); });
-    sec.push(DocContent.table('journals', 'Реестр журналов: формы учёта и отчётности по производственному контролю', ['ID', 'Форма учёта', 'Периодичность заполнения', 'Ответственный'], jrows,
-      'Номера J — по реестру журналов J01–J53. Журналы, дублирующие друг друга, ведутся в одной форме; полный реестр с причинами — в комплекте документов.'));
+    nj.forEach(function (i) { jrows.push(R([i.text, i.frequency, i.indicator], D[i.norm_id], i)); });
+    sec.push(DocContent.table('journals', 'Реестр журналов: формы учёта и отчётности по производственному контролю', ['Форма учёта', 'Периодичность заполнения', 'Ответственный'], jrows,
+      'Журналы, дублирующие друг друга, ведутся в одной форме; полный реестр журналов с причинами — в комплекте документов.'));
     var meas = (by.MEASURE || []).map(function (i) { return R([i.text, i.frequency, i.indicator], D[i.norm_id], i); });
     if (prof.pest_control) meas.push(R(['Дезинсекция и дератизация по договору со специализированной организацией: ' + prof.pest_control, 'по договору', ''], null, null, true));
     if (prof.waste) meas.push(R(['Вывоз отходов по договору: ' + prof.waste, 'по графику вывоза', ''], null, null, true));
     sec.push(DocContent.table('measures', 'Мероприятия производственного контроля', ['Мероприятие', 'Периодичность', 'Ответственный'], meas));
     sec.push(DocContent.table('checklists', 'Чек-листы производственного контроля', ['Чек-лист', 'Контрольный пункт'], Checklists2.build(ctx, flags, sec),
-      'Коды чек-листов: ' + Checklists2.LISTS.map(function (l) { return l[0] + ' — ' + l[1].replace(/^Чек-лист /, '') + ' (' + l[2] + ')'; }).join('; ') + '. Пункты сформированы по положениям нормативной базы и признакам объекта; можно добавить свой пункт или чек-лист со своим кодом. В комплекте каждый чек-лист — отдельный бланк.'));
+      'Периодичность: ' + Checklists2.LISTS.map(function (l) { return l[1].replace(/^Чек-лист /, '') + ' — ' + l[2]; }).join('; ') + '. Пункты сформированы по положениям нормативной базы и признакам объекта; можно добавить свой пункт или свой чек-лист (впишите его название в первую колонку). В комплекте каждый чек-лист — отдельный бланк.'));
     sec.push(DocContent.text('final', 'Заключительные положения', 'Программа вступает в силу с даты утверждения. Программа пересматривается при изменении вида деятельности, ассортимента, технологии, нормативных документов, а также не реже одного раза в ' + (Settings.num('PPC_REVIEW_MONTHS') || 12) + ' мес. Результаты производственного контроля фиксируются в формах учёта и хранятся в организации.' + (prof.extra ? '\n' + prof.extra : '')));
     return { sections: sec, built_at: ctx.now, norms: Object.keys(usedDocs) };
   },

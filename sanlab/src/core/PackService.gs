@@ -55,11 +55,11 @@ var Pack = {
     var objLines = [full, client.inn ? 'ИНН ' + client.inn : '', P.ogrn ? 'ОГРН/ОГРНИП ' + P.ogrn : '', 'Адрес предприятия: ' + addr, client.legal_address ? 'Юридический адрес: ' + client.legal_address : '',
       P.area ? 'Площадь: ' + P.area + ' м²' : '', P.utilities ? 'Инженерное обеспечение: ' + P.utilities : '', P.water_source ? 'Водоснабжение: ' + P.water_source : '',
       P.ventilation_desc ? 'Вентиляция и освещение: ' + P.ventilation_desc : '', 'Деятельность: ' + (P.activity || OBJECT_TYPES[P.object_type] || ''), P.tu_declarations ? 'ТУ и декларации: ' + P.tu_declarations : '', mode ? 'Режим работы: ' + mode : ''].filter(String).join('\n');
-    var control = [['Приём сырья', 'каждая партия', 'маркировка, срок, температура, упаковка, документы', 'J39'], ['Холодильники/морозильники', 'каждая смена', 'температура', 'J42, J43']];
-    if (th) control.push(['ККТ термообработки', 'каждая партия', 'температура/время по ТТК', 'J22']);
-    if (sv) control.push(['Sous-vide', 'каждый цикл', 'режим по валидированной карте продукта', 'J22a']);
-    control.push(['Дезрастворы', 'каждая порция', 'концентрация/экспозиция', 'J15'], ['Уборка', 'ежедневно/по графику', 'санитарное состояние', 'J46, J48'], ['Персонал', 'каждая смена', 'допуск/гигиена', 'J44'],
-      ['Маркировка', 'каждая партия', 'состав, срок, условия, партия', 'J05'], ['Лабораторный контроль', 'по программе', 'вода, смывы, продукция и др. по риску', 'Протоколы'], ['Условия труда', 'по программе', 'факторы рабочей среды по применимости', 'Протоколы']);
+    var control = [['Приём сырья', 'каждая партия', 'маркировка, срок, температура, упаковка, документы', JournalCat.name('J39')], ['Холодильники/морозильники', 'каждая смена', 'температура', JournalCat.names('J42,J43')]];
+    if (th) control.push(['ККТ термообработки', 'каждая партия', 'температура/время по ТТК', JournalCat.name('J22')]);
+    if (sv) control.push(['Sous-vide', 'каждый цикл', 'режим по валидированной карте продукта', JournalCat.name('J22a')]);
+    control.push(['Дезрастворы', 'каждая порция', 'концентрация/экспозиция', JournalCat.name('J15')], ['Уборка', 'ежедневно/по графику', 'санитарное состояние', JournalCat.names('J46,J48')], ['Персонал', 'каждая смена', 'допуск/гигиена', JournalCat.name('J44')],
+      ['Маркировка', 'каждая партия', 'состав, срок, условия, партия', JournalCat.name('J05')], ['Лабораторный контроль', 'по программе', 'вода, смывы, продукция и др. по риску', 'Протоколы'], ['Условия труда', 'по программе', 'факторы рабочей среды по применимости', 'Протоколы']);
     Pack.rows(S.measures, 3).forEach(function (r) { control.push([r[0], r[1], 'выполнение мероприятия', r[2] || 'запись в журнале']); });
     var ppc = H('Программа производственного контроля (ППК)').concat([
       { t: 'h', text: '1. Общие положения' }, { t: 'p', text: 'ППК устанавливает порядок контроля санитарного состояния, безопасности пищевой продукции, технологических режимов, условий труда и документирования результатов. ППК интегрирована с системой ХАССП.' },
@@ -166,15 +166,20 @@ var Pack = {
 
     /* Журналы по реестру J01–J53: формы по образцам заказчика, 15 строк, «Начат / Окончен» */
     var flagsArr = csvList(P.flags), jIdx = {};
-    var jrow = {}; ((S.journals && S.journals.rows) || []).forEach(function (r) { if (r.c[0]) jrow[r.c[0]] = r.c; });
+    /* Периодичность и ответственный из ППК (раздел «Реестр журналов»); программы прежней версии хранили код J в первой колонке */
+    var jOld = !!(S.journals && S.journals.cols && S.journals.cols[0] === 'ID'), jrow = {}, jFree = [];
+    ((S.journals && S.journals.rows) || []).forEach(function (r) {
+      var id = jOld ? r.c[0] : r.jid, x = jOld ? { t: r.c[1], f: r.c[2], o: r.c[3], ref: r.ref } : { t: r.c[0], f: r.c[1], o: r.c[2], ref: r.ref };
+      if (id) jrow[id] = x; else if (V.str(x.t)) jFree.push(x);
+    });
     var days = []; for (var dd = 1; dd <= 31; dd++) days.push(String(dd));
     var months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
     var blankRows = function (n, cols, first) { var o = []; for (var i = 0; i < n; i++) { var r = [first ? first(i) : String(i + 1)]; for (var k = 1; k < cols; k++) r.push(''); o.push(r); } return o; };
     var JH = function (j) {
-      var c = jrow[j.id] || [];
-      return H(j.id + ' ' + j.title).concat([
+      var c = jrow[j.id] || {};
+      return H(j.title).concat([
         { t: 'p', text: 'Начат: «___» __________ ' + year + ' г.     Окончен: «___» __________ ' + year + ' г.     Стр. ____ из ____' },
-        { t: 'p', text: 'Назначение: ' + j.what + '. Основание: ' + j.basis + '. Периодичность: ' + (c[2] || j.freq) + '. Ответственный: ' + (c[3] || j.resp) + '. Тип заполнения: ' + j.fill + '.', small: true }]);
+        { t: 'p', text: 'Назначение: ' + j.what + '. Основание: ' + j.basis + '. Периодичность: ' + (c.f || j.freq) + '. Ответственный: ' + (c.o || j.resp) + '. Тип заполнения: ' + j.fill + '.', small: true }]);
     };
     var tbl = function (head, rows, o) { o = o || {}; return { t: 'table', head: head, rows: rows, widths: o.widths, size: o.size, rowHeight: o.rowHeight === 0 ? null : (o.rowHeight || 340) }; };
     var LAYOUT = {
@@ -221,12 +226,11 @@ var Pack = {
       var b = JH(j);
       b = b.concat(LAYOUT[j.id] ? LAYOUT[j.id]() : [tbl(['№'].concat(j.cols), blankRows(15, j.cols.length + 1), { widths: [1].concat(j.cols.map(function () { return 3; })) })]);
       if (j.id === 'J22a') b.push({ t: 'p', text: 'Критический предел и способ контроля температуры центра — по валидированной карте продукта.', small: true });
-      jIdx[j.id] = D.length; add(j.id + ' ' + j.title, b);
+      jIdx[j.id] = D.length; add(j.title, b);
     });
     /* Журналы, добавленные в ППК вручную или из нормативной базы без номера J */
-    ((S.journals && S.journals.rows) || []).forEach(function (r) {
-      if (r.c[0] || !V.str(r.c[1])) return;
-      add(r.c[1], H(r.c[1]).concat([period, { t: 'p', text: 'Периодичность заполнения: ' + (r.c[2] || 'по графику') + (r.c[3] ? '. Ответственный: ' + r.c[3] : '') + '.' + (r.ref ? ' Основание: ' + r.ref + '.' : ''), small: true },
+    jFree.forEach(function (r) {
+      add(r.t, H(r.t).concat([period, { t: 'p', text: 'Периодичность заполнения: ' + (r.f || 'по графику') + (r.o ? '. Ответственный: ' + r.o : '') + '.' + (r.ref ? ' Основание: ' + r.ref + '.' : ''), small: true },
         tbl(['№', 'Дата/время', 'Наблюдение / показатель', 'Результат', 'Действие', 'Ответственный', 'Подпись'], blankRows(15, 7))]));
     });
 
@@ -237,9 +241,9 @@ var Pack = {
     groups.forEach(function (k) {
       var parts = k.split(' — '), title = parts[0], freq = parts.slice(1).join(' — ');
       var b = H(title).concat([{ t: 'p', text: 'Дата: «___» __________ ' + year + ' г.   Время: ______   Периодичность: ' + (freq || 'по графику') + '.   Проверяющий: __________________' },
-        { t: 'p', text: 'Отметка: ✓ выполнено / ✗ нарушение / НП — не применимо. Каждое нарушение — корректирующее действие и запись в J34.', small: true },
-        tbl(['№', 'Контрольный пункт', 'Основание', '✓/✗/НП', 'Комментарий / действие', 'Подпись'], gmap[k].map(function (r, i) { return [String(i + 1), r.c[1], r.ref || '', '', '', '']; }), { widths: [1, 11, 4, 2, 5, 2] })]);
-      var id = title.split(' ')[0]; jIdx[id] = D.length;
+        { t: 'p', text: 'Отметка: ✓ выполнено / ✗ нарушение / НП — не применимо. Каждое нарушение — корректирующее действие и запись в «' + JournalCat.name('J34') + '».', small: true },
+        tbl(['№', 'Контрольный пункт', 'Основание', '✓/✗/НП', 'Комментарий / действие', 'Подпись'], gmap[k].map(function (r, i) { return [String(i + 1), JournalCat.unJ(r.c[1]), r.ref || '', '', '', '']; }), { widths: [1, 11, 4, 2, 5, 2] })]);
+      var cl = Checklists2.find(title); jIdx[cl ? cl[0] : title] = D.length;
       add(title, b);
     });
 
@@ -289,14 +293,14 @@ var Pack = {
     var regRows = JOURNALS.concat(JOURNAL_EXTRA).map(function (j) {
       var st = jIdx[j.id] !== undefined ? 'ведётся — документ № ' + pad2(jIdx[j.id]) : (j.pack === 'cl' ? 'чек-лист не сформирован' : JournalCat.status(j, flagsArr).note);
       if (j.id === 'J22a' && jIdx[j.id] === undefined) return null;
-      var c = jrow[j.id] || [];
-      return [j.id, j.title, j.what, j.basis, c[2] || j.freq, c[3] || j.resp, j.fill, j.overlap || '—', st];
+      var c = jrow[j.id] || {};
+      return [j.title, j.what, j.basis, c.f || j.freq, c.o || j.resp, j.fill, j.overlap ? JournalCat.names(j.overlap) : '—', st];
     }).filter(Boolean);
-    groups.forEach(function (k) { var id = k.split(' ')[0]; if (!JournalCat.get(id)) regRows.push([id, k.split(' — ')[0].slice(id.length + 1), 'Контрольные пункты по ППК', 'ППК, раздел «Чек-листы»', k.split(' — ').slice(1).join(' — '), 'по ППК', 'Человек', '—', 'ведётся — документ № ' + pad2(jIdx[id])]); });
-    var inUse = regRows.filter(function (r) { return /^ведётся/.test(r[8]); }).length;
+    groups.forEach(function (k) { var t = k.split(' — ')[0], cl = Checklists2.find(t), id = cl ? cl[0] : t; if (!JournalCat.get(id)) regRows.push([t, 'Контрольные пункты по ППК', 'ППК, раздел «Чек-листы»', k.split(' — ').slice(1).join(' — ') || 'по ППК', 'по ППК', 'Человек', '—', 'ведётся — документ № ' + pad2(jIdx[id])]); });
+    var inUse = regRows.filter(function (r) { return /^ведётся/.test(r[7]); }).length;
     D[regIdx] = { title: 'Реестр журналов', blocks: H('Реестр журналов санитарного контроля и ХАССП').concat([
-      { t: 'p', text: 'Реестр J01–J53 по форме предприятия. На объекте ведётся ' + inUse + ' журналов и чек-листов; журналы с похожим назначением ведутся в одной форме (колонка «Пересекается с»), журналы для отсутствующих процессов не ведутся.' },
-      { t: 'table', head: ['ID', 'Журнал / чек-лист', 'Что фиксирует', 'Основание', 'Периодичность', 'Ответственный', 'Тип заполнения', 'Пересекается с', 'Статус на объекте'], rows: regRows, widths: [1, 5, 4, 4, 3, 3, 2, 2, 4], size: 13 },
+      { t: 'p', text: 'Реестр журналов по форме предприятия (53 позиции). На объекте ведётся ' + inUse + ' журналов и чек-листов; журналы с похожим назначением ведутся в одной форме (колонка «Пересекается с»), журналы для отсутствующих процессов не ведутся.' },
+      { t: 'table', head: ['Журнал / чек-лист', 'Что фиксирует', 'Основание', 'Периодичность', 'Ответственный', 'Тип заполнения', 'Пересекается с', 'Статус на объекте'], rows: regRows, widths: [5, 4, 4, 3, 3, 2, 4, 4], size: 13 },
       { t: 'p', text: 'Поля, требующие фактического измерения или подтверждения человека, заполняются только по факту. Состав полей и нормативные пределы утверждает ответственный за ХАССП.', small: true }]) };
     var names = D.slice(1).map(function (d, i) { return Pack.fileName(i + 1, d.title); });
     D[0] = { title: 'Паспорт комплекта и порядок применения', blocks: H('Паспорт комплекта ППК + ХАССП').concat([

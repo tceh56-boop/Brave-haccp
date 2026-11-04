@@ -398,7 +398,7 @@ test('AT-20', 'Комплект ППК + ХАССП одним архивом', 
   var r = ok(call(COORD, 'programs.pack', { program_id: g.program.program_id }), 'pack');
   assert(/^Комплект_ППК_ИП_Тестов_П_И_\d{2}-\d{2}-\d{4}\.zip$/.test(r.file_name), 'имя архива: ' + r.file_name);
   assert(r.documents[0] === '00_Паспорт_комплекта_и_порядок_применения.docx' && r.documents[1] === '01_ППК_программа_производственного_контроля.docx', 'порядок документов');
-  ['Инструкция_sous-vide', 'J22a_Журнал_sous-vide', 'Инструкция_жарка_и_томление', 'J22_Журнал_ККТ-2', 'J41_Журнал_учета_использования_фритюрных_жиров', 'J23_', 'Реестр_журналов', 'J42_', 'J44_Журнал_здоровья', 'J11_Чек-лист_открытия_смены', 'J12_Чек-лист_закрытия_смены', 'J49_', 'CL-ПК_', 'Справка_по_нормативной_базе'].forEach(function (k) { assert(r.documents.some(function (n) { return n.indexOf(k) >= 0; }), 'есть ' + k); });
+  ['Инструкция_sous-vide', '_Журнал_sous-vide', 'Инструкция_жарка_и_томление', '_Журнал_ККТ-2_контроль_тепловой_обработки', '_Журнал_учета_использования_фритюрных_жиров', '_Журнал_ККТ-3_контроль_шокового_охлаждения', 'Реестр_журналов', '_Журнал_контроля_температурного_режима', '_Журнал_здоровья', '_Чек-лист_открытия_смены', '_Чек-лист_закрытия_смены', '_Чек-лист_(памятка)_проведения_санитарного_дня', '_Чек-лист_производственного_контроля', 'Справка_по_нормативной_базе'].forEach(function (k) { assert(r.documents.some(function (n) { return n.indexOf(k) >= 0; }), 'есть ' + k); });
   assert(r.documents.length >= 37, 'документов: ' + r.documents.length);
   var f = ok(call(COORD, 'files.get', { document_id: r.document_id }), 'download');
   var names = zipNames(f.data_base64);
@@ -409,11 +409,12 @@ test('AT-20', 'Комплект ППК + ХАССП одним архивом', 
   var st2 = ok(call(COORD, 'sites.save', { client_id: c.client_id, site_name: 'Точка продаж', address: 'ул. Учебная, 12' }), 'site2');
   var g2 = ok(call(COORD, 'programs.build', { site_id: st2.site_id, profile: { object_type: 'BUFFET', flags: 'buffet' } }), 'program2');
   var r2 = ok(call(QC, 'programs.pack', { program_id: g2.program.program_id }), 'pack2');
-  assert(!r2.documents.some(function (n) { return /sous-vide|жарка|J22_|J41_|J01_|J25_/.test(n); }), 'без процессов и без дублей — без лишних документов');
+  assert(!r.documents.concat(r2.documents).some(function (n) { return /(^|_)(J\d\d|CL-)/.test(n); }), 'в именах документов нет кодов J');
+  assert(!r2.documents.some(function (n) { return /sous-vide|жарка|ККТ-2|фритюрных|Журнал_температурного_режима_холодильного_оборудования|КТ-5/.test(n); }), 'без процессов и без дублей — без лишних документов');
   var pg = ok(call(COORD, 'programs.get', { program_id: g.program.program_id }), 'program get');
   var js = pg.content.sections.filter(function (x) { return x.key === 'journals'; })[0], cs = pg.content.sections.filter(function (x) { return x.key === 'checklists'; })[0];
-  assert(js && js.cols[0] === 'ID' && js.rows.some(function (r) { return r.c[0] === 'J41' && r.ref.indexOf('п. 44') >= 0 && r.v; }), 'реестр журналов в ППК со ссылкой на СанПиН');
-  assert(cs && cs.rows.length > 40 && cs.rows.some(function (r) { return r.c[0] === 'J11' && /4282-26, п. 25/.test(r.ref); }) && cs.rows.some(function (r) { return r.c[0] === 'CL-ПК' && /J41/.test(r.c[1]); }), 'чек-листы сформированы из ППК');
+  assert(js && js.cols[0] === 'Форма учёта' && js.rows.some(function (r) { return r.jid === 'J41' && r.c[0] === 'Журнал учета использования фритюрных жиров' && r.ref.indexOf('п. 44') >= 0 && r.v; }), 'реестр журналов в ППК со ссылкой на СанПиН');
+  assert(cs && cs.rows.length > 40 && cs.rows.some(function (r) { return r.c[0] === 'Чек-лист открытия смены' && /4282-26, п. 25/.test(r.ref); }) && cs.rows.some(function (r) { return /^Чек-лист производственного контроля/.test(r.c[0]) && /фритюрных жиров/.test(r.c[1]); }), 'чек-листы сформированы из ППК');
   var nums = r2.documents.map(function (n) { return Number(n.slice(0, 2)); });
   assert(nums.every(function (v, i) { return v === i; }), 'сплошная нумерация');
   expectErr(call(FIN, 'programs.pack', { program_id: g.program.program_id }), 'ACCESS_DENIED', 'финансы не формируют комплект');
