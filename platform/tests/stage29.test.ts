@@ -5,7 +5,7 @@ import { createOrganization, inviteMember, acceptInvitation } from '../src/serve
 import { createProduct, createSupplier } from '../src/server/ops/catalog';
 import { createReceipt, addReceiptLine, completeReceipt } from '../src/server/ops/receipts';
 import { createDish, getDish, updateVersion, addLine, submitVersion, approveVersion } from '../src/server/ops/recipes';
-import { createProduction, startProduction, completeProduction, addReleaseCheck, recordCheck } from '../src/server/ops/production';
+import { createProduction, startProduction, completeProduction, addReleaseCheck, approveReleaseCheck, recordCheck } from '../src/server/ops/production';
 import { openLot, createLabels, logPrint, confirmReprint, labelLog } from '../src/server/ops/labels';
 import { setSampleSettings, takeSample, createProgram, recordResult } from '../src/server/ops/lab';
 import { getJournal, listForms } from '../src/server/ops/journals';
@@ -58,7 +58,7 @@ beforeAll(async () => {
   openedLot = (await openLot(cook.id, orgId, beefLot, { quantity: 2, hours: 48, basis: 'маркировка: после вскрытия 48 ч', operationId: randomUUID() })).lot_id;
   // J55: п/ф с проверкой выпуска; J58: готовое блюдо
   semi = await mkDish('Фарш говяжий', 'semi', [[beef, 1]]);
-  await addReleaseCheck(haccp.id, orgId, semi, { name: 'Температура фарша', unit: '°C', max: 6, basis: 'План ХАССП, ККТ-2' });
+  await approveReleaseCheck(owner.id, orgId, (await addReleaseCheck(haccp.id, orgId, semi, { name: 'Температура фарша', unit: '°C', max: 6, basis: 'План ХАССП, ККТ-2' })).id);
   const a = await produce(semi);
   const chk = (await withSystem((tx) => tx.query(`select id from release_checks where dish_id = $1`, [semi]))).rows[0].id;
   await recordCheck(cook.id, orgId, a.orderId, { checkId: chk, value: 4 });

@@ -24,7 +24,8 @@ import { openShift, createOrder, addOrderLine, payOrder, setStop } from '../ops/
 import { confirm } from '../ops/readiness';
 import { listLots } from '../ops/lots';
 import { createLabels, logPrint, openLot, setOpenedShelfLife } from '../ops/labels';
-import { createProduction, startProduction, recordCheck, completeProduction, getProduction, addReleaseCheck } from '../ops/production';
+import { createProduction, startProduction, recordCheck, completeProduction, getProduction, addReleaseCheck, approveReleaseCheck } from '../ops/production';
+import { saveStages } from '../ops/ttkStages';
 import { setProductNutrition, setProductAllergens, saveTechSpecParams } from '../ops/techspec';
 import { createCosting } from '../ops/costing';
 import { createAct } from '../ops/controlacts';
@@ -211,13 +212,17 @@ export async function seedDemo() {
   await updateVersion(chef.id, orgId, sv, { yieldG: 1000, technology: 'Лук пассеровать, добавить сливки, довести до кипения, уварить на треть.', storageConditions: 'при +2…+6 °C', shelfLife: '24 часа', shelfLifeHours: 24, shelfBasis: 'демо-пример: замените основанием предприятия (ТУ/СТО с протоколами)' });
   await addLine(chef.id, orgId, sv, { productId: p.cream, unit: 'л', brutto: 1.2, netto: 1.2 });
   await addLine(chef.id, orgId, sv, { productId: p.onion, unit: 'г', brutto: 120, netto: 100 });
+  // этап ТТК «уварить» — ККТ О-01 плана ХАССП: при выпуске нужен замер в толще (форма мониторинга J22)
+  await saveStages(chef.id, orgId, sv, { stages: [{ operation: 'Пассеровать лук', state: 'semi' }, { operation: 'Довести до кипения и уварить', state: 'semi', ccp_code: 'О-01' }] });
   await submitVersion(chef.id, orgId, sv);
   await approveTtk(owner.id, orgId, sv);
-  const tcheck = await addReleaseCheck(haccp.id, orgId, sauce, { name: 'Температура в толще продукта', unit: '°C', min: 75, basis: 'Демо: план ХАССП, ККТ-1 — тепловая обработка' });
+  const tcheck = await addReleaseCheck(haccp.id, orgId, sauce, { name: 'Температура в толще продукта', unit: '°C', min: 75, ccpCode: 'О-01', basis: 'Демо: план ХАССП, О-01 — тепловая обработка (предел — демо-пример, замените утверждённым)' });
+  await approveReleaseCheck(owner.id, orgId, tcheck.id);
+  const probe = await createEquipment(chef.id, orgId, { siteId, name: 'Термометр-щуп ТЦ-1', kind: 'instrument', serialNo: '1101', calibratedOn: inDays(-120), calibrationDue: inDays(245), calibrationDoc: 'Демо: свидетельство о поверке № С-1101' });
   const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
   const po = await createProduction(chef.id, orgId, { siteId, dishId: sauce, plannedKg: 1, plannedFor: day, note: 'к обеду' });
   await startProduction(cook.id, orgId, po.id);
-  await recordCheck(cook.id, orgId, po.id, { checkId: tcheck.id, value: 82 });
+  await recordCheck(cook.id, orgId, po.id, { checkId: tcheck.id, value: 82, valueBefore: 20, instrumentId: probe.id });
   // демо: повар подтверждает подсказку формы (FEFO на план) как фактический расход
   const fact = (await getProduction(cook.id, orgId, po.id)).lots.filter((l) => l.suggest > 0).map((l) => ({ lotId: l.lot_id, quantity: l.suggest }));
   await completeProduction(cook.id, orgId, po.id, { actualKg: 0.95, consumed: fact, operationId: `demo-prod-${SUFFIX || 'main'}` });
@@ -261,7 +266,6 @@ export async function seedDemo() {
   // Оборудование: камера мяса с ТО, термометр-щуп с действующей поверкой, термометр с истёкшей (виден в «Проблемах»)
   const meatFridge = await createEquipment(chef.id, orgId, { siteId, name: 'Камера мяса Polair', kind: 'cold', model: 'Демо: КХН-4,4', serialNo: 'P-0421', controlObjectId: objects['Камера мяса'], maintenanceDays: 90 });
   await equipmentEvent(chef.id, orgId, meatFridge.id, { kind: 'maintenance', description: 'Демо: чистка конденсатора, проверка уплотнителя', performer: 'ООО «Холод-Сервис»', happenedOn: inDays(-20) });
-  await createEquipment(chef.id, orgId, { siteId, name: 'Термометр-щуп ТЦ-1', kind: 'instrument', serialNo: '1101', calibratedOn: inDays(-120), calibrationDue: inDays(245), calibrationDoc: 'Демо: свидетельство о поверке № С-1101' });
   await createEquipment(chef.id, orgId, { siteId, name: 'Термометр старый', kind: 'instrument', serialNo: '0007', calibrationDue: inDays(-5), calibrationDoc: 'Демо: свидетельство № С-0007' });
 
   // Санитария: утверждённое дезсредство (режим — демо-значения, в работе — из инструкции производителя), план, выполнение

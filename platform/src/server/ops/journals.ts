@@ -9,6 +9,7 @@ import { criterionText } from './control';
 import { expiryState, EXPIRY_LABEL, LOT_STATUS_LABEL } from './lots';
 import { STATUS_LABEL as INC_STATUS } from './incidents';
 import { approvedPlan, PLAN_STATUS } from './haccp';
+import { limitsText } from './ccp';
 import QRCode from 'qrcode';
 import { clauseById, DOCS } from '../norms/library';
 import { registerNormRefs } from '../readiness/engine';
@@ -27,7 +28,7 @@ const FORMS: FormDef[] = (formsJson as { forms: FormDef[] }).forms;
 export const FORM_BY_CODE = new Map(FORMS.map((f) => [f.code, f]));
 
 type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan' | 'repairs' | 'cleaning' | 'washing' | 'concentration' | 'health' | 'briefing_sanitary' | 'briefing_safety'
-  | 'opening' | 'semi_release' | 'label_prints' | 'relabels' | 'dish_release' | 'samples' | 'lab';
+  | 'opening' | 'semi_release' | 'label_prints' | 'relabels' | 'dish_release' | 'samples' | 'lab' | 'ccp_cook' | 'ccp_cool' | 'ccp_reheat';
 /** Формы, собираемые из событий. Остальные — ручная запись. */
 const AUTO: Record<string, Source> = {
   J01: 'cold', J25: 'cold', J42: 'cold_grid', J04: 'room', J43: 'room_grid',
@@ -37,6 +38,8 @@ const AUTO: Record<string, Source> = {
   J07: 'health', J16: 'briefing_sanitary', J17: 'briefing_safety',   // персонал (этап 16)
   // ТЗ доработки, 7.5: вскрытие, выпуск, маркировка, суточные пробы, лаборатория — из реальных событий
   J54: 'opening', J55: 'semi_release', J56: 'label_prints', J57: 'relabels', J58: 'dish_release', J59: 'samples', J60: 'lab',
+  // этап 1 доработки под кухню: ККТ — из замеров при выпуске (production_checks); ручная запись — только исправлением замера с причиной
+  J22: 'ccp_cook', J23: 'ccp_cool', J24: 'ccp_reheat',
 };
 /**
  * Для ручных семейств — форма, в которой хранятся данные. Пара форм (J02 ↔ J40) — одни данные, печатный вид
@@ -53,6 +56,7 @@ const FORM_BASIS: Record<string, string[]> = {
   J30: ['trts021:10.3'], J31: ['trts021:11.3'], J32: ['trts021:11.3'], J34: ['trts021:11.3'], J38: ['sanpin4282:44'], J41: ['sanpin4282:44'],
   J54: ['trts021:17.7'], J55: ['sanpin4282:11'], J56: ['trts022:1.2'], J57: ['trts022:1.2'], J58: ['sanpin4282:11', 'sanpin4282:32'],
   J59: ['sanpin4282:56.4', 'sanpin4282:59.10'], J60: ['sp4284:3'],
+  J22: ['trts021:11.3', 'trts021:10.3'], J23: ['trts021:11.3', 'trts021:10.3'], J24: ['trts021:11.3', 'trts021:10.3'],
 };
 registerNormRefs('journals', Object.values(FORM_BASIS).flat());
 export function formBasis(code: string) {
@@ -68,7 +72,7 @@ export function dataFormOf(code: string): string {
 
 const INC_BLOCK: Partial<Record<Source, string[]>> = {
   cold: ['temperature_deviation'], cold_grid: ['temperature_deviation'], room: ['temperature_deviation'], room_grid: ['temperature_deviation'],
-  receipt: ['receipt_problem'], lots: ['expired_lot'], semi_release: ['release_check'], dish_release: ['release_check'], lab: ['lab_fail'], repairs: ['equipment'], cleaning: ['sanitation'], washing: ['sanitation'], concentration: ['sanitation'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail', 'equipment', 'sanitation'],
+  receipt: ['receipt_problem'], lots: ['expired_lot'], semi_release: ['release_check'], dish_release: ['release_check'], ccp_cook: ['release_check'], ccp_cool: ['release_check'], ccp_reheat: ['release_check'], lab: ['lab_fail'], repairs: ['equipment'], cleaning: ['sanitation'], washing: ['sanitation'], concentration: ['sanitation'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail', 'equipment', 'sanitation'],
 };
 
 export function listForms() {
@@ -292,8 +296,8 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
         (select string_agg(p.name || ' ' || coalesce(pl.lot_no, 'б/н'), '; ' order by p.name) from lot_links k join lots pl on pl.id = k.parent_lot_id join products p on p.id = pl.product_id
            where k.child_lot_id = o.output_lot_id and k.kind = 'production') as raw,
         (select lb.code from labels lb where lb.lot_id = o.output_lot_id order by lb.created_at limit 1) as label,
-        (select count(*)::int from production_checks pc where pc.order_id = o.id) as checks,
-        (select count(*)::int from production_checks pc where pc.order_id = o.id and not pc.ok) as bad
+        (select count(*)::int from production_checks pc where pc.order_id = o.id and pc.phase <> 'start' and not exists (select 1 from production_checks x where x.corrects_id = pc.id)) as checks,
+        (select count(*)::int from production_checks pc where pc.order_id = o.id and pc.phase <> 'start' and not pc.ok and not exists (select 1 from production_checks x where x.corrects_id = pc.id)) as bad
       from production_orders o join dishes d on d.id = o.dish_id join ttk_versions v on v.id = o.ttk_version_id left join lots l on l.id = o.output_lot_id left join users u on u.id = o.completed_by
       where o.organization_id = $1 and o.site_id = $2 and o.status = 'done' and d.kind = $3 and o.completed_at between ${periodSql(4, 5, 6)} order by o.completed_at`,
       [c.orgId, c.siteId, src === 'semi_release' ? 'semi' : 'dish', c.from, c.to, c.tz])).rows;
@@ -305,6 +309,7 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
       x.release_decision === 'allowed' && x.lot_status === 'available' && !x.bad ? 'разрешено' : `не разрешено (${x.release_decision === 'rejected' ? 'бракераж' : LOT_STATUS_LABEL[x.lot_status] || x.lot_status || 'нет партии'})`,
       fmtDT(x.expires_at, tz), x.who || '—']), links: r.map((x) => `/app/${c.orgId}/production/${x.id}`) };
   }
+  if (src === 'ccp_cook' || src === 'ccp_cool' || src === 'ccp_reheat') return ccpRows(c, code, src);
   if (src === 'label_prints') {
     const SRC: Record<string, string> = { lot: 'этикетка партии', opened: 'вскрытие тары', consumer: 'потребительская этикетка' };
     const r = (await c.tx.query(`select lb.lot_id, pr.printed_at, pr.copies, pr.reason, lb.code, lb.kind, lb.payload->>'lot_no' as lot_no, lb.payload->>'product' as product, u.full_name as who
@@ -368,6 +373,54 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
     return i === df.columns.length - 1 && (e.corrects_id || e.is_late) ? [v, e.corrects_id ? `исправлено: ${e.correction_reason}` : '', e.is_late ? `внесено ${fmtDT(e.entered_at, tz)}` : ''].filter(Boolean).join('; ') : String(v);
   }));
   return { columns: df.columns, rows };
+}
+
+/**
+ * J22–J24 из замеров при выпуске: вид замера параметра выпуска (тепловая обработка, охлаждение, разогрев), время — время
+ * замера в поясе предприятия, исправленные записи заменяются исправлением (с причиной), исходное значение — в примечании.
+ * Записи, внесённые вручную до перевода журнала на автосбор, показываются отдельными строками с пометкой.
+ */
+async function ccpRows(c: Ctx, code: string, src: 'ccp_cook' | 'ccp_cool' | 'ccp_reheat') {
+  const f = FORM_BY_CODE.get(code)!, tz = c.tz;
+  const kind = ({ ccp_cook: 'core_temp', ccp_cool: 'cooling', ccp_reheat: 'reheat' } as const)[src];
+  const rs = (await c.tx.query(`select pc.*, r.name, r.unit, r.min_value, r.max_value, r.max_minutes, r.start_min, r.kind, r.ccp_code, d.name as dish, o.id as order_id, o.status as order_status,
+      l.lot_no, l.status as lot_status, u.full_name as who, i.recommended_action, i.status as inc_status, i.action_note,
+      orig.value as orig_value,
+      (select s.value from production_checks s where s.id = pc.start_id or s.corrects_id = pc.start_id order by s.recorded_at desc limit 1) as start_value,
+      (select s.measured_at from production_checks s where s.id = pc.start_id) as start_at
+    from production_checks pc join release_checks r on r.id = pc.check_id join production_orders o on o.id = pc.order_id join dishes d on d.id = o.dish_id
+      left join lots l on l.id = o.output_lot_id join users u on u.id = pc.recorded_by left join incidents i on i.id = pc.incident_id
+      left join production_checks orig on orig.id = pc.corrects_id
+    where pc.organization_id = $1 and o.site_id = $2 and r.kind = $3 and pc.measured_at between ${periodSql(4, 5, 6)}
+      and not exists (select 1 from production_checks x where x.corrects_id = pc.id)
+      and (r.kind <> 'cooling' or pc.phase = 'end' or not exists (select 1 from production_checks e where e.phase = 'end' and (e.start_id = pc.id or e.start_id = pc.corrects_id)))
+    order by pc.measured_at`, [c.orgId, c.siteId, kind, c.from, c.to, c.tz])).rows;
+  const lot = (x: Record<string, any>) => x.lot_no ? `${x.lot_no}${x.lot_status === 'quarantine' ? ' (карантин)' : ''}` : x.order_status === 'cancelled' ? 'не выпущена (задание отменено)' : 'не выпущена (задание в работе)';
+  const lim = (x: Record<string, any>) => `${limitsText(x)}${x.ccp_code ? ` (${x.ccp_code})` : ''}`;
+  const act = (x: Record<string, any>) => (x.ok ? '—' : [x.recommended_action || 'отклонение', x.inc_status ? `отклонение: ${INC_STATUS[x.inc_status]}` : '', x.action_note ? `сделано: ${x.action_note}` : ''].filter(Boolean).join('; '));
+  const who = (x: Record<string, any>) => [x.who, x.corrects_id ? `исправлено (было ${fmtNum(x.orig_value)}): ${x.correction_reason}` : '',
+    Math.abs(new Date(x.recorded_at).getTime() - new Date(x.measured_at).getTime()) > 15 * 60e3 ? `внесено ${fmtDT(x.recorded_at, tz)}` : ''].filter(Boolean).join('; ');
+  const t = (v: unknown, u: string) => (v === null || v === undefined ? '—' : `${fmtNum(v as number)} ${u}`);
+  const rows: string[][] = [], links: (string | null)[] = [];
+  for (const x of rs) {
+    links.push(`/app/${c.orgId}/production/${x.order_id}`);
+    if (src === 'ccp_cook') rows.push([fmtD(x.measured_at, tz), x.dish, lot(x), x.instrument ? `щуп: ${x.instrument}` : '—', t(x.value_before, x.unit), t(x.value, x.unit),
+      [fmtT(x.measured_at, tz), x.duration_min !== null ? `${fmtNum(x.duration_min)} мин` : ''].filter(Boolean).join(', '), lim(x), x.ok ? 'да' : 'нет', act(x), who(x)]);
+    else if (src === 'ccp_reheat') rows.push([fmtD(x.measured_at, tz), x.dish, lot(x), t(x.value_before, x.unit), t(x.value, x.unit),
+      [fmtT(x.measured_at, tz), x.duration_min !== null ? `${fmtNum(x.duration_min)} мин` : ''].filter(Boolean).join(', '), lim(x), x.ok ? 'да' : 'нет', act(x), who(x)]);
+    else if (x.phase === 'end') rows.push([fmtD(x.start_at, tz), x.dish, lot(x), fmtT(x.start_at, tz), t(x.start_value, x.unit), '—', t(x.value, x.unit), fmtT(x.measured_at, tz),
+      `${lim(x)}: ${x.ok ? 'соответствует' : 'не соответствует'}, ${fmtNum(x.duration_min)} мин`, act(x), who(x)]);
+    else rows.push([fmtD(x.measured_at, tz), x.dish, lot(x), fmtT(x.measured_at, tz), t(x.value, x.unit), '—', '—', '—', `${lim(x)}: охлаждение не завершено — нет конечного замера`, act(x), who(x)]);
+  }
+  // записи, внесённые вручную до автосбора (данные не теряются; новые ручные строки не принимаются)
+  const es = (await c.tx.query(`select e.*, u.full_name as author from journal_entries e join users u on u.id = e.author_user_id
+    where e.organization_id = $1 and e.site_id = $2 and e.form_code = $3 and e.occurred_at between ${periodSql(4, 5, 6)}
+      and not exists (select 1 from journal_entries x where x.corrects_id = e.id) order by e.occurred_at`, [c.orgId, c.siteId, code, c.from, c.to, c.tz])).rows;
+  for (const e of es) {
+    rows.push(f.columns.map((_, i) => (i === f.columns.length - 1 ? [e.values?.[String(i)] ?? '', 'ручная запись до автосбора'].filter(Boolean).join('; ') : String(e.values?.[String(i)] ?? ''))));
+    links.push(null);
+  }
+  return { columns: f.columns, rows, links };
 }
 
 /**

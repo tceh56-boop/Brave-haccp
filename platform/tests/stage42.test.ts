@@ -5,7 +5,7 @@ import { createOrganization, inviteMember, acceptInvitation } from '../src/serve
 import { createProduct, createSupplier } from '../src/server/ops/catalog';
 import { createReceipt, addReceiptLine, completeReceipt } from '../src/server/ops/receipts';
 import { createDish, getDish, updateVersion, addLine, submitVersion, approveVersion } from '../src/server/ops/recipes';
-import { createProduction, startProduction, completeProduction, addReleaseCheck, recordCheck } from '../src/server/ops/production';
+import { createProduction, startProduction, completeProduction, addReleaseCheck, approveReleaseCheck, recordCheck } from '../src/server/ops/production';
 import { openLot } from '../src/server/ops/labels';
 import { blockLot } from '../src/server/ops/recalls';
 import { productPassport } from '../src/server/ops/passport';
@@ -55,6 +55,7 @@ beforeAll(async () => {
 describe('Паспорт продукта', () => {
   it('выпущенная партия: происхождение до поставщика и ВСД, версия ТТК, замер ККТ, факт против нормы, «нет данных»', async () => {
     const ck = await addReleaseCheck(haccp.id, orgId, dish, { name: 'Температура в толще', unit: '°C', min: 75, basis: 'План ХАССП, ККТ-1' });
+    await approveReleaseCheck(owner.id, orgId, ck.id);
     const o = await createProduction(chef.id, orgId, { siteId, dishId: dish, plannedKg: 1, plannedFor: today() });
     await startProduction(cook.id, orgId, o.id);
     await recordCheck(cook.id, orgId, o.id, { checkId: ck.id, value: 80 });

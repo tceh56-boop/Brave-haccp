@@ -164,7 +164,7 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           {data.versions.some((x) => x.status === 'approved') && can('cost.read') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/costing`}>Калькуляционная карточка (ОП-1)</Link>}
           {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/tu`}>Технические условия (ТУ)</Link>}
           {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/ti`}>Технологическая инструкция (ТИ)</Link>}
-          {data.dish.kind === 'semi' && <ReleaseChecks dishId={dishId} />}
+          <ReleaseChecks dishId={dishId} />
           {data.dish.kind === 'semi' && data.versions.some((x) => x.status === 'approved') && can('production.plan') && (
             <Link className="btn block secondary" href={`/app/${org.id}/production?dish=${dishId}`}>Поставить в производство</Link>)}
         </>
@@ -187,40 +187,81 @@ function Price({ dish, onDone }: { dish: Data['dish']; onDone: () => void }) {
   );
 }
 
-interface RCheck { id: string; name: string; unit: string; limits: string; basis: string }
+interface RCheck { id: string; name: string; unit: string; limits: string; basis: string; status: string; kind: string; kind_label: string; ccp_code: string | null; approved_by_name: string | null; approved_at: string | null }
+interface Ccp { code: string; class: string; what: string; record_form: string | null }
+const KIND_OPTS: [string, string][] = [['other', 'Замер при выпуске'], ['core_temp', 'Тепловая обработка: температура в толще'], ['cooling', 'Охлаждение: начало и конец'], ['reheat', 'Разогрев']];
+const FORM_KIND: Record<string, string> = { J22: 'core_temp', J23: 'cooling', J24: 'reheat' };
 
-/** Контроль при выпуске п/ф (ККТ): параметры с пределами и основанием; выпуск закрыт без замера в пределах. */
+/**
+ * Контроль при выпуске (ККТ): предел замера для блюда/п/ф по ККТ плана ХАССП. Проект вводит ответственный ХАССП, действует после
+ * утверждения (право утверждения плана). Нет утверждённого предела для этапа ТТК с ККТ — «не настроено», выпуск закрыт.
+ */
 function ReleaseChecks({ dishId }: { dishId: string }) {
   const { org, can } = useOrg();
   const [list, setList] = useState<RCheck[]>([]);
-  const [f, setF] = useState({ name: 'Температура в толще продукта', unit: '°C', min: '', max: '', basis: '' });
+  const [ccps, setCcps] = useState<Ccp[]>([]);
+  const [f, setF] = useState({ name: 'Температура в толще продукта', unit: '°C', min: '', max: '', basis: '', ccpCode: '', kind: 'other', maxMinutes: '', startMin: '' });
   const { busy, error, run } = useSubmit();
   const load = useCallback(() => api<RCheck[]>(`/orgs/${org.id}/dishes/${dishId}/release-checks`).then(setList).catch(() => setList([])), [org.id, dishId]);
   useEffect(() => { load(); }, [load]);
-  const manage = can('haccp.manage');
+  useEffect(() => {
+    // ККТ/ОПП с мониторингом — только из утверждённого плана (по умолчанию API отдаёт черновик, если он есть)
+    type Plan = { versions: { id: string; status: string }[]; current: { plan: { id: string; status: string }; hazards: { code: string; class: string | null; monitoring: { what: string; record_form: string | null } | null }[] } | null };
+    (async () => {
+      const p = await api<Plan>(`/orgs/${org.id}/haccp`);
+      const ap = p.versions.find((v) => v.status === 'approved');
+      if (!ap) return setCcps([]);
+      const cur = p.current?.plan.id === ap.id ? p.current : (await api<Plan>(`/orgs/${org.id}/haccp?planId=${ap.id}`)).current;
+      setCcps((cur?.hazards || []).filter((h) => (h.class === 'ccp' || h.class === 'oprp') && h.monitoring).map((h) => ({ code: h.code, class: h.class!, what: h.monitoring!.what, record_form: h.monitoring!.record_form })));
+    })().catch(() => setCcps([]));
+  }, [org.id]);
+  const manage = can('haccp.manage'), approve = can('haccp.approve');
   const num = (s: string) => (s.trim() ? s.replace(',', '.') : null);
+  const ccp = ccps.find((c) => c.code === f.ccpCode);
+  const kind = (ccp?.record_form && FORM_KIND[ccp.record_form]) || f.kind;
   return (
     <div className="card">
       <h2>Контроль при выпуске (ККТ)</h2>
-      <p className="small muted">Пока последний замер по каждому параметру не в пределах, партию п/ф не выпустить. Замер вне предела — отклонение ответственному ХАССП.</p>
-      {list.length === 0 ? <p className="small">Параметры не заданы — п/ф выпускается без замеров.</p> : (
+      <p className="small muted">Какие замеры нужны — из этапов ТТК со ссылкой на ККТ плана ХАССП. Здесь — утверждённый предел для этого блюда. Без замера партию не выпустить;
+        последний замер вне предела — партия уходит в карантин, отклонение и CAPA. Щуп — только с действующей поверкой.</p>
+      {list.length === 0 ? <p className="small">Параметры не заданы.</p> : (
         <ul className="list">{list.map((c) => (
-          <li key={c.id} className="between"><div><b>{c.name}</b>: {c.limits}<div className="small muted">{c.basis}</div></div>
-            {manage && <button className="btn small secondary" disabled={busy} onClick={() => { const reason = prompt('Основание снятия параметра (например, новая версия плана ХАССП):'); if (reason) run(async () => { await api(`/orgs/${org.id}/release-checks/${c.id}/archive`, { body: { reason } }); await load(); }); }}>Снять</button>}
+          <li key={c.id} className="between"><div><b>{c.name}</b>: {c.limits} <span className={`badge ${c.status === 'active' ? 'ok' : 'warn'}`}>{c.status === 'active' ? 'утверждён' : 'проект'}</span>
+            <div className="small muted">{c.kind_label}{c.ccp_code ? ` · ${c.ccp_code}` : ''} · {c.basis}{c.approved_by_name ? ` · утвердил ${c.approved_by_name}` : ''}</div></div>
+            <div className="row">
+              {approve && c.status === 'draft' && <button className="btn small" disabled={busy} onClick={() => run(async () => { await api(`/orgs/${org.id}/release-checks/${c.id}/approve`, { body: {} }); await load(); })}>Утвердить</button>}
+              {manage && <button className="btn small secondary" disabled={busy} onClick={() => { const reason = prompt('Основание снятия параметра (например, новая версия плана ХАССП):'); if (reason) run(async () => { await api(`/orgs/${org.id}/release-checks/${c.id}/archive`, { body: { reason } }); await load(); }); }}>Снять</button>}
+            </div>
           </li>))}</ul>
       )}
       {manage && (
-        <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/dishes/${dishId}/release-checks`, { body: { ...f, min: num(f.min), max: num(f.max) } }); setF({ ...f, min: '', max: '', basis: '' }); await load(); }); }}>
-          <h3 style={{ marginTop: 12 }}>Добавить параметр</h3>
+        <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+          await api(`/orgs/${org.id}/dishes/${dishId}/release-checks`, { body: { name: f.name, unit: f.unit, basis: f.basis, min: num(f.min), max: num(f.max), ccpCode: f.ccpCode || null,
+            kind: f.ccpCode ? undefined : f.kind, maxMinutes: kind === 'cooling' ? num(f.maxMinutes) : null, startMin: kind === 'cooling' ? num(f.startMin) : null } });
+          setF({ ...f, min: '', max: '', basis: '', maxMinutes: '', startMin: '' }); await load(); }); }}>
+          <h3 style={{ marginTop: 12 }}>Проект параметра</h3>
+          <label htmlFor="rcc">ККТ / ОПП утверждённого плана ХАССП</label>
+          <select id="rcc" value={f.ccpCode} onChange={(e) => setF({ ...f, ccpCode: e.target.value })}>
+            <option value="">— без ссылки на план —</option>
+            {ccps.map((c) => <option key={c.code} value={c.code}>{c.code} {c.class === 'ccp' ? 'ККТ' : 'ОПП'}: {c.what}{c.record_form ? ` (${c.record_form})` : ''}</option>)}
+          </select>
+          {f.ccpCode ? <p className="small muted">Вид замера по форме мониторинга: {KIND_OPTS.find(([k]) => k === kind)?.[1]}.</p> : <>
+            <label htmlFor="rck">Вид замера</label>
+            <select id="rck" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{KIND_OPTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></>}
           <label htmlFor="rcn">Что измеряется</label><input id="rcn" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           <div className="grid2">
-            <div><label htmlFor="rcmin">Не ниже</label><input id="rcmin" inputMode="decimal" value={f.min} onChange={(e) => setF({ ...f, min: e.target.value })} placeholder="75" /></div>
-            <div><label htmlFor="rcmax">Не выше</label><input id="rcmax" inputMode="decimal" value={f.max} onChange={(e) => setF({ ...f, max: e.target.value })} /></div>
+            <div><label htmlFor="rcmin">{kind === 'cooling' ? 'В конце не ниже' : 'Не ниже'}</label><input id="rcmin" inputMode="decimal" value={f.min} onChange={(e) => setF({ ...f, min: e.target.value })} /></div>
+            <div><label htmlFor="rcmax">{kind === 'cooling' ? 'В конце не выше' : 'Не выше'}</label><input id="rcmax" inputMode="decimal" value={f.max} onChange={(e) => setF({ ...f, max: e.target.value })} /></div>
           </div>
+          {kind === 'cooling' && <div className="grid2">
+            <div><label htmlFor="rcmm">Не дольше, мин</label><input id="rcmm" required inputMode="decimal" value={f.maxMinutes} onChange={(e) => setF({ ...f, maxMinutes: e.target.value })} /></div>
+            <div><label htmlFor="rcsm">В начале не ниже</label><input id="rcsm" inputMode="decimal" value={f.startMin} onChange={(e) => setF({ ...f, startMin: e.target.value })} /></div>
+          </div>}
           <label htmlFor="rcu">Единица</label><input id="rcu" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} />
-          <label htmlFor="rcb">Основание</label><input id="rcb" required value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })} placeholder="План ХАССП: ККТ-1, тепловая обработка" />
+          <label htmlFor="rcb">Основание</label><input id="rcb" required value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })} placeholder="План ХАССП v1, О-01; ТТК, технология" />
+          <p className="small muted">Значения предела вносятся из утверждённых документов предприятия — система их не подставляет.</p>
           {error && <div className="err">{error}</div>}
-          <button className="btn block secondary" disabled={busy}>Добавить параметр</button>
+          <button className="btn block secondary" disabled={busy}>Сохранить проект</button>
         </form>
       )}
     </div>

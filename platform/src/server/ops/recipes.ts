@@ -705,8 +705,8 @@ export async function newVersion(userId: string, orgId: string, dishId: string, 
       [orgId, dishId, max + 1, src.yield_g, src.portion_g, src.technology, src.storage_conditions, src.shelf_life, src.quality, src.allergens, src.source, d.changeReason, userId, src.shelf_life_hours, src.semi_yield_g,
         JSON.stringify(src.organoleptic || {}), src.serving, src.menu_description, src.storage_hours, src.sale_hours, src.opened_hours, src.shelf_basis])).rows[0];
     await copyLines(tx, src.id, v.id, 0);
-    await tx.query(`insert into ttk_stages (organization_id, version_id, position, operation, plan_id, plan_object_id, state, params, control)
-      select organization_id, $2, position, operation, plan_id, plan_object_id, state, params, control from ttk_stages where version_id = $1`, [src.id, v.id]);
+    await tx.query(`insert into ttk_stages (organization_id, version_id, position, operation, plan_id, plan_object_id, state, params, control, ccp_code)
+      select organization_id, $2, position, operation, plan_id, plan_object_id, state, params, control, ccp_code from ttk_stages where version_id = $1`, [src.id, v.id]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'ttk.new_version', entityType: 'ttk_version', entityId: v.id, after: { version: v.version, from: src.version }, reason: d.changeReason });
     return v;
   });
