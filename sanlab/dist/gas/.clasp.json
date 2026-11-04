@@ -16,6 +16,7 @@
     "FinanceService.gs",
     "DashboardService.gs",
     "DocxWriter.gs",
+    "JournalCatalog.gs",
     "DocsService.gs",
     "PackService.gs",
     "Api.gs",

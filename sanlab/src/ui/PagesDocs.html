@@ -31,7 +31,7 @@ function docRowHtml(s, r, i, editable) {
     var v = (r.c || [])[ci] || '';
     return '<td>' + (editable ? '<textarea class="inp cell" rows="' + Math.min(6, Math.max(1, Math.ceil(String(v).length / 42))) + '" data-ci="' + ci + '">' + esc(v) + '</textarea>' : esc(v).replace(/\n/g, '<br>')) + '</td>';
   }).join('');
-  var ref = r.manual ? '<span class="small muted">' + (r.src === 'input' ? 'данные организации' : 'добавлено вручную') + '</span>' : '<span class="small">' + esc(r.ref || '') + '</span><br>' + (r.v === false ? pill('не сверено', 'warn') : pill('сверено', 'ok'));
+  var ref = r.manual ? (r.src === 'tpl' ? '<span class="small">' + esc(r.ref || '') + '</span>' + (r.ref ? '<br>' : '') + '<span class="small muted">шаблон San.Lab</span>' : '<span class="small muted">' + (r.src === 'input' ? 'данные организации' : 'добавлено вручную') + '</span>') : '<span class="small">' + esc(r.ref || '') + '</span><br>' + (r.v === false ? pill('не сверено', 'warn') : pill('сверено', 'ok'));
   return '<tr data-i="' + (i === null ? '' : i) + '"' + (r.v === false ? ' class="unv"' : '') + '><td class="num">' + (i === null ? '+' : i + 1) + '</td>' + cells + '<td>' + ref + '</td>' + (editable ? '<td><button class="icon-btn sm" title="Удалить строку" data-a="docRowDel">' + ic('x') + '</button></td>' : '') + '</tr>';
 }
 function readDocEditor(root) {

@@ -47,8 +47,8 @@ var SCHEMA = {
   NormDocs: ['norm_id', 'code', 'title', 'kind', 'valid_from', 'valid_until', 'status', 'scopes', 'verified', 'verified_by', 'verified_at', 'source_url', 'notes'].concat(AUDIT_COLS),
   NormItems: ['norm_item_id', 'norm_id', 'section', 'clause', 'text', 'applies', 'product_group', 'indicator', 'norm_value', 'frequency', 'volume', 'sort_order', 'active', 'verified'].concat(AUDIT_COLS),
   /* Программы производственного контроля и технические условия: содержимое — JSON разделов */
-  Programs: ['program_id', 'client_id', 'site_id', 'title', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'review_due_date', 'prev_program_id'].concat(AUDIT_COLS),
-  TechSpecs: ['spec_id', 'client_id', 'designation', 'product_name', 'product_group', 'okpd2', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'prev_spec_id'].concat(AUDIT_COLS)
+  Programs: ['program_id', 'client_id', 'site_id', 'title', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'review_due_date', 'prev_program_id'].concat(AUDIT_COLS).concat(['content_json2', 'content_json3', 'content_json4']),
+  TechSpecs: ['spec_id', 'client_id', 'designation', 'product_name', 'product_group', 'okpd2', 'version', 'status', 'profile_json', 'content_json', 'unverified_count', 'unverified_reason', 'approved_by', 'approved_at', 'document_id', 'prev_spec_id'].concat(AUDIT_COLS).concat(['content_json2', 'content_json3', 'content_json4'])
 };
 
 /* Подписи листов для интерфейса */

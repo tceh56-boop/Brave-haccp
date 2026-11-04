@@ -56,7 +56,14 @@ var Store = (function () {
   function rowValues(name, o, width, map) {
     var cols = SCHEMA[name], arr = [];
     for (var w = 0; w < width; w++) arr.push('');
-    for (var j = 0; j < cols.length; j++) arr[map[j]] = toCell(cols[j], o[cols[j]]);
+    for (var j = 0; j < cols.length; j++) {
+      if (map[j] < 0) {
+        /* Колонки нет на листе (после обновления не запускали setup) — не теряем часть содержания молча */
+        if (/^content_json\d$/.test(cols[j]) && o[cols[j]]) throw new AppError('SETUP_REQUIRED', 'Документ не помещается в одну ячейку, а на листе «' + name + '» нет колонки ' + cols[j] + '. Руководителю: запустите функцию setup() в редакторе Apps Script и повторите.');
+        continue;
+      }
+      arr[map[j]] = toCell(cols[j], o[cols[j]]);
+    }
     return arr;
   }
 

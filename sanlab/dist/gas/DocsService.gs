@@ -158,11 +158,19 @@ var DocContent = {
     });
     return { sections: out, built_at: oldC.built_at, norms: oldC.norms };
   },
+  /* Содержание хранится частями в content_json, content_json2…4 (ячейка Google Таблицы — до 50 000 символов) */
+  PARTS: ['content_json', 'content_json2', 'content_json3', 'content_json4'],
   serialize: function (content) {
     var s = JSON.stringify(content);
-    if (s.length > DocContent.MAX) fail('VALIDATION', 'Документ слишком большой для хранения (' + s.length + ' символов). Сократите тексты или разделите таблицы.');
+    if (s.length > DocContent.MAX * DocContent.PARTS.length) fail('VALIDATION', 'Документ слишком большой для хранения (' + s.length + ' символов). Сократите тексты или разделите таблицы.');
     return s;
   },
+  put: function (o, content) {
+    var s = DocContent.serialize(content);
+    DocContent.PARTS.forEach(function (k, i) { o[k] = s.slice(i * DocContent.MAX, (i + 1) * DocContent.MAX); });
+    return o;
+  },
+  load: function (rec) { return safeJson(DocContent.PARTS.map(function (k) { return rec[k] || ''; }).join(''), { sections: [] }); },
   esc: function (s) { return ReportHtml.esc(s); },
   multiline: function (s) { return DocContent.esc(s).replace(/\n/g, '<br>'); },
   css: 'body{font-family:"Times New Roman",Times,serif;color:#111;font-size:12pt;margin:36px 44px;line-height:1.35}h1{font-size:15pt;text-align:center;margin:18px 0 6px}h2{font-size:12.5pt;margin:20px 0 8px}' +
@@ -181,7 +189,7 @@ var DocContent = {
       h.push('<table><tr><th style="width:26px">№</th>' + s.cols.map(function (c) { return '<th>' + e(c) + '</th>'; }).join('') + '<th style="width:22%">Основание</th></tr>');
       s.rows.forEach(function (r, i) {
         h.push('<tr' + (r.v === false ? ' class="unv"' : '') + '><td>' + (i + 1) + '</td>' + r.c.map(function (c) { return '<td>' + DocContent.multiline(c) + '</td>'; }).join('') +
-          '<td class="ref">' + e(r.ref || (r.manual ? (r.src === 'input' ? 'данные организации' : 'по решению организации') : '')) + (r.v === false ? '<br><span class="flag">не сверено</span>' : '') + '</td></tr>');
+          '<td class="ref">' + e(r.ref || (r.manual ? (r.src === 'input' ? 'данные организации' : 'по решению организации') : '')) + (r.manual && r.src === 'tpl' ? '<br><span class="muted">шаблон San.Lab</span>' : '') + (r.v === false ? '<br><span class="flag">не сверено</span>' : '') + '</td></tr>');
       });
       h.push('</table>');
       if (s.note) h.push('<p class="small muted">' + DocContent.multiline(s.note) + '</p>');
@@ -245,7 +253,7 @@ var Programs = {
     }
     var prof = Programs.profile(p.profile || (old ? safeJson(old.profile_json, {}) : {}));
     var content = Programs.compose(ctx, client, site, prof);
-    var data = { profile_json: JSON.stringify(prof), content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content), title: 'Программа производственного контроля: ' + site.site_name };
+    var data = DocContent.put({ profile_json: JSON.stringify(prof), unverified_count: DocContent.unverified(content), title: 'Программа производственного контроля: ' + site.site_name }, content);
     if (old) return Programs.get(ctx, { program_id: Repo.update(ctx, 'Programs', old.program_id, data, { action: 'PPC_REBUILD' }).program_id });
     var prev = Repo.where('Programs', function (x) { return x.site_id === site.site_id; });
     var ver = 1; prev.forEach(function (x) { ver = Math.max(ver, Number(x.version) + 1); });
@@ -291,18 +299,29 @@ var Programs = {
       (by.CCP || []).map(function (i) { return R([i.text, i.indicator, i.norm_value, i.frequency], D[i.norm_id], i); })));
     sec.push(DocContent.table('emerg', 'Возможные аварийные ситуации и действия персонала', ['Ситуация', 'Действия'],
       (by.EMERG || []).map(function (i) { return R([i.text, i.norm_value], D[i.norm_id], i); })));
-    sec.push(DocContent.table('journals', 'Формы учёта и отчётности по производственному контролю', ['Форма учёта', 'Периодичность заполнения', 'Ответственный'],
-      (by.JOURNAL || []).map(function (i) { return R([i.text, i.frequency, i.indicator], D[i.norm_id], i); })));
+    /* Реестр журналов объекта: журналы из реестра J01–J53, применимые к признакам объекта; периодичность и основание — из нормативной базы, если положение найдено */
+    var nj = (by.JOURNAL || []).slice(), jrows = [];
+    JournalCat.forSite(flags).concat(filterBy(JOURNAL_EXTRA, function (j) { return JournalCat.applies(j, flags); })).forEach(function (j) {
+      var re = j.match ? new RegExp(j.match, 'i') : null, hit = null;
+      for (var k = 0; re && k < nj.length; k++) if (re.test(nj[k].text)) { hit = nj.splice(k, 1)[0]; break; }
+      if (hit) jrows.push(R([j.id, j.title, hit.frequency || j.freq, hit.indicator || j.resp], D[hit.norm_id], hit));
+      else { var r = R([j.id, j.title, j.freq, j.resp], null, null, true); r.src = 'tpl'; r.ref = j.basis; jrows.push(r); }
+    });
+    nj.forEach(function (i) { jrows.push(R(['', i.text, i.frequency, i.indicator], D[i.norm_id], i)); });
+    sec.push(DocContent.table('journals', 'Реестр журналов: формы учёта и отчётности по производственному контролю', ['ID', 'Форма учёта', 'Периодичность заполнения', 'Ответственный'], jrows,
+      'Номера J — по реестру журналов J01–J53. Журналы, дублирующие друг друга, ведутся в одной форме; полный реестр с причинами — в комплекте документов.'));
     var meas = (by.MEASURE || []).map(function (i) { return R([i.text, i.frequency, i.indicator], D[i.norm_id], i); });
     if (prof.pest_control) meas.push(R(['Дезинсекция и дератизация по договору со специализированной организацией: ' + prof.pest_control, 'по договору', ''], null, null, true));
     if (prof.waste) meas.push(R(['Вывоз отходов по договору: ' + prof.waste, 'по графику вывоза', ''], null, null, true));
     sec.push(DocContent.table('measures', 'Мероприятия производственного контроля', ['Мероприятие', 'Периодичность', 'Ответственный'], meas));
+    sec.push(DocContent.table('checklists', 'Чек-листы производственного контроля', ['Чек-лист', 'Контрольный пункт'], Checklists2.build(ctx, flags, sec),
+      'Коды чек-листов: ' + Checklists2.LISTS.map(function (l) { return l[0] + ' — ' + l[1].replace(/^Чек-лист /, '') + ' (' + l[2] + ')'; }).join('; ') + '. Пункты сформированы по положениям нормативной базы и признакам объекта; можно добавить свой пункт или чек-лист со своим кодом. В комплекте каждый чек-лист — отдельный бланк.'));
     sec.push(DocContent.text('final', 'Заключительные положения', 'Программа вступает в силу с даты утверждения. Программа пересматривается при изменении вида деятельности, ассортимента, технологии, нормативных документов, а также не реже одного раза в ' + (Settings.num('PPC_REVIEW_MONTHS') || 12) + ' мес. Результаты производственного контроля фиксируются в формах учёта и хранятся в организации.' + (prof.extra ? '\n' + prof.extra : '')));
     return { sections: sec, built_at: ctx.now, norms: Object.keys(usedDocs) };
   },
 
   enrich: function (rec) {
-    var o = stripSecrets(rec); delete o.content_json; delete o.profile_json;
+    var o = stripSecrets(rec); delete o.content_json; delete o.content_json2; delete o.content_json3; delete o.content_json4; delete o.profile_json;
     var c = Repo.get('Clients', rec.client_id) || {}, s = Repo.get('Sites', rec.site_id) || {};
     o.client_name = c.legal_name || ''; o.site_name = s.site_name || ''; o.site_address = s.address || '';
     return o;
@@ -314,7 +333,7 @@ var Programs = {
   },
   get: function (ctx, p) {
     var rec = Repo.must('Programs', p.program_id, 'Программа');
-    var content = safeJson(rec.content_json, { sections: [] });
+    var content = DocContent.load(rec);
     var warn = [], warnDays = Settings.num('NORM_EXPIRY_WARN_DAYS') || 90;
     (content.norms || []).forEach(function (id) {
       var d = Repo.get('NormDocs', id); if (!d) return;
@@ -327,8 +346,8 @@ var Programs = {
   save: function (ctx, p) {
     var rec = Repo.must('Programs', p.program_id, 'Программа');
     if (rec.status !== 'DRAFT') fail('INVALID_STATUS', 'Утверждённую программу изменить нельзя. Создайте новую версию.');
-    var content = DocContent.merge(safeJson(rec.content_json, { sections: [] }), p.content || {});
-    var patch = { content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content) };
+    var content = DocContent.merge(DocContent.load(rec), p.content || {});
+    var patch = DocContent.put({ unverified_count: DocContent.unverified(content) }, content);
     if (p.profile) patch.profile_json = JSON.stringify(Programs.profile(p.profile));
     Repo.update(ctx, 'Programs', rec.program_id, patch, { action: 'PPC_EDIT', expectedVersion: p.row_version });
     return Programs.get(ctx, { program_id: rec.program_id });
@@ -336,7 +355,7 @@ var Programs = {
   approve: function (ctx, p) {
     var rec = Repo.must('Programs', p.program_id, 'Программа');
     var reason = DocContent.checkApproval(ctx, rec, p, 'программу');
-    var content = safeJson(rec.content_json, { sections: [] });
+    var content = DocContent.load(rec);
     var due = isoAddDays(ctx.now, Math.round((Settings.num('PPC_REVIEW_MONTHS') || 12) * 30.4));
     (content.norms || []).forEach(function (id) { var d = Repo.get('NormDocs', id); if (d && d.valid_until && isBefore(d.valid_until, due)) due = d.valid_until; });
     Repo.where('Programs', function (x) { return x.site_id === rec.site_id && x.status === 'APPROVED'; }).forEach(function (x) {
@@ -363,11 +382,11 @@ var Programs = {
     var draft = Repo.where('Programs', function (x) { return x.site_id === rec.site_id && x.status === 'DRAFT'; })[0];
     if (draft) fail('DUPLICATE', 'Для объекта уже есть черновик: ' + draft.program_id, { program_id: draft.program_id });
     var ver = 1; Repo.where('Programs', function (x) { return x.site_id === rec.site_id; }).forEach(function (x) { ver = Math.max(ver, Number(x.version) + 1); });
-    var n = Repo.create(ctx, 'Programs', { client_id: rec.client_id, site_id: rec.site_id, title: rec.title, version: ver, status: 'DRAFT', profile_json: rec.profile_json, content_json: rec.content_json, unverified_count: rec.unverified_count, prev_program_id: rec.program_id }, { action: 'PPC_NEW_VERSION' });
+    var n = Repo.create(ctx, 'Programs', { client_id: rec.client_id, site_id: rec.site_id, title: rec.title, version: ver, status: 'DRAFT', profile_json: rec.profile_json, content_json: rec.content_json, content_json2: rec.content_json2 || '', content_json3: rec.content_json3 || '', content_json4: rec.content_json4 || '', unverified_count: rec.unverified_count, prev_program_id: rec.program_id }, { action: 'PPC_NEW_VERSION' });
     return Programs.get(ctx, { program_id: n.program_id });
   },
   render: function (ctx, rec) {
-    var e = DocContent.esc, prof = safeJson(rec.profile_json, {}), content = safeJson(rec.content_json, { sections: [] });
+    var e = DocContent.esc, prof = safeJson(rec.profile_json, {}), content = DocContent.load(rec);
     var client = Repo.get('Clients', rec.client_id) || {}, site = Repo.get('Sites', rec.site_id) || {};
     var draft = rec.status !== 'APPROVED' && rec.status !== 'ARCHIVED', unv = Number(rec.unverified_count) || 0;
     var h = ['<html><head><meta charset="utf-8"><title>' + e(rec.program_id) + '</title><style>' + DocContent.css + '</style></head><body>'];
@@ -451,7 +470,7 @@ var Specs = {
     if (!old) rec = Repo.create(ctx, 'TechSpecs', { client_id: client.client_id, designation: designation, version: 1, status: 'DRAFT', product_name: prof.product_name, product_group: prof.product_group, okpd2: prof.okpd2 }, { action: 'TU_CREATE' });
     if (p.ttk) prof = Specs.saveTtk(ctx, rec, p.ttk, prof);
     var content = Specs.compose(ctx, client, prof, designation);
-    var data = { profile_json: JSON.stringify(prof), content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content), product_name: prof.product_name, product_group: prof.product_group, okpd2: prof.okpd2 };
+    var data = DocContent.put({ profile_json: JSON.stringify(prof), unverified_count: DocContent.unverified(content), product_name: prof.product_name, product_group: prof.product_group, okpd2: prof.okpd2 }, content);
     Repo.update(ctx, 'TechSpecs', rec.spec_id, data, { action: old ? 'TU_REBUILD' : 'TU_COMPOSE', noAudit: !old });
     return Specs.get(ctx, { spec_id: rec.spec_id });
   },
@@ -500,7 +519,7 @@ var Specs = {
     return { sections: sec, built_at: ctx.now, norms: Object.keys(refs), designation: designation };
   },
   enrich: function (rec) {
-    var o = stripSecrets(rec); delete o.content_json; delete o.profile_json;
+    var o = stripSecrets(rec); delete o.content_json; delete o.content_json2; delete o.content_json3; delete o.content_json4; delete o.profile_json;
     o.client_name = (Repo.get('Clients', rec.client_id) || {}).legal_name || '';
     return o;
   },
@@ -510,7 +529,7 @@ var Specs = {
   },
   get: function (ctx, p) {
     var rec = Repo.must('TechSpecs', p.spec_id, 'ТУ');
-    var content = safeJson(rec.content_json, { sections: [] }), warn = [];
+    var content = DocContent.load(rec), warn = [];
     (content.norms || []).forEach(function (id) { var d = Repo.get('NormDocs', id); if (d && !Norms.inForce(d, ctx.now)) warn.push(d.code + ' больше не действует — пересоберите ТУ.'); });
     if (/ХХ/.test(rec.designation)) warn.push('В обозначении ТУ не заполнены код ОКПД2 или ОКПО — укажите их в данных продукции и пересоберите черновик (для нового обозначения создайте ТУ заново).');
     return { spec: Specs.enrich(rec), row_version: rec.row_version, profile: safeJson(rec.profile_json, {}), content: content, warnings: warn, groups: Specs.groups(),
@@ -519,9 +538,9 @@ var Specs = {
   save: function (ctx, p) {
     var rec = Repo.must('TechSpecs', p.spec_id, 'ТУ');
     if (rec.status !== 'DRAFT') fail('INVALID_STATUS', 'Утверждённые ТУ изменить нельзя. Создайте новую версию (изменение).');
-    var content = DocContent.merge(safeJson(rec.content_json, { sections: [] }), p.content || {});
+    var content = DocContent.merge(DocContent.load(rec), p.content || {});
     content.designation = rec.designation;
-    Repo.update(ctx, 'TechSpecs', rec.spec_id, { content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content) }, { action: 'TU_EDIT', expectedVersion: p.row_version });
+    Repo.update(ctx, 'TechSpecs', rec.spec_id, DocContent.put({ unverified_count: DocContent.unverified(content) }, content), { action: 'TU_EDIT', expectedVersion: p.row_version });
     return Specs.get(ctx, { spec_id: rec.spec_id });
   },
   approve: function (ctx, p) {
@@ -552,11 +571,11 @@ var Specs = {
     var draft = Repo.where('TechSpecs', function (x) { return x.designation === rec.designation && x.status === 'DRAFT'; })[0];
     if (draft) fail('DUPLICATE', 'Уже есть черновик изменения: ' + draft.spec_id, { spec_id: draft.spec_id });
     var ver = 1; Repo.where('TechSpecs', function (x) { return x.designation === rec.designation; }).forEach(function (x) { ver = Math.max(ver, Number(x.version) + 1); });
-    var n = Repo.create(ctx, 'TechSpecs', { client_id: rec.client_id, designation: rec.designation, product_name: rec.product_name, product_group: rec.product_group, okpd2: rec.okpd2, version: ver, status: 'DRAFT', profile_json: rec.profile_json, content_json: rec.content_json, unverified_count: rec.unverified_count, prev_spec_id: rec.spec_id }, { action: 'TU_NEW_VERSION' });
+    var n = Repo.create(ctx, 'TechSpecs', { client_id: rec.client_id, designation: rec.designation, product_name: rec.product_name, product_group: rec.product_group, okpd2: rec.okpd2, version: ver, status: 'DRAFT', profile_json: rec.profile_json, content_json: rec.content_json, content_json2: rec.content_json2 || '', content_json3: rec.content_json3 || '', content_json4: rec.content_json4 || '', unverified_count: rec.unverified_count, prev_spec_id: rec.spec_id }, { action: 'TU_NEW_VERSION' });
     return Specs.get(ctx, { spec_id: n.spec_id });
   },
   render: function (ctx, rec) {
-    var e = DocContent.esc, prof = safeJson(rec.profile_json, {}), content = safeJson(rec.content_json, { sections: [] });
+    var e = DocContent.esc, prof = safeJson(rec.profile_json, {}), content = DocContent.load(rec);
     var client = Repo.get('Clients', rec.client_id) || {};
     var draft = rec.status !== 'APPROVED' && rec.status !== 'ARCHIVED', unv = Number(rec.unverified_count) || 0;
     var secs = content.sections || [], intro = secs[0] || { text: '' };
