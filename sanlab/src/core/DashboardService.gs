@@ -208,6 +208,7 @@ var Jobs = {
     Store.all('Reports').forEach(function (rep) {
       if (rep.status === 'APPROVED' && !rep.document_id) { if (Reports.makePdf(ctx, rep)) r.pdf_retry++; }
     });
+    var dj = DocJobs.daily(ctx); for (var dk in dj) r[dk] = dj[dk];
     Audit.log(ctx, 'JOB_DAILY', 'System', day, null, r);
     return r;
   },

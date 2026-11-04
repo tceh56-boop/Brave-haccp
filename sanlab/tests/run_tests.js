@@ -284,6 +284,89 @@ test('AT-15', 'Сотрудник утверждает собственный о
   return 'специалист и руководитель-исполнитель заблокированы; утвердил контролёр';
 });
 
+/* ---------- Нормативная база, ППК, ТУ ---------- */
+test('AT-16', 'Нормативная база: сверка и права', function () {
+  var nl = ok(call(OWNER, 'norms.list', {}), 'norms.list');
+  var tr034 = nl.docs.filter(function (d) { return d.code === 'ТР ТС 034/2013'; })[0];
+  var sanpin = nl.docs.filter(function (d) { return d.code === 'СанПиН 2.3/2.4.3590-20'; })[0];
+  assert(tr034 && String(tr034.verified) === 'true' && tr034.unverified_count === 0, 'ТР ТС 034 сверен по документу заказчика');
+  assert(sanpin && sanpin.unverified_count > 0 && sanpin.expiring, 'СанПиН 3590-20 не сверен и заканчивается');
+  expectErr(call(COORD, 'norms.saveDoc', { code: 'X', title: 'Y', kind: 'OTHER' }), 'ACCESS_DENIED', 'координатор не правит базу');
+  var d = ok(call(OWNER, 'norms.saveDoc', { code: 'ГОСТ Тест-2026', title: 'Тестовый документ', kind: 'GOST', scopes: 'TU' }), 'saveDoc');
+  ok(call(OWNER, 'norms.saveItem', { norm_id: d.norm_id, section: 'METHOD', text: 'ГОСТ Тест-2026', indicator: 'Тест' }), 'saveItem');
+  expectErr(call(QC, 'norms.verify', { norm_id: d.norm_id }), 'VALIDATION', 'сверка без источника');
+  var v = ok(call(QC, 'norms.verify', { norm_id: d.norm_id, source_url: 'https://example.org/gost' }), 'verify');
+  assert(String(v.doc.verified) === 'true' && v.items.every(function (i) { return String(i.verified) === 'true'; }), 'документ и положения сверены');
+  var d2 = ok(call(OWNER, 'norms.saveDoc', { norm_id: d.norm_id, code: 'ГОСТ Тест-2026', title: 'Тестовый документ (ред.)', kind: 'GOST', scopes: 'TU' }), 'edit');
+  assert(String(d2.verified) === 'false', 'правка снимает отметку сверки');
+  return 'сверено документов: ' + nl.docs.filter(function (x) { return String(x.verified) === 'true'; }).length + ' из ' + nl.docs.length;
+});
+
+var testProgram;
+test('AT-17', 'ППК: сборка по признакам объекта и утверждение', function () {
+  var site = Store.all('Sites').filter(function (s) { return !Store.all('Programs').some(function (p) { return p.site_id === s.site_id; }); })[0];
+  var g = ok(call(COORD, 'programs.build', { site_id: site.site_id, profile: { object_type: 'CAFE', flags: 'hot_shop', head_name: 'Иванов И. И.' } }), 'build');
+  var lab = g.content.sections.filter(function (x) { return x.key === 'lab'; })[0];
+  assert(lab.rows.length && !lab.rows.some(function (r) { return /собственного источника/.test(r.c[0]); }), 'нет пробы воды из собственного источника без признака');
+  expectErr(call(COORD, 'programs.build', { site_id: site.site_id, profile: {} }), 'DUPLICATE', 'второй черновик');
+  var g2 = ok(call(COORD, 'programs.build', { program_id: g.program.program_id, profile: { object_type: 'CAFE', flags: 'hot_shop,own_water', head_name: 'Иванов И. И.' } }), 'rebuild');
+  var lab2 = g2.content.sections.filter(function (x) { return x.key === 'lab'; })[0];
+  assert(lab2.rows.some(function (r) { return /собственного источника/.test(r.c[0]); }), 'с признаком — проба воды появилась');
+  assert(Number(g2.program.unverified_count) > 0, 'есть несверенные положения');
+  var sec = g2.content.sections.map(function (x) { var y = JSON.parse(JSON.stringify(x)); if (y.rows) y.rows = y.rows.map(function (r, i) { return { i: i, c: r.c }; }); return y; });
+  sec.filter(function (x) { return x.key === 'measures'; })[0].rows.push({ c: ['Обучение персонала по ХАССП', '1 раз в год', 'Директор'] });
+  var g3 = ok(call(COORD, 'programs.save', { program_id: g.program.program_id, row_version: g2.row_version, content: { sections: sec } }), 'save');
+  assert(g3.content.sections.filter(function (x) { return x.key === 'measures'; })[0].rows.some(function (r) { return r.manual && /ХАССП/.test(r.c[0]); }), 'ручная строка сохранена');
+  expectErr(call(QC, 'programs.approve', { program_id: g.program.program_id }), 'UNVERIFIED', 'несверенное не утверждается молча');
+  expectErr(call(QC, 'programs.approve', { program_id: g.program.program_id, accept_unverified: true, reason: 'Срочно для проверки' }), 'ACCESS_DENIED', 'контролёр не может принять несверенное');
+  var ap = ok(call(OWNER, 'programs.approve', { program_id: g.program.program_id, accept_unverified: true, reason: 'Нормативы сверяются, программа нужна к проверке' }), 'approve');
+  assert(ap.program.status === 'APPROVED' && ap.program.document_id && ap.program.review_due_date, 'утверждена, PDF, срок пересмотра');
+  var doc = Store.get('Documents', ap.program.document_id);
+  assert(doc.document_type === 'PPC' && doc.approval_status === 'APPROVED', 'документ PPC в «Документах»');
+  expectErr(call(COORD, 'programs.save', { program_id: g.program.program_id, content: { sections: [] } }), 'INVALID_STATUS', 'утверждённую не правят');
+  var nv = ok(call(COORD, 'programs.newVersion', { program_id: g.program.program_id }), 'newVersion');
+  assert(nv.program.status === 'DRAFT' && Number(nv.program.version) === 2, 'новая версия — черновик v2');
+  var html = ok(call(QC, 'programs.html', { program_id: g.program.program_id }), 'html').html;
+  assert(/ПРОГРАММА/.test(html) && /не сверенных/.test(html) && /Иванов/.test(html), 'печатная форма');
+  testProgram = g.program.program_id;
+  return g.program.program_id + ': несверенных ' + g2.program.unverified_count + '; утверждена руководителем с обоснованием';
+});
+
+test('AT-18', 'ТУ: показатели по группе продукции, маркировка, обозначение', function () {
+  var cl = Store.all('Clients')[1];
+  var grp = 'Полуфабрикаты мясные (мясосодержащие) рубленые формованные, в т. ч. панированные';
+  var t = ok(call(COORD, 'specs.build', { client_id: cl.client_id, profile: { product_name: 'Тефтели', product_group: grp, okpd2: '10.13.14', okpo: '87654321', organoleptic: 'Вкус; свойственный', composition: 'Говядина; 600' } }), 'build');
+  assert(/^ТУ 10\.13\.14-\d{3}-87654321-\d{4}$/.test(t.spec.designation), 'обозначение ТУ: ' + t.spec.designation);
+  var micro = t.content.sections.filter(function (x) { return x.key === 'micro'; })[0];
+  var kmaf = micro.rows.filter(function (r) { return /КМАФАнМ/.test(r.c[0]); })[0];
+  assert(kmaf && /5×10⁶/.test(kmaf.c[1]) && kmaf.v === true && /034/.test(kmaf.ref), 'КМАФАнМ 5×10⁶ по ТР ТС 034, сверено');
+  var lab = t.content.sections.filter(function (x) { return x.key === 'labeling'; })[0];
+  assert(lab.rows.some(function (r) { return /охлажденные/.test(r.c[0]); }) && lab.rows.some(function (r) { return /ЕАС/.test(r.c[0]); }), 'маркировка мясных полуфабрикатов и знак ЕАС');
+  var titles = t.content.sections.map(function (x) { return x.title; }).join('|');
+  assert(/2 Требования безопасности/.test(titles) && /5 Методы контроля/.test(titles) && /7 Гарантии изготовителя/.test(titles), 'разделы по ГОСТ 2.114');
+  var r2 = ok(call(COORD, 'specs.build', { client_id: cl.client_id, profile: { product_name: 'Ролл «Калифорния»', product_group: 'Роллы и суши', okpd2: '10.85.19', okpo: '87654321' } }), 'build rolls');
+  var lab2 = r2.content.sections.filter(function (x) { return x.key === 'labeling'; })[0];
+  var micro2 = r2.content.sections.filter(function (x) { return x.key === 'micro'; })[0];
+  assert(!lab2.rows.some(function (r) { return /мясной продукции/.test(r.c[0]); }) && !micro2.rows.length, 'для роллов не подставлены нормы мяса');
+  expectErr(call(QC, 'specs.approve', { spec_id: t.spec.spec_id }), 'UNVERIFIED', 'ТУ с несверенным');
+  var ap = ok(call(OWNER, 'specs.approve', { spec_id: t.spec.spec_id, accept_unverified: true, reason: 'Проект для согласования с заказчиком' }), 'approve');
+  assert(ap.spec.status === 'APPROVED' && ap.spec.document_id, 'ТУ утверждены, PDF');
+  var html = ok(call(COORD, 'specs.html', { spec_id: t.spec.spec_id }), 'html').html;
+  assert(html.indexOf(t.spec.designation) >= 0 && /Лист регистрации изменений/.test(html), 'печатная форма ТУ');
+  var nv = ok(call(COORD, 'specs.newVersion', { spec_id: t.spec.spec_id }), 'newVersion');
+  assert(nv.spec.designation === t.spec.designation && Number(nv.spec.version) === 2, 'изменение ТУ с тем же обозначением');
+  return t.spec.designation + '; групп продукции в базе: ' + t.groups.length;
+});
+
+test('AT-19', 'Предупреждение об окончании действия норматива', function () {
+  var r = X.Jobs.daily({ now: Integr.now(), requestId: 'job-t', actorId: 'SYSTEM', actorEmail: 'system', user: { role: 'OWNER', employee_id: 'SYSTEM' } });
+  var n = Store.all('Notifications').filter(function (x) { return x.type === 'NORM_EXPIRING'; });
+  assert(n.length >= 1 && /3590-20/.test(n[0].title), 'уведомление о СанПиН 3590-20');
+  var again = X.Jobs.daily({ now: Integr.now(), requestId: 'job-t2', actorId: 'SYSTEM', actorEmail: 'system', user: { role: 'OWNER', employee_id: 'SYSTEM' } });
+  assert(Store.all('Notifications').filter(function (x) { return x.type === 'NORM_EXPIRING'; }).length === n.length, 'без повторов');
+  return 'уведомлений: ' + n.length;
+});
+
 /* Дополнительно: доступность разделов, ошибки, производительность чтения */
 test('EXTRA', 'Права ролей и панели', function () {
   ['owner', 'coord', 'petrov', 'qc', 'finance', 'lab'].forEach(function (u) {

@@ -89,6 +89,7 @@ var Seed = {
     } else {
       Store.all('Services').forEach(function (s) { if (/Плановый/.test(s.name)) srv.plan = s.service_id; if (/проб/.test(s.name)) srv.lab = s.service_id; if (/ХАССП/.test(s.name)) srv.haccp = s.service_id; if (/Внеплан/.test(s.name)) srv.unplanned = s.service_id; if (/абонемент/.test(s.name)) srv.sub = s.service_id; });
     }
+    NormSeed.run(ownerEmp);
     return { checklists: ids, services: srv };
   },
 
@@ -321,6 +322,18 @@ var Seed = {
     });
     var someInv = filterBy(Store.all('Finance'), function (f) { return f.operation_type === 'INVOICE'; })[2];
     if (someInv) Finance.adjust(Seed.ctx(E.fin, A(-1, 15)), { invoice_id: someInv.finance_id, amount: -1500, operation_date: A(-1, 15), basis: 'Скидка за перенос выезда по вине исполнителя (письмо клиента от ' + fmtD(A(-2, 9)) + ')' });
+
+    /* Пример ППК и ТУ для демонстрации модулей */
+    var ctxC = C('coord', -1, 11);
+    var ppcSite = sites[0];
+    Programs.build(ctxC, { site_id: ppcSite.site_id, profile: { object_type: 'CAFE', seats: '48', staff_count: '12', work_mode: 'ежедневно 10:00–22:00', flags: 'hot_shop,cold_shop,ventilation', water_source: 'централизованное', head_name: 'Гаврилова Елена Викторовна', head_position: 'Директор',
+      responsible: 'Гаврилова Е. В.; директор; общее руководство производственным контролем\nСоколова М. И.; координатор San.Lab; организация лабораторных исследований, ведение документации',
+      positions: 'повар, кухонный рабочий, мойщик посуды, официант, бармен, администратор', lab_name: 'ИЛЦ «Центр гигиены и эпидемиологии»', pest_control: 'ООО «Дезсервис», договор № 14-Д', waste: 'региональный оператор', assortment: 'блюда русской и европейской кухни, выпечка' } });
+    Specs.build(ctxC, { client_id: ppcSite.client_id, profile: { product_name: 'Котлеты «Домашние» из говядины и свинины', product_group: 'Полуфабрикаты мясные (мясосодержащие) рубленые формованные, в т. ч. панированные', okpd2: '10.13.14', okpo: '12345678',
+      purpose: 'для реализации на предприятиях общественного питания', composition: 'Говядина жилованная; 400\nСвинина жилованная; 300\nХлеб пшеничный; 130\nЛук репчатый; 80\nВода питьевая; 80\nСоль поваренная пищевая; 10',
+      organoleptic: 'Внешний вид; изделия овально-приплюснутой формы, без разорванных и ломаных краёв\nВкус и запах; свойственные доброкачественному сырью, без посторонних\nКонсистенция; однородная, сочная', physchem: 'Массовая доля жира, %, не более; 20\nМассовая доля поваренной соли, %, не более; 1,5\nМасса одного изделия, г; 100 ± 3',
+      shelf_life: '48 ч (охлаждённые), 3 мес. (замороженные)', storage: 'охлаждённые — от минус 1,5 до плюс 6 °С; замороженные — не выше минус 18 °С', packaging: 'лотки из полимерных материалов с плёнкой', net_mass: '500 г, 1000 г', transport: 'охлаждаемым транспортом',
+      head_name: 'Гаврилова Е. В.', head_position: 'Директор' } });
 
     /* Уведомления прошлых дней считаем прочитанными и отправленными */
     var cutoff = A(-1, 0);

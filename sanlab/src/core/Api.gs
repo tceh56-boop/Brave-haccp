@@ -93,7 +93,27 @@ var ROUTES = {
   'settings.save': function (ctx, p) { return Settings.save(ctx, p); },
   'errors.list': function (ctx, p) { return Errors.list(ctx, p); },
   'errors.resolve': function (ctx, p) { return Errors.resolve(ctx, p); },
-  'jobs.run': function (ctx, p) { return p.job === 'frequent' ? Jobs.frequent(ctx) : Jobs.daily(ctx); }
+  'jobs.run': function (ctx, p) { return p.job === 'frequent' ? Jobs.frequent(ctx) : Jobs.daily(ctx); },
+
+  'norms.list': function (ctx, p) { return { docs: Norms.list(ctx, p), sections: NORM_SECTIONS, kinds: NORM_KINDS, statuses: NORM_STATUS, scopes: NORM_SCOPES, flags: SITE_FLAGS }; },
+  'norms.get': function (ctx, p) { var r = Norms.get(ctx, p); r.sections = NORM_SECTIONS; r.flags = SITE_FLAGS; return r; },
+  'norms.saveDoc': function (ctx, p) { return Norms.saveDoc(ctx, p); },
+  'norms.saveItem': function (ctx, p) { return Norms.saveItem(ctx, p); },
+  'norms.verify': function (ctx, p) { return Norms.verify(ctx, p); },
+  'programs.list': function (ctx, p) { return { rows: Programs.list(ctx, p), object_types: OBJECT_TYPES, flags: SITE_FLAGS }; },
+  'programs.get': function (ctx, p) { var r = Programs.get(ctx, p); r.object_types = OBJECT_TYPES; r.flags = SITE_FLAGS; return r; },
+  'programs.html': function (ctx, p) { return Programs.html(ctx, p); },
+  'programs.build': function (ctx, p) { return Programs.build(ctx, p); },
+  'programs.save': function (ctx, p) { return Programs.save(ctx, p); },
+  'programs.approve': function (ctx, p) { return Programs.approve(ctx, p); },
+  'programs.newVersion': function (ctx, p) { return Programs.newVersion(ctx, p); },
+  'specs.list': function (ctx, p) { return { rows: Specs.list(ctx, p), groups: Specs.groups(), okpo: Settings.get('ORG_OKPO') }; },
+  'specs.get': function (ctx, p) { return Specs.get(ctx, p); },
+  'specs.html': function (ctx, p) { return Specs.html(ctx, p); },
+  'specs.build': function (ctx, p) { return Specs.build(ctx, p); },
+  'specs.save': function (ctx, p) { return Specs.save(ctx, p); },
+  'specs.approve': function (ctx, p) { return Specs.approve(ctx, p); },
+  'specs.newVersion': function (ctx, p) { return Specs.newVersion(ctx, p); }
 };
 
 /* Чтение — без блокировки и без записи в Requests */
