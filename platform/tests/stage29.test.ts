@@ -5,7 +5,7 @@ import { createOrganization, inviteMember, acceptInvitation } from '../src/serve
 import { createProduct, createSupplier } from '../src/server/ops/catalog';
 import { createReceipt, addReceiptLine, completeReceipt } from '../src/server/ops/receipts';
 import { createDish, getDish, updateVersion, addLine, submitVersion, approveVersion } from '../src/server/ops/recipes';
-import { createProduction, startProduction, completeProduction, addReleaseCheck, approveReleaseCheck, recordCheck } from '../src/server/ops/production';
+import { createProduction, startProduction, completeProduction, addReleaseCheck, approveReleaseCheck, recordCheck, decideBrakerage } from '../src/server/ops/production';
 import { openLot, createLabels, logPrint, confirmReprint, labelLog } from '../src/server/ops/labels';
 import { setSampleSettings, takeSample, createProgram, recordResult } from '../src/server/ops/lab';
 import { getJournal, listForms } from '../src/server/ops/journals';
@@ -65,8 +65,10 @@ beforeAll(async () => {
   semiLot = (await a.done()).lot_id;
   dish = await mkDish('Котлеты', 'dish', [[beef, 1]]);
   const b = await produce(dish);
-  await expect(b.done()).rejects.toThrow(/с бракеражем/);
-  await b.done({ organoleptic: 'Внешний вид, цвет, вкус и запах соответствуют ТТК', decision: 'allowed' });
+  // этап 2 доработки: повар не принимает решение бракеража — партия ждёт решения шефа
+  await expect(b.done({ organoleptic: 'Внешний вид, цвет, вкус и запах соответствуют ТТК', decision: 'allowed' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  await b.done();
+  await decideBrakerage(chef.id, orgId, b.orderId, { organoleptic: 'Внешний вид, цвет, вкус и запах соответствуют ТТК', decision: 'allowed' });
   // J59, J60
   await setSampleSettings(haccp.id, orgId, { minWeightG: 100, retentionHours: 48, tMin: 2, tMax: 6, basis: 'СанПиН 2.3/2.4.4282-26' });
   await takeSample(cook.id, orgId, { siteId, source: 'lot', lotId: semiLot, weightG: 150, container: 'стерильная банка', storagePlace: 'Холодильник для проб', temperature: 4 });

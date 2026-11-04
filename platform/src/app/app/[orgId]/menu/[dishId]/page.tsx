@@ -22,7 +22,7 @@ interface Version { id: string; version: number; status: string; status_label: s
 interface Cost { total: number | null; known: number; complete: boolean; missing: string[]; per_portion: number | null; per_kg: number | null; food_cost_pct: number | null;
   lines: { line_id: string; cost: number | null; price: number | null; price_unit: string | null; source: string | null }[] }
 interface Kbju { per100: { kcal: number; protein: number; fat: number; carbs: number } | null; complete: boolean; verified: boolean; missing: string[]; losses: 'none' | 'partial' | 'all' }
-interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null; card_no: string | null; group_id: string | null };
+interface Data { dish: { id: string; name: string; kind: string; kind_label: string; category: string | null; sale_price: string | null; card_no: string | null; group_id: string | null; sample_on_release?: boolean };
   versions: { id: string; version: number; status: string; status_label: string; approved_at: string | null; approved_by_name: string | null; created_at: string; change_reason: string | null; source: string; author_name: string | null }[];
   current: { version: Version; lines: Line[]; blockers: string[]; warnings: string[]; cost: Cost | null; kbju: Kbju; output: { netto_g: number | null; ready_g: number | null; sections: { list: { title: string | null; ready_g: number | null }[]; label: string } | null } } | null;
   archive: { source_path: string; issues: string[]; yield_raw: string | null; yield_source: string | null } | null; canSeeCost: boolean }
@@ -165,6 +165,14 @@ function DishView({ params }: { params: Promise<{ dishId: string }> }) {
           {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/tu`}>Технические условия (ТУ)</Link>}
           {data.versions.some((x) => x.status === 'approved') && <Link className="btn block secondary" href={`/app/${org.id}/menu/${dishId}/ti`}>Технологическая инструкция (ТИ)</Link>}
           <ReleaseChecks dishId={dishId} />
+          {data.dish.kind === 'dish' && can('lab.manage') && (
+            <div className="card">
+              <h2>Суточная проба при выпуске</h2>
+              <label className="row" style={{ alignItems: 'center' }}><input type="checkbox" style={{ width: 24, height: 24 }} checked={!!data.dish.sample_on_release} disabled={busy}
+                onChange={(e) => act(() => api(`/orgs/${org.id}/dishes/${dishId}/sample-on-release`, { method: 'PUT', body: { onRelease: e.target.checked } }))} /> Отбирать пробу при каждом выпуске этого блюда</label>
+              <p className="small muted">Для блюд мероприятий проба предлагается всегда. Масса, срок и температура — из настроек проб предприятия.</p>
+            </div>
+          )}
           {data.dish.kind === 'semi' && data.versions.some((x) => x.status === 'approved') && can('production.plan') && (
             <Link className="btn block secondary" href={`/app/${org.id}/production?dish=${dishId}`}>Поставить в производство</Link>)}
         </>

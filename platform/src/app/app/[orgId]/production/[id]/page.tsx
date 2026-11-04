@@ -27,6 +27,9 @@ interface Card {
   deviation: { product_id: string; name: string; unit: string; norm: number | null; fact: number; diff: number | null; diff_pct: number | null }[] | null;
   lot: { id: string; lot_no: string; quantity: string; unit: string; expires_at: string | null; expiry_basis: string | null; status: string; status_reason: string | null } | null;
   label: { id: string; code: string } | null;
+  brakerage: { reference: { key: string; label: string; text: string }[]; decision: 'allowed' | 'rejected' | null; organoleptic: string | null; reject_reason: string | null;
+    assessed_at: string | null; assessed_by_name: string | null; can_decide: boolean } | null;
+  sample_offer: { reason: string; source: 'event' | 'lot'; event_id: string | null; dish_id: string; lot_id: string; taken: { id: string; taken_at: string } | null } | null;
 }
 const TONE: Record<string, string> = { in_progress: 'warn', planned: '', done: 'ok', cancelled: 'crit' };
 
@@ -42,6 +45,8 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
   const [probe, setProbe] = useState('');
   const [msg, setMsg] = useState<{ key: string; ok: boolean; text: string; action: string | null } | null>(null);
   const [fix, setFix] = useState<Record<string, { value: string; reason: string }>>({});
+  const [bk, setBk] = useState<{ decision: 'allowed' | 'rejected' | ''; text: string }>({ decision: '', text: '' });
+  const [smp, setSmp] = useState({ weightG: '', container: 'стерильная ёмкость с крышкой, маркировка', storagePlace: '', temperature: '' });
   const [actual, setActual] = useState('');
   const [orgl, setOrgl] = useState('');
   const [decision, setDecision] = useState<'allowed' | 'rejected' | ''>('');
@@ -195,13 +200,16 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
             })}
             <label htmlFor="ak">Фактический выход, кг</label>
             <input id="ak" required inputMode="decimal" value={actual} onChange={(e) => setActual(e.target.value)} />
-            {o.dish_kind === 'dish' && <>
+            {o.dish_kind === 'dish' && !c.brakerage?.can_decide && <p className="note">Бракераж проводит шеф или ответственный ХАССП: после выпуска партия будет ждать их решения и не уйдёт в реализацию.</p>}
+            {o.dish_kind === 'dish' && c.brakerage?.can_decide && <>
               <h3>Бракераж (журнал J58)</h3>
-              <label htmlFor="org">Органолептика: внешний вид, цвет, консистенция, вкус и запах</label>
-              <textarea id="org" rows={2} required value={orgl} onChange={(e) => setOrgl(e.target.value)} />
+              {c.brakerage.reference.length > 0 && <ul className="small">{c.brakerage.reference.map((r) => <li key={r.key}><b>{r.label}:</b> {r.text}</li>)}</ul>}
+              <p className="small muted">Можно решить сразу или оставить пустым — тогда партия будет ждать бракеража.</p>
               <label htmlFor="dec">Решение</label>
-              <select id="dec" required value={decision} onChange={(e) => setDecision(e.target.value as 'allowed' | 'rejected' | '')}>
-                <option value="">— выберите —</option><option value="allowed">Допущено к реализации</option><option value="rejected">Не допущено — партия в карантин</option></select>
+              <select id="dec" value={decision} onChange={(e) => setDecision(e.target.value as 'allowed' | 'rejected' | '')}>
+                <option value="">— решу позже —</option><option value="allowed">Соответствует — допустить к реализации</option><option value="rejected">Не соответствует — не реализовывать</option></select>
+              {decision && <><label htmlFor="org">{decision === 'rejected' ? 'Причина: что не соответствует эталону' : 'Органолептика (необязательно, если есть эталон ТТК)'}</label>
+                <textarea id="org" rows={2} required={decision === 'rejected' || !c.brakerage.reference.length} value={orgl} onChange={(e) => setOrgl(e.target.value)} /></>}
             </>}
             <p className="small muted">Списывается только указанный фактический расход; партия выпуска — по фактическому выходу. Расход по норме фактом не записывается.</p>
             <button className="btn block" disabled={busy || blocked.length > 0 || consumed.length === 0}>{bad.length ? 'Выпустить партию в карантин' : 'Выпустить партию и напечатать этикетку'}</button>
@@ -228,6 +236,56 @@ export default function ProductionOrderPage({ params }: { params: Promise<{ id: 
                 <td>{x.diff === null ? '—' : <span>{x.diff > 0 ? '+' : ''}{n(x.diff)} {x.unit}{x.diff_pct !== null ? ` (${x.diff_pct > 0 ? '+' : ''}${n(x.diff_pct)} %)` : ''}</span>}</td></tr>)}</tbody></table></div>
             <p className="small muted">Норма — расчёт по утверждённой ТТК; в склад записан только факт.</p>
           </>}
+        </div>
+      )}
+
+      {o.status === 'done' && c.brakerage && (
+        <div className="card">
+          <h2>Бракераж</h2>
+          {c.brakerage.reference.length > 0 ? <>
+            <p className="small muted">Эталон — утверждённая ТТК:</p>
+            <ul className="small">{c.brakerage.reference.map((r) => <li key={r.key}><b>{r.label}:</b> {r.text}</li>)}</ul>
+          </> : !c.brakerage.decision && <p className="small">В ТТК нет эталона органолептики — при «соответствует» опишите внешний вид, цвет, консистенцию, вкус и запах.</p>}
+          {c.brakerage.decision ? (
+            <dl className="kv">
+              <dt>Решение</dt><dd><span className={`badge ${c.brakerage.decision === 'allowed' ? 'ok' : 'crit'}`}>{c.brakerage.decision === 'allowed' ? 'соответствует — допущено' : 'не соответствует'}</span></dd>
+              <dt>Оценка</dt><dd>{c.brakerage.organoleptic}</dd>
+              <dt>{c.brakerage.decision === 'allowed' ? 'Разрешено к реализации' : 'Решение'}</dt><dd>{c.brakerage.assessed_by_name}{c.brakerage.assessed_at ? `, ${dt(c.brakerage.assessed_at, tz)}` : ''}</dd>
+            </dl>
+          ) : c.brakerage.can_decide ? (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${org.id}/production/${id}/brakerage`, { body: { decision: bk.decision, organoleptic: bk.text || null } }); setBk({ decision: '', text: '' }); await load(); }); }}>
+              <div className="row">
+                <button type="button" className={`btn ${bk.decision === 'allowed' ? '' : 'secondary'}`} style={{ flex: 1, minHeight: 48 }} onClick={() => setBk({ ...bk, decision: 'allowed' })}>Соответствует</button>
+                <button type="button" className={`btn ${bk.decision === 'rejected' ? 'danger' : 'secondary'}`} style={{ flex: 1, minHeight: 48 }} onClick={() => setBk({ ...bk, decision: 'rejected' })}>Не соответствует</button>
+              </div>
+              {bk.decision && <><label htmlFor="bkt">{bk.decision === 'rejected' ? 'Причина' : 'Органолептика (необязательно при эталоне)'}</label>
+                <textarea id="bkt" rows={2} required={bk.decision === 'rejected' || !c.brakerage.reference.length} value={bk.text} onChange={(e) => setBk({ ...bk, text: e.target.value })} />
+                <button className="btn block" disabled={busy}>{bk.decision === 'allowed' ? 'Разрешить к реализации' : 'Не допускать — отклонение'}</button></>}
+            </form>
+          ) : <div className="note">Ждёт бракеража: решение принимает шеф или ответственный ХАССП. До решения партия не реализуется.</div>}
+        </div>
+      )}
+
+      {o.status === 'done' && c.sample_offer && (
+        <div className="card">
+          <h2>Суточная проба</h2>
+          <p className="small muted">Нужна: {c.sample_offer.reason}.</p>
+          {c.sample_offer.taken ? <p><span className="badge ok">отобрана</span> {dt(c.sample_offer.taken.taken_at, tz)}</p> : can('sample.record') ? (
+            <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+              const so = c.sample_offer!;
+              await api(`/orgs/${org.id}/samples`, { body: { siteId: o.site_id, source: so.source, eventId: so.event_id, dishId: so.source === 'event' ? so.dish_id : null, lotId: so.source === 'lot' ? so.lot_id : null,
+                weightG: smp.weightG.replace(',', '.') || null, container: smp.container, storagePlace: smp.storagePlace, temperature: smp.temperature.replace(',', '.'), instrumentId: probe || null } });
+              await load(); }); }}>
+              <div className="grid2">
+                <div><label htmlFor="sw">Масса, г</label><input id="sw" inputMode="decimal" required value={smp.weightG} onChange={(e) => setSmp({ ...smp, weightG: e.target.value })} /></div>
+                <div><label htmlFor="st">Температура хранения, °C</label><input id="st" inputMode="decimal" required value={smp.temperature} onChange={(e) => setSmp({ ...smp, temperature: e.target.value })} /></div>
+              </div>
+              <label htmlFor="sp">Где хранится</label><input id="sp" required value={smp.storagePlace} onChange={(e) => setSmp({ ...smp, storagePlace: e.target.value })} placeholder="холодильник для проб" />
+              <label htmlFor="sc">Тара</label><input id="sc" required value={smp.container} onChange={(e) => setSmp({ ...smp, container: e.target.value })} />
+              <button className="btn block" disabled={busy}>Отобрать пробу</button>
+              <p className="small muted">Масса, срок и температура проверяются по настройкам проб предприятия.</p>
+            </form>
+          ) : <p className="small">Отбирает сотрудник цеха.</p>}
         </div>
       )}
 

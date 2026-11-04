@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, assertSiteAccess, getSite, openTask, fmtNum, orgToday } from './common';
+import { inOrg, parse, optText, assertSiteAccess, getSite, openTask, closeTasksFor, fmtNum, orgToday } from './common';
 import { once, move } from './stock';
 import { approvedRecipe, convertUnits } from './recipes';
 import { explode, availability, USABLE, type Need } from './bom';
@@ -10,6 +10,7 @@ import { raiseIncident } from './incidents';
 import { labelForLot } from './labels';
 import { capaForIncident } from './capa';
 import { assertInstrument } from './equipment';
+import { roleHas } from '../access/roles';
 import { requirementsFor, limitsText, KIND_LABEL, FORM_KIND, NEEDS_PROBE, monitoringByCode, type CheckKind, type Requirement } from './ccp';
 
 /**
@@ -141,13 +142,17 @@ export async function getProduction(userId: string, orgId: string, id: string) {
     const consumed = o.status === 'done' ? (await tx.query(`select m.lot_id, m.quantity, m.unit, p.name as product, l.lot_no from stock_movements m join products p on p.id = m.product_id join lots l on l.id = m.lot_id
       where m.ref_type = 'production' and m.ref_id = $1 and m.kind = 'consume' order by p.name`, [o.id])).rows : [];
     const lot = o.output_lot_id ? (await tx.query(`select id, lot_no, quantity, unit, expires_at, expiry_basis, status, status_reason from lots where id = $1`, [o.output_lot_id])).rows[0] : null;
+    const orgRef = organolepticRef((await tx.query(`select organoleptic from ttk_versions where id = $1`, [o.ttk_version_id])).rows[0]?.organoleptic);
+    const assessor = o.assessed_by ? (await tx.query(`select full_name from users where id = $1`, [o.assessed_by])).rows[0]?.full_name : null;
+    const brakerage = o.dish_kind !== 'dish' ? null : { reference: o.organoleptic_ref || orgRef, decision: o.release_decision, organoleptic: o.organoleptic, reject_reason: o.reject_reason,
+      assessed_at: o.assessed_at, assessed_by_name: assessor, can_decide: roleHas(m.role, 'brakerage.decide') };
     const label = lot ? (await tx.query(`select id, code from labels where lot_id = $1 order by created_at desc limit 1`, [lot.id])).rows[0] || null : null;
     const users = (await tx.query(`select id, full_name from users where id = any($1::uuid[])`, [[o.created_by, o.started_by, o.completed_by].filter(Boolean)])).rows;
     const name = (uid: string | null) => users.find((u) => u.id === uid)?.full_name || null;
     return {
       order: { ...o, status_label: ORDER_STATUS[o.status], created_by_name: name(o.created_by), started_by_name: name(o.started_by), completed_by_name: name(o.completed_by) },
       ttk: v, checks: reqs, ccp_blocked: reqs.filter((r) => r.state === 'not_configured').map((r) => `${r.kind_label} (${r.source}): ${r.reason}`),
-      need, need_error: needError, lots, consumed, lot, label, deviation: o.consumption_deviation || null,
+      need, need_error: needError, lots, consumed, lot, label, deviation: o.consumption_deviation || null, brakerage, sample_offer: await sampleOffer(tx, o, o.output_lot_id),
     };
   });
 }
@@ -283,8 +288,75 @@ const lotQty = z.union([z.number(), z.string().trim().regex(/^\d+([.,]\d+)?$/, '
 const CompleteInput = z.object({ actualKg: qtyKg, operationId: z.string().trim().min(8).max(100),
   consumed: z.array(z.object({ lotId: z.uuid(), quantity: lotQty }), 'Укажите фактически использованные партии.')
     .min(1, 'Укажите фактически использованные партии и количества — расход по норме ТТК фактом не записывается.').max(200),
-  // бракераж готовой продукции (J58): органолептика и решение о допуске — обязательны для блюда
+  // бракераж готовой продукции (J58): решение — только с правом бракеража; без решения партия ждёт бракеража на удержании
   organoleptic: z.string().trim().max(1000).optional().nullable(), decision: z.enum(['allowed', 'rejected']).optional().nullable() });
+
+const BrakerageInput = z.object({
+  decision: z.enum(['allowed', 'rejected'], 'Выберите: соответствует или не соответствует.'),
+  organoleptic: z.string().trim().max(1000).optional().nullable().transform((v) => v || null),
+});
+
+const ORG_LABEL: Record<string, string> = { appearance: 'внешний вид', color: 'цвет', consistency: 'консистенция', taste: 'вкус и запах' };
+/** Эталон органолептики из утверждённой ТТК: только заполненные показатели. */
+export function organolepticRef(o: Record<string, string | null> | null | undefined) {
+  const src = (o || {}) as Record<string, string | null>;
+  return Object.keys(ORG_LABEL).filter((k) => src[k] && String(src[k]).trim()).map((k) => ({ key: k, label: ORG_LABEL[k], text: String(src[k]).trim() }));
+}
+
+/**
+ * Решение бракеража по выпуску блюда. «Соответствует» — по эталону ТТК (если его нет — нужно описание органолептики);
+ * «не соответствует» — с причиной: партия остаётся на удержании, отклонение ответственному. Разрешение к реализации снимает
+ * удержание бракеража, но не карантин по ККТ.
+ */
+async function applyBrakerage(tx: Tx, orgId: string, userId: string, o: Record<string, any>, lotId: string, b: { decision: 'allowed' | 'rejected'; organoleptic: string | null }, ref: unknown[]) {
+  if (b.decision === 'rejected' && (!b.organoleptic || b.organoleptic.length < 5)) throw Errors.validation('«Не соответствует» — укажите причину: что именно не соответствует эталону ТТК.');
+  if (b.decision === 'allowed' && !ref.length && (!b.organoleptic || b.organoleptic.length < 5))
+    throw Errors.validation('В ТТК нет эталона органолептики — опишите внешний вид, цвет, консистенцию, вкус и запах.');
+  const ccp = (await tx.query(`select count(*)::int as n from production_checks c where c.order_id = $1 and c.phase <> 'start' and not c.ok
+      and not exists (select 1 from production_checks x where x.corrects_id = c.id)
+      and c.recorded_at = (select max(y.recorded_at) from production_checks y where y.order_id = c.order_id and y.check_id = c.check_id and y.phase <> 'start'
+        and not exists (select 1 from production_checks z where z.corrects_id = y.id))`, [o.id])).rows[0].n > 0;
+  let incidentId: string | null = null;
+  if (b.decision === 'rejected') {
+    incidentId = (await raiseIncident(tx, { orgId, siteId: o.site_id, severity: 'high', kind: 'brakerage', title: `Бракераж: не соответствует — ${o.dish_name}`,
+      what: `Партия не допущена к реализации: ${b.organoleptic}.`, entityType: 'production_order', entityId: o.id, responsibleRole: 'haccp_lead', dueMinutes: 60,
+      ruleSource: 'Бракераж по эталону утверждённой ТТК', recommendedAction: 'Партию не реализовывать; решение о переработке или утилизации — ответственный, с основанием.',
+      createdBy: userId, notify: ['haccp_lead', 'chef'] })).id;
+    await tx.query(`update lots set status = 'quarantine', status_reason = $2 where id = $1 and status in ('available', 'quarantine')`, [lotId, `бракераж: не соответствует — ${b.organoleptic}`]);
+  } else if (!ccp) {
+    await tx.query(`update lots set status = 'available', status_reason = 'бракераж: допущено к реализации' where id = $1 and status = 'quarantine' and status_reason = 'ожидает бракеража'`, [lotId]);
+  }
+  await tx.query(`update production_orders set organoleptic = $2, release_decision = $3, assessed_by = $4, assessed_at = now(), reject_reason = $5, organoleptic_ref = $6 where id = $1`,
+    [o.id, b.organoleptic || (b.decision === 'allowed' ? 'соответствует эталону ТТК' : null), b.decision, userId, b.decision === 'rejected' ? b.organoleptic : null, JSON.stringify(ref)]);
+  await closeTasksFor(tx, orgId, 'brakerage', o.id, userId, b.decision === 'allowed' ? 'допущено к реализации' : 'не допущено');
+  await audit.record(tx, { organizationId: orgId, siteId: o.site_id, actorUserId: userId, action: 'production.brakerage', entityType: 'production_order', entityId: o.id,
+    after: { decision: b.decision, organoleptic: b.organoleptic, lot: lotId, ccp_quarantine: ccp, incident: incidentId } });
+  return { decision: b.decision, incident_id: incidentId, lot_status: b.decision === 'rejected' || ccp ? 'quarantine' : 'available', ccp_quarantine: ccp };
+}
+
+/** Предложение суточной пробы после выпуска: блюдо мероприятия или блюдо с отметкой «проба при выпуске» в настройках проб. */
+async function sampleOffer(tx: Tx, o: Record<string, any>, lotId: string | null) {
+  if (!lotId) return null;
+  const dish = (await tx.query(`select sample_on_release from dishes where id = $1`, [o.dish_id])).rows[0];
+  const ev = o.plan_event_id ? (await tx.query(`select id, number, title from plan_events where id = $1`, [o.plan_event_id])).rows[0] : null;
+  if (!ev && !dish?.sample_on_release) return null;
+  const taken = (await tx.query(`select id, taken_at from daily_samples where lot_id = $1 or (plan_event_id = $2 and dish_id = $3) limit 1`, [lotId, ev?.id || null, o.dish_id])).rows[0] || null;
+  return { reason: ev ? `мероприятие № ${ev.number} «${ev.title}»` : 'для блюда указано в настройках проб', source: ev ? 'event' : 'lot', event_id: ev?.id || null, dish_id: o.dish_id, lot_id: lotId, taken };
+}
+
+/** Бракераж выпущенной партии блюда (если при выпуске решения не было). */
+export async function decideBrakerage(userId: string, orgId: string, id: string, input: unknown) {
+  const d = parse(BrakerageInput, input);
+  return inOrg(userId, orgId, 'brakerage.decide', async (tx, m) => {
+    const o = await orderFor(tx, orgId, id, true);
+    assertSiteAccess(m, o.site_id);
+    if (o.dish_kind !== 'dish') throw Errors.validation('Бракераж проводится по готовой продукции.');
+    if (o.status !== 'done' || !o.output_lot_id) throw Errors.conflict('Бракераж — по выпущенной партии.');
+    if (o.release_decision) throw Errors.conflict('Решение бракеража уже принято — оно не меняется.');
+    const v = (await tx.query(`select organoleptic from ttk_versions where id = $1`, [o.ttk_version_id])).rows[0];
+    return applyBrakerage(tx, orgId, userId, o, o.output_lot_id, d, organolepticRef(v.organoleptic));
+  });
+}
 
 /** Выпуск партии: фактический расход по партиям, норма ТТК отдельно, партия с себестоимостью и сроком из ТТК, этикетка. */
 /** Позиции, которые можно списать на задание: всё из раскладки утверждённой ТТК — сырьё и выпущенные п/ф. */
@@ -316,8 +388,9 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     const o = await orderFor(tx, orgId, id, true);
     assertSiteAccess(m, o.site_id);
     if (o.status !== 'in_progress') throw Errors.conflict(o.status === 'planned' ? 'Сначала «Начать»: выпуск — из задания в работе.' : `Задание уже ${ORDER_STATUS[o.status].toLowerCase()}.`);
-    if (o.dish_kind === 'dish' && (!d.organoleptic || d.organoleptic.length < 5 || !d.decision))
-      throw Errors.validation('Выпуск готовой продукции — с бракеражем: опишите органолептику (внешний вид, цвет, консистенция, вкус и запах) и решение о допуске к реализации.');
+    if (d.decision && o.dish_kind !== 'dish') throw Errors.validation('Бракераж — для готовой продукции.');
+    if (d.decision && !roleHas(m.role, 'brakerage.decide'))
+      throw Errors.forbidden('Бракераж проводит сотрудник с правом бракеража (шеф, ответственный ХАССП). Выпустите партию без решения — она будет ждать бракеража.');
     const reqs = withLast(await requirementsFor(tx, orgId, o), await lastChecks(tx, o.id), []);
     const unset = reqs.filter((r) => r.state === 'not_configured');
     if (unset.length) throw Errors.conflict(`Выпуск закрыт: контроль ККТ не настроено — ${unset.map((r) => `${r.kind_label}, ${r.source}: ${r.reason}`).join('; ')}.`);
@@ -387,13 +460,14 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     const expiresAt = hours ? new Date(now.getTime() + hours * 3600e3) : null;
     const basis = hours ? `ТТК «${o.dish_name}» v${v.version}: ${kindOf} ${fmtNum(hours)} ч${v.storage_conditions ? `, ${v.storage_conditions}` : ''}${v.shelf_basis ? ` (${v.shelf_basis})` : ''}` : null;
     const lotNo = `${o.dish_kind === 'dish' ? 'ГП' : 'ПФ'}-${now.toISOString().slice(2, 10).replace(/-/g, '')}-${o.id.slice(0, 4).toUpperCase()}`;
-    const rejected = d.decision === 'rejected';
+    const rejected = false;   // «не соответствует» оформляется ниже через applyBrakerage
+    const pendingBrakerage = o.dish_kind === 'dish';      // до решения бракеража партия блюда на удержании
     const ccpBad = bad.length ? `ККТ: последний замер вне предела — ${bad.map((r) => `${r.check!.name} ${fmtNum(r.last!.value)} ${r.check!.unit} (${r.limits})`).join('; ')}` : null;
     const unitPrice = cost === null || outQty <= 0 ? null : Math.round((cost / outQty) * 100) / 100;
     const lot = (await tx.query(`insert into lots (organization_id, site_id, product_id, lot_no, quantity, unit, manufactured_at, expires_at, expiry_basis, status, status_reason, unit_price, storage_conditions)
       values ($1, $2, $3, $4, 0, $5, $6, $7, $8, $10, $11, $9, $12) returning id`,
-      [orgId, o.site_id, productId, lotNo, unit, await orgToday(tx, orgId), expiresAt, basis, unitPrice, rejected || ccpBad ? 'quarantine' : 'available',
-        ccpBad ? ccpBad : rejected ? `бракераж: не допущено к реализации — ${d.organoleptic}` : o.dish_kind === 'dish' ? 'выпуск готовой продукции' : 'выпуск п/ф', v.storage_conditions || null])).rows[0];
+      [orgId, o.site_id, productId, lotNo, unit, await orgToday(tx, orgId), expiresAt, basis, unitPrice, rejected || ccpBad || pendingBrakerage ? 'quarantine' : 'available',
+        ccpBad ? ccpBad : pendingBrakerage ? 'ожидает бракеража' : o.dish_kind === 'dish' ? 'выпуск готовой продукции' : 'выпуск п/ф', v.storage_conditions || null])).rows[0];
     await move(tx, { orgId, siteId: o.site_id, lotId: lot.id, productId, kind: 'produce', quantity: outQty, unit, refType: 'production', refId: o.id, operationId: d.operationId, userId, reason: `выпуск: ${o.dish_name}` });
     for (const t of taken) {
       await tx.query(`insert into lot_links (organization_id, parent_lot_id, child_lot_id, kind, quantity, unit) values ($1, $2, $3, 'production', $4, $5)`, [orgId, t.lotId, lot.id, t.qty, t.unit]);
@@ -411,8 +485,16 @@ export async function completeProduction(userId: string, orgId: string, id: stri
     }
     const cRound = cost === null ? null : Math.round(cost * 100) / 100;
     await tx.query(`update production_orders set status = 'done', completed_by = $2, completed_at = now(), actual_g = $3, output_lot_id = $4, cost = $5,
-      organoleptic = $6, release_decision = $7, assessed_by = $8, consumption_deviation = $9 where id = $1`,
-      [o.id, userId, d.actualKg * 1000, lot.id, cRound, d.organoleptic || null, d.decision || null, d.decision ? userId : null, JSON.stringify(deviation)]);
+      consumption_deviation = $6 where id = $1`,
+      [o.id, userId, d.actualKg * 1000, lot.id, cRound, JSON.stringify(deviation)]);
+    // бракераж: решение сразу (есть право) или задача шефу; эталон — органолептика утверждённой ТТК
+    let brakerage: Awaited<ReturnType<typeof applyBrakerage>> | null = null;
+    if (o.dish_kind === 'dish') {
+      if (d.decision) brakerage = await applyBrakerage(tx, orgId, userId, { ...o, site_id: o.site_id }, lot.id, { decision: d.decision, organoleptic: d.organoleptic || null }, organolepticRef(v.organoleptic));
+      else await openTask(tx, { orgId, siteId: o.site_id, kind: 'brakerage', title: `Бракераж: ${o.dish_name}, партия ${lotNo}`,
+        details: 'Партия выпущена и ждёт бракеража: сверить органолептику с эталоном ТТК и решить о допуске к реализации.', entityType: 'production_order', entityId: o.id,
+        assigneeRole: 'chef', dueAt: new Date(now.getTime() + 30 * 60e3), createdBy: userId });
+    }
     // отклонение ККТ: партия в карантине, к отклонению — запись о партии и CAPA сразу (не дожидаясь закрытия)
     const capas: string[] = [];
     for (const r of bad) {
@@ -427,7 +509,8 @@ export async function completeProduction(userId: string, orgId: string, id: stri
       after: { lot: lot.id, lot_no: lotNo, actual_g: d.actualKg * 1000, planned_g: Number(o.planned_g), yield_diff_pct: yieldDiff, cost: cRound, consumed: taken.map((t) => ({ lot: t.lotId, qty: t.qty, unit: t.unit })), deviation, ccp_quarantine: ccpBad } });
     return { lot_id: lot.id, lot_no: lotNo, label_id: label.id, quantity: outQty, unit, cost: cRound, unit_price: unitPrice,
       expires_at: expiresAt?.toISOString() || null, expiry_basis: basis, yield_diff_pct: yieldDiff, consumed: taken.length, deviation,
-      lot_status: rejected || ccpBad ? 'quarantine' : 'available', ccp_deviation: ccpBad, capa_ids: capas,
+      lot_status: brakerage ? brakerage.lot_status : ccpBad || pendingBrakerage ? 'quarantine' : 'available', ccp_deviation: ccpBad, capa_ids: capas,
+      brakerage: o.dish_kind !== 'dish' ? null : brakerage ? brakerage.decision : 'pending', sample_offer: await sampleOffer(tx, o, lot.id),
       corrective_actions: bad.map((r) => r.corrective_action).filter(Boolean) };
   }));
 }
@@ -512,5 +595,16 @@ export async function archiveReleaseCheck(userId: string, orgId: string, checkId
     if (!c) throw Errors.notFound('Параметр не найден.');
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'release_check.archive', entityType: 'dish', entityId: c.dish_id, after: { name: c.name }, reason: d.reason });
     return { ok: true };
+  });
+}
+
+/** Настройки проб: отбирать суточную пробу при каждом выпуске этого блюда (кроме мероприятий — там всегда). */
+export async function setSampleOnRelease(userId: string, orgId: string, dishId: string, input: unknown) {
+  const d = parse(z.object({ onRelease: z.boolean() }), input);
+  return inOrg(userId, orgId, 'lab.manage', async (tx) => {
+    const r = (await tx.query(`update dishes set sample_on_release = $3 where id = $1 and organization_id = $2 returning id, name`, [parse(z.uuid(), dishId), orgId, d.onRelease])).rows[0];
+    if (!r) throw Errors.notFound('Блюдо не найдено.');
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'sample.on_release', entityType: 'dish', entityId: r.id, after: { on_release: d.onRelease } });
+    return { ok: true, sample_on_release: d.onRelease };
   });
 }

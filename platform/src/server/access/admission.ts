@@ -12,7 +12,7 @@ import type { Permission } from './roles';
 
 export const FOOD_ROLES = ['chef', 'line_staff'];
 /** Действия с продукцией, закрытые без допуска. */
-export const GATED: ReadonlySet<Permission> = new Set<Permission>(['measure.record', 'production.run', 'sample.record', 'sanitation.record', 'receipt.record', 'stock.consume', 'lot.open']);
+export const GATED: ReadonlySet<Permission> = new Set<Permission>(['measure.record', 'production.run', 'brakerage.decide', 'sample.record', 'sanitation.record', 'receipt.record', 'stock.consume', 'lot.open']);
 
 export interface MedicalState { status: 'ok' | 'soon' | 'expired' | 'missing'; exam_due: string | null; hygiene_due: string | null; restrictions: string | null }
 

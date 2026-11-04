@@ -53,10 +53,10 @@ describe('Перечень форм J01–J53 и семейства', () => {
   it('60 форм; автоматические — из событий; пары ручных форм — одни данные; сводные формы — свои записи', async () => {
     const forms = listForms();
     expect(forms).toHaveLength(60);
-    expect(forms.filter((f) => f.mode === 'auto').map((f) => f.code).sort()).toEqual(['J01', 'J03', 'J04', 'J05', 'J07', 'J09', 'J10', 'J15', 'J16', 'J17', 'J18', 'J21', 'J22', 'J23', 'J24', 'J25', 'J26', 'J29', 'J30', 'J31', 'J32', 'J34', 'J39', 'J42', 'J43',
+    expect(forms.filter((f) => f.mode === 'auto').map((f) => f.code).sort()).toEqual(['J01', 'J02', 'J03', 'J04', 'J05', 'J07', 'J09', 'J10', 'J15', 'J16', 'J17', 'J18', 'J21', 'J22', 'J23', 'J24', 'J25', 'J26', 'J29', 'J30', 'J31', 'J32', 'J34', 'J39', 'J40', 'J42', 'J43',
       'J54', 'J55', 'J56', 'J57', 'J58', 'J59', 'J60']);
-    expect(forms.find((f) => f.code === 'J40')).toMatchObject({ mode: 'manual', data_form: 'J02', shares_with: 'J02' });
-    expect(dataFormOf('J02')).toBe('J02');
+    expect(forms.find((f) => f.code === 'J41')).toMatchObject({ mode: 'manual', data_form: 'J38', shares_with: 'J38' });
+    expect(dataFormOf('J38')).toBe('J38');   // J02/J40 — из бракеража (этап 2 доработки), пара ручных форм — J38/J41
     expect(dataFormOf('J44')).toBe('J44');   // сводная: J07/J08/J27 — разные журналы, не склеиваются
     expect(dataFormOf('J07')).toBe('J07');
     expect(dataFormOf('J08')).toBe('J08');
@@ -135,32 +135,32 @@ describe('Подпись за период', () => {
 });
 
 describe('Ручные записи (ТЗ v2 §10, AT-11)', () => {
-  it('запись J02 видна в J40; поздняя помечается; старше суток, в будущем и пустая — нельзя', async () => {
-    const e = await addEntry(cook.id, orgId, 'J40', { siteId, values: { 0: today, 1: '12:30', 2: 'Борщ', 3: 'отлично', 9: 'лишний столбец' } });
-    expect(e.form_code).toBe('J02');
-    expect(e.values).not.toHaveProperty('9');
-    const late = await addEntry(cook.id, orgId, 'J02', { siteId, occurredAt: minutesAgo(30), values: { 0: today, 2: 'Котлета' } });
+  it('запись J38 видна в J41; поздняя помечается; старше суток, в будущем и пустая — нельзя', async () => {
+    const e = await addEntry(cook.id, orgId, 'J41', { siteId, values: { 0: today, 1: '12:30', 2: 'Борщ', 3: 'отлично', 12: 'лишний столбец' } });
+    expect(e.form_code).toBe('J38');
+    expect(e.values).not.toHaveProperty('12');
+    const late = await addEntry(cook.id, orgId, 'J38', { siteId, occurredAt: minutesAgo(30), values: { 0: today, 2: 'Котлета' } });
     expect(late.is_late).toBe(true);
-    await expect(addEntry(cook.id, orgId, 'J02', { siteId, occurredAt: minutesAgo(25 * 60), values: { 0: today, 2: 'X' } })).rejects.toThrow(/старше суток/);
-    await expect(addEntry(cook.id, orgId, 'J02', { siteId, occurredAt: new Date(Date.now() + 3600e3).toISOString(), values: { 0: today, 2: 'X' } })).rejects.toThrow(/будущем/);
-    await expect(addEntry(cook.id, orgId, 'J02', { siteId, values: { 0: today } })).rejects.toThrow(/два столбца/);
-    const j02 = await getJournal(chef.id, orgId, 'J02', P());
-    const j40 = await getJournal(chef.id, orgId, 'J40', P());
-    expect(j40.rows).toEqual(j02.rows);
-    expect(j40.columns).toEqual(j02.columns);
-    expect(j02.rows).toHaveLength(2);
-    expect(j02.rows[0].at(-1)).toMatch(/внесено/);
+    await expect(addEntry(cook.id, orgId, 'J38', { siteId, occurredAt: minutesAgo(25 * 60), values: { 0: today, 2: 'X' } })).rejects.toThrow(/старше суток/);
+    await expect(addEntry(cook.id, orgId, 'J38', { siteId, occurredAt: new Date(Date.now() + 3600e3).toISOString(), values: { 0: today, 2: 'X' } })).rejects.toThrow(/будущем/);
+    await expect(addEntry(cook.id, orgId, 'J38', { siteId, values: { 0: today } })).rejects.toThrow(/два столбца/);
+    const j38 = await getJournal(chef.id, orgId, 'J38', P());
+    const j41 = await getJournal(chef.id, orgId, 'J41', P());
+    expect(j41.rows).toEqual(j38.rows);
+    expect(j41.columns).toEqual(j38.columns);
+    expect(j38.rows).toHaveLength(2);
+    expect(j38.rows[0].at(-1)).toMatch(/внесено/);
   });
 
   it('запись неизменяема; исправление — новой записью с причиной, в журнале последняя версия', async () => {
-    const [e] = (await listEntries(cook.id, orgId, 'J02', siteId)).filter((x) => x.values['2'] === 'Борщ');
+    const [e] = (await listEntries(cook.id, orgId, 'J38', siteId)).filter((x) => x.values['2'] === 'Борщ');
     await expect(withSystem((tx) => tx.query(`update journal_entries set values = '{}' where id = $1`, [e.id]))).rejects.toThrow(/нельзя изменить/);
     await expect(correctEntry(cook.id, orgId, e.id, { values: { 3: 'хорошо' }, reason: '' })).rejects.toMatchObject({ code: 'VALIDATION' });
     const fix = await correctEntry(cook.id, orgId, e.id, { values: { 3: 'хорошо' }, reason: 'ошибся оценкой' });
-    expect(fix).toMatchObject({ corrects_id: e.id, form_code: 'J02' });
+    expect(fix).toMatchObject({ corrects_id: e.id, form_code: 'J38' });
     expect(fix.values).toMatchObject({ 2: 'Борщ', 3: 'хорошо' });
     await expect(correctEntry(cook.id, orgId, e.id, { values: { 3: 'удовл.' }, reason: 'ещё раз' })).rejects.toMatchObject({ code: 'CONFLICT' });
-    const rows = (await getJournal(chef.id, orgId, 'J02', P())).rows;
+    const rows = (await getJournal(chef.id, orgId, 'J38', P())).rows;
     expect(rows).toHaveLength(2);
     const borsch = rows.find((r) => r[2] === 'Борщ')!;
     expect(borsch[3]).toBe('хорошо');
@@ -172,15 +172,15 @@ describe('Изоляция и выгрузка', () => {
   it('чужая организация и чужая точка журнал не видят', async () => {
     await expect(getJournal(stranger.id, orgId, 'J01', P())).rejects.toMatchObject({ code: expect.stringMatching(/FORBIDDEN|NOT_FOUND/) });
     await expect(getJournal(cook2.id, orgId, 'J01', P())).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(addEntry(cook2.id, orgId, 'J02', { siteId, values: { 0: today, 2: 'X' } })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(addEntry(cook2.id, orgId, 'J38', { siteId, values: { 0: today, 2: 'X' } })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect((await getJournal(owner.id, orgId, 'J01', { siteId: site2, from: today, to: today })).rows).toEqual([]);
     await expect(getJournal(owner.id, orgId, 'J99', P())).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(getJournal(owner.id, orgId, 'J01', { siteId, from: today, to: inDays(-1) })).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
   it('CSV для Excel и печатная форма с экранированием', async () => {
-    await addEntry(cook.id, orgId, 'J02', { siteId, values: { 0: today, 2: '<script>alert(1)</script>' } });
-    const j = await getJournal(chef.id, orgId, 'J02', P());
+    await addEntry(cook.id, orgId, 'J38', { siteId, values: { 0: today, 2: '<script>alert(1)</script>' } });
+    const j = await getJournal(chef.id, orgId, 'J38', P());
     const csv = toCsv(j);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
     expect(csv.split('\r\n')[0]).toContain(';');

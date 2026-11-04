@@ -32,10 +32,10 @@ async function draft(name: string, kind: 'dish' | 'semi', extra: Record<string, 
   await addLine(chef.id, orgId, v, { productId: beef, unit: 'кг', brutto: 1.1, netto: 1 });
   return { d, v };
 }
-async function produce(dishId: string, extra: Record<string, unknown> = {}) {
+async function produce(dishId: string, extra: Record<string, unknown> = {}, by = cook) {
   const o = await createProduction(chef.id, orgId, { siteId, dishId, plannedKg: 1, plannedFor: today() });
-  await startProduction(cook.id, orgId, o.id);
-  return completeProduction(cook.id, orgId, o.id, { consumed: await fact(cook.id, orgId, o.id), actualKg: 1, operationId: randomUUID(), ...extra });
+  await startProduction(by.id, orgId, o.id);
+  return completeProduction(by.id, orgId, o.id, { consumed: await fact(by.id, orgId, o.id), actualKg: 1, operationId: randomUUID(), ...extra });
 }
 
 beforeAll(async () => {
@@ -66,7 +66,7 @@ describe('Раздельные сроки ТТК', () => {
   it('готовая продукция: срок партии — срок реализации; после вскрытия — правило товара из ТТК', async () => {
     const { d, v } = await draft('Котлеты', 'dish', { storageHours: 24, saleHours: 12, openedHours: 6, shelfBasis: 'СТО 002-2026, протокол № 8' });
     await submitVersion(chef.id, orgId, v); await approveVersion(chef.id, orgId, v);
-    const r = await produce(d, { organoleptic: 'соответствует ТТК', decision: 'allowed' });
+    const r = await produce(d, { organoleptic: 'соответствует ТТК', decision: 'allowed' }, chef);   // бракераж — право шефа (этап 2 доработки)
     expect(r.expiry_basis).toMatch(/^ТТК «Котлеты» v1: срок реализации 12 ч, при \+2…\+6 °C \(СТО 002-2026, протокол № 8\)$/);
     const hours = (new Date(r.expires_at!).getTime() - Date.now()) / 3600e3;
     expect(hours).toBeGreaterThan(11.9); expect(hours).toBeLessThanOrEqual(12);

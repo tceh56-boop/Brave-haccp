@@ -28,7 +28,7 @@ const FORMS: FormDef[] = (formsJson as { forms: FormDef[] }).forms;
 export const FORM_BY_CODE = new Map(FORMS.map((f) => [f.code, f]));
 
 type Source = 'cold' | 'cold_grid' | 'room' | 'room_grid' | 'receipt' | 'lots' | 'incidents' | 'plans' | 'hazards' | 'plan' | 'repairs' | 'cleaning' | 'washing' | 'concentration' | 'health' | 'briefing_sanitary' | 'briefing_safety'
-  | 'opening' | 'semi_release' | 'label_prints' | 'relabels' | 'dish_release' | 'samples' | 'lab' | 'ccp_cook' | 'ccp_cool' | 'ccp_reheat';
+  | 'opening' | 'semi_release' | 'label_prints' | 'relabels' | 'dish_release' | 'samples' | 'lab' | 'ccp_cook' | 'ccp_cool' | 'ccp_reheat' | 'brakerage';
 /** Формы, собираемые из событий. Остальные — ручная запись. */
 const AUTO: Record<string, Source> = {
   J01: 'cold', J25: 'cold', J42: 'cold_grid', J04: 'room', J43: 'room_grid',
@@ -40,6 +40,8 @@ const AUTO: Record<string, Source> = {
   J54: 'opening', J55: 'semi_release', J56: 'label_prints', J57: 'relabels', J58: 'dish_release', J59: 'samples', J60: 'lab',
   // этап 1 доработки под кухню: ККТ — из замеров при выпуске (production_checks); ручная запись — только исправлением замера с причиной
   J22: 'ccp_cook', J23: 'ccp_cool', J24: 'ccp_reheat',
+  // этап 2: бракераж — из решений по выпуску блюд (J02 и J40 — разные печатные виды одних записей)
+  J02: 'brakerage', J40: 'brakerage',
 };
 /**
  * Для ручных семейств — форма, в которой хранятся данные. Пара форм (J02 ↔ J40) — одни данные, печатный вид
@@ -56,6 +58,7 @@ const FORM_BASIS: Record<string, string[]> = {
   J30: ['trts021:10.3'], J31: ['trts021:11.3'], J32: ['trts021:11.3'], J34: ['trts021:11.3'], J38: ['sanpin4282:44'], J41: ['sanpin4282:44'],
   J54: ['trts021:17.7'], J55: ['sanpin4282:11'], J56: ['trts022:1.2'], J57: ['trts022:1.2'], J58: ['sanpin4282:11', 'sanpin4282:32'],
   J59: ['sanpin4282:56.4', 'sanpin4282:59.10'], J60: ['sp4284:3'],
+  J02: ['sanpin4282:11', 'trts021:11.3'], J40: ['sanpin4282:11', 'trts021:11.3'],
   J22: ['trts021:11.3', 'trts021:10.3'], J23: ['trts021:11.3', 'trts021:10.3'], J24: ['trts021:11.3', 'trts021:10.3'],
 };
 registerNormRefs('journals', Object.values(FORM_BASIS).flat());
@@ -72,7 +75,7 @@ export function dataFormOf(code: string): string {
 
 const INC_BLOCK: Partial<Record<Source, string[]>> = {
   cold: ['temperature_deviation'], cold_grid: ['temperature_deviation'], room: ['temperature_deviation'], room_grid: ['temperature_deviation'],
-  receipt: ['receipt_problem'], lots: ['expired_lot'], semi_release: ['release_check'], dish_release: ['release_check'], ccp_cook: ['release_check'], ccp_cool: ['release_check'], ccp_reheat: ['release_check'], lab: ['lab_fail'], repairs: ['equipment'], cleaning: ['sanitation'], washing: ['sanitation'], concentration: ['sanitation'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail', 'equipment', 'sanitation'],
+  receipt: ['receipt_problem'], lots: ['expired_lot'], semi_release: ['release_check'], dish_release: ['release_check', 'brakerage'], ccp_cook: ['release_check'], ccp_cool: ['release_check'], ccp_reheat: ['release_check'], brakerage: ['brakerage', 'release_check'], lab: ['lab_fail'], repairs: ['equipment'], cleaning: ['sanitation'], washing: ['sanitation'], concentration: ['sanitation'], incidents: ['temperature_deviation', 'receipt_problem', 'expired_lot', 'reported', 'release_check', 'lab_fail', 'equipment', 'sanitation', 'checklist', 'brakerage'],
 };
 
 export function listForms() {
@@ -96,7 +99,7 @@ const fmtDT = (ts: Date | string | null, tz: string) => (ts ? `${fmtD(ts, tz)} $
 const yesNo = (v: unknown) => (v === true ? 'да' : v === false ? 'нет' : '—');
 const RESULT_RU: Record<string, string> = { ok: 'да', deviation: 'нет', no_criterion: 'критерий не задан' };
 const DECISION_RU: Record<string, string> = { accepted: 'принять', quarantine: 'карантин', rejected: 'отклонить' };
-const INC_KIND: Record<string, string> = { temperature_deviation: 'Температура вне предела', receipt_problem: 'Приёмка', expired_lot: 'Истёк срок', reported: 'Сообщение сотрудника', release_check: 'Выпуск п/ф (ККТ)', lab_fail: 'Лабораторное исследование', equipment: 'Оборудование', sanitation: 'Санитария' };
+const INC_KIND: Record<string, string> = { temperature_deviation: 'Температура вне предела', receipt_problem: 'Приёмка', expired_lot: 'Истёк срок', reported: 'Сообщение сотрудника', release_check: 'Выпуск п/ф (ККТ)', lab_fail: 'Лабораторное исследование', equipment: 'Оборудование', sanitation: 'Санитария', checklist: 'Чек-лист', brakerage: 'Бракераж' };
 
 /** Границы периода в часовом поясе предприятия. */
 function periodSql(fromIdx: number, toIdx: number, tzIdx: number) {
@@ -305,11 +308,12 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
     if (src === 'semi_release') return { columns: f.columns, rows: r.map((x) => [x.dish, `версия ${x.ttk_version}`, fmtDT(x.completed_at, tz), `${fmtNum(Number(x.actual_g) / 1000)} кг`,
       x.raw || 'нет связей с сырьём', fmtDT(x.expires_at, tz), x.label || 'не выдана', x.who || '—', ctl(x)]), links: r.map((x) => `/app/${c.orgId}/production/${x.id}`) };
     return { columns: f.columns, rows: r.map((x) => [x.dish, x.lot_no || 'без номера', `версия ${x.ttk_version}`, fmtDT(x.completed_at, tz),
-      x.release_decision ? `${x.release_decision === 'allowed' ? 'допущено' : 'не допущено'} (${x.assessor}); ${ctl(x)}` : `нет записи бракеража; ${ctl(x)}`, x.organoleptic || 'нет записи в системе',
+      x.release_decision ? `${x.release_decision === 'allowed' ? 'допущено' : 'не допущено'} (${x.assessor}); ${ctl(x)}` : `ожидает бракеража; ${ctl(x)}`, x.organoleptic || 'нет записи в системе',
       x.release_decision === 'allowed' && x.lot_status === 'available' && !x.bad ? 'разрешено' : `не разрешено (${x.release_decision === 'rejected' ? 'бракераж' : LOT_STATUS_LABEL[x.lot_status] || x.lot_status || 'нет партии'})`,
       fmtDT(x.expires_at, tz), x.who || '—']), links: r.map((x) => `/app/${c.orgId}/production/${x.id}`) };
   }
   if (src === 'ccp_cook' || src === 'ccp_cool' || src === 'ccp_reheat') return ccpRows(c, code, src);
+  if (src === 'brakerage') return brakerageRows(c, code);
   if (src === 'label_prints') {
     const SRC: Record<string, string> = { lot: 'этикетка партии', opened: 'вскрытие тары', consumer: 'потребительская этикетка' };
     const r = (await c.tx.query(`select lb.lot_id, pr.printed_at, pr.copies, pr.reason, lb.code, lb.kind, lb.payload->>'lot_no' as lot_no, lb.payload->>'product' as product, u.full_name as who
@@ -380,6 +384,44 @@ async function buildRows(c: Ctx, code: string, src: Source | null): Promise<{ co
  * замера в поясе предприятия, исправленные записи заменяются исправлением (с причиной), исходное значение — в примечании.
  * Записи, внесённые вручную до перевода журнала на автосбор, показываются отдельными строками с пометкой.
  */
+/**
+ * J02/J40 из бракеража по выпуску блюд: решение, эталон ТТК, кто и когда разрешил к реализации. Нет решения — «ожидает бракеража»,
+ * а не «допущено». Температура внутри продукта (J40) — последний действующий замер «в толще» по заданию, если он был.
+ */
+async function brakerageRows(c: Ctx, code: string) {
+  const f = FORM_BY_CODE.get(code)!, tz = c.tz;
+  const r = (await c.tx.query(`select o.id, o.completed_at, o.assessed_at, o.actual_g, o.organoleptic, o.release_decision, o.reject_reason, d.name as dish, l.lot_no, l.status as lot_status,
+      cu.full_name as who, au.full_name as assessor, pe.number as event_no,
+      (select pc.value from production_checks pc join release_checks rc on rc.id = pc.check_id where pc.order_id = o.id and rc.kind in ('core_temp', 'reheat')
+         and not exists (select 1 from production_checks x where x.corrects_id = pc.id) order by pc.measured_at desc limit 1) as core_t,
+      (select i.recommended_action from incidents i where i.entity_id = o.id and i.kind = 'brakerage' order by i.created_at desc limit 1) as action
+    from production_orders o join dishes d on d.id = o.dish_id left join lots l on l.id = o.output_lot_id left join users cu on cu.id = o.completed_by
+      left join users au on au.id = o.assessed_by left join plan_events pe on pe.id = o.plan_event_id
+    where o.organization_id = $1 and o.site_id = $2 and o.status = 'done' and d.kind = 'dish' and o.completed_at between ${periodSql(3, 4, 5)} order by o.completed_at`,
+    [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+  const dec = (x: Record<string, any>) => (x.release_decision === 'allowed' ? 'допустить' : x.release_decision === 'rejected' ? `брак: ${x.reject_reason || x.organoleptic}` : 'ожидает бракеража');
+  const orgl = (x: Record<string, any>) => (x.release_decision ? x.organoleptic || '—' : 'нет решения бракеража');
+  const rows: string[][] = r.map((x) => code === 'J02'
+    ? [fmtD(x.completed_at, tz), fmtT(x.completed_at, tz), x.dish, [x.lot_no || 'без номера', x.event_no ? `мероприятие № ${x.event_no}` : ''].filter(Boolean).join(', '),
+      `${fmtNum(Number(x.actual_g) / 1000)} кг`, orgl(x), dec(x), x.assessor || '—']
+    : [fmtDT(x.completed_at, tz), x.assessed_at ? fmtT(x.assessed_at, tz) : '—', x.dish, orgl(x), x.core_t !== null ? `${fmtNum(x.core_t)} °C` : 'замер не предусмотрен',
+      x.release_decision === 'rejected' ? x.action || 'партия не реализуется' : '—',
+      x.release_decision === 'allowed' ? (x.lot_status === 'available' ? fmtT(x.assessed_at, tz) : `не разрешено (${LOT_STATUS_LABEL[x.lot_status] || x.lot_status})`) : x.release_decision ? 'не разрешено' : 'ожидает бракеража',
+      x.who || '—', x.assessor || '—']);
+  const links: (string | null)[] = r.map((x) => `/app/${c.orgId}/production/${x.id}`);
+  // ручные записи J02 (семейство J02/J40), сделанные до автосбора
+  const es = (await c.tx.query(`select e.* from journal_entries e where e.organization_id = $1 and e.site_id = $2 and e.form_code = 'J02' and e.occurred_at between ${periodSql(3, 4, 5)}
+      and not exists (select 1 from journal_entries x where x.corrects_id = e.id) order by e.occurred_at`, [c.orgId, c.siteId, c.from, c.to, c.tz])).rows;
+  const j02 = FORM_BY_CODE.get('J02')!.columns;
+  for (const e of es) {
+    const v = (i: number) => String(e.values?.[String(i)] ?? '');
+    rows.push(code === 'J02' ? j02.map((_, i) => (i === j02.length - 1 ? [v(i), 'ручная запись до автосбора'].filter(Boolean).join('; ') : v(i)))
+      : [`${v(0)} ${v(1)}`.trim(), '—', v(2), v(5), '—', '—', v(6), '—', [v(7), 'ручная запись до автосбора'].filter(Boolean).join('; ')]);
+    links.push(null);
+  }
+  return { columns: f.columns, rows, links };
+}
+
 async function ccpRows(c: Ctx, code: string, src: 'ccp_cook' | 'ccp_cool' | 'ccp_reheat') {
   const f = FORM_BY_CODE.get(code)!, tz = c.tz;
   const kind = ({ ccp_cook: 'core_temp', ccp_cool: 'cooling', ccp_reheat: 'reheat' } as const)[src];

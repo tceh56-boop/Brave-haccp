@@ -165,7 +165,8 @@ export async function seedDemo() {
   await reportProblem(cook.id, orgId, { siteId, what: 'Течёт кран в моечной, вода на полу' });
 
   // Журналы: ручная запись бракеража и подпись J01 за сегодня
-  await addEntry(cook.id, orgId, 'J02', { siteId, values: { 0: today().split('-').reverse().join('.'), 1: '12:30', 2: 'Бефстроганов', 3: 'отлично', 4: 'разрешено к раздаче' } });
+  // ручной журнал (J02/J40 теперь собираются из бракеража при выпуске): контроль фритюрного жира
+  await addEntry(cook.id, orgId, 'J38', { siteId, values: { 0: today().split('-').reverse().join('.'), 1: 'Фритюрница № 1', 2: 'Масло подсолнечное, демо-партия', 3: '10:00', 5: 'без посторонних запаха и цвета', 6: 'использовать', 8: 'Сергей Повар' } });
   const j01 = await getJournal(chef.id, orgId, 'J01', { siteId, from: today(), to: today() });
   await signJournal(chef.id, orgId, 'J01', { siteId, from: today(), to: today(), contentHash: j01.content_hash, note: 'проверено' });
 
@@ -190,17 +191,19 @@ export async function seedDemo() {
   await approvePlan(owner.id, orgId, plan.id, { note: 'Демо: утверждено' });
 
   // Блюда и ТТК: две утверждённые, одна без ТТК (её продажи попадут в очередь), карты из архива — черновиками
-  const dish = async (name: string, price: number, yieldG: number, technology: string, lines: { productId: string; unit: string; brutto: number; netto: number }[]) => {
+  const dish = async (name: string, price: number, yieldG: number, technology: string, lines: { productId: string; unit: string; brutto: number; netto: number }[], organoleptic?: Record<string, string>) => {
     const d = await createDish(chef.id, orgId, { name, salePrice: price, category: 'Горячее' });
     const v = (await getDish(chef.id, orgId, d.id)).current!.version.id;
-    await updateVersion(chef.id, orgId, v, { yieldG, portionG: yieldG, technology, storageConditions: 'при +2…+6 °C', shelfLife: 'Демо: 2 часа на раздаче' });
+    await updateVersion(chef.id, orgId, v, { yieldG, portionG: yieldG, technology, storageConditions: 'при +2…+6 °C', shelfLife: 'Демо: 2 часа на раздаче', ...(organoleptic ? { organoleptic } : {}) });
     for (const l of lines) await addLine(chef.id, orgId, v, l);
     await submitVersion(chef.id, orgId, v);
     await approveTtk(owner.id, orgId, v);
     return d.id as string;
   };
   const stroganoff = await dish('Бефстроганов', 450, 150, 'Говядину нарезать брусочками, обжарить, добавить лук, тушить в сливочном соусе 10 минут.',
-    [{ productId: p.beef, unit: 'кг', brutto: 0.15, netto: 0.12 }, { productId: p.onion, unit: 'г', brutto: 30, netto: 25 }, { productId: p.cream, unit: 'л', brutto: 0.03, netto: 0.03 }]);
+    [{ productId: p.beef, unit: 'кг', brutto: 0.15, netto: 0.12 }, { productId: p.onion, unit: 'г', brutto: 30, netto: 25 }, { productId: p.cream, unit: 'л', brutto: 0.03, netto: 0.03 }],
+    // эталон бракеража (демо-пример: замените описанием из вашей ТТК)
+    { appearance: 'Демо: брусочки мяса в соусе, лук пассерованный', color: 'Демо: соус светло-коричневый', consistency: 'Демо: мясо мягкое, соус однородный', taste: 'Демо: свойственные тушёной говядине со сливками, без посторонних' });
   const mors = await dish('Морс клюквенный', 150, 300, 'Клюкву протереть, залить горячей водой, настоять, процедить, охладить.', [{ productId: p.cranberry, unit: 'г', brutto: 50, netto: 50 }]);
   const compote = (await createDish(chef.id, orgId, { name: 'Компот из сухофруктов', salePrice: 120, category: 'Напитки' })).id;
   const holodets = (await listArchive(chef.id, orgId, { q: 'холодец' })).cards.map((c: { id: string }) => c.id);
