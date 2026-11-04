@@ -402,6 +402,25 @@ test('AT-20', 'Комплект ППК + ХАССП одним архивом', 
   return r.documents.length + ' документов, ' + Math.round(r.size / 1024) + ' КБ; без процессов — ' + r2.documents.length;
 });
 
+test('AT-21', 'ТУ на основе загруженной ТТК', function () {
+  var cl = Store.all('Clients')[2];
+  var ttk = { file_name: 'ТТК_17_Котлеты.docx', mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data_base64: Buffer.from('PK test ttk').toString('base64'), ttk_no: '17' };
+  var t = ok(call(COORD, 'specs.build', { client_id: cl.client_id, ttk: ttk, profile: { product_name: 'Котлеты «Домашние»', product_group: 'Полуфабрикаты мясные (мясосодержащие) рубленые формованные, в т. ч. панированные', okpd2: '10.13.14', okpo: '11112222',
+    composition: 'Говядина; 400\nСвинина; 300', nutrition: 'Белки, г; 15,2\nЖиры, г; 18,4', organoleptic: 'Цвет; розовый', ttk_no: '17' } }), 'build from ttk');
+  assert(t.profile.ttk_document_id && t.profile.ttk_file === 'ТТК_17_Котлеты.docx', 'файл ТТК сохранён и привязан');
+  var doc = Store.get('Documents', t.profile.ttk_document_id);
+  assert(doc.document_type === 'TTK' && doc.entity_type === 'TechSpecs' && doc.entity_id === t.spec.spec_id, 'ТТК в «Документах» при ТУ');
+  var gen = t.content.sections.filter(function (x) { return x.key === 'general'; })[0];
+  assert(/технико-технологической картой № 17/.test(gen.text), 'ссылка на ТТК в технических требованиях');
+  var nut = t.content.sections.filter(function (x) { return x.key === 'nutrition'; })[0];
+  assert(nut && nut.rows.length === 2 && nut.rows[0].manual, 'пищевая ценность из ТТК');
+  var t2 = ok(call(COORD, 'specs.build', { spec_id: t.spec.spec_id, profile: { product_name: 'Котлеты «Домашние»', product_group: t.spec.product_group, okpd2: '10.13.14', okpo: '11112222', ttk_no: '17' } }), 'rebuild keeps ttk');
+  assert(t2.profile.ttk_document_id === t.profile.ttk_document_id, 'пересборка сохраняет связь с ТТК');
+  var t3 = ok(call(COORD, 'specs.build', { client_id: Store.all('Clients')[3].client_id, profile: { product_name: 'Тефтели', product_group: t.spec.product_group, okpd2: '10.13.14', okpo: '11112222' } }), 'same okpo other client');
+  assert(t3.spec.designation !== t.spec.designation, 'обозначения ТУ не совпадают: ' + t3.spec.designation);
+  return t.spec.designation + ' на основе ТТК № 17';
+});
+
 /* Дополнительно: доступность разделов, ошибки, производительность чтения */
 test('EXTRA', 'Права ролей и панели', function () {
   ['owner', 'coord', 'petrov', 'qc', 'finance', 'lab'].forEach(function (u) {

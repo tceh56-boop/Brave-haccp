@@ -270,13 +270,15 @@ A.ppcNewVersion = function () { call('programs.newVersion', { program_id: S.data
 /* ---------- Технические условия ---------- */
 function tuProfileFields(groups, okpo) {
   return [{ name: 'product_name', label: 'Наименование продукции', required: true, full: true, placeholder: 'Котлеты «Домашние» из говядины и свинины' },
-    { name: 'product_group', label: 'Группа продукции (определяет показатели безопасности и маркировку)', type: 'select', required: true, full: true, options: groups.map(function (g) { return [g, g]; }).concat([['__other', 'Другая группа — ввести ниже']]) },
+    { name: 'product_group', label: 'Группа продукции (определяет показатели безопасности и маркировку)', type: 'select', required: true, full: true, empty: 'Выберите группу', options: groups.map(function (g) { return [g, g]; }).concat([['__other', 'Другая группа — ввести ниже']]) },
     { name: 'product_group_other', label: 'Другая группа продукции', full: true, hint: 'Для групп, которых нет в базе (например, роллы и суши), микробиологические нормативы внесите в «Нормативной базе».' },
     { name: 'okpd2', label: 'Код ОКПД2', placeholder: '10.13.14', hint: 'Первые три группы цифр войдут в обозначение ТУ' }, { name: 'okpo', label: 'Код ОКПО разработчика', value: okpo || '', placeholder: '8 цифр' },
     { name: 'purpose', label: 'Назначение / область применения', full: true },
     { name: 'composition', label: 'Рецептура', type: 'textarea', rows: 4, placeholder: 'Сырьё; масса нетто, г — по одному на строку' },
     { name: 'organoleptic', label: 'Органолептические показатели', type: 'textarea', rows: 3, placeholder: 'Показатель; характеристика — по одному на строку' },
     { name: 'physchem', label: 'Физико-химические показатели', type: 'textarea', rows: 3, placeholder: 'Показатель; норма — по одному на строку' },
+    { name: 'nutrition', label: 'Пищевая и энергетическая ценность (на 100 г)', type: 'textarea', rows: 2, placeholder: 'Белки, г; 15,2 — по одному на строку' },
+    { name: 'ttk_no', label: 'ТТК №', hint: 'ТУ разработаны на основе этой технико-технологической карты' }, { name: 'technology', type: 'hidden' },
     { name: 'shelf_life', label: 'Срок годности' }, { name: 'storage', label: 'Условия хранения' },
     { name: 'packaging', label: 'Упаковка' }, { name: 'net_mass', label: 'Масса нетто' }, { name: 'transport', label: 'Транспортирование', full: true },
     { name: 'head_name', label: 'Руководитель (утверждает ТУ)' }, { name: 'head_position', label: 'Должность руководителя', value: 'Директор' }];
@@ -298,8 +300,8 @@ A.tuNew = function () {
   var d = S.data;
   openForm({ title: 'Новые технические условия', wide: true, okText: 'Собрать ТУ',
     intro: '<div class="alert small">Разделы ТУ — по ГОСТ 2.114-2016 (п. 5.1.1). Микробиологические показатели, маркировка и методы контроля подставляются из нормативной базы по группе продукции. Обозначение: ТУ ОКПД2-номер-ОКПО-год.</div>',
-    fields: [{ name: 'client_id', label: 'Клиент (изготовитель)', type: 'select', required: true, full: true, options: (S.lk.clients || []).map(function (c) { return [c.id, c.name]; }) }].concat(tuProfileFields(d.groups, d.okpo)), values: { head_position: 'Директор', okpo: d.okpo },
-    submit: function (v) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } var cl = v.client_id; delete v.client_id; return call('specs.build', { client_id: cl, profile: v }); },
+    fields: [ttkField(), { name: 'client_id', label: 'Клиент (изготовитель)', type: 'select', required: true, full: true, options: (S.lk.clients || []).map(function (c) { return [c.id, c.name]; }) }].concat(tuProfileFields(d.groups, d.okpo)), values: { head_position: 'Директор', okpo: d.okpo },
+    submit: function (v, api) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } var cl = v.client_id; delete v.client_id; return call('specs.build', { client_id: cl, profile: v, ttk: api.el._ttk || null }); },
     done: function (r) { toast('ТУ собраны: ' + r.spec.designation, 'ok'); go('tudoc', { spec_id: r.spec.spec_id }); } });
 };
 Pages.tudoc = {
@@ -314,7 +316,8 @@ Pages.tudoc = {
       (draft && canApproveDocs() ? '<button class="btn go" data-a="tuApprove">Утвердить</button>' : '') +
       (!draft && canDocs() ? '<button class="btn" data-a="tuNewVersion">Изменение ТУ</button>' : '') +
       (x.document_id ? '<button class="btn" data-a="openFile" data-id="' + x.document_id + '">' + ic('file') + 'PDF</button>' : '');
-    var info = '<dl class="kv"><dt>Обозначение</dt><dd class="mono">' + esc(x.designation) + '</dd><dt>Группа</dt><dd class="small">' + esc(x.product_group) + '</dd><dt>Статус</dt><dd>' + docPill(x.status, false) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '</dl>';
+    var ttkLink = d.profile.ttk_document_id ? '<dt>Основа</dt><dd><a href="#" data-a="openFile" data-id="' + esc(d.profile.ttk_document_id) + '">ТТК' + (d.profile.ttk_no ? ' № ' + esc(d.profile.ttk_no) : '') + '</a> <span class="small muted">' + esc(d.profile.ttk_file || '') + '</span></dd>' : (d.profile.ttk_no ? '<dt>Основа</dt><dd>ТТК № ' + esc(d.profile.ttk_no) + '</dd>' : '');
+    var info = '<dl class="kv"><dt>Обозначение</dt><dd class="mono">' + esc(x.designation) + '</dd>' + ttkLink + '<dt>Группа</dt><dd class="small">' + esc(x.product_group) + '</dd><dt>Статус</dt><dd>' + docPill(x.status, false) + '</dd><dt>Сверка</dt><dd>' + unvPill(unv) + '</dd>' + (x.approved_at ? '<dt>Утвердил</dt><dd>' + esc(empName(x.approved_by)) + ', ' + fDT(x.approved_at) + '</dd>' : '') + (x.unverified_reason ? '<dt>Обоснование</dt><dd class="small">' + esc(x.unverified_reason) + '</dd>' : '') + '</dl>';
     var hist = d.history.length > 1 ? '<div class="list">' + d.history.map(function (h) { return '<div class="li click" ' + link('tudoc', { spec_id: h.spec_id }) + '><div class="txt"><b>v' + h.version + '</b> ' + docPill(h.status, false) + '<div class="t2 mono">' + h.spec_id + '</div></div></div>'; }).join('') + '</div>' : emptyLine('Изменений нет');
     return '<div class="row wrap"><button class="back" data-a="back">' + ic('back') + 'Назад</button><div style="flex:1"></div>' + acts + '</div>' + docWarnings(d, unv) +
       '<div class="doc-meta">' + card('Технические условия', info) + card('Версии', hist) + '</div><div class="stack" style="gap:16px">' + docEditorHtml(d.content, ed) + '</div>';
@@ -331,8 +334,8 @@ A.tuProfile = function () {
   var d = S.data, vals = JSON.parse(JSON.stringify(d.profile));
   if (vals.product_group && d.groups.indexOf(vals.product_group) < 0) { vals.product_group_other = vals.product_group; vals.product_group = '__other'; }
   openForm({ title: 'Данные продукции', wide: true, okText: 'Сохранить и пересобрать', intro: '<div class="alert small">Обозначение ТУ не меняется. После сохранения ТУ будут собраны заново; ручные правки будут потеряны.</div>',
-    fields: tuProfileFields(d.groups, ''), values: vals,
-    submit: function (v) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } return call('specs.build', { spec_id: d.spec.spec_id, profile: v }); }, done: function () { S.dirty = {}; toast('ТУ пересобраны', 'ok'); render(true); } });
+    fields: [ttkField()].concat(tuProfileFields(d.groups, '')), values: vals,
+    submit: function (v, api) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } return call('specs.build', { spec_id: d.spec.spec_id, profile: v, ttk: api.el._ttk || null }); }, done: function () { S.dirty = {}; toast('ТУ пересобраны', 'ok'); render(true); } });
 };
 A.tuApprove = function () {
   if (Object.keys(S.dirty).length) return toast('Сначала сохраните правки', 'bad');

@@ -411,16 +411,32 @@ var Specs = {
       product_name: V.str(pr.product_name), product_group: V.str(pr.product_group), okpd2: V.str(pr.okpd2), okpo: V.str(pr.okpo) || Settings.get('ORG_OKPO'),
       purpose: V.str(pr.purpose), composition: V.str(pr.composition), organoleptic: V.str(pr.organoleptic), physchem: V.str(pr.physchem),
       shelf_life: V.str(pr.shelf_life), storage: V.str(pr.storage), packaging: V.str(pr.packaging), net_mass: V.str(pr.net_mass), transport: V.str(pr.transport),
-      head_name: V.str(pr.head_name), head_position: V.str(pr.head_position) || 'Руководитель'
+      head_name: V.str(pr.head_name), head_position: V.str(pr.head_position) || 'Руководитель',
+      /* Из технико-технологической карты */
+      nutrition: V.str(pr.nutrition), technology: V.str(pr.technology), ttk_no: V.str(pr.ttk_no), ttk_file: V.str(pr.ttk_file), ttk_document_id: V.str(pr.ttk_document_id)
     };
+  },
+  /* Сохранить исходный файл ТТК при ТУ (папка клиента, «Документы») */
+  saveTtk: function (ctx, rec, ttk, prof) {
+    var b64 = V.str(ttk.data_base64);
+    if (!b64) return prof;
+    if (b64.length * 3 / 4 > (Settings.num('FILE_MAX_MB') || 15) * 1048576) fail('VALIDATION', 'Файл ТТК больше ' + Settings.num('FILE_MAX_MB') + ' МБ');
+    var name = V.str(ttk.file_name) || 'TTK.docx';
+    var folder = Integr.ensureFolder(['01_CLIENTS', rec.client_id, 'TU']);
+    var saved = Integr.saveFile(folder, rec.spec_id + '_TTK_' + name.replace(/[\\\/:*?"<>|]/g, ''), V.str(ttk.mime_type) || 'application/octet-stream', b64);
+    var doc = Repo.create(ctx, 'Documents', { entity_type: 'TechSpecs', entity_id: rec.spec_id, document_type: 'TTK', document_no: V.str(ttk.ttk_no), title: 'ТТК' + (ttk.ttk_no ? ' № ' + ttk.ttk_no : '') + ' — исходный файл для ' + rec.designation,
+      file_name: name, mime_type: V.str(ttk.mime_type), size_bytes: saved.size || 0, drive_file_id: saved.fileId, version: 1, approval_status: 'APPROVED', is_actual: true }, { action: 'TTK_UPLOAD' });
+    prof.ttk_file = name; prof.ttk_document_id = doc.document_id; if (V.str(ttk.ttk_no)) prof.ttk_no = V.str(ttk.ttk_no);
+    return prof;
   },
   designation: function (prof, clientId, existing) {
     if (existing) return existing;
     var n = Repo.where('TechSpecs', function (x) { return x.client_id === clientId && !x.prev_spec_id; }).length + 1;
     var okpd = /^\d{2}\.\d{2}\.\d{2}/.test(prof.okpd2) ? prof.okpd2.slice(0, 8) : 'ХХ.ХХ.ХХ';
     var okpo = /^\d{8}$/.test(prof.okpo) ? prof.okpo : 'ХХХХХХХХ';
-    var s = String(n); while (s.length < 3) s = '0' + s;
-    return 'ТУ ' + okpd + '-' + s + '-' + okpo + '-' + new Date().getFullYear();
+    var used = indexBy(Store.all('TechSpecs'), 'designation'), d;
+    do { var s = String(n++); while (s.length < 3) s = '0' + s; d = 'ТУ ' + okpd + '-' + s + '-' + okpo + '-' + new Date().getFullYear(); } while (used[d] && okpo !== 'ХХХХХХХХ');
+    return d;
   },
   build: function (ctx, p) {
     var old = p.spec_id ? Repo.must('TechSpecs', p.spec_id, 'ТУ') : null;
@@ -429,11 +445,14 @@ var Specs = {
     var prof = Specs.profile(p.profile || (old ? safeJson(old.profile_json, {}) : {}));
     V.required(prof, ['product_name', 'product_group'], { product_name: 'Наименование продукции', product_group: 'Группа продукции' });
     var designation = Specs.designation(prof, client.client_id, old ? old.designation : '');
+    if (old && !p.ttk && !p.profile) { var op = safeJson(old.profile_json, {}); prof.ttk_file = op.ttk_file || ''; prof.ttk_document_id = op.ttk_document_id || ''; }
+    if (old && p.profile && !p.ttk) { var op2 = safeJson(old.profile_json, {}); if (!prof.ttk_document_id) { prof.ttk_file = op2.ttk_file || ''; prof.ttk_document_id = op2.ttk_document_id || ''; } }
+    var rec = old;
+    if (!old) rec = Repo.create(ctx, 'TechSpecs', { client_id: client.client_id, designation: designation, version: 1, status: 'DRAFT', product_name: prof.product_name, product_group: prof.product_group, okpd2: prof.okpd2 }, { action: 'TU_CREATE' });
+    if (p.ttk) prof = Specs.saveTtk(ctx, rec, p.ttk, prof);
     var content = Specs.compose(ctx, client, prof, designation);
     var data = { profile_json: JSON.stringify(prof), content_json: DocContent.serialize(content), unverified_count: DocContent.unverified(content), product_name: prof.product_name, product_group: prof.product_group, okpd2: prof.okpd2 };
-    if (old) return Specs.get(ctx, { spec_id: Repo.update(ctx, 'TechSpecs', old.spec_id, data, { action: 'TU_REBUILD' }).spec_id });
-    data.client_id = client.client_id; data.designation = designation; data.version = 1; data.status = 'DRAFT';
-    var rec = Repo.create(ctx, 'TechSpecs', data, { action: 'TU_CREATE' });
+    Repo.update(ctx, 'TechSpecs', rec.spec_id, data, { action: old ? 'TU_REBUILD' : 'TU_COMPOSE', noAudit: !old });
     return Specs.get(ctx, { spec_id: rec.spec_id });
   },
   fill: function (t, prof, designation) {
@@ -456,9 +475,10 @@ var Specs = {
     /* Порядок разделов — ГОСТ 2.114-2016, п. 5.1.1; подразделы технических требований — п. 5.3.1 */
     var sec = [];
     sec.push(textSec('intro', 'Вводная часть', 'Пример записи продукции при заказе и в документации: «' + prof.product_name + ' ' + designation + '».' + (prof.purpose ? '\nНазначение: ' + prof.purpose + '.' : '')));
-    sec.push(textSec('general', '1 Технические требования'));
+    sec.push(textSec('general', '1 Технические требования', prof.ttk_no || prof.ttk_file ? 'Продукцию изготавливают по рецептуре и технологии, установленным технико-технологической картой' + (prof.ttk_no ? ' № ' + prof.ttk_no : '') + ', утверждённой в установленном порядке.' : ''));
     sec.push(DocContent.table('organoleptic', '1.1 Основные параметры и характеристики. Органолептические показатели', ['Показатель', 'Характеристика'], Specs.lines(prof.organoleptic, 2)));
     sec.push(DocContent.table('physchem', '1.1 (продолжение) Физико-химические показатели', ['Показатель', 'Норма'], Specs.lines(prof.physchem, 2)));
+    if (V.str(prof.nutrition)) sec.push(DocContent.table('nutrition', '1.1 (продолжение) Пищевая и энергетическая ценность (на 100 г продукции)', ['Показатель', 'Значение'], Specs.lines(prof.nutrition, 2)));
     sec.push(DocContent.table('micro', '1.1 (продолжение) Микробиологические показатели безопасности', ['Показатель', 'Допустимый уровень, не более'],
       forGroup('MICRO').map(function (i) { var r = R([i.indicator || i.text, (i.norm_value || '[внесите норматив]') + (V.str(i.volume) ? ' (' + i.volume + ')' : '')], D[i.norm_id], i); if (!i.norm_value) r.v = false; return r; }),
       'Группа продукции: ' + grp + '. Патогенные микроорганизмы, в том числе сальмонеллы и L. monocytogenes, нормируются по ТР ТС 021/2011.'));

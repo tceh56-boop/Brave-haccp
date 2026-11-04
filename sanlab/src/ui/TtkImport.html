@@ -1,0 +1,165 @@
+<script>
+/* ================= Загрузка ТТК (.docx) для технических условий =================
+ * Файл читается в браузере: распаковка DOCX (ZIP, deflate через DecompressionStream), абзацы и таблицы
+ * по порядку документа, затем разбор разделов ТТК (структура по ГОСТ 31987-2012). Результат — черновик полей
+ * формы ТУ, который пользователь проверяет перед сборкой. */
+var WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+function docxBlocks(file) {
+  return file.arrayBuffer().then(function (buf) {
+    var u = new Uint8Array(buf), dv = new DataView(buf), eocd = -1;
+    for (var i = u.length - 22; i >= Math.max(0, u.length - 66000); i--) { if (dv.getUint32(i, true) === 0x06054B50) { eocd = i; break; } }
+    if (eocd < 0) throw { message: 'Файл не похож на документ Word (.docx). Сохраните ТТК в формате .docx и загрузите снова.' };
+    var n = dv.getUint16(eocd + 10, true), off = dv.getUint32(eocd + 16, true), entry = null;
+    for (var k = 0; k < n; k++) {
+      var nl = dv.getUint16(off + 28, true), xl = dv.getUint16(off + 30, true), cl = dv.getUint16(off + 32, true);
+      var name = new TextDecoder().decode(u.subarray(off + 46, off + 46 + nl));
+      if (name === 'word/document.xml') entry = { method: dv.getUint16(off + 10, true), size: dv.getUint32(off + 20, true), local: dv.getUint32(off + 42, true) };
+      off += 46 + nl + xl + cl;
+    }
+    if (!entry) throw { message: 'В файле нет текста документа Word. Загрузите ТТК в формате .docx.' };
+    var start = entry.local + 30 + dv.getUint16(entry.local + 26, true) + dv.getUint16(entry.local + 28, true);
+    var data = u.subarray(start, start + entry.size);
+    if (entry.method === 0) return data;
+    if (entry.method !== 8) throw { message: 'Неизвестный способ сжатия документа Word.' };
+    if (typeof DecompressionStream === 'undefined') throw { message: 'Браузер не умеет читать .docx. Обновите браузер (Chrome, Edge, Safari 16.4+, Firefox 113+).' };
+    return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }).then(function (xmlBytes) {
+    var xml = new DOMParser().parseFromString(new TextDecoder('utf-8').decode(xmlBytes), 'application/xml');
+    var body = xml.getElementsByTagNameNS(WNS, 'body')[0], blocks = [];
+    var ptext = function (p) {
+      var s = '', all = p.getElementsByTagNameNS(WNS, '*');
+      for (var i = 0; i < all.length; i++) { var t = all[i].localName; if (t === 't') s += all[i].textContent; else if (t === 'tab') s += ' '; else if (t === 'br' || t === 'cr') s += '\n'; }
+      return s.replace(/ /g, ' ');
+    };
+    var kids = function (el, name) { var out = []; for (var c = el.firstElementChild; c; c = c.nextElementSibling) if (c.localName === name) out.push(c); return out; };
+    var walk = function (el) {
+      for (var c = el.firstElementChild; c; c = c.nextElementSibling) {
+        if (c.localName === 'p') { var t = ptext(c).trim(); if (t) blocks.push({ p: t }); }
+        else if (c.localName === 'tbl') blocks.push({ tbl: kids(c, 'tr').map(function (tr) { return kids(tr, 'tc').map(function (tc) { return kids(tc, 'p').map(ptext).join('\n').trim(); }); }) });
+        else if (c.localName === 'sdt' || c.localName === 'sdtContent' || c.localName === 'customXml') walk(c);
+      }
+    };
+    walk(body);
+    return blocks;
+  });
+}
+
+/* Разбор ТТК → поля формы ТУ */
+function ttkParse(blocks) {
+  var SEC = [['purpose', /област[ьи]\s+применени/i], ['raw', /требовани[яе]\s+к\s+сырь/i], ['recipe', /рецептур|закладк|расход\s+сырь/i], ['tech', /технологическ\w*\s+процесс|технология\s+приготовлени/i],
+    ['storage', /оформлени|подач|реализаци|хранени/i], ['organo', /органолептическ/i], ['physchem', /физико-?\s*химическ/i], ['micro', /микробиологическ/i], ['nutrition', /пищев\w*\s+(и\s+энергетическ\w*\s+)?ценност|энергетическ\w*\s+ценност/i]];
+  var heading = /^\s*(\d{1,2}(\.\d{1,2})*)\.?\s+([А-ЯЁA-Z].{2,120})$/;
+  var cur = 'head', secs = { head: [] }, f = {}, found = [];
+  blocks.forEach(function (b) {
+    if (b.p && b.p.length < 140) {
+      var m = b.p.match(heading), title = m ? m[3] : (/^[А-ЯЁ\s\-«»"]{6,}$/.test(b.p) ? b.p : '');
+      if (title) for (var i = 0; i < SEC.length; i++) if (SEC[i][1].test(title)) { cur = SEC[i][0]; secs[cur] = secs[cur] || []; return; }
+    }
+    (secs[cur] = secs[cur] || []).push(b);
+  });
+  var text = function (k) { return (secs[k] || []).filter(function (b) { return b.p; }).map(function (b) { return b.p; }); };
+  var tables = function (k) { return (secs[k] || []).filter(function (b) { return b.tbl; }).map(function (b) { return b.tbl; }); };
+  var allP = blocks.filter(function (b) { return b.p; }).map(function (b) { return b.p; });
+  var allT = blocks.filter(function (b) { return b.tbl; }).map(function (b) { return b.tbl; });
+  var col = function (head, re) { for (var i = 0; i < head.length; i++) if (re.test(head[i])) return i; return -1; };
+
+  /* Номер и наименование */
+  allP.some(function (l) { var m = l.match(/карт[аы]\s*№\s*([\wА-Яа-я\-\/.]+)/i); if (m) { f.ttk_no = m[1]; return true; } return false; });
+  allP.some(function (l) { var m = l.match(/(?:наименование|название)\s+(?:блюда|изделия|продукции|кулинарной\s+продукции|полуфабриката)?\s*[:—–-]\s*(.+)/i); if (m) { f.product_name = m[1].trim(); return true; } return false; });
+  if (!f.product_name) { var pm = text('purpose').join(' ').match(/распространяется\s+на\s+(.+?)(?:,|\s+вырабатываем|\s+изготавливаем|\s+производим|\.)/i); if (pm) f.product_name = pm[1].trim().replace(/^./, function (c) { return c.toUpperCase(); }); }
+  if (f.product_name) found.push('наименование');
+  var pur = text('purpose').join(' ');
+  if (pur) { f.purpose = pur.replace(/^Настоящая\s+технико-технологическая\s+карта\s+распространяется\s+на\s+/i, '').replace(/\.$/, ''); found.push('область применения'); }
+
+  /* Рецептура: таблица с колонками брутто/нетто */
+  var rt = tables('recipe').concat(allT).filter(function (t) { return t.length && t.slice(0, 2).some(function (r) { return r.join(' ').match(/нетто|брутто|расход|наименование\s+сырь/i); }); })[0];
+  if (rt) {
+    var hi = rt.findIndex(function (r) { return /нетто|брутто|наименование/i.test(r.join(' ')); }), head = rt[hi] || [];
+    var cn = col(head, /нетто/i); if (cn < 0) cn = col(head, /брутто/i); if (cn < 0) cn = head.length - 1;
+    var rows = [];
+    rt.slice(hi + 1).forEach(function (r) {
+      var nm = (r[0] || '').trim(), v = (r[cn] || '').trim();
+      if (!nm || /нетто|брутто|^на\s+\d/i.test(nm)) return;
+      if (/^(выход|итого)/i.test(nm)) { if (v) f.net_mass = v + ' г'; return; }
+      rows.push(nm + '; ' + v);
+    });
+    if (rows.length) { f.composition = rows.join('\n'); found.push('рецептура (' + rows.length + ' позиций)'); }
+  }
+
+  /* Органолептика: таблица раздела или строки «Внешний вид: …» */
+  var org = [], orgRe = /^(внешний\s+вид|цвет|вкус(\s+и\s+запах)?|запах|консистенция|текстура|вид\s+на\s+разрезе|форма)\s*[:—–-]\s*(.+)$/i;
+  tables('organo').forEach(function (t) { t.forEach(function (r) { if (r.length >= 2 && r[0] && !/показател/i.test(r[0])) org.push(r[0] + '; ' + r[r.length - 1]); }); });
+  if (!org.length) allP.forEach(function (l) { var m = l.match(orgRe); if (m) org.push(m[1].replace(/^./, function (c) { return c.toUpperCase(); }) + '; ' + m[3].trim()); });
+  if (org.length) { f.organoleptic = org.join('\n'); found.push('органолептика'); }
+
+  /* Физико-химия */
+  var ph = [];
+  tables('physchem').forEach(function (t) {
+    var h = t[0] || [], cv = col(h, /норм|значени|допуст|содержани/i); if (cv < 0) cv = h.length - 1;
+    t.slice(1).forEach(function (r) { if (r[0]) ph.push(r[0] + '; ' + (r[cv] || '')); });
+  });
+  if (ph.length) { f.physchem = ph.join('\n'); found.push('физико-химия'); }
+
+  /* Пищевая ценность: строка заголовков «Белки | Жиры | …» и строка значений, либо пары в тексте */
+  var nut = [];
+  tables('nutrition').concat(allT).some(function (t) {
+    var hi = t.findIndex(function (r) { return /белк/i.test(r.join(' ')) && /жир/i.test(r.join(' ')); });
+    if (hi < 0) return false;
+    var h = t[hi], v = t[hi + 1];
+    if (v && h.length > 2) h.forEach(function (x, i) { if (x && v[i]) nut.push(x + '; ' + v[i]); });
+    else t.slice(hi).forEach(function (r) { if (r.length >= 2 && /белк|жир|углевод|энерг|калор/i.test(r[0])) nut.push(r[0] + '; ' + r[r.length - 1]); });
+    return nut.length > 0;
+  });
+  if (!nut.length) text('nutrition').concat(allP).forEach(function (l) { var re = /(белки|жиры|углеводы|энергетическая\s+ценность|калорийность)[^\d]{0,25}([\d]+[.,]?\d*)/gi, m; while ((m = re.exec(l))) nut.push(m[1] + '; ' + m[2]); });
+  if (nut.length) { f.nutrition = nut.filter(function (x, i, a) { return a.indexOf(x) === i; }).join('\n'); found.push('пищевая ценность'); }
+
+  /* Хранение, срок годности, упаковка */
+  var st = text('storage').concat(allP).join(' ');
+  var sl = st.match(/срок\s+(?:годности|хранения|реализации)[^.:—–-]{0,40}[:—–-]?\s*([^.;]{2,80})/i);
+  if (sl) { f.shelf_life = sl[1].trim(); found.push('срок годности'); }
+  var sc = st.match(/(?:условия\s+хранения\s*[:—–-]?\s*|хранят\s+|хранение\s+(?:при|осуществляют\s+при)\s+)([^.;]*°\s*С[^.;]*)/i) || st.match(/(при\s+температуре[^.;]*°\s*С[^.;]*)/i);
+  if (sc) { f.storage = sc[1].trim(); found.push('условия хранения'); }
+  var pk = text('storage').join(' ').match(/упаковывают\s+([^.;]+)/i);
+  if (pk) { f.packaging = pk[1].trim(); found.push('упаковка'); }
+  var tech = text('tech').join('\n');
+  if (tech) { f.technology = tech; found.push('технология'); }
+  var micro = tables('micro').length ? tables('micro')[0].slice(1).map(function (r) { return r.join(' — '); }) : [];
+  return { fields: f, found: found, micro: micro };
+}
+
+/* Подсказка группы продукции по наименованию (только из групп, которые есть в базе) */
+function ttkGuessGroup(name, groups) {
+  var rules = [[/котлет|тефтел|биточ|фрикадел|зраз|шницел\w*\s+рублен|люля|бифштекс\s+рублен/i, /рубленые формованные/i], [/пельмен|манты|вареник|хинкали|чебурек|беляш/i, /тестовой оболочке/i],
+    [/фарш/i, /^Фарш/i], [/шашлык|гуляш|азу|бефстроганов|поджарк/i, /мелкокусковые/i], [/котлет\w*\s+для\s+дет|школьн|дошкольн/i, /дошкольников/i]];
+  for (var i = 0; i < rules.length; i++) if (rules[i][0].test(name)) { var g = groups.filter(function (x) { return rules[i][1].test(x); })[0]; if (g) return g; }
+  return '';
+}
+
+/* Кнопка в форме ТУ: прочитать ТТК и заполнить поля формы */
+A.ttkFile = function (el) {
+  var file = el.files && el.files[0], box = el.closest('.overlay'), st = $('#ttkStatus', box);
+  if (!file) return;
+  if (!/\.docx$/i.test(file.name)) { st.innerHTML = '<span style="color:var(--bad)">Нужен файл Word в формате .docx. Документ .doc или PDF сохраните как .docx.</span>'; return; }
+  st.textContent = 'Читаю ТТК…';
+  docxBlocks(file).then(function (blocks) {
+    var r = ttkParse(blocks), f = r.fields;
+    if (!r.found.length) { st.innerHTML = '<span style="color:var(--bad)">В файле не найдены разделы ТТК. Заполните поля вручную или пришлите образец своей ТТК для настройки разбора.</span>'; return; }
+    Object.keys(f).forEach(function (k) { var inp = $('[name="' + k + '"]', box); if (inp && f[k]) inp.value = f[k]; });
+    var sel = $('[name=product_group]', box);
+    if (sel && f.product_name && (!sel.value || sel.value === '__other')) {
+      var g = ttkGuessGroup(f.product_name, $$('option', sel).map(function (o) { return o.value; }));
+      if (g) { sel.value = g; r.found.push('группа продукции (подобрана по наименованию — проверьте)'); }
+    }
+    return readFileB64(file, 0).then(function (b) {
+      box._ttk = { file_name: file.name, mime_type: b.mime || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data_base64: b.b64, ttk_no: f.ttk_no || '' };
+      st.innerHTML = '<span style="color:var(--ok)">ТТК' + (f.ttk_no ? ' № ' + esc(f.ttk_no) : '') + ' прочитана.</span> Заполнено: ' + esc(r.found.join(', ')) + '. Проверьте поля перед сборкой.' +
+        (r.micro.length ? '<br><span class="muted">Микробиологические показатели ТТК в ТУ не переносятся: система подставит нормативы из нормативной базы по группе продукции.</span>' : '');
+      $$('textarea', box).forEach(function (t) { t.style.height = 'auto'; t.style.height = Math.min(320, t.scrollHeight + 2) + 'px'; });
+    });
+  }).catch(function (e) { st.innerHTML = '<span style="color:var(--bad)">' + esc((e && e.message) || 'Не удалось прочитать файл') + '</span>'; });
+};
+function ttkField() {
+  return { name: 'ttk_upload', type: 'info', html: '<div class="alert small" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label class="btn sm pri" style="cursor:pointer"><input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-c="ttkFile" style="display:none">' + ic('file') + 'Загрузить ТТК (.docx)</label><span id="ttkStatus">Поля ниже заполнятся из технико-технологической карты; файл ТТК сохранится при ТУ.</span></div>' };
+}
+</script>
