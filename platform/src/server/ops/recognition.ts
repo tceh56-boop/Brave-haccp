@@ -95,7 +95,8 @@ export async function recognitionAvailable(userId: string, orgId: string) {
   return inOrg(userId, orgId, 'receipt.record', async (tx) => {
     const s = await settingsOf(tx, orgId), srv = yandexStatus();
     const used = (await usedThisMonth(tx, orgId)).reduce((a, u) => a + u.pages, 0);
-    return { enabled: srv.configured && s.enabled, kinds: s.kinds, pages_left: Math.max(0, s.monthly_pages - used) };
+    // configured — ключи Yandex Cloud на сервере; org_enabled — включено на предприятии (экран приёмки объясняет, чего не хватает)
+    return { enabled: srv.configured && s.enabled, configured: srv.configured, org_enabled: s.enabled, kinds: s.kinds, pages_left: Math.max(0, s.monthly_pages - used) };
   });
 }
 

@@ -111,7 +111,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
         </div>
       )}
 
-      {draft && <RecognizeDocument siteId={r.receipt.site_id} receiptId={receiptId} products={products}
+      {draft && <RecognizeDocument siteId={r.receipt.site_id} receiptId={receiptId} products={products} onAdded={() => { load(); }}
         onUse={(l) => { setF({ ...empty, storageObjectId: f.storageObjectId, productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, lotNo: l.lotNo, expiresAt: l.expiresAt });
           document.getElementById('pr')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} />}
 

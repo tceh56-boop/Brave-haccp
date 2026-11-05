@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useOrg } from '@/lib/org';
 import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
@@ -23,17 +24,34 @@ export interface UseLine { productId: string; quantity: string; unitPrice: strin
 const TYPE: Record<string, string> = { UPD: 'УПД', WAYBILL: 'Накладная', INVOICE: 'Счёт', RETAIL_RECEIPT: 'Кассовый чек', PRODUCT_RECEIPT: 'Товарный чек', PAYMENT_ORDER: 'Платёжное поручение' };
 const dec = (v: number | null) => (v === null ? '' : String(v).replace('.', ','));
 
-export function RecognizeDocument({ siteId, receiptId, products, onUse }: { siteId: string; receiptId: string; products: Product[]; onUse: (l: UseLine) => void }) {
-  const { org } = useOrg();
-  const [av, setAv] = useState<{ enabled: boolean; kinds: string[]; pages_left: number } | null>(null);
+const CHECKS: [string, string][] = [['packaging', 'Упаковка цела'], ['labeling', 'Маркировка есть и читается'], ['documents', 'Документы в порядке'], ['quality', 'Качество (вид, запах)']];
+
+export function RecognizeDocument({ siteId, receiptId, products, onUse, onAdded }: { siteId: string; receiptId: string; products: Product[]; onUse: (l: UseLine) => void; onAdded?: () => void }) {
+  const { org, can } = useOrg();
+  const [av, setAv] = useState<{ enabled: boolean; configured: boolean; org_enabled: boolean; kinds: string[]; pages_left: number } | null>(null);
+  const [checks, setChecks] = useState<Record<string, boolean | null>>({ packaging: null, labeling: null, documents: null, quality: null });
+  const [temp, setTemp] = useState('');
+  const [done, setDone] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [kind, setKind] = useState('upd');
   const [res, setRes] = useState<Result | null>(null);
   const [pick, setPick] = useState<Record<number, string>>({});
   const [used, setUsed] = useState<Record<number, boolean>>({});
   const { busy, error, run } = useSubmit();
-  useEffect(() => { api<typeof av>(`/orgs/${org.id}/recognition/available`).then(setAv).catch(() => setAv(null)); }, [org.id]);
-  if (!av?.enabled) return null;
+  useEffect(() => {
+    api<typeof av>(`/orgs/${org.id}/recognition/available`).then(setAv).catch(() => setAv(null));
+    // распознанный ранее документ этой приёмки — черновик не теряется при перезагрузке
+    api<(Result & { applied_lines: number[] }) | null>(`/orgs/${org.id}/receipts/${receiptId}/from-document`).then((r) => { if (r) { setRes(r); setUsed(Object.fromEntries(r.applied_lines.map((n) => [n, true]))); setPick(Object.fromEntries(r.document.items.map((l) => [l.line_number, l.matched_product?.id || '']))); } }).catch(() => undefined);
+  }, [org.id, receiptId]);
+  if (!av) return null;
+  if (!av.enabled) return (
+    <div className="card">
+      <h2>Фото накладной</h2>
+      <p className="small">{!av.configured ? 'Распознавание не подключено: на сервере не заданы ключи Yandex Cloud (как в версии на Google Диске — ключ сервисного аккаунта и каталог).' : 'Распознавание выключено в настройках предприятия.'}</p>
+      {can('recognition.manage') ? <Link className="btn secondary block" href={`/app/${org.id}/recognition`}>Настроить распознавание</Link>
+        : <p className="small muted">Пока вносите строки вручную. Включает распознавание владелец или директор.</p>}
+    </div>
+  );
   const kinds = [['upd', 'УПД'], ['torg12', 'ТОРГ-12 / ТТН']].filter(([k]) => av.kinds.includes(k));
   if (!kinds.length) return null;
   const recognize = () => run(async () => {
@@ -58,7 +76,12 @@ export function RecognizeDocument({ siteId, receiptId, products, onUse }: { site
       <h2>Распознать документ</h2>
       <p className="small muted">Фото или PDF накладной — можно несколько листов. Получится черновик строк: проверьте и перенесите в приёмку. Платно: осталось {av.pages_left} стр. в этом месяце.</p>
       {kinds.length > 1 && <div className="chips">{kinds.map(([k, l]) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{l}</button>)}</div>}
-      <input aria-label="Файлы документа" type="file" accept="image/jpeg,image/png,application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+      <div className="grid2">
+        <label className="btn block" style={{ minHeight: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Сфотографировать
+          <input aria-label="Сфотографировать накладную" type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => setFiles([...files, ...Array.from(e.target.files || [])])} /></label>
+        <label className="btn secondary block" style={{ minHeight: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Выбрать файлы
+          <input aria-label="Файлы документа" type="file" accept="image/jpeg,image/png,application/pdf" multiple style={{ display: 'none' }} onChange={(e) => setFiles([...files, ...Array.from(e.target.files || [])])} /></label>
+      </div>
       {files.length > 0 && <p className="small">{files.map((f) => f.name).join(', ')}</p>}
       {error && <div className="err" role="alert">{error}</div>}
       <button className="btn secondary block" disabled={busy || !files.length || av.pages_left <= 0} onClick={recognize}>{busy ? 'Распознаю…' : `Распознать (${files.length || 0} файл.)`}</button>
@@ -91,6 +114,27 @@ export function RecognizeDocument({ siteId, receiptId, products, onUse }: { site
               </li>);
           })}</ul>
           <p className="small muted">«В форму» подставит товар, количество и цену из документа (в УПД цена указана без НДС). Срок годности, партия и проверки — по факту.</p>
+          {done && <div className="note" role="status">{done} Строки — в списке «Позиции» выше; завершите приёмку как обычно.</div>}
+          {(() => {
+            const ready = d.items.filter((l) => pick[l.line_number] && !used[l.line_number] && !l.calculation_mismatch);
+            const allYes = CHECKS.every(([k]) => checks[k] === true);
+            return ready.length > 0 && (
+              <div style={{ borderTop: '1px solid var(--line)', marginTop: 12, paddingTop: 12 }}>
+                <h3 style={{ marginTop: 0 }}>Принять всю накладную</h3>
+                <p className="small muted">Строк с выбранным товаром: {ready.length}. Количество, цена, партия и срок — из документа; проверки подтверждаете для всей поставки. Строки с другой единицей или несходящейся суммой вносите по одной.</p>
+                {CHECKS.map(([k, label]) => (
+                  <div key={k} style={{ marginBottom: 6 }}><div className="small" style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                    <div className="seg"><button type="button" className="yes" aria-pressed={checks[k] === true} onClick={() => setChecks({ ...checks, [k]: true })}>Да</button>
+                      <button type="button" className="no" aria-pressed={checks[k] === false} onClick={() => setChecks({ ...checks, [k]: false })}>Нет</button></div></div>))}
+                <label htmlFor="rdt">Температура при приёмке, °C (если требуется)</label><input id="rdt" inputMode="decimal" value={temp} onChange={(e) => setTemp(e.target.value)} />
+                <button className="btn block" style={{ minHeight: 52 }} disabled={busy || !allYes} onClick={() => run(async () => {
+                  const r = await api<{ added: number }>(`/orgs/${org.id}/receipts/${receiptId}/from-document`, { body: { documentId: res!.id, lines: ready.map((l) => ({ lineNumber: l.line_number, productId: pick[l.line_number] })),
+                    checks, temperature: temp ? temp.replace(',', '.') : null } });
+                  setUsed({ ...used, ...Object.fromEntries(ready.map((l) => [l.line_number, true])) }); setDone(`Принято строк: ${r.added}.`); onAdded?.();
+                })}>Принять {ready.length} стр. одним действием</button>
+                {!allYes && <p className="small muted">Если хоть одна проверка «Нет» — вносите строки по одной: карантин или отказ с причиной.</p>}
+              </div>);
+          })()}
         </>
       )}
     </div>

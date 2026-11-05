@@ -6,6 +6,7 @@ import { Errors } from '../http/errors';
 import { inOrg, parse, optText, getSite, assertSiteAccess, openTask, fmtNum } from './common';
 import { markOrderReceived } from './purchasing';
 import { raiseIncident } from './incidents';
+import { norm, supplierKey } from '../recognition/match';
 
 /**
  * Приёмка (ТЗ v2 §3, §4, §12, AT-01). Сотрудник вносит строку один раз: товар, количество, партию, даты
@@ -81,8 +82,11 @@ async function draftReceipt(tx: Tx, orgId: string, receiptId: string, m: { site_
 
 export async function addReceiptLine(userId: string, orgId: string, receiptId: string, input: unknown) {
   const d = parse(LineInput, input);
-  return inOrg(userId, orgId, 'receipt.record', async (tx, m) => {
-    const r = await draftReceipt(tx, orgId, receiptId, m);
+  return inOrg(userId, orgId, 'receipt.record', async (tx, m) => insertLine(tx, orgId, await draftReceipt(tx, orgId, receiptId, m), d));
+}
+
+async function insertLine(tx: Tx, orgId: string, r: { id: string; site_id: string }, d: z.infer<typeof LineInput>) {
+  {
     const p = (await tx.query(`select id, unit from products where id = $1 and organization_id = $2 and status = 'active'`, [d.productId, orgId])).rows[0];
     if (!p) throw Errors.validation('Товар не найден в справочнике.');
     if (d.storageObjectId && !(await tx.query(`select 1 from control_objects where id = $1 and site_id = $2 and status = 'active'`, [d.storageObjectId, r.site_id])).rowCount)
@@ -97,6 +101,73 @@ export async function addReceiptLine(userId: string, orgId: string, receiptId: s
       [orgId, r.id, p.id, d.quantity, p.unit, d.lotNo, d.manufacturedAt || null, d.expiresAt || null, d.expiryBasis, d.temperature ?? null,
         JSON.stringify(d.checks), d.decision, d.decisionReason, d.storageObjectId || null, d.unitPrice ?? null, d.manufacturer ?? null, d.vsdNo ?? null, d.storageConditions ?? null])).rows[0];
     return line;
+  }
+}
+
+/** Единица из документа → единица справочника (кг/л/шт и их написания); неизвестная — null. */
+const UNIT_SYN: Record<string, string> = { 'кг': 'кг', 'kg': 'кг', 'килограмм': 'кг', 'г': 'г', 'гр': 'г', 'грамм': 'г', 'л': 'л', 'l': 'л', 'литр': 'л', 'мл': 'мл', 'шт': 'шт', 'штук': 'шт', 'штука': 'шт', 'pcs': 'шт', 'уп': 'уп', 'упак': 'уп' };
+export function docUnit(u: string | null | undefined) {
+  const k = String(u || '').toLowerCase().replace(/[.\s]/g, '');
+  return UNIT_SYN[k] || null;
+}
+
+const FromDocInput = z.object({
+  documentId: z.uuid(),
+  lines: z.array(z.object({ lineNumber: z.number().int().min(1), productId: z.uuid() })).min(1, 'Выберите строки.').max(200),
+  checks: z.object({ packaging: check, labeling: check, documents: check, quality: check }),
+  temperature: num.optional().nullable(),
+  storageObjectId: z.uuid().optional().nullable(),
+});
+
+/**
+ * Принять строки распознанной накладной одним действием (как «подтвердить накладную» в версии на Google Диске).
+ * Количество, цена, партия и срок берутся из сохранённого на сервере результата распознавания, не из браузера.
+ * Проверки приёмки человек подтверждает для всей поставки; строка с несходящейся суммой, неизвестной или другой
+ * единицей не принимается автоматически — её вносят вручную. Выбор товара запоминается для поставщика.
+ */
+export async function acceptFromDocument(userId: string, orgId: string, receiptId: string, input: unknown) {
+  const d = parse(FromDocInput, input);
+  const notYes = (Object.keys(CHECKS) as CheckKey[]).filter((k) => d.checks[k] !== true);
+  if (notYes.length) throw Errors.validation(`Подтвердите проверки поставки: ${notYes.map((k) => CHECKS[k]).join(', ')}. Если что-то не так — вносите строки по одной с карантином или отказом.`);
+  return inOrg(userId, orgId, 'receipt.record', async (tx, m) => {
+    const r = await draftReceipt(tx, orgId, receiptId, m);
+    const doc = (await tx.query(`select id, result, applied_lines from recognition_documents where id = $1 and organization_id = $2 and site_id = $3 and (receipt_id is null or receipt_id = $4)`,
+      [d.documentId, orgId, r.site_id, r.id])).rows[0];
+    if (!doc) throw Errors.notFound('Распознанный документ не найден для этой приёмки.');
+    const items = (doc.result.items || []) as { line_number: number; raw_name: string; quantity: number | null; unit: string | null; price: number | null; batch_number: string | null; expiry_date: string | null; calculation_mismatch: boolean }[];
+    const problems: string[] = [];
+    const plan: { it: (typeof items)[number]; productId: string; unit: string }[] = [];
+    for (const l of d.lines) {
+      const it = items.find((x) => x.line_number === l.lineNumber);
+      if (!it) { problems.push(`строка ${l.lineNumber}: нет в документе`); continue; }
+      if ((doc.applied_lines as number[]).includes(l.lineNumber)) { problems.push(`строка ${l.lineNumber} «${it.raw_name}»: уже принята из этого документа`); continue; }
+      const p = (await tx.query(`select id, name, unit from products where id = $1 and organization_id = $2 and status = 'active'`, [l.productId, orgId])).rows[0];
+      if (!p) { problems.push(`строка ${l.lineNumber}: товар не найден`); continue; }
+      if (it.calculation_mismatch) { problems.push(`строка ${l.lineNumber} «${it.raw_name}»: сумма не сходится — внесите вручную`); continue; }
+      if (!it.quantity || it.quantity <= 0) { problems.push(`строка ${l.lineNumber} «${it.raw_name}»: количество не распознано`); continue; }
+      const u = docUnit(it.unit);
+      if (!u) { problems.push(`строка ${l.lineNumber} «${it.raw_name}»: единица «${it.unit || '?'}» не распознана — внесите вручную`); continue; }
+      if (u !== p.unit) { problems.push(`строка ${l.lineNumber} «${it.raw_name}»: в документе ${u}, у товара «${p.name}» — ${p.unit}; внесите вручную с пересчётом`); continue; }
+      plan.push({ it, productId: p.id, unit: p.unit });
+    }
+    if (problems.length) throw Errors.validation(`Не принято ни одной строки: ${problems.join('; ')}.`);
+    const added = [];
+    for (const x of plan) {
+      added.push(await insertLine(tx, orgId, r, parse(LineInput, {
+        productId: x.productId, quantity: x.it.quantity, lotNo: x.it.batch_number || null, expiresAt: x.it.expiry_date || null,
+        expiryBasis: x.it.expiry_date ? 'сопроводительный документ (распознанная накладная)' : null, temperature: d.temperature ?? null,
+        checks: d.checks, decision: 'accepted', storageObjectId: d.storageObjectId || null, unitPrice: x.it.price ?? null,
+      })));
+      const raw = norm(x.it.raw_name);
+      if (raw) await tx.query(`insert into recognition_aliases (organization_id, supplier_key, raw_text, raw_norm, product_id, created_by) values ($1, $2, $3, $4, $5, $6)
+        on conflict (organization_id, supplier_key, raw_norm) do update set product_id = excluded.product_id, hits = recognition_aliases.hits + 1, updated_at = now()`,
+      [orgId, doc.result.supplier ? supplierKey(doc.result.supplier) : '', x.it.raw_name, raw, x.productId, userId]);
+    }
+    await tx.query(`update recognition_documents set applied_lines = applied_lines || $2::int[] where id = $1`, [doc.id, plan.map((x) => x.it.line_number)]);
+    if (!r.document_no && doc.result.document_number) await tx.query(`update receipts set document_no = $2 where id = $1`, [r.id, doc.result.document_number]);
+    await audit.record(tx, { organizationId: orgId, siteId: r.site_id, actorUserId: userId, action: 'receipt.lines_from_document', entityType: 'receipt', entityId: r.id,
+      after: { document: d.documentId, lines: added.length, checks: d.checks } });
+    return { added: added.length };
   });
 }
 
@@ -171,5 +242,13 @@ export async function getReceipt(userId: string, orgId: string, receiptId: strin
     const order = r.supplier_order_id ? (await tx.query(`select o.id, o.number, (select json_agg(json_build_object('product_id', l.product_id, 'product', p.name, 'quantity', l.quantity, 'unit', l.unit, 'price', l.price) order by p.name)
       from supplier_order_lines l join products p on p.id = l.product_id where l.order_id = o.id) as lines from supplier_orders o where o.id = $1`, [r.supplier_order_id])).rows[0] : null;
     return { receipt: { ...r, status_label: RECEIPT_STATUS_LABEL[r.status] }, lines, order };
+  });
+}
+
+/** Последний распознанный документ этой приёмки — черновик строк не теряется при перезагрузке страницы. */
+export async function receiptDocument(userId: string, orgId: string, receiptId: string) {
+  return inOrg(userId, orgId, 'receipt.record', async (tx) => {
+    const d = (await tx.query(`select id, result, duplicate_of, created_at, applied_lines from recognition_documents where organization_id = $1 and receipt_id = $2 order by created_at desc limit 1`, [orgId, receiptId])).rows[0];
+    return d ? { id: d.id, document: d.result, applied_lines: d.applied_lines as number[], duplicate: d.duplicate_of ? { id: d.duplicate_of, at: d.created_at } : null } : null;
   });
 }
