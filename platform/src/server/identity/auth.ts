@@ -34,7 +34,8 @@ export interface SessionUser {
   email_verified: boolean;
 }
 
-export interface Session { sessionId: string; user: SessionUser }
+/** orgScope — сессия по PIN с кухонного планшета: действует только в этой организации. */
+export interface Session { sessionId: string; user: SessionUser; orgScope?: string | null }
 
 function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   const r = schema.safeParse(input);
@@ -185,13 +186,15 @@ export async function login(input: unknown, meta: { ip?: string | null; userAgen
 export async function getSession(token: string | undefined | null): Promise<Session | null> {
   if (!token) return null;
   return withSystem(async (tx) => {
-    const r = (await tx.query(`select s.id as session_id, s.last_seen_at < now() - interval '5 minutes' as stale,
+    const r = (await tx.query(`select s.id as session_id, s.last_seen_at < now() - interval '5 minutes' as stale, s.organization_id as org_scope,
         u.id, u.email, u.full_name, u.email_verified_at
-       from sessions s join users u on u.id = s.user_id
-      where s.token_hash = $1 and s.revoked_at is null and s.expires_at > now() and u.status = 'active'`, [tokenHash(token)])).rows[0];
+       from sessions s join users u on u.id = s.user_id left join kiosk_devices k on k.id = s.kiosk_device_id
+      where s.token_hash = $1 and s.revoked_at is null and s.expires_at > now() and u.status = 'active'
+        and (s.kiosk_device_id is null or (k.revoked_at is null and exists (select 1 from member_pins p
+          where p.organization_id = s.organization_id and p.user_id = s.user_id and p.set_at <= s.created_at)))`, [tokenHash(token)])).rows[0];
     if (!r) return null;
     if (r.stale) await tx.query(`update sessions set last_seen_at = now() where id = $1`, [r.session_id]);
-    return { sessionId: r.session_id, user: { id: r.id, email: r.email, full_name: r.full_name, email_verified: !!r.email_verified_at } };
+    return { sessionId: r.session_id, orgScope: r.org_scope || null, user: { id: r.id, email: r.email, full_name: r.full_name, email_verified: !!r.email_verified_at } };
   });
 }
 

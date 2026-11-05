@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Logo } from './Logo';
 import { api } from '@/lib/api';
 
-export interface Me { id: string; email: string; full_name: string; email_verified: boolean }
+export interface Me { id: string; email: string; full_name: string; email_verified: boolean; kiosk?: boolean }
 
 /**
  * Шапка как в прежнем ЦЕХ: ☰ (если есть меню разделов), логотип, справа имя и роль.
@@ -18,7 +18,7 @@ export function TopBar({ me, roleLabel, onMenu, home = '/app' }: { me?: Me; role
       {onMenu && <button className="hamburger" onClick={onMenu} aria-label="Меню разделов">☰</button>}
       <Link href={home} className="logo" aria-label="ЦЕХ — на главную"><Logo height={30} eyes="var(--brand)" /></Link>
       {me && (
-        <button className="who" title="Выйти" onClick={async () => { await api('/auth/logout', { body: {} }); router.replace('/login'); }}>
+        <button className="who" title="Выйти" onClick={async () => { await api('/auth/logout', { body: {} }); router.replace(me.kiosk ? '/kiosk' : '/login'); }}>
           <span>{me.full_name}</span>
           <span className="role">{roleLabel ? `${roleLabel} · выйти` : 'выйти'}</span>
         </button>
@@ -32,9 +32,9 @@ export function AppShell({ children, bare = false }: { children: (me: Me) => Rea
   const router = useRouter();
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   useEffect(() => {
-    api<{ user: Me | null }>('/auth/me').then((r) => {
+    api<{ user: Me | null; kiosk?: boolean }>('/auth/me').then((r) => {
       if (!r.user) router.replace(`/login?next=${encodeURIComponent(location.pathname)}`);
-      else setMe(r.user);
+      else setMe({ ...r.user, kiosk: !!r.kiosk });
     }).catch(() => setMe(null));
   }, [router]);
   const status = me === undefined ? <p className="muted">Загрузка…</p> : me === null ? <div className="err">Нет связи с сервером. Обновите страницу.</div> : null;

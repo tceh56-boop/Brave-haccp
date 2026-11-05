@@ -164,7 +164,8 @@ async function assertSitesOfOrg(tx: Tx, orgId: string, siteIds: string[]) {
 export async function listMembers(userId: string, orgId: string) {
   return withTenant({ userId, orgId }, async (tx) => {
     await requirePermission(tx, userId, orgId, 'member.read');
-    const members = (await tx.query(`select m.id, m.user_id, u.full_name, u.email, m.role, m.site_ids, m.position, m.status, m.created_at, m.blocked_at, m.blocked_reason
+    const members = (await tx.query(`select m.id, m.user_id, u.full_name, u.email, m.role, m.site_ids, m.position, m.status, m.created_at, m.blocked_at, m.blocked_reason,
+        exists (select 1 from member_pins p where p.organization_id = m.organization_id and p.user_id = m.user_id) as has_pin
       from memberships m join users u on u.id = m.user_id where m.organization_id = $1 order by m.status, u.full_name`, [orgId])).rows;
     return members.map((m) => ({ ...m, role_label: ROLES[m.role as Role]?.label || m.role }));
   });

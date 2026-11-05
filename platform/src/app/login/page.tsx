@@ -26,6 +26,7 @@ function LoginForm() {
         <Link href="/register">Регистрация</Link>
         <Link href="/forgot">Забыли пароль?</Link>
       </p>
+      <p className="small" style={{ marginTop: 8 }}><Link href="/kiosk">Кухонный планшет — вход по PIN</Link></p>
     </AuthShell>
   );
 }

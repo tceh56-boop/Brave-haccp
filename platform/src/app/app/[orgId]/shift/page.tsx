@@ -6,6 +6,7 @@ import { SitePicker } from '@/components/OrgNav';
 import { api } from '@/lib/api';
 import { n, ago } from '@/lib/fmt';
 import { ShiftCards } from '@/components/ShiftCards';
+import { PinCard } from '@/components/PinCard';
 
 interface Obj { id: string; name: string; kind_label: string; criterion: string | null; last: { value: string; unit: string; measured_at: string; result: string } | null; due: { state: string } }
 interface Status {
@@ -66,6 +67,7 @@ export default function ShiftPage() {
           </div>
         )}
       </div>
+      <PinCard orgId={org.id} />
     </>
   );
 }

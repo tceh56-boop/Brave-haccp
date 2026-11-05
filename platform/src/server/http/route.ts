@@ -45,6 +45,9 @@ export function handler<P = Record<string, never>>(fn: (ctx: Ctx<P>) => Promise<
       const session = await getSession(req.cookies.get(SESSION_COOKIE)?.value);
       if (opts.auth !== false && !session) throw Errors.unauthenticated();
       const params = (route?.params ? await route.params : {}) as P;
+      // сессия по PIN с кухонного планшета действует только в своей организации
+      const orgParam = (params as { orgId?: string }).orgId;
+      if (session?.orgScope && orgParam && orgParam !== session.orgScope) throw Errors.forbidden('Вход по PIN действует только в организации этого планшета.');
       const result = await fn({
         req, params, session, ip: clientIp(req), userAgent: req.headers.get('user-agent'),
         body: async () => { try { return await req.json(); } catch { throw Errors.validation('Ожидается JSON.'); } },
@@ -70,4 +73,11 @@ export function withSessionCookie(res: NextResponse, token: string | null): Next
 export function requireSession<P>(ctx: Ctx<P>): Session {
   if (!ctx.session) throw Errors.unauthenticated();
   return ctx.session;
+}
+
+/** Действия с секретами и устройствами — только из сессии по паролю, не из сессии по PIN с планшета. */
+export function requirePasswordSession<P>(ctx: Ctx<P>): Session {
+  const s = requireSession(ctx);
+  if (s.orgScope) throw Errors.forbidden('Это действие доступно после входа по паролю, а не по PIN с планшета.');
+  return s;
 }

@@ -9,7 +9,7 @@ interface Org { id: string; name: string; legal_form: string | null; inn: string
   ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null; modules?: string[]; sales_consumption?: string }
 interface Membership { role: string; role_label: string; site_ids: string[]; permissions: string[] }
 interface Site { id: string; name: string; address: string | null; status: string }
-interface Member { id: string; user_id: string; full_name: string; email: string; role: string; role_label: string; site_ids: string[]; position: string | null; status: string; blocked_reason: string | null }
+interface Member { id: string; user_id: string; full_name: string; email: string; role: string; role_label: string; site_ids: string[]; position: string | null; status: string; blocked_reason: string | null; has_pin?: boolean }
 interface Invitation { id: string; email: string; full_name: string | null; role: string; site_ids: string[]; state: string; expires_at: string }
 interface AuditRow { id: string; created_at: string; action: string; entity_type: string | null; result: string; reason: string | null; actor: string | null; before: unknown; after: unknown }
 interface RoleDef { code: string; label: string; summary: string }
@@ -24,7 +24,7 @@ const ACTIONS: Record<string, string> = {
 };
 const INV_STATE: Record<string, [string, string]> = { pending: ['ожидает', 'warn'], accepted: ['принято', 'ok'], revoked: ['отозвано', ''], expired: ['истекло', 'crit'] };
 
-type Tab = 'sites' | 'members' | 'invites' | 'audit' | 'org' | 'modules';
+type Tab = 'sites' | 'members' | 'invites' | 'devices' | 'audit' | 'org' | 'modules';
 
 function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
   const [org, setOrg] = useState<Org | null>(null);
@@ -46,7 +46,7 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
   if (!org || !m) return <p className="muted">Загрузка…</p>;
   const can = (p: string) => m.permissions.includes(p);
   const tabs: [Tab, string, boolean][] = [
-    ['sites', 'Площадки', can('site.read')], ['members', 'Сотрудники', can('member.read')], ['invites', 'Приглашения', can('member.invite')],
+    ['sites', 'Площадки', can('site.read')], ['members', 'Сотрудники', can('member.read')], ['invites', 'Приглашения', can('member.invite')], ['devices', 'Планшеты', can('device.manage')],
     ['audit', 'Аудит', can('audit.read')], ['org', 'Реквизиты', can('org.read')], ['modules', 'Модули', can('org.read')],
   ];
   return (
@@ -75,6 +75,7 @@ function OrgPage({ orgId, meId }: { orgId: string; meId: string }) {
       {tab === 'sites' && <Sites orgId={orgId} sites={sites} reload={loadSites} canManage={can('site.manage')} />}
       {tab === 'members' && <Members orgId={orgId} meId={meId} sites={sites} roles={roles} canManage={can('member.manage')} />}
       {tab === 'invites' && <Invites orgId={orgId} sites={sites} roles={roles} />}
+      {tab === 'devices' && <Devices orgId={orgId} sites={sites} />}
       {tab === 'audit' && <Audit orgId={orgId} />}
       {tab === 'org' && <OrgForm org={org} canEdit={can('org.update')} onSaved={setOrg} />}
       {tab === 'modules' && <OrgModules org={org} defs={modules} canEdit={can('org.update')} />}
@@ -137,6 +138,42 @@ function SitePicker({ sites, value, onChange }: { sites: Site[]; value: string[]
   );
 }
 
+interface Device { id: string; name: string; site: string; created_at: string; last_seen_at: string | null; revoked_at: string | null; created_by_name: string }
+
+/** Кухонные планшеты: вход сотрудников по PIN работает только на привязанных устройствах. */
+function Devices({ orgId, sites }: { orgId: string; sites: Site[] }) {
+  const [list, setList] = useState<Device[] | null>(null);
+  const [f, setF] = useState({ siteId: '', name: '' });
+  const [done, setDone] = useState(false);
+  const { busy, error, run } = useSubmit();
+  const load = useCallback(() => api<Device[]>(`/orgs/${orgId}/devices`).then(setList), [orgId]);
+  useEffect(() => { load(); }, [load]);
+  const fmt = (s: string | null) => (s ? new Date(s).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+  return (
+    <div className="card">
+      <p className="small muted">На планшете сотрудник выбирает себя из списка и вводит PIN — как в версии на Google Диске. PIN принимается только на привязанном здесь устройстве; сессия — 12 часов и только в этом предприятии. Отвязка сразу закрывает все сессии планшета.</p>
+      <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api(`/orgs/${orgId}/devices`, { body: f }); setDone(true); setF({ siteId: f.siteId, name: '' }); await load(); }); }}>
+        <h3>Сделать это устройство кухонным планшетом</h3>
+        <div className="grid2">
+          <div><label htmlFor="dvs">Площадка</label><select id="dvs" required value={f.siteId} onChange={(e) => setF({ ...f, siteId: e.target.value })}><option value="">— выберите —</option>{sites.filter((s) => s.status !== 'archived').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+          <div><label htmlFor="dvn">Название</label><input id="dvn" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Планшет горячего цеха" /></div>
+        </div>
+        {error && <div className="err">{error}</div>}
+        {done && <div className="note">Устройство привязано. Выйдите из своей учётной записи — на экране входа будет «Кухонный планшет — вход по PIN».</div>}
+        <button className="btn block" disabled={busy}>Привязать это устройство</button>
+      </form>
+      <h3 style={{ marginTop: 16 }}>Привязанные устройства</h3>
+      {!list ? <p className="muted">Загрузка…</p> : list.length === 0 ? <p className="small muted">Пока нет.</p> : (
+        <ul className="list">{list.map((d) => (
+          <li key={d.id} className="between">
+            <div><b>{d.name}</b> {d.revoked_at ? <span className="badge">отвязано</span> : <span className="badge ok">действует</span>}
+              <div className="small muted">{d.site} · привязал {d.created_by_name} {fmt(d.created_at)} · последний вход {fmt(d.last_seen_at)}</div></div>
+            {!d.revoked_at && <button className="btn danger small" disabled={busy} onClick={() => run(async () => { await api(`/orgs/${orgId}/devices/${d.id}/revoke`, { body: {} }); await load(); })}>Отвязать</button>}
+          </li>))}</ul>)}
+    </div>
+  );
+}
+
 function Members({ orgId, meId, sites, roles, canManage }: { orgId: string; meId: string; sites: Site[]; roles: RoleDef[]; canManage: boolean }) {
   const [list, setList] = useState<Member[] | null>(null);
   const { error, run } = useSubmit();
@@ -160,6 +197,7 @@ function Members({ orgId, meId, sites, roles, canManage }: { orgId: string; meId
                       onChange={(e) => run(async () => { await api(`/orgs/${orgId}/members/${x.id}`, { method: 'PATCH', body: { role: e.target.value } }); await load(); })}>
                       {roles.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
                     </select>
+                    {x.has_pin && <button className="btn secondary small" onClick={() => run(async () => { await api(`/orgs/${orgId}/pins/${x.user_id}/reset`, { body: {} }); await load(); })}>Сбросить PIN</button>}
                     {x.status === 'active'
                       ? <button className="btn danger small" onClick={() => { const reason = prompt('Причина блокировки (например, увольнение):'); if (reason) run(async () => { await api(`/orgs/${orgId}/members/${x.id}/block`, { body: { blocked: true, reason } }); await load(); }); }}>Заблокировать</button>
                       : <button className="btn secondary small" onClick={() => run(async () => { await api(`/orgs/${orgId}/members/${x.id}/block`, { body: { blocked: false } }); await load(); })}>Разблокировать</button>}
