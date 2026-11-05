@@ -17,6 +17,7 @@ interface Dish { id: string; name: string; kind: string; category: string | null
 export default function MenuPage() {
   const { org, can } = useOrg();
   const [rows, setRows] = useState<Dish[] | null>(null);
+  const [costs, setCosts] = useState<Record<string, { cost: number | null; per: string; food_cost_pct: number | null; margin: number | null }>>({});
   const [groups, setGroups] = useState<Group[]>([]);
   const [q, setQ] = useState('');
   const [f, setF] = useState<{ name: string; kind: string; groupId: string } | null>(null);
@@ -24,6 +25,9 @@ export default function MenuPage() {
   const load = () => {
     api<Dish[]>(`/orgs/${org.id}/dishes`).then(setRows);
     api<Group[]>(`/orgs/${org.id}/dish-groups`).then(setGroups).catch(() => setGroups([]));
+    // себестоимость по утверждённой ТТК и средней цене партий — пересчитывается при каждом приходе (право cost.read)
+    if (can('cost.read')) api<{ dish_id: string; cost: number | null; per: string; food_cost_pct: number | null; margin: number | null }[]>(`/orgs/${org.id}/menu-costs`)
+      .then((l) => setCosts(Object.fromEntries(l.map((x) => [x.dish_id, x])))).catch(() => setCosts({}));
   };
   useEffect(load, [org.id]);   // eslint-disable-line react-hooks/exhaustive-deps
   const shown = (rows || []).filter((d) => !q || d.name.toLowerCase().includes(q.toLowerCase()));
@@ -33,7 +37,9 @@ export default function MenuPage() {
   const count = (gid: string): number => shown.filter((d) => d.group_id === gid).length + groups.filter((g) => g.parent_id === gid).reduce((s, g) => s + count(g.id), 0);
   const row = (d: Dish) => (
     <Link key={d.id} className="objrow" href={`/app/${org.id}/menu/${d.id}`}>
-      <div><b>{d.name}</b><div className="small muted">{[d.kind === 'semi' ? 'п/ф' : '', d.sale_price ? `${n(d.sale_price)} ₽` : ''].filter(Boolean).join(' · ')}</div></div>
+      <div><b>{d.name}</b><div className="small muted">{[d.kind === 'semi' ? 'п/ф' : '', d.sale_price ? `${n(d.sale_price)} ₽` : '',
+        costs[d.id] ? (costs[d.id].cost === null ? 'себестоимость: нет цен' : `себест. ${n(costs[d.id].cost!)} ₽/${costs[d.id].per}`) : '',
+        costs[d.id]?.food_cost_pct != null ? `фудкост ${n(costs[d.id].food_cost_pct!)} %` : '', costs[d.id]?.margin != null ? `маржа ${n(costs[d.id].margin!)} ₽` : ''].filter(Boolean).join(' · ')}</div></div>
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         {d.approved ? <span className="badge ok">утверждена v{d.approved.version}</span> : <span className="badge warn">нет утверждённой</span>}
         {d.open && <span className="badge">{d.open.status === 'review' ? 'на согласовании' : 'черновик'} v{d.open.version}</span>}

@@ -3,10 +3,12 @@ import { z } from 'zod';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
-import { inOrg, parse, optText, getSite, assertSiteAccess, openTask, fmtNum } from './common';
+import { inOrg, parse, optText, getSite, assertSiteAccess, openTask, fmtNum, notifyRoles } from './common';
 import { markOrderReceived } from './purchasing';
 import { raiseIncident } from './incidents';
 import { norm, supplierKey } from '../recognition/match';
+import { affectedDishes, dishCosts, priceSnapshot, diffImpact } from './priceImpact';
+import { roleHas } from '../access/roles';
 
 /**
  * Приёмка (ТЗ v2 §3, §4, §12, AT-01). Сотрудник вносит строку один раз: товар, количество, партию, даты
@@ -187,6 +189,12 @@ export async function completeReceipt(userId: string, orgId: string, receiptId: 
     const lines = (await tx.query(`select l.*, p.name as product from receipt_lines l join products p on p.id = l.product_id where l.receipt_id = $1 order by l.created_at`, [r.id])).rows;
     if (!lines.length) throw Errors.validation('Добавьте хотя бы одну позицию.');
     const created = { lots: 0, quarantine: 0, rejected: 0, unconfirmed: 0, tasks: 0, incidents: 0 };
+    // каскад цен: цена товаров с ценой в приёмке и себестоимость затронутых блюд — до и после прихода
+    const priced = lines.filter((l) => l.decision !== 'rejected' && l.unit_price !== null);
+    const pids = [...new Set(priced.map((l) => l.product_id as string))];
+    const names = new Map(lines.map((l) => [l.product_id as string, l.product as string]));
+    const dishIds = await affectedDishes(tx, orgId, pids);
+    const pricesBefore = await priceSnapshot(tx, orgId, pids), costsBefore = await dishCosts(tx, orgId, dishIds);
     for (const l of lines) {
       if (l.decision === 'rejected') { created.rejected++; continue; }
       const status = l.decision === 'accepted' ? 'available' : 'quarantine';
@@ -217,10 +225,18 @@ export async function completeReceipt(userId: string, orgId: string, receiptId: 
     }
     const status = created.rejected === lines.length ? 'rejected' : created.quarantine ? 'quarantine' : 'accepted';
     await tx.query(`update receipts set status = $2, completed_by = $3, completed_at = now() where id = $1`, [r.id, status, userId]);
+    const impact = diffImpact(names, pricesBefore, await priceSnapshot(tx, orgId, pids), costsBefore, await dishCosts(tx, orgId, dishIds));
+    if (impact.dishes.length) {
+      const top = impact.dishes.slice(0, 5).map((d) => `${d.name}: ${d.old_cost === null ? '—' : fmtNum(d.old_cost)} → ${d.new_cost === null ? 'неполная' : fmtNum(d.new_cost)} ₽/${d.per}${d.change_pct !== null ? ` (${d.change_pct > 0 ? '+' : ''}${fmtNum(d.change_pct)} %)` : ''}`).join('; ');
+      await notifyRoles(tx, { orgId, siteId: r.site_id, roles: ['chef', 'accountant'], title: `Себестоимость изменилась после приёмки${r.document_no ? ` ${r.document_no}` : ''}: блюд ${impact.dishes.length}`,
+        body: top, entityType: 'receipt', entityId: r.id });
+      await audit.record(tx, { organizationId: orgId, siteId: r.site_id, actorUserId: userId, action: 'price.cascade', entityType: 'receipt', entityId: r.id, after: impact });
+    }
     await markOrderReceived(tx, r);                                  // приёмка по заказу поставщику → заказ «принят»
     await audit.record(tx, { organizationId: orgId, siteId: r.site_id, actorUserId: userId, action: 'receipt.complete', entityType: 'receipt', entityId: r.id,
       before: { status: 'draft' }, after: { status, lines: lines.length, ...created } });
-    return { status, status_label: RECEIPT_STATUS_LABEL[status], ...created };
+    // себестоимость видят только роли с правом cost.read; остальным — только факт приёмки
+    return { status, status_label: RECEIPT_STATUS_LABEL[status], ...created, price_impact: roleHas(m.role, 'cost.read') ? impact : null };
   });
 }
 

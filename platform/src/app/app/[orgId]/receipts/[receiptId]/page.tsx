@@ -14,6 +14,9 @@ interface OrderLine { product_id: string; product: string; quantity: string; uni
 interface R { receipt: { id: string; status: string; status_label: string; document_no: string | null; supplier: string | null; site_id: string }; lines: Line[];
   order: { id: string; number: number; lines: OrderLine[] } | null }
 interface Product { id: string; name: string; unit: string }
+/** Каскад цен после приёмки: что подорожало и как изменилась себестоимость блюд (только при праве cost.read). */
+interface Impact { products: { product_id: string; name: string; old_price: number | null; new_price: number | null; change_pct: number | null }[];
+  dishes: { dish_id: string; name: string; per: string; old_cost: number | null; new_cost: number | null; change_pct: number | null; food_cost_pct: number | null; old_food_cost_pct: number | null }[] }
 interface Obj { id: string; name: string }
 
 const CHECKS: [string, string][] = [['packaging', 'Упаковка цела'], ['labeling', 'Маркировка есть и читается'], ['documents', 'Документы в порядке'], ['quality', 'Качество (вид, запах)']];
@@ -29,7 +32,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
   const [objects, setObjects] = useState<Obj[]>([]);
   const [f, setF] = useState(empty);
   const [checks, setChecks] = useState<Record<string, boolean | null>>({ packaging: null, labeling: null, documents: null, quality: null });
-  const [summary, setSummary] = useState<Record<string, number | string> | null>(null);
+  const [summary, setSummary] = useState<Record<string, number | string> & { price_impact?: Impact | null } | null>(null);
   const [newProduct, setNewProduct] = useState({ name: '', unit: 'кг' });
   const { busy, error, run, setError } = useSubmit();
   const load = useCallback(async () => {
@@ -108,6 +111,23 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
         <div className="okbox" role="status">
           Приёмка завершена: {String(summary.status_label)}. Партий: {summary.lots}{Number(summary.quarantine) ? `, в карантине: ${summary.quarantine}` : ''}{Number(summary.rejected) ? `, отказ: ${summary.rejected}` : ''}.
           {Number(summary.unconfirmed) > 0 && <div>Срок не подтверждён у {summary.unconfirmed} — создана задача ответственному.</div>}
+        </div>
+      )}
+      {summary?.price_impact && (summary.price_impact.products.length > 0 || summary.price_impact.dishes.length > 0) && (
+        <div className="card">
+          <h2>Цены и себестоимость после приёмки</h2>
+          {summary.price_impact.products.length > 0 && <>
+            <h3>Средняя цена товара на складе</h3>
+            <ul className="list">{summary.price_impact.products.map((p) => <li key={p.product_id} className="between"><span>{p.name}</span>
+              <span>{p.old_price === null ? '—' : n(p.old_price)} → <b>{p.new_price === null ? '—' : n(p.new_price)} ₽</b>{p.change_pct !== null && <span className={`badge ${p.change_pct > 0 ? 'warn' : 'ok'}`} style={{ marginLeft: 6 }}>{p.change_pct > 0 ? '+' : ''}{n(p.change_pct)} %</span>}</span></li>)}</ul>
+          </>}
+          {summary.price_impact.dishes.length > 0 ? <>
+            <h3>Блюда, которых это коснулось</h3>
+            <ul className="list">{summary.price_impact.dishes.map((d) => <li key={d.dish_id}><div className="between"><Link href={`/app/${org.id}/menu/${d.dish_id}`}>{d.name}</Link>
+              <span>{d.old_cost === null ? '—' : n(d.old_cost)} → <b>{d.new_cost === null ? 'нет цены' : `${n(d.new_cost)} ₽/${d.per}`}</b>{d.change_pct !== null && <span className={`badge ${d.change_pct > 0 ? 'warn' : 'ok'}`} style={{ marginLeft: 6 }}>{d.change_pct > 0 ? '+' : ''}{n(d.change_pct)} %</span>}</span></div>
+              {d.food_cost_pct !== null && <div className="small muted">фудкост {d.old_food_cost_pct === null ? '' : `${n(d.old_food_cost_pct)} % → `}{n(d.food_cost_pct)} %</div>}</li>)}</ul>
+            <p className="small muted">Шеф и бухгалтер получили уведомление. Утверждённые калькуляционные карточки не меняются — для новых цен сделайте новую калькуляцию.</p>
+          </> : <p className="small muted">Себестоимость блюд не изменилась.</p>}
         </div>
       )}
 
