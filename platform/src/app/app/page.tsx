@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 
 interface OrgRow { id: string; name: string; status: string; role: string; role_label: string }
 
+const SHIFT_ROLES = ['line_staff', 'chef'];
 const STATUS: Record<string, string> = { DRAFT: 'Черновик', CONFIGURED: 'Настроено', COMPLIANCE_REVIEW: 'Нормативная проверка', ARCHIVED: 'Архив' };
 
 function Orgs({ me }: { me: Me }) {
@@ -16,7 +17,13 @@ function Orgs({ me }: { me: Me }) {
   const [form, setForm] = useState({ name: '', legalForm: 'ООО', inn: '', region: '', firstSiteName: '' });
   const [resent, setResent] = useState(false);
   const { busy, error, run } = useSubmit();
-  const load = useCallback(() => api<OrgRow[]>('/orgs').then(setOrgs), []);
+  // экран смены — главный для сотрудника цеха и шефа (этап 3 доработки); одно предприятие — сразу на смену
+  const home = (o: OrgRow) => (SHIFT_ROLES.includes(o.role) ? `/app/${o.id}/shift` : `/app/${o.id}`);
+  const load = useCallback(() => api<OrgRow[]>('/orgs').then((l) => {
+    setOrgs(l);
+    const active = l.filter((o) => o.status !== 'ARCHIVED');
+    if (active.length === 1 && SHIFT_ROLES.includes(active[0].role)) router.replace(`/app/${active[0].id}/shift`);
+  }), [router]);
   useEffect(() => { load(); }, [load]);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
 
@@ -37,7 +44,7 @@ function Orgs({ me }: { me: Me }) {
           <ul className="list">
             {orgs.map((o) => (
               <li key={o.id} className="between">
-                <div><Link href={`/app/${o.id}`}><b>{o.name}</b></Link><div className="small muted">{o.role_label}</div></div>
+                <div><Link href={home(o)}><b>{o.name}</b></Link><div className="small muted">{o.role_label}</div></div>
                 <span className="badge">{STATUS[o.status] || o.status}</span>
               </li>
             ))}

@@ -5,6 +5,7 @@ import { useOrg } from '@/lib/org';
 import { SitePicker } from '@/components/OrgNav';
 import { api } from '@/lib/api';
 import { n, ago } from '@/lib/fmt';
+import { ShiftCards } from '@/components/ShiftCards';
 
 interface Obj { id: string; name: string; kind_label: string; criterion: string | null; last: { value: string; unit: string; measured_at: string; result: string } | null; due: { state: string } }
 interface Status {
@@ -32,6 +33,7 @@ export default function ShiftPage() {
     <>
       <SitePicker />
       <h1>{s?.site.name || 'Смена'}</h1>
+      <ShiftCards orgId={org.id} siteId={siteId} tz={org.timezone} onChange={load} />
       <div className="tiles">
         {can('receipt.record') && <Link className="tile primary" href={`${base}/receipts/new`}>Приёмка<span className="sub">товар, партия, проверки</span></Link>}
         <a className={`tile ${missed ? 'alert' : ''}`} href="#temps">Температура<span className="sub">{missed ? `ждут замера: ${missed}` : 'по графику'}</span></a>

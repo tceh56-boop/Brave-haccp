@@ -24,6 +24,7 @@ export function taskHref(orgId: string, t: { kind: string; entity_type: string |
   if (t.entity_type === 'incident' && t.entity_id) return `/app/${orgId}/incidents/${t.entity_id}`;
   if (t.entity_type === 'control_object' && t.entity_id) return `/app/${orgId}/objects/${t.entity_id}`;
   if (t.entity_type === 'capa' && t.entity_id) return `/app/${orgId}/capa/${t.entity_id}`;
+  if (t.entity_type === 'production_order' && t.entity_id) return `/app/${orgId}/production/${t.entity_id}`;
   if (t.entity_type === 'recall' && t.entity_id) return `/app/${orgId}/recalls/${t.entity_id}`;
   if (t.entity_type === 'checklist_run' && t.entity_id) return `/app/${orgId}/checklists/run/${t.entity_id}`;
   if (t.entity_type === 'group_tech_spec' && t.entity_id) return `/app/${orgId}/menu/group-tu/${t.entity_id}`;
@@ -32,7 +33,7 @@ export function taskHref(orgId: string, t: { kind: string; entity_type: string |
   return `/app/${orgId}/tasks#${t.id}`;
 }
 
-const ACTION: Record<string, string> = { confirm_expiry: 'Подтвердить срок', quarantine_decision: 'Решить по карантину', incident: 'Открыть отклонение', capa: 'Выполнить CAPA', capa_verify: 'Проверить эффективность', ttk_approve: 'Согласовать ТТК', haccp_review: 'Проверить план ХАССП', sale_fulfil: 'Исправить ТТК или остатки',
+const ACTION: Record<string, string> = { brakerage: 'Провести бракераж', confirm_expiry: 'Подтвердить срок', quarantine_decision: 'Решить по карантину', incident: 'Открыть отклонение', capa: 'Выполнить CAPA', capa_verify: 'Проверить эффективность', ttk_approve: 'Согласовать ТТК', haccp_review: 'Проверить план ХАССП', sale_fulfil: 'Исправить ТТК или остатки',
   tu_review: 'Пересмотреть ТУ', ti_review: 'Пересмотреть ТИ', costing_review: 'Пересчитать калькуляцию', decl_review: 'Проверить декларацию', gtu_review: 'Пересмотреть групповые ТУ', ttk_dependent_review: 'Проверить ТТК блюда', recall_decision: 'Решить по отзыву', checklist_gap: 'Разобрать пропуски чек-листа' };
 
 export async function listTasks(userId: string, orgId: string, opts: { siteId?: string | null; all?: boolean } = {}) {
