@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { admissionMode } from '../access/admission';
 import { assertSnapshotIntact } from './integrity';
 import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
@@ -73,7 +74,7 @@ export async function calcTi(tx: Tx, orgId: string, dishId: string, params: TuPa
   const sanitation = (await tx.query(`select distinct on (area, work, kind) area, work, kind, period_days from sanitation_plans where organization_id = $1 and status = 'active' order by area, work, kind`, [orgId])).rows
     .map((s) => ({ area: s.area, work: s.work, kind: PLAN_KIND[s.kind] || s.kind, period: `раз в ${s.period_days} дн.` }));
   if (!sanitation.length) warnings.push('Нет плана санитарной обработки — пункт 5.4 «Санитарная обработка» неполный.');
-  const gate = (await tx.query(`select medical_gate from staff_settings where organization_id = $1`, [orgId])).rows[0]?.medical_gate || 'warn';
+  const gate = await admissionMode(tx, orgId);
   const sanpin = (await tx.query(`select s.code, s.title from reg_sources s where s.organization_id = $1 and s.kind = 'СанПиН'
       and exists (select 1 from reg_source_versions x where x.source_id = s.id and x.workflow_status = 'approved' and (x.effective_from is null or x.effective_from <= org_today($1))
         and (x.effective_to is null or x.effective_to > org_today($1))) order by s.code`, [orgId])).rows;

@@ -41,6 +41,7 @@ services:
       CEH_SECRET_KEY: ${CEH_SECRET_KEY:-}
       # приложение доступно только через Caddy (APP_BIND=127.0.0.1): адрес клиента — из X-Forwarded-For, последний прокси
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      ADMISSION_DEFAULT: ${ADMISSION_DEFAULT:-block}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # распознавание документов — Yandex Cloud (см. .env.example)
       YANDEX_API_KEY: ${YANDEX_API_KEY:-}

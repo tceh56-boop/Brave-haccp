@@ -28,7 +28,7 @@ type Def = { key: string; group: string; title: string; basis: string[]; blocks:
 export const isBad = (s: RStatus) => !['ok', 'not_applicable', 'warning', 'not_checked'].includes(s);
 const list = (rows: { name: string }[], max = 8) => rows.slice(0, max).map((r) => r.name).concat(rows.length > max ? [`… ещё ${rows.length - max}`] : []);
 const dmy = (s: string) => s.slice(0, 10).split('-').reverse().join('.');
-const FOOD_ROLES = ['line_staff', 'chef', 'storekeeper'];
+import { FOOD_ROLES } from '../access/admission';
 const offsite = (p: NormProfile) => p.features.includes('outside_sales') || p.salesModes.some((m) => ['takeaway', 'delivery', 'catering'].includes(m));
 
 /** Реестр нормативных ссылок модулей — проверяется на существование (fail-closed). */

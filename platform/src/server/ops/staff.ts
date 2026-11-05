@@ -4,7 +4,7 @@ import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, optText, assertSiteAccess, getSite } from './common';
 import { ROLES, roleHas, type Role } from '../access/roles';
-import { FOOD_ROLES, medicalState } from '../access/admission';
+import { FOOD_ROLES, medicalState, admissionMode } from '../access/admission';
 
 /**
  * Персонал: готовность к работе (этап 16; перенос Safety.gs / EmployeeSafetyIntegration.gs прежнего ЦЕХ и допуска MON CHEF).
@@ -74,7 +74,7 @@ export async function listStaff(userId: string, orgId: string, siteId: string | 
   return inOrg(userId, orgId, 'staff.read', async (tx, m) => {
     if (siteId) assertSiteAccess(m, siteId);
     const rows = await readiness(tx, orgId, null, roleHas(m.role, 'staff.medical'));
-    const gate = (await tx.query(`select medical_gate from staff_settings where organization_id = $1`, [orgId])).rows[0]?.medical_gate || 'warn';
+    const gate = await admissionMode(tx, orgId);
     const topics = (await tx.query(`select id, title, category, material, period_months, roles from briefing_topics where organization_id = $1 and status = 'active' order by category, title`, [orgId])).rows
       .map((t) => ({ ...t, category_label: CATEGORY_LABEL[t.category] }));
     return { gate, today: await todayOf(tx, orgId), staff: rows.filter((r) => !siteId || !r.site_ids.length || r.site_ids.includes(siteId)), topics };
@@ -119,7 +119,7 @@ export async function setMedical(userId: string, orgId: string, targetId: string
 export async function setStaffSettings(userId: string, orgId: string, input: unknown) {
   const d = parse(z.object({ medicalGate: z.enum(['off', 'warn', 'block']) }), input);
   return inOrg(userId, orgId, 'staff.medical', async (tx) => {
-    const before = (await tx.query(`select medical_gate from staff_settings where organization_id = $1`, [orgId])).rows[0]?.medical_gate || 'warn';
+    const before = await admissionMode(tx, orgId);
     await tx.query(`insert into staff_settings (organization_id, medical_gate, updated_by) values ($1, $2, $3)
       on conflict (organization_id) do update set medical_gate = excluded.medical_gate, updated_by = excluded.updated_by, updated_at = now()`, [orgId, d.medicalGate, userId]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'staff.settings', entityType: 'organization', entityId: orgId, before: { medical_gate: before }, after: d });
@@ -220,7 +220,7 @@ export async function acknowledgeBriefing(userId: string, orgId: string, briefin
 
 /** Для «Проблем»: допуск и инструктажи сотрудников (ответственным) и свои неподтверждённые инструктажи (каждому). */
 export async function staffProblems(tx: Tx, orgId: string, userId: string, seeAll: boolean) {
-  const gate = (await tx.query(`select medical_gate from staff_settings where organization_id = $1`, [orgId])).rows[0]?.medical_gate || 'warn';
+  const gate = await admissionMode(tx, orgId);
   const rows = await readiness(tx, orgId, seeAll ? null : [userId], false);
   const out: { key: string; priority: number; title: string; what: string; action: string; href: string; employee: string }[] = [];
   for (const r of rows) {

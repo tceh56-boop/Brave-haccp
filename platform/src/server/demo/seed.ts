@@ -5,7 +5,7 @@ import { createOrganization, inviteMember, acceptInvitation, updateOrganization 
 import { createSupplier, createProduct } from '../ops/catalog';
 import { createEvent, setItem as setEventItem, confirmEvent } from '../ops/planmenu';
 import { createProgram, recordResult } from '../ops/lab';
-import { setMedical, recordHealthCheck, createTopic, recordBriefing, acknowledgeBriefing } from '../ops/staff';
+import { setMedical, recordHealthCheck, createTopic, recordBriefing, acknowledgeBriefing, setStaffSettings } from '../ops/staff';
 import { createEquipment, recordEvent as equipmentEvent } from '../ops/equipment';
 import { createDisinfectant, approveDisinfectant, createPlan as createSanitationPlan, recordDone as sanitationDone } from '../ops/sanitation';
 import { setNorm, createOrder as createSupplierOrder, stepOrder, updateSupplier } from '../ops/purchasing';
@@ -81,6 +81,8 @@ export async function seedDemo() {
   // Люди и предприятие
   const owner = await person(ownerEmail, 'Ольга Владелец');
   const { organization, site } = await createOrganization(owner, { name: `Кафе «Демо»${SUFFIX ? ` ${SUFFIX.slice(1)}` : ''}`, legalForm: 'ООО', region: 'Москва', timezone: 'Europe/Moscow' });
+  // Демо: допуск в режиме «предупреждать», чтобы показ работал в любой день без ежедневного осмотра; у предприятия по умолчанию — «блокировать»
+  await setStaffSettings(owner.id, organization.id, { medicalGate: 'warn' });
   const orgId = organization.id, siteId = site.id;
   const u: Record<string, SessionUser> = { owner };
   for (const [role, loginName, name] of PEOPLE.slice(1)) {

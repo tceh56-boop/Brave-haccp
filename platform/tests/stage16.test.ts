@@ -61,7 +61,8 @@ describe('Этап 16: медицинский допуск', () => {
     await expect(setStaffSettings(chef.id, orgId, { medicalGate: 'block' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await setStaffSettings(haccp.id, orgId, { medicalGate: 'block' });
     await expect(recordMeasurement(chef.id, orgId, { controlObjectId: fridge, value: 4 })).rejects.toThrow(/Нет медицинского допуска: данные ЛМК не внесены/);
-    expect((await recordMeasurement(cook.id, orgId, { controlObjectId: fridge, value: 4 })).result).toBe('no_criterion');
+    // решение владельца: без сегодняшнего осмотра перед сменой в режиме «блокировать» — нельзя (stage52)
+    await expect(recordMeasurement(cook.id, orgId, { controlObjectId: fridge, value: 4 })).rejects.toThrow(/Сегодня нет осмотра перед сменой/);
     expect((await recordMeasurement(haccp.id, orgId, { controlObjectId: fridge, value: 4 })).result).toBe('no_criterion');   // не пищевая роль
     await setStaffSettings(haccp.id, orgId, { medicalGate: 'off' });
     expect((await getProblems(chef.id, orgId, siteId)).cards.find((c) => c.key === `med:${chef.id}`)).toBeUndefined();
