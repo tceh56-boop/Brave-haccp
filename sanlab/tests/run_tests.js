@@ -307,6 +307,14 @@ test('AT-16', 'Нормативная база: сверка и права', fun
     "var act = filterBy(Store.all('NormItems'), function (i) { return i.norm_id === d.norm_id && V.bool(i.active); });" +
     "return JSON.stringify({ n: n, ver: String(d2.verified), oldActive: String(Repo.get('NormItems', old.norm_item_id).active), act: act.length, allV: act.every(function (i) { return V.bool(i.verified); }), again: NormSeed.run(owner) }); })()", sandbox));
   assert(mig.ver === 'true' && mig.oldActive === 'false' && mig.act === 5 && mig.allV && mig.again === 0, 'миграция установленной базы: ' + JSON.stringify(mig));
+  var mig2 = JSON.parse(vm.runInContext("(function () { var owner = filterBy(Store.all('Employees'), function (e) { return e.role === 'OWNER'; })[0]; var ctx = Seed.ctx(owner, Integr.now());" +
+    "var seed = filterBy(NORM_SEED, function (x) { return x.code === 'ГОСТ Р 1.3-2018'; })[0], d = filterBy(Store.all('NormDocs'), function (x) { return x.code === 'ГОСТ Р 1.3-2018'; })[0];" +
+    "Repo.update(ctx, 'NormDocs', d.norm_id, { notes: seed.prevNotes[0] }, { noAudit: true });" +
+    "var old = Repo.create(ctx, 'NormItems', { norm_id: d.norm_id, section: 'TU_TEXT', clause: 'п. 5.3.2', text: 'старое', applies: 'all', indicator: 'general', sort_order: 1, active: true, verified: true }, { noAudit: true });" +
+    "var mine = Repo.create(ctx, 'NormItems', { norm_id: d.norm_id, section: 'TU_TEXT', clause: 'п. 9.9', text: 'своё', applies: 'all', indicator: 'warranty', sort_order: 2, active: true, verified: true }, { noAudit: true });" +
+    "NormSeed.run(owner); var d2 = Repo.get('NormDocs', d.norm_id);" +
+    "return JSON.stringify({ ver: String(d2.verified), notes: d2.notes === seed.notes, oldActive: String(Repo.get('NormItems', old.norm_item_id).active), mineActive: String(Repo.get('NormItems', mine.norm_item_id).active), again: NormSeed.run(owner) }); })()", sandbox));
+  assert(mig2.ver === 'true' && mig2.notes && mig2.oldActive === 'false' && mig2.mineActive === 'true' && mig2.again === 0, 'обновление сверенного документа без правок пользователя: ' + JSON.stringify(mig2));
   expectErr(call(COORD, 'norms.saveDoc', { code: 'X', title: 'Y', kind: 'OTHER' }), 'ACCESS_DENIED', 'координатор не правит базу');
   var d = ok(call(OWNER, 'norms.saveDoc', { code: 'ГОСТ Тест-2026', title: 'Тестовый документ', kind: 'GOST', scopes: 'TU' }), 'saveDoc');
   ok(call(OWNER, 'norms.saveItem', { norm_id: d.norm_id, section: 'METHOD', text: 'ГОСТ Тест-2026', indicator: 'Тест' }), 'saveItem');
@@ -359,11 +367,16 @@ test('AT-18', 'ТУ: показатели по группе продукции, 
   var lab = t.content.sections.filter(function (x) { return x.key === 'labeling'; })[0];
   assert(lab.rows.some(function (r) { return /охлажденные/.test(r.c[0]); }) && lab.rows.some(function (r) { return /ЕАС/.test(r.c[0]); }), 'маркировка мясных полуфабрикатов и знак ЕАС');
   var titles = t.content.sections.map(function (x) { return x.title; }).join('|');
-  assert(/2 Требования безопасности/.test(titles) && /5 Методы контроля/.test(titles) && /7 Гарантии изготовителя/.test(titles), 'разделы по ГОСТ 2.114');
+  assert(/1 Область применения/.test(titles) && /2 Требования к качеству и безопасности/.test(titles) && /3 Маркировка/.test(titles) && /6 Методы контроля/.test(titles) && /7 Правила транспортирования и хранения/.test(titles) && !/охраны окружающей среды/.test(titles), 'разделы по ГОСТ Р 51740-2016');
+  var intro = t.content.sections.filter(function (x) { return x.key === 'intro'; })[0];
+  assert(/^Настоящие технические условия распространяются на .*предназначенный для/.test(intro.text) && intro.v && (intro.text.match(/Настоящие технические условия/g) || []).length === 1, 'вводная фраза по ГОСТ Р 51740 п. 5.1.2, без дубля ГОСТ 2.114');
   var r2 = ok(call(COORD, 'specs.build', { client_id: cl.client_id, profile: { product_name: 'Ролл «Калифорния»', product_group: 'Роллы и суши', okpd2: '10.85.19', okpo: '87654321' } }), 'build rolls');
   var lab2 = r2.content.sections.filter(function (x) { return x.key === 'labeling'; })[0];
   var micro2 = r2.content.sections.filter(function (x) { return x.key === 'micro'; })[0];
-  assert(!lab2.rows.some(function (r) { return /мясной продукции/.test(r.c[0]); }) && !micro2.rows.length, 'для роллов не подставлены нормы мяса');
+  assert(!lab2.rows.some(function (r) { return /мясной продукции/.test(r.c[0]); }) && !micro2.rows.some(function (r) { return /КМАФАнМ/.test(r.c[0]); }) && micro2.rows.some(function (r) { return /сальмонеллы/.test(r.c[0]) && /25/.test(r.c[1]) && r.v; }), 'для роллов не подставлены нормы мяса, патогенные — по ТР ТС 021');
+  var r3 = ok(call(COORD, 'specs.build', { client_id: cl.client_id, profile: { product_name: 'Плов с говядиной', product_group: 'Блюда общественного питания: из мяса, птицы, рыбы, яиц и творога (отварные, жареные, тушёные, запечённые; пловы, пельмени, блинчики, изделия из рубленого мяса), гарниры без заправки, пицца готовая', okpd2: '56.10.11', okpo: '87654321' } }), 'build plov');
+  var m3 = r3.content.sections.filter(function (x) { return x.key === 'micro'; })[0];
+  assert(m3.rows.some(function (r) { return /КМАФАнМ/.test(r.c[0]) && /1×10³/.test(r.c[1]) && r.v && /Приложение 2, р. 1.8/.test(r.ref); }) && m3.rows.some(function (r) { return /Proteus/.test(r.c[0]) && /0,1/.test(r.c[1]); }), 'нормативы блюд общепита из ТР ТС 021, р. 1.8');
   expectErr(call(QC, 'specs.approve', { spec_id: t.spec.spec_id }), 'UNVERIFIED', 'ТУ с несверенным');
   var ap = ok(call(OWNER, 'specs.approve', { spec_id: t.spec.spec_id, accept_unverified: true, reason: 'Проект для согласования с заказчиком' }), 'approve');
   assert(ap.spec.status === 'APPROVED' && ap.spec.document_id, 'ТУ утверждены, PDF');

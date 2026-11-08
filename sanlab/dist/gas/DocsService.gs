@@ -478,7 +478,7 @@ var Specs = {
   fill: function (t, prof, designation) {
     return String(t || '').replace(/\{product\}/g, prof.product_name).replace(/\{designation\}/g, designation)
       .replace(/\{shelf_life\}/g, prof.shelf_life || '[срок годности]').replace(/\{storage\}/g, prof.storage || '[условия хранения]')
-      .replace(/\{packaging\}/g, prof.packaging || '[вид упаковки]').replace(/\{net_mass\}/g, prof.net_mass || '[масса нетто]');
+      .replace(/\{packaging\}/g, prof.packaging || '[вид упаковки]').replace(/\{purpose\}/g, prof.purpose || 'непосредственного употребления в пищу').replace(/\{net_mass\}/g, prof.net_mass || '[масса нетто]');
   },
   compose: function (ctx, client, prof, designation) {
     var pk = Norms.pick(ctx, 'TU', Specs.SECTIONS, null);
@@ -492,30 +492,29 @@ var Specs = {
       var v = its.every(function (i) { return V.bool(i.verified) && D[i.norm_id] && V.bool(D[i.norm_id].verified); });
       return DocContent.text(key, title, body || '[заполните раздел]', v && !!body, its.map(function (i) { return Norms.ref(D[i.norm_id], i); }).join('; '));
     };
-    /* Порядок разделов — ГОСТ 2.114-2016, п. 5.1.1; подразделы технических требований — п. 5.3.1 */
+    /* Порядок разделов — ГОСТ Р 51740-2016 (ТУ на пищевую продукцию), п. 4.1.3; подразделы требований к качеству и безопасности — п. 5.2.2 */
     var sec = [];
-    sec.push(textSec('intro', 'Вводная часть', 'Пример записи продукции при заказе и в документации: «' + prof.product_name + ' ' + designation + '».' + (prof.purpose ? '\nНазначение: ' + prof.purpose + '.' : '')));
-    sec.push(textSec('general', '1 Технические требования', prof.ttk_no || prof.ttk_file ? 'Продукцию изготавливают по рецептуре и технологии, установленным технико-технологической картой' + (prof.ttk_no ? ' № ' + prof.ttk_no : '') + ', утверждённой в установленном порядке.' : ''));
-    sec.push(DocContent.table('organoleptic', '1.1 Основные параметры и характеристики. Органолептические показатели', ['Показатель', 'Характеристика'], Specs.lines(prof.organoleptic, 2)));
-    sec.push(DocContent.table('physchem', '1.1 (продолжение) Физико-химические показатели', ['Показатель', 'Норма'], Specs.lines(prof.physchem, 2)));
-    if (V.str(prof.nutrition)) sec.push(DocContent.table('nutrition', '1.1 (продолжение) Пищевая и энергетическая ценность (на 100 г продукции)', ['Показатель', 'Значение'], Specs.lines(prof.nutrition, 2)));
-    sec.push(DocContent.table('micro', '1.1 (продолжение) Микробиологические показатели безопасности', ['Показатель', 'Допустимый уровень, не более'],
+    sec.push(textSec('intro', '1 Область применения', (prof.purpose ? 'Назначение: ' + prof.purpose + '.\n' : '') + 'Пример записи продукции при заказе и в документации: «' + prof.product_name + ' ' + designation + '».'));
+    sec.push(textSec('general', '2 Требования к качеству и безопасности', prof.ttk_no || prof.ttk_file ? 'Продукцию изготавливают по рецептуре и технологии, установленным технико-технологической картой' + (prof.ttk_no ? ' № ' + prof.ttk_no : '') + ', утверждённой в установленном порядке.' : ''));
+    sec.push(DocContent.table('organoleptic', '2.1 Органолептические показатели', ['Наименование показателя', 'Характеристика показателя'], Specs.lines(prof.organoleptic, 2)));
+    sec.push(DocContent.table('physchem', '2.2 Физические и химические показатели', ['Наименование показателя', 'Значение показателя'], Specs.lines(prof.physchem, 2)));
+    if (V.str(prof.nutrition)) sec.push(DocContent.table('nutrition', '2.3 Пищевая и энергетическая ценность (на 100 г продукции)', ['Показатель', 'Значение'], Specs.lines(prof.nutrition, 2)));
+    sec.push(textSec('safety', '2.4 Требования безопасности'));
+    sec.push(DocContent.table('micro', '2.4.1 Микробиологические показатели безопасности', ['Показатель', 'Допустимый уровень'],
       forGroup('MICRO').map(function (i) { var r = R([i.indicator || i.text, (i.norm_value || '[внесите норматив]') + (V.str(i.volume) ? ' (' + i.volume + ')' : '')], D[i.norm_id], i); if (!i.norm_value) r.v = false; return r; }),
-      'Группа продукции: ' + grp + '. Патогенные микроорганизмы, в том числе сальмонеллы и L. monocytogenes, нормируются по ТР ТС 021/2011.'));
-    sec.push(DocContent.table('tox', '1.1 (продолжение) Содержание потенциально опасных веществ', ['Показатель', 'Допустимый уровень'],
+      'Группа продукции: ' + grp + '.'));
+    sec.push(DocContent.table('tox', '2.4.2 Содержание потенциально опасных веществ', ['Показатель', 'Допустимый уровень'],
       forGroup('TOX').map(function (i) { var r = R([i.indicator || i.text, i.norm_value || '[внесите норматив]'], D[i.norm_id], i); if (!i.norm_value) r.v = false; return r; })));
-    sec.push(DocContent.table('recipe', '1.2 Требования к сырью и материалам. Рецептура', ['Наименование сырья', 'Масса нетто, г / требования'], Specs.lines(prof.composition, 2),
-      'Сырьё, используемое для изготовления продукции, должно соответствовать требованиям технических регламентов ЕАЭС и сопровождаться документами, подтверждающими его безопасность и прослеживаемость.'));
-    sec.push(DocContent.table('labeling', '1.3 Маркировка', ['Требование к маркировке'], forGroup('LABEL').map(function (i) { return R([Specs.fill(i.text, prof, designation)], D[i.norm_id], i); })));
-    sec.push(textSec('packaging', '1.4 Упаковка', prof.packaging ? 'Продукцию упаковывают: ' + prof.packaging + (prof.net_mass ? '. Масса нетто: ' + prof.net_mass : '') + '.' : ''));
-    sec.push(textSec('safety', '2 Требования безопасности'));
-    sec.push(textSec('environment', '3 Требования охраны окружающей среды'));
-    sec.push(textSec('acceptance', '4 Правила приёмки'));
-    sec.push(DocContent.table('methods', '5 Методы контроля (испытаний)', ['Показатель', 'Метод (нормативный документ)'], forGroup('METHOD').map(function (i) { return R([i.indicator || i.text, i.text], D[i.norm_id], i); })));
-    sec.push(textSec('transport', '6 Указания по эксплуатации, в том числе требования хранения, транспортирования и утилизации', 'Срок годности: ' + (prof.shelf_life || '[укажите]') + '. Условия хранения: ' + (prof.storage || '[укажите]') + '.' + (prof.transport ? '\nТранспортирование: ' + prof.transport + '.' : '')));
-    sec.push(textSec('warranty', '7 Гарантии изготовителя'));
+    sec.push(DocContent.table('recipe', '2.5 Требования к сырью. Рецептура', ['Наименование сырья', 'Масса нетто, г / требования'], Specs.lines(prof.composition, 2),
+      'Все сырьё, используемое для изготовления пищевой продукции, по качеству и безопасности должно соответствовать требованиям технических регламентов и других нормативных правовых актов (ГОСТ Р 51740-2016, п. 5.2.8). Допускается применение аналогичных видов сырья отечественного или импортного производства, не уступающих по качественным характеристикам перечисленным и соответствующих требованиям действующего законодательства (п. 5.2.8.2).'));
+    sec.push(DocContent.table('labeling', '3 Маркировка', ['Требование к маркировке'], forGroup('LABEL').map(function (i) { return R([Specs.fill(i.text, prof, designation)], D[i.norm_id], i); })));
+    sec.push(textSec('packaging', '4 Упаковка', prof.packaging ? 'Продукцию упаковывают: ' + prof.packaging + (prof.net_mass ? '. Масса нетто: ' + prof.net_mass : '') + '.' : ''));
+    sec.push(textSec('acceptance', '5 Правила приёмки'));
+    sec.push(DocContent.table('methods', '6 Методы контроля', ['Показатель', 'Метод (нормативный документ)'], forGroup('METHOD').map(function (i) { return R([i.indicator || i.text, i.text], D[i.norm_id], i); })));
+    sec.push(textSec('transport', '7 Правила транспортирования и хранения', 'Срок годности: ' + (prof.shelf_life || '[укажите]') + '. Условия хранения: ' + (prof.storage || '[укажите]') + '.' + (prof.transport ? '\nТранспортирование: ' + prof.transport + '.' : '')));
+    sec.push(textSec('warranty', '8 Гарантии изготовителя'));
     var refs = {}; pk.items.forEach(function (i) { if (Specs.match(i.product_group, grp)) refs[i.norm_id] = true; });
-    sec.push(DocContent.table('references', 'Перечень документов, на которые даны ссылки', ['Обозначение', 'Наименование'], sortBy(Object.keys(refs).map(function (id) { return D[id]; }), 'code').map(function (d) { return { c: [d.code, d.title], ref: d.code, nid: '', v: V.bool(d.verified) }; })));
+    sec.push(DocContent.table('references', 'Приложение. Перечень ссылочных документов', ['Обозначение', 'Наименование'], sortBy(Object.keys(refs).map(function (id) { return D[id]; }), 'code').map(function (d) { return { c: [d.code, d.title], ref: d.code, nid: '', v: V.bool(d.verified) }; })));
     if (/ХХ/.test(designation)) sec[0].v = false;
     return { sections: sec, built_at: ctx.now, norms: Object.keys(refs), designation: designation };
   },
