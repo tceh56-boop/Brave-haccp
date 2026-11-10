@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { n, ago } from '@/lib/fmt';
 import { ShiftCards } from '@/components/ShiftCards';
 import { PinCard } from '@/components/PinCard';
+import { TelegramCard } from '@/components/TelegramCard';
 
 interface Obj { id: string; name: string; kind_label: string; criterion: string | null; last: { value: string; unit: string; measured_at: string; result: string } | null; due: { state: string } }
 interface Status {
@@ -68,6 +69,7 @@ export default function ShiftPage() {
         )}
       </div>
       <PinCard orgId={org.id} />
+      <TelegramCard orgId={org.id} />
     </>
   );
 }

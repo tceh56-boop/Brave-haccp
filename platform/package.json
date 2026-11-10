@@ -16,6 +16,7 @@
     "backup:verify": "tsx src/server/ops/backup.ts verify",
     "mail:send": "tsx src/server/mail/sender.ts",
     "mail:watch": "tsx src/server/mail/sender.ts --watch",
+    "bot": "tsx src/server/telegram/run.ts",
     "demo:seed": "tsx src/server/demo/seed.ts",
     "manual:shots": "node tools/manual/tour.mjs",
     "manual:forms": "node tools/manual/forms.mjs",

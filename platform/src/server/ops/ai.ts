@@ -11,6 +11,7 @@ import { inOrg, parse, optText, openTask, fmtNum, orgToday } from './common';
 import { versionState, STATE_LABEL } from './regulatory';
 import { SEVERITY_LABEL, STATUS_LABEL as INC_STATUS } from './incidents';
 import { CAPA_STATUS } from './capa';
+import { complete as yandexComplete, yandexStatus } from '../integrations/yandex';
 
 /**
  * AI-помощник (этап 7 ТЗ v2, §11). Порядок ответственности:
@@ -77,12 +78,37 @@ class AnthropicProvider implements AiProvider {
   }
 }
 
+/**
+ * YandexGPT — провайдер для установок в России (Yandex Cloud, данные не покидают РФ). Тот же формат ответа и те же
+ * серверные проверки цитат и чисел, что у основного провайдера: модель возвращает JSON, сервер сверяет его со схемой.
+ */
+const JSON_FORMAT = `Ответ верни одним JSON-объектом без пояснений и без markdown, строго с полями:
+{"found": строка, "why": строка, "do_now": [строки], "dont": [строки], "who_confirms": строка, "closes_when": строка,
+ "citations": [{"source": "S1", "quote": "дословная цитата из текста источника"}], "limitations": строка, "confidence": "low" | "medium" | "high"}`;
+export const YANDEX_AI_MODEL = process.env.YANDEX_AI_MODEL || 'yandexgpt/latest';
+
+export class YandexProvider implements AiProvider {
+  name = 'yandexgpt';
+  model = YANDEX_AI_MODEL;
+  async generate(req: AiRequest): Promise<AiResult> {
+    const r = await yandexComplete(`${req.system}\n\n${JSON_FORMAT}`, req.user, 4000, { model: this.model, assistant: true, json: true });
+    const raw = r.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
+    let parsed: unknown = null;
+    try { parsed = a >= 0 && b > a ? JSON.parse(raw.slice(a, b + 1)) : null; } catch { parsed = null; }
+    const out = AnswerSchema.safeParse(parsed);
+    return { output: out.success ? out.data : null, model: this.model, usage: { total_tokens: r.tokens } };
+  }
+}
+
 let override: AiProvider | null | undefined;
 /** Для тестов и офлайн-режима: подменить провайдера (null — AI отключён). */
 export function setAiProvider(p: AiProvider | null | undefined) { override = p; }
 function provider(): AiProvider | null {
   if (override !== undefined) return override;
   if (process.env.AI_PROVIDER === 'off') return null;
+  // YandexGPT включается только явно (AI_PROVIDER=yandex): ключи распознавания сами по себе не включают платного помощника
+  if (process.env.AI_PROVIDER === 'yandex') return yandexStatus().configured ? new YandexProvider() : null;
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return null;
   return new AnthropicProvider();
 }

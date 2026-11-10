@@ -47,11 +47,12 @@ export async function recognizeText(content: Buffer, mimeType: string, model: 'p
 }
 
 /** Запрос к YandexGPT (температура 0 — разбор, а не сочинение). */
-export async function complete(system: string, user: string, maxTokens = 4000) {
+export async function complete(system: string, user: string, maxTokens = 4000, opts: { model?: string; assistant?: boolean; json?: boolean } = {}) {
   const c = yandexConfig();
-  if (c.llmDisabled) throw new Error('Модель отключена (RECOGNITION_LLM_DISABLED=1): используется только таблица распознавания.');
+  // RECOGNITION_LLM_DISABLED выключает модель только для разбора документов; помощник (assistant) включается своей настройкой AI_PROVIDER
+  if (c.llmDisabled && !opts.assistant) throw new Error('Модель отключена (RECOGNITION_LLM_DISABLED=1): используется только таблица распознавания.');
   const res = await fetch(LLM_URL, { method: 'POST', headers: yandexHeaders(c), signal: AbortSignal.timeout(90_000),
-    body: JSON.stringify({ modelUri: `gpt://${c.folderId}/${c.model}`, completionOptions: { stream: false, temperature: 0, maxTokens },
+    body: JSON.stringify({ modelUri: `gpt://${c.folderId}/${opts.model || c.model}`, completionOptions: { stream: false, temperature: 0, maxTokens }, ...(opts.json ? { jsonObject: true } : {}),
       messages: [{ role: 'system', text: system }, { role: 'user', text: user }] }) });
   const body = await res.json().catch(() => ({})) as { result?: { alternatives?: { message?: { text?: string } }[]; usage?: { totalTokens?: string } }; message?: string };
   if (!res.ok) throw new Error(`YandexGPT: ${res.status} ${body.message || ''}`.trim());

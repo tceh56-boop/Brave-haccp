@@ -48,6 +48,14 @@ services:
       YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
       YANDEX_GPT_MODEL: ${YANDEX_GPT_MODEL:-yandexgpt/latest}
       RECOGNITION_LLM_DISABLED: ${RECOGNITION_LLM_DISABLED:-}
+      # AI-помощник: yandex — YandexGPT (данные в РФ, платно, включает владелец); off — выключен; пусто — по ключу ANTHROPIC_API_KEY
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      YANDEX_AI_MODEL: ${YANDEX_AI_MODEL:-yandexgpt/latest}
+      AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-300}
+      # Telegram-бот «ЦЕХ ИИ» (сервис bot): токен от @BotFather; пусто — бот выключен
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-}
     ports: ["${APP_BIND:-127.0.0.1}:3000:3000"]
     volumes: [backups:/backups]
 
@@ -57,6 +65,14 @@ services:
     depends_on: [app]
     environment: *appenv
     command: ["npm", "run", "-s", "mail:watch"]
+
+  # Telegram-бот «ЦЕХ ИИ»: длинный опрос, входящих портов не нужно; без TELEGRAM_BOT_TOKEN ждёт и ничего не делает
+  bot:
+    image: ceh-app
+    restart: unless-stopped
+    depends_on: [app]
+    environment: *appenv
+    command: ["npm", "run", "-s", "bot"]
 
   caddy:
     image: caddy:2-alpine

@@ -46,6 +46,20 @@ else
     S3_ACCESS_KEY_ID="$(ask 'Идентификатор ключа (YCAJ…)' '')"
     S3_SECRET_ACCESS_KEY="$(ask 'Секретный ключ' '')"
   fi
+  echo
+  echo "Распознавание накладных (Yandex Vision) и AI-помощник (YandexGPT) — платно, по тарифам Yandex Cloud."
+  echo "Нужен API-ключ сервисного аккаунта с ролями ai.vision.user и ai.languageModels.user. Пустой ответ — выключено, включить можно позже."
+  YANDEX_API_KEY="$(ask 'API-ключ Yandex Cloud (AQVN…)' '')"
+  YANDEX_FOLDER_ID=""; AI_PROVIDER=""
+  if [ -n "$YANDEX_API_KEY" ]; then
+    YANDEX_FOLDER_ID="$(ask 'Идентификатор каталога (b1g…)' '')"
+    [ "$(ask 'Включить AI-помощника на YandexGPT? 1 — да, 0 — нет' '0')" = 1 ] && AI_PROVIDER=yandex
+  fi
+  echo
+  echo "Telegram-бот «ЦЕХ ИИ»: уведомления, сводка смены и вопросы помощнику. Токен выдаёт @BotFather (команда /newbot)."
+  TELEGRAM_BOT_TOKEN="$(ask 'Токен бота (пусто — без бота)' '')"
+  TELEGRAM_BOT_USERNAME=""
+  [ -n "$TELEGRAM_BOT_TOKEN" ] && TELEGRAM_BOT_USERNAME="$(ask 'Имя бота без @, например ceh_ai_bot' '')"
   DEMO="$(ask 'Создать демо-организацию «Кафе «Демо»» для показа? 1 — да, 0 — нет' '0')"
   MAIL_PASS="$(openssl rand -hex 12)"
   umask 077
@@ -65,9 +79,13 @@ S3_BUCKET=$S3_BUCKET
 S3_ACCESS_KEY_ID=$S3_ACCESS_KEY_ID
 S3_SECRET_ACCESS_KEY=$S3_SECRET_ACCESS_KEY
 ANTHROPIC_API_KEY=
-YANDEX_API_KEY=
-YANDEX_FOLDER_ID=
+YANDEX_API_KEY=$YANDEX_API_KEY
+YANDEX_FOLDER_ID=$YANDEX_FOLDER_ID
 YANDEX_GPT_MODEL=yandexgpt/latest
+AI_PROVIDER=$AI_PROVIDER
+YANDEX_AI_MODEL=yandexgpt/latest
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+TELEGRAM_BOT_USERNAME=$TELEGRAM_BOT_USERNAME
 ENV
   echo "Сохранено в $DIR/.env (доступ только у root)."
 fi
@@ -90,11 +108,13 @@ CRON
 chmod 644 /etc/cron.d/ceh-backup
 bash deploy/backup.sh >> /var/log/ceh-backup.log 2>&1 && echo "Первая копия сделана и проверена." || echo "Первая копия не удалась — см. /var/log/ceh-backup.log"
 
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then BOT_LINE="https://t.me/${TELEGRAM_BOT_USERNAME:-} — привязка в системе: «Смена» → «Telegram-бот»"; else BOT_LINE="не подключён (TELEGRAM_BOT_TOKEN в .env)"; fi
 say "5/5 Готово"
 cat <<DONE
   Система:        https://$DOMAIN   (сертификат выпускается автоматически за 1–2 минуты)
   Письма стенда:  https://$DOMAIN/mail/   логин и пароль: $MAIL_UI_AUTH
   Дальше:         откройте систему → «Регистрация» → создайте предприятие (вы станете владельцем).
+  Telegram-бот:   $BOT_LINE
   Обновление:     cd $DIR && sudo bash deploy/update.sh
   Копии:          /var/log/ceh-backup.log; вручную — sudo bash deploy/backup.sh
 DONE
