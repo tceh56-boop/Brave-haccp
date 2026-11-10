@@ -45,6 +45,8 @@ var MC_GATE_ENTRY_ = ["doGet"];
     if (f.mut) [MC_GATE_MUT_, MC_GATE_NOOP_, MC_GATE_NOAUDIT_, MC_GATE_NOLOCK_].forEach(function (a) { if (a.indexOf(f.n) < 0) a.push(f.n); });
   });
 })();
+// функции, после которых создаются события режима «Готов к работе» (TS2_Ready.gs)
+var TS2_EVENT_FNS_ = { completeProduction: 1, completeV27Production: 1, createBatchFromReceiving: 1, mcRecordIncomingControl: 1, openBatchContainer: 1, issueV28Banquet: 1, mcTakeDailySample: 1, saveChecklistExecution: 1 };
 var MC_GATE_DEDUP_SEC_ = 15;
 // Нагрузочный сценарий: вызов может ждать общую блокировку дольше 15 с. Метка «выполняется» живёт до предела
 // выполнения Apps Script (6 мин) — повторное нажатие во время ожидания не запустит ту же операцию второй раз.
@@ -168,6 +170,8 @@ function mcGateSession_() { return _MC_GATE_SESSION; }
           throw err;
         }
         var rf = resultFailed(res);
+        // ЦЕХ Стандарт 2.1: успешная запись из интерфейса → события производства (автозаписи журналов). Ошибка не ломает операцию.
+        if (!rf.failed && typeof _ts2OnGateCall_ === 'function' && TS2_EVENT_FNS_[name]) { try { _ts2OnGateCall_(name, args, res); } catch (e) {} }
         if (op) {
           try {
             if (NOAUD[name]) _audit_(op, 'API_' + name + (rf.failed ? '_FAILED' : '_DONE'), 'API', '', null, { result: rf.s.slice(0, 1500) });
