@@ -1041,11 +1041,11 @@ function createSystemBackup(token) {
     _requireAuth_(token, 'archive');
     var src = DriveApp.getFileById(SHEET_ID);
     var stamp = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd HH-mm');
-    var name = 'BACKUP Mon Chef ' + stamp;
+    var name = 'BACKUP ЦЕХ Стандарт ' + stamp;
     var folder;
     try {
-      var it = DriveApp.getFoldersByName('Бэкапы Mon Chef');
-      folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы Mon Chef');
+      var it = DriveApp.getFoldersByName('Бэкапы ЦЕХ Стандарт');
+      folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы ЦЕХ Стандарт');
     } catch (e) { folder = null; }
     var copy = folder ? src.makeCopy(name, folder) : src.makeCopy(name);
     // ТЗ §24: бэкап содержит все данные предприятия — публичным не делаем
@@ -2724,7 +2724,7 @@ function checkReadinessCriteria(token) {
     // 3. Данные не потеряны
     var backups = 0;
     try {
-      var it = DriveApp.getFoldersByName('Бэкапы Mon Chef');
+      var it = DriveApp.getFoldersByName('Бэкапы ЦЕХ Стандарт');
       if (it.hasNext()) { var f = it.next().getFiles(); while (f.hasNext()) { f.next(); backups++; } }
     } catch (e) {}
     crit(3, 'Существующие данные не потеряны',
@@ -12857,8 +12857,8 @@ function _docsFolder_() {
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty('DOCS_FOLDER_ID');
   if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
-  var it = DriveApp.getFoldersByName('Mon Chef — Документы');
-  var f = it.hasNext() ? it.next() : DriveApp.createFolder('Mon Chef — Документы');
+  var it = DriveApp.getFoldersByName('ЦЕХ Стандарт — Документы');
+  var f = it.hasNext() ? it.next() : DriveApp.createFolder('ЦЕХ Стандарт — Документы');
   props.setProperty('DOCS_FOLDER_ID', f.getId());
   return f;
 }

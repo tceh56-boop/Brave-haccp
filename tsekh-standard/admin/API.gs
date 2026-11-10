@@ -5,6 +5,8 @@
  *   license.check  — проверка лицензии клиентом: {key, nonce, version, stats, scriptId, appUrl} → {ok, license, sig}
  *   ttk.library    — база отработанных ТТК (Pro Max): {key, ts, sig} → {ok, items}
  *   api.clients    — список клиентов для внешней интеграции: заголовок не доступен в Apps Script, поэтому {apiKey}
+ *   release.check, support.request, support.consent, usage.report, tech.event, reconciliation.template, seed.package —
+ *                    управляющий контур 2.0 (Control.gs); запрос подписан клиентом {key, ts, sig}, повтор подписи отклоняется
  * Платёжные уведомления: POST на URL веб-приложения с параметрами ?hook=payment&t=<WEBHOOK_TOKEN>.
  * Админ-панель (браузер) работает через google.script.run, не через этот API.
  */
@@ -15,7 +17,9 @@ function doPost(e) {
     if (prm.hook === 'payment') {
       var t = PropertiesService.getScriptProperties().getProperty('WEBHOOK_TOKEN');
       if (!t || !safeEqual(prm.t, t)) { logError('webhook', 'неверный токен уведомления', ''); return json_({ ok: false }); }
-      var res = paymentWebhook_(e);
+      var wh = webhookSeen_(e, e.parameter && e.parameter.notification_type ? 'yoomoney' : 'yookassa');
+      if (wh.seen) { logEvent('PAYMENT', 'провайдер', '', 'Повтор уведомления — пропущен'); return json_({ ok: true, result: 'duplicate' }); }
+      var res = paymentWebhook_(e); webhookResult_(wh.hash, res);
       logEvent('PAYMENT', 'провайдер', '', 'Уведомление об оплате: ' + res);
       return json_({ ok: true, result: res });
     }
@@ -23,6 +27,7 @@ function doPost(e) {
     if (p.action === 'license.check') out = licenseCheck_(p);
     else if (p.action === 'ttk.library') { var org = verifyClient_(p); out = org ? ttkLibraryForClient_(org) : { ok: false, error: 'Подпись запроса не принята' }; }
     else if (p.action === 'api.clients') out = apiClients_(p);
+    else if (['release.check', 'support.request', 'support.consent', 'usage.report', 'tech.event', 'reconciliation.template', 'seed.package'].indexOf(p.action) >= 0) out = apiControl_(p);
     else out = { ok: false, error: 'unknown action' };
   } catch (err) {
     logError('api', String(err && err.message || err), err && err.stack);

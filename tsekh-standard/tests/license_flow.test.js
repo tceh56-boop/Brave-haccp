@@ -69,5 +69,37 @@ const fake = Object.assign({}, n, { sha1_hash: 'deadbeef' });
 assert.strictEqual(JSON.parse(A.doPost({ parameter: Object.assign({ hook: 'payment', t: hookTok }, fake), postData: { contents: '' } }).text).result, 'bad signature', 'подделка уведомления');
 assert.strictEqual(JSON.parse(A.doPost({ parameter: Object.assign({ hook: 'payment', t: hookTok }, n), postData: { contents: '' } }).text).result, 'paid', 'оплата принята');
 assert.strictEqual(A.adminSubscriptions(T, {}).data[0].daysLeft - before >= 28, true, 'подписка продлена на месяц');
-assert.strictEqual(JSON.parse(A.doPost({ parameter: Object.assign({ hook: 'payment', t: hookTok }, n), postData: { contents: '' } }).text).result, 'already paid', 'повторное уведомление не продлевает второй раз');
+assert.strictEqual(JSON.parse(A.doPost({ parameter: Object.assign({ hook: 'payment', t: hookTok }, n), postData: { contents: '' } }).text).result, 'duplicate', 'повторное уведомление (тот же хеш события) не обрабатывается второй раз');
+// ---- управляющий контур 2.0
+const L = A.readAll('Licenses');
+assert(L.every(l => !/^TS-/.test(l['License Key'])) && L.some(l => /\*\*\*\*/.test(l['Маска ключа'])), 'ключ лицензии в таблице не хранится в открытом виде');
+assert(!JSON.stringify(A.readAll('Organizations')).includes(licenseKey), 'в карточке клиента — только маска ключа');
+const nonce = 'n'.repeat(20), chk = p => JSON.parse(A.doPost({ parameter: {}, postData: { contents: JSON.stringify(Object.assign({ action: 'license.check', key: licenseKey, version: '2.2.0' }, p)) } }).text);
+const first = chk({ nonce }); assert(first.ok && /^ENT-/.test(first.license.enterpriseId) && first.license.features.includes('ai'), 'ответ содержит enterpriseId и возможности: ' + JSON.stringify(first.license));
+assert(/REPLAY/.test(chk({ nonce }).error), 'повтор nonce отклоняется');
+assert(!chk({ nonce: 'short' }).ok, 'короткий nonce не принимается');
+// льготный период: подписка кончилась вчера → GRACE (работа сохраняется), через 4 дня → EXPIRED
+const orgId = created.data.id, lic = A.readAll('Licenses').find(l => l.OrgID === orgId && l['Статус'] === 'ACTIVE');
+A.update('Licenses', lic['License Key'], { 'Дата окончания': new Date(Date.now() - 864e5) });
+assert.strictEqual(chk({ nonce: 'g'.repeat(20) }).license.status, 'GRACE', 'льготный период');
+A.update('Licenses', lic['License Key'], { 'Дата окончания': new Date(Date.now() - 4 * 864e5) });
+assert.strictEqual(chk({ nonce: 'e'.repeat(20) }).license.status, 'EXPIRED', 'после льготного периода — истекла');
+A.update('Licenses', lic['License Key'], { 'Дата окончания': new Date(Date.now() + 90 * 864e5) });
+// подписанные запросы клиента: обращение в поддержку, запрос доступа и согласие, повтор подписи отклоняется
+const ts = Date.now(), sig = require('crypto').createHmac('sha256', secret).update(licenseKey + '|' + ts).digest('hex');
+const api = p => JSON.parse(A.doPost({ parameter: {}, postData: { contents: JSON.stringify(p) } }).text);
+assert(api({ action: 'support.request', key: licenseKey, ts, sig, subject: 'Не печатается этикетка' }).ok, 'обращение клиента');
+assert(!api({ action: 'support.request', key: licenseKey, ts, sig, subject: 'повтор' }).ok, 'повтор подписи отклонён');
+assert(A.readAll('MASTER_DOCUMENT_TEMPLATES').length === 25 && A.readAll('MASTER_RULES').length === 15, 'эталоны 2.0 заполнены при установке');
+assert.strictEqual(A.adminSeedMasters(T).data.added, 0, 'повторно — без дублей');
+const sr = A.adminSupportSessionRequest(T, orgId, 'Проверить настройки печати', 30); assert(sr.ok);
+const seen = chk({ nonce: 's'.repeat(20) }); assert.strictEqual(seen.license.supportRequests.length, 1, 'клиент видит запрос доступа');
+const ts2 = ts + 1, sig2 = require('crypto').createHmac('sha256', secret).update(licenseKey + '|' + ts2).digest('hex');
+const cons = api({ action: 'support.consent', key: licenseKey, ts: ts2, sig: sig2, sessionId: sr.data.sessionId, allow: true, by: 'Директор' });
+assert(cons.ok && cons.status === 'GRANTED' && A.readAll('CONSENTS').length === 1, 'согласие клиента записано');
+// релиз: пилот → задания обновления ждут резервную копию клиента
+const rel = A.adminReleaseCreate(T, { version: '2.2.0', notes: 'ЦЕХ Стандарт 2.2' }); assert(rel.ok);
+assert.strictEqual(A.readAll('APP_RELEASES')[0].status, 'PILOT', 'новый релиз — в пилотном канале');
+assert(A.adminReleasePromote(T, rel.data.releaseId, 'STABLE').ok);
+console.log('OK: контур 2.0 — хеш ключа, nonce, льготный период, поддержка с согласием, эталоны, релизы');
 console.log('OK: лицензия, подпись, тарифы, режим только чтения, продление, роли, оплата ЮMoney — все проверки пройдены');

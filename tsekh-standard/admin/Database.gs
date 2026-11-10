@@ -18,10 +18,15 @@ function sheet(name) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#0b0b0b').setFontColor('#d4af37');
     sh.setFrozenRows(1);
+  } else if (!_HEAD_OK_[name]) {
+    // обновление структуры: новые колонки дописываются справа (старые данные не трогаются)
+    var head0 = SHEETS[name], w = Math.max(1, sh.getLastColumn());
+    if (w < head0.length) sh.getRange(1, w + 1, 1, head0.length - w).setValues([head0.slice(w)]).setFontWeight('bold');
   }
+  _HEAD_OK_[name] = true;
   return sh;
 }
-var _LOCK_DEPTH_ = 0;
+var _LOCK_DEPTH_ = 0, _HEAD_OK_ = {};
 /** Блокировка на запись. Вложенный вызов (уже под блокировкой) просто выполняет fn. */
 function withLock(fn) {
   if (_LOCK_DEPTH_ > 0) { _LOCK_DEPTH_++; try { return fn(); } finally { _LOCK_DEPTH_--; } }

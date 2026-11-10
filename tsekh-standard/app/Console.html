@@ -4857,6 +4857,10 @@ var TS_NAV = [
   ['tsContracts', 'Договоры', 'contracts', '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h4"/>'],
   ['tsTtkLib', 'База ТТК', 'ttk_library', '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/>'],
   ['tsAi', 'ЦЕХ AI', 'ai', '<rect x="5" y="7" width="14" height="11" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 15h5"/>'],
+  ['tsNow', 'Сейчас (смена)', 'journals', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+  ['tsSetup', 'Настройка и готовность', '', '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
+  ['tsGen', 'ТТК → ТУ / СТО / ППК', 'ppk', '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5M15 3v4h4"/>'],
+  ['tsData', 'Данные и сверка', '', '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>'],
   ['tsPlan', 'Подписка', '', '<path d="M3 7h18v10H3z"/><path d="M3 10h18M7 14h4"/>']
 ];
 function tsHas(f) { return !f || !TS.plan || !TS.plan.features || TS.plan.features[f] === true; }
@@ -4941,12 +4945,19 @@ VIEWS.tsPlan = {
         if (p.canManage) h += vCard('Ключ лицензии', '<div class="rdnote">Текущий ключ: <b>' + esc(p.keyMasked || 'не введён') + '</b>' + (p.adminUrl ? ' · админ-панель подключена' : '') + '</div>' +
           vForm([['key', 'Ключ лицензии', 'text', '', 'TS-XXXX-XXXX-XXXX'], ['secret', 'Секрет лицензии', 'password', '', 'из письма поставщика'], ['url', 'Адрес админ-панели', 'text', p.adminUrl || '', 'https://script.google.com/macros/s/…/exec']]) +
           '<div class="mvbar"><button class="btn pri" data-mv="activate">Подключить</button><button class="btn" data-mv="refresh">Проверить сейчас</button></div>');
-        h += '<div class="rdnote" style="margin-top:12px">Версия ЦЕХ Стандарт ' + esc(p.version) + '</div>';
+        if ((p.supportRequests || []).length && p.canManage) h += vCard('Запрос доступа поддержки ЦЕХ Стандарт', (p.supportRequests || []).map(function (q) {
+          return '<p><b>' + esc(q.reason) + '</b> — на ' + esc(q.minutes) + ' мин., запросил ' + esc(q.requestedBy) + '. Поддержка получит доступ только после вашего разрешения; решение записывается в журнал аудита.</p><div class="mvbar">' +
+            '<button class="btn pri" data-mv="consent" data-a="' + esc(q.sessionId) + '|1">Разрешить</button><button class="btn" data-mv="consent" data-a="' + esc(q.sessionId) + '|0">Отказать</button></div>'; }).join(''));
+        if (p.supportUntil && p.supportUntil > Date.now()) h += '<div class="ttnote" style="margin-bottom:10px;border-radius:12px">Доступ поддержки разрешён до ' + esc(new Date(p.supportUntil).toLocaleString('ru-RU')) + '.</div>';
+        h += vCard('Написать в поддержку', vForm([['supSubj', 'Тема', 'text'], ['supText', 'Вопрос', 'textarea', '', 'Опишите, что происходит. Не указывайте персональные данные сотрудников.']]) + '<div class="mvbar"><button class="btn" data-mv="support">Отправить</button></div>');
+        h += '<div class="rdnote" style="margin-top:12px">Версия ЦЕХ Стандарт ' + esc(p.version) + (p.enterpriseId ? ' · предприятие ' + esc(p.enterpriseId) : '') + (p.channel === 'pilot' ? ' · пилотный канал обновлений' : '') + '</div>';
         vBody(h);
       }, function (e) { vMsg(String(e), 'err'); });
     },
     activate: function (a, btn) { vDo(btn, 'tsActivateLicense', [TOKEN, vV('key'), vV('url'), vV('secret')], 'Лицензия подключена', function () { VIEWS.tsPlan.h.load(); }); },
-    refresh: function (a, btn) { vDo(btn, 'tsRefreshLicense', [TOKEN], function (d) { return 'Проверено: ' + d.status; }, function () { VIEWS.tsPlan.h.load(); }); }
+    refresh: function (a, btn) { vDo(btn, 'tsRefreshLicense', [TOKEN], function (d) { return 'Проверено: ' + d.status; }, function () { VIEWS.tsPlan.h.load(); }); },
+    consent: function (a, btn) { var x = a.split('|'); vDo(btn, 'tsSupportConsent', [TOKEN, x[0], x[1] === '1'], x[1] === '1' ? 'Доступ разрешён' : 'В доступе отказано', function () { VIEWS.tsPlan.h.load(); }); },
+    support: function (a, btn) { vDo(btn, 'tsSupportRequest', [TOKEN, vV('supSubj'), vV('supText')], function (d) { return 'Обращение ' + d.ticketId + ' отправлено'; }); }
   }
 };
 
@@ -5143,6 +5154,210 @@ VIEWS.tsTtkLib = {
     }
   }
 };
+
+
+/* ==========================================================================
+   ЦЕХ Стандарт 2.1 — «Сейчас»: экран повара. Только «Да / Нет» и разрешённые физические замеры.
+   ========================================================================== */
+var TS2N = { tasks: [] };
+VIEWS.tsNow = {
+  title: 'Сейчас', sub: 'Задачи смены: подтвердите «Да» или «Нет». Цифры вводятся только для замеров (холодильник, помещение, фритюр, лампа)',
+  open: function () { this.h.load(); },
+  h: {
+    load: function () {
+      vLoading();
+      Promise.all([vCall('ts2Now', [TOKEN]), vCall('ts2Exceptions', [TOKEN])]).then(function (rs) {
+        var e = vErr(rs[0]); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = vData(rs[0]), x = vErr(rs[1]) ? { exceptions: [], overdue: [], autoToday: 0 } : vData(rs[1]); TS2N.tasks = d.tasks;
+        if (!d.mode) { vBody(vCard('Режим «Готов к работе» не включён', '<p>Директор или ответственный за ХАССП включает его в разделе «Настройка и готовность» — система сама создаст документы, зоны, журналы и правила.</p><div class="mvbar"><button class="btn pri" onclick="openView(\'tsSetup\')">Открыть настройку</button></div>')); return; }
+        var h = vKpis([['Задач сейчас', d.tasks.length, d.tasks.length ? 'gold' : 'green'], ['Просрочено', d.tasks.filter(function (t) { return t.overdue; }).length, 'red'], ['Отклонения', x.exceptions.length, x.exceptions.length ? 'red' : 'green'], ['Записей сделано системой сегодня', x.autoToday]]);
+        if (d.mode === 'PILOT') h += '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Пилотный режим: записи помечаются «ПИЛОТ» и не идут в официальные журналы до протокола запуска.</div>';
+        h += d.tasks.length ? d.tasks.map(function (t) {
+          var head = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:16px">' + esc(t.title) + '</b>' + vChip(t.overdue ? 'просрочено ' + t.due : 'до ' + t.due, t.overdue ? 'r' : 'a') + '</div>';
+          var body;
+          if (t.measure) {
+            var m = t.measure, lim = m.min !== '' || m.max !== '' ? 'Норма: ' + (m.min !== '' ? 'от ' + m.min : '') + (m.max !== '' ? ' до ' + m.max : '') + ' ' + m.unit : '';
+            body = '<div class="rdnote">' + esc(lim) + '</div><div class="bqf mvf"><div><label>' + (m.kind === 'FRYER' ? 'Состояние жира' : 'Значение, ' + esc(m.unit)) + '</label>' +
+              (m.kind === 'FRYER' ? '<select id="ts2v_' + t.id + '"><option>годен</option><option>заменён</option><option>требует замены</option></select>' : '<input id="ts2v_' + t.id + '" type="number" step="0.1" inputmode="decimal" style="font-size:22px">') +
+              '</div><div class="mvwide"><label>Комментарий (обязателен вне нормы)</label><input id="ts2c_' + t.id + '"></div></div><div class="mvbar"><button class="btn pri" data-mv="measure" data-a="' + t.id + '">Записать</button></div>';
+          } else body = '<div class="mvbar"><button class="btn pri" style="min-width:120px;font-size:18px" data-mv="yes" data-a="' + t.id + '">Да</button><button class="btn" style="min-width:120px;font-size:18px" data-mv="no" data-a="' + t.id + '">Нет</button></div>';
+          return '<div class="card" style="margin-bottom:10px">' + head + body + '</div>';
+        }).join('') : vCard('Все задачи выполнены', '<p>Новых задач нет. Записи о выпуске, приёмке и вскрытии система делает сама.</p>');
+        if (x.exceptions.length) h += vCard('Отклонения — нужно решение', vTable([{ k: 'createdAt', l: 'Когда' }, { k: 'value', l: 'Что случилось' }, { k: 'confirmedByEmployee', l: 'Кто' }], x.exceptions, function (r) { return vBtn('Устранено', 'resolve', r.autoRecordId); }));
+        vBody(h);
+      }, function (e) { vMsg(String(e), 'err'); });
+    },
+    yes: function (id, btn) { vDo(btn, 'ts2Confirm', [TOKEN, id, true, '', ''], 'Подтверждено', function () { VIEWS.tsNow.h.load(); }); },
+    no: function (id, btn) {
+      var r = prompt('Почему «Нет»? Например: не выполнено, оборудование неисправно, продукт не соответствует'); if (!r) return;
+      vDo(btn, 'ts2Confirm', [TOKEN, id, false, r, ''], 'Записано отклонение — ответственный получит уведомление', function () { VIEWS.tsNow.h.load(); });
+    },
+    measure: function (id, btn) {
+      var v = document.getElementById('ts2v_' + id).value, c = document.getElementById('ts2c_' + id).value;
+      if (v === '') { vMsg('Введите значение', 'err'); return; }
+      vDo(btn, 'ts2Measure', [TOKEN, id, v, c], function (d) { return d.result === 'FAIL' ? 'Вне нормы — записано отклонение' : 'Записано: ' + d.value + ' ' + d.unit; }, function () { VIEWS.tsNow.h.load(); });
+    },
+    resolve: function (id, btn) { var a = prompt('Корректирующее действие (что сделано):'); if (!a) return; vDo(btn, 'ts2ResolveException', [TOKEN, id, a], 'Отклонение закрыто', function () { VIEWS.tsNow.h.load(); }); }
+  }
+};
+
+/* ---------- Настройка за 15 минут, очередь утверждения, готовность ---------- */
+var TS2S = { st: null, step: 1 };
+VIEWS.tsSetup = {
+  title: 'Настройка и готовность', sub: 'Мастер из 7 шагов: система готовит документы, журналы и правила сама — вы подтверждаете только то, что знает предприятие',
+  open: function () { this.h.load(); },
+  h: {
+    load: function () {
+      vLoading();
+      Promise.all([vCall('ts2Wizard', [TOKEN]), vCall('ts2ApprovalQueue', [TOKEN])]).then(function (rs) {
+        var e = vErr(rs[0]); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        TS2S.st = vData(rs[0]); TS2S.q = vErr(rs[1]) ? { queue: [], documents: [] } : vData(rs[1]); VIEWS.tsSetup.h.draw();
+      }, function (e) { vMsg(String(e), 'err'); });
+    },
+    go: function (n) { TS2S.step = Number(n); VIEWS.tsSetup.h.draw(); },
+    draw: function () {
+      var s = TS2S.st, n = TS2S.step, sm = s.summary;
+      var steps = ['Организация', 'Тип предприятия', 'Цеха и зоны', 'Оборудование', 'Сотрудники', 'ТТК', 'Готовность'];
+      var h = vKpis([['Создано автоматически', sm.created, 'green'], ['Требует решения', sm.requiresDecision, sm.requiresDecision ? 'gold' : 'green'], ['Объекты замеров', sm.numericObjects], ['Блокирующие проблемы', sm.blockers, sm.blockers ? 'red' : 'green']]);
+      h += '<div class="tabs" style="margin:6px 0 12px">' + steps.map(function (x, i) { return '<button class="' + (i + 1 === n ? 'on' : '') + '" data-mv="go" data-a="' + (i + 1) + '">' + (i + 1) + '. ' + x + '</button>'; }).join('') + '</div>';
+      var b = '';
+      if (n === 1) b = vCard('Шаг 1. Организация', vForm([['name', 'Название', 'text', s.org.name], ['inn', 'ИНН', 'text', s.org.inn], ['actualAddress', 'Адрес площадки', 'text', s.org.address], ['responsibleName', 'Ответственный за ХАССП (ФИО)', 'text', s.org.responsible], ['tz', 'Часовой пояс', 'text', s.timezone]]) +
+        '<div class="rdnote">' + (s.org.complete ? 'Реквизиты заполнены.' : 'Реквизиты нужны для документов. Полную карточку организации можно заполнить в «Организация».') + '</div><div class="mvbar"><button class="btn pri" data-mv="save1">Сохранить и дальше</button></div>');
+      if (n === 2) b = vCard('Шаг 2. Тип предприятия и режим', vForm([['type', 'Тип предприятия', 'select', s.enterpriseType || 'RESTAURANT', Object.keys(s.types).map(function (k) { return [k, s.types[k]]; })],
+        ['mode', 'Режим', 'select', s.mode || 'READY_TO_WORK', [['READY_TO_WORK', 'Готов к работе (рекомендуется)'], ['PILOT', 'Пилот — записи не идут в официальные журналы'], ['CUSTOM', 'Свои настройки']]]]) +
+        '<div class="rdnote">При включении система создаст: 25 системных документов, 9 зон, роли и права, правила событий для ККТ и расписания журналов. Перед этим делается резервная копия.</div><div class="mvbar"><button class="btn pri" data-mv="save2">' + (s.mode ? 'Сохранить' : 'Включить «Готов к работе»') + '</button></div>');
+      if (n === 3) b = vCard('Шаг 3. Цеха и зоны', s.workshops.length ? s.workshops.map(function (w) { return '<div class="bqf mvf" style="align-items:center"><div><label class="mvchk"><input type="checkbox" class="ts2ws" data-id="' + esc(w.workshopId) + '"' + (w.status === 'ACTIVE' ? ' checked' : '') + '> ' + esc(w.name) + '</label></div><div class="mvwide"><input placeholder="если не используется — причина" class="ts2wr" data-id="' + esc(w.workshopId) + '" value="' + esc(w.notApplicableReason || '') + '"></div></div>'; }).join('') +
+        '<div class="mvbar"><button class="btn pri" data-mv="save3">Сохранить</button></div>' : '<p>Сначала выполните шаг 2.</p>');
+      if (n === 4) b = vCard('Шаг 4. Оборудование для замеров', '<div class="rdnote">Здесь — только то, что измеряется физически. Диапазон берите из инструкции оборудования или условий хранения: система не подставляет числа сама.</div>' +
+        vForm([['otype', 'Тип', 'select', 'FRIDGE', [['FRIDGE', 'Холодильник'], ['FREEZER', 'Морозильник'], ['ROOM', 'Помещение (t° и влажность)'], ['FRYER', 'Фритюрница'], ['UV_LAMP', 'Бактерицидная лампа']]], ['oname', 'Название', 'text', '', 'Холодильник мясной №1'],
+          ['omin', 'Мин.', 'number'], ['omax', 'Макс.', 'number'], ['oset', 'Уставка', 'number'], ['otimes', 'Время проверок', 'text', '09:00,18:00']]) + '<div class="mvbar"><button class="btn pri" data-mv="save4">Добавить</button></div>' +
+        vTable([{ k: 'name', l: 'Объект' }, { k: 'objectType', l: 'Тип' }, { k: 'minValue', l: 'Мин.' }, { k: 'maxValue', l: 'Макс.' }, { k: 'checkTimes', l: 'Проверки' }, { k: 'status', l: 'Статус' }], s.objects, null, 'Объектов пока нет'));
+      if (n === 5) b = vCard('Шаг 5. Сотрудники', '<p>В системе сотрудников: <b>' + s.employees + '</b>. Добавить: Фамилия Имя;Роль;ПИН — по одному в строке.</p>' + vForm([['emps', 'Сотрудники', 'textarea', '', 'Иванова Анна;Повар горячего цеха;1234', 6]]) +
+        '<div class="mvbar"><button class="btn pri" data-mv="save5">Добавить сотрудников</button><button class="btn" onclick="openSec(\'staff\')">Открыть раздел «Персонал»</button></div>');
+      if (n === 6) b = vCard('Шаг 6. ТТК', '<p>В системе ТТК: <b>' + s.dishes + '</b>.</p>' + vForm([['ttk', 'Как начать', 'select', 'OWN', [['OWN', 'Загружу свои ТТК (файлы — в «Данные и сверка»)'], ['LIBRARY', 'Возьму из базы отработанных ТТК (Pro Max)'], ['LATER', 'Позже']]]]) +
+        '<div class="mvbar"><button class="btn pri" data-mv="save6">Сохранить</button><button class="btn" onclick="openView(\'tsData\')">Загрузить файлы</button><button class="btn" onclick="openView(\'tsGen\')">ТТК → ТУ/СТО/ППК</button></div>');
+      if (n === 7) b = vCard('Шаг 7. Проверка готовности', '<div id="ts2ready"><div class="mvbar"><button class="btn pri" data-mv="ready">Проверить готовность</button></div></div>');
+      var q = (TS2S.q.queue || []).filter(function (x) { return x.status === 'PENDING'; });
+      b += vCard('Ждут утверждения предприятием · ' + q.length, vTable([{ k: 'title', l: 'Документ' }, { k: 'reason', l: 'Почему' }, { k: 'requiredRole', l: 'Утверждает' }], q, function (r) { return vBtn('Утвердить', 'approve', r.approvalId, true) + vBtn('Отклонить', 'reject', r.approvalId); }, 'Всё утверждено'));
+      vBody(h + b);
+    },
+    save: function (step, data, btn, next) { vDo(btn, 'ts2WizardSave', [TOKEN, step, data], 'Сохранено', function (d) { if (step === 5 && d && d.errors && d.errors.length) vMsg('Не добавлены: ' + d.errors.join('; '), 'err'); if (next) TS2S.step = next; VIEWS.tsSetup.h.load(); }); },
+    save1: function (a, btn) { this.save(1, { org: { name: vV('name'), inn: vV('inn'), actualAddress: vV('actualAddress'), responsibleName: vV('responsibleName') }, timezone: vV('tz') }, btn, 2); },
+    save2: function (a, btn) { this.save(2, { type: vV('type'), mode: vV('mode') }, btn, 3); },
+    save3: function (a, btn) { var w = [].map.call(document.querySelectorAll('.ts2ws'), function (c) { return { workshopId: c.getAttribute('data-id'), active: c.checked, reason: document.querySelector('.ts2wr[data-id="' + c.getAttribute('data-id') + '"]').value }; }); this.save(3, { workshops: w }, btn, 4); },
+    save4: function (a, btn) { this.save(4, { object: { objectType: vV('otype'), name: vV('oname'), minValue: vV('omin'), maxValue: vV('omax'), setpoint: vV('oset'), checkTimes: vV('otimes') } }, btn); },
+    save5: function (a, btn) {
+      var list = vV('emps').split('\n').map(function (l) { var p = l.split(';').map(function (x) { return x.trim(); }), fio = (p[0] || '').split(/\s+/); return p[0] ? { lastName: fio[0], firstName: fio[1] || '', middleName: fio[2] || '', role: p[1] || 'Повар горячего цеха', pin: p[2] || '' } : null; }).filter(Boolean);
+      if (!list.length) { vMsg('Введите хотя бы одного сотрудника', 'err'); return; } this.save(5, { employees: list }, btn);
+    },
+    save6: function (a, btn) { this.save(6, { choice: vV('ttk') }, btn, 7); },
+    ready: function (a, btn) {
+      vDo(btn, 'ts2Readiness', [TOKEN], function (d) { return d.ready ? 'Готово к работе' : 'Выполнено ' + d.pass + ' из ' + d.total; }, function (d) {
+        document.getElementById('ts2ready').innerHTML = vTable([{ k: 'title', l: 'Критерий' }, { l: 'Состояние', html: true, f: function (x) { return x.ok ? vChip('выполнено', 'g') : vChip('не выполнено', 'r'); } }], d.criteria) +
+          '<div class="mvbar"><button class="btn" data-mv="protocol">Запросить протокол запуска у директора</button></div>';
+      });
+    },
+    protocol: function (a, btn) { vDo(btn, 'ts2RequestLaunchProtocol', [TOKEN], 'Протокол запуска — в очереди утверждения', function () { VIEWS.tsSetup.h.load(); }); },
+    approve: function (id, btn) { vDo(btn, 'ts2ApproveQueueItem', [TOKEN, id, true, ''], 'Утверждено', function () { VIEWS.tsSetup.h.load(); }); },
+    reject: function (id, btn) { var c = prompt('Причина отклонения:'); if (!c) return; vDo(btn, 'ts2ApproveQueueItem', [TOKEN, id, false, c], 'Отклонено', function () { VIEWS.tsSetup.h.load(); }); }
+  }
+};
+
+/* ---------- 2.2: ТТК → ТУ / СТО / ППК ---------- */
+var TS2G = { list: null, card: null };
+VIEWS.tsGen = {
+  title: 'ТТК → ТУ / СТО / ППК', sub: 'Система готовит изменения документов из ТТК; у каждого значения — источник. Утверждает предприятие одной кнопкой',
+  open: function () { this.h.load(); },
+  h: {
+    load: function () { vLoading(); vCall('ts2GenList', [TOKEN]).then(function (r) { var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; } TS2G.list = vData(r); VIEWS.tsGen.h.draw(); }, function (e) { vMsg(String(e), 'err'); }); },
+    draw: function () {
+      var d = TS2G.list, h = vCard('Подготовить документы по ТТК', vForm([['ttk', 'ТТК', 'select', '', d.dishes.map(function (x) { return [x.code, x.name + ' (' + x.code + ')']; })]]) + '<div class="mvbar"><button class="btn pri" data-mv="preview">Предпросмотр</button></div>');
+      h += vCard('Пакеты', vTable([{ k: 'at', l: 'Когда' }, { k: 'name', l: 'ТТК' }, { k: 'types', l: 'Документы' }, { k: 'status', l: 'Статус' }, { k: 'issues', l: 'Проблем', t: 'num' }], d.jobs, function (j) { return vBtn('Открыть', 'card', j.id); }, 'Пакетов пока нет'));
+      var docs = function (list, num) { return vTable([{ k: num, l: 'Номер' }, { k: 'title', l: 'Документ' }, { k: 'version', l: 'Версия' }, { k: 'status', l: 'Статус' }], list.map(function (x) { x.title = x.title || x.name; return x; }), function (x) { return x.fileId ? '<a class="btn" target="_blank" href="https://docs.google.com/document/d/' + esc(x.fileId) + '">Открыть</a>' : ''; }, 'Нет'); };
+      h += vCard('ТУ', docs(d.tu, 'tuNumber')) + vCard('СТО', docs(d.sto, 'stoNumber')) + vCard('ППК', docs(d.ppk, 'changeType'));
+      vBody(h);
+    },
+    preview: function (a, btn) { vDo(btn, 'ts2GenPreview', [TOKEN, vV('ttk'), []], function (c) { return c.existing ? 'Эта версия ТТК уже обработана — открыт существующий пакет' : 'Предпросмотр готов'; }, function (c) { TS2G.card = c; VIEWS.tsGen.h.showCard(); }); },
+    card: function (id) { vCall('ts2GenCard', [TOKEN, id]).then(function (r) { var e = vErr(r); if (e) { vMsg(e, 'err'); return; } TS2G.card = vData(r); VIEWS.tsGen.h.showCard(); }); },
+    showCard: function () {
+      var c = TS2G.card, j = c.job;
+      var h = vKpis([['ТТК', c.name], ['Статус', vRu(j.status)], ['Заполнено автоматически', c.counts.auto + ' из ' + c.counts.facts, 'green'], ['Требует решения', c.counts.issues, c.counts.blocking ? 'red' : 'gold']]);
+      if (c.tuSkipped) h += '<div class="ttnote" style="margin-bottom:10px;border-radius:12px">ТУ создаются в тарифе Pro (лабораторные исследования). Подготовлены СТО и ППК.</div>';
+      h += vCard('Процессы и ККТ', vTable([{ k: 'name', l: 'ККТ' }, { l: 'Критический предел', html: true, f: function (x) { return x.criticalLimit ? esc(x.criticalLimit) : vChip('нужен источник', 'r'); } }, { k: 'limitSource', l: 'Источник' }, { k: 'journalCode', l: 'Журнал' }], c.controls, null, 'ККТ не выявлены'));
+      h += vCard('Опасности', vTable([{ k: 'process', l: 'Операция' }, { k: 'hazardType', l: 'Тип' }, { k: 'description', l: 'Опасность' }], c.hazards));
+      h += vCard('Проблемы и конфликты', vTable([{ k: 'severity', l: 'Важность' }, { k: 'message', l: 'Что' }, { k: 'suggestedAction', l: 'Что сделать' }, { k: 'status', l: 'Статус' }], c.issues, function (i) { return i.status === 'OPEN' && i.severity !== 'BLOCKER' ? vBtn('Решено', 'resolve', i.issueId) : ''; }, 'Проблем нет'));
+      h += vCard('Факты из ТТК', vTable([{ k: 'fieldCode', l: 'Поле' }, { k: 'normalizedValue', l: 'Значение' }, { k: 'sourceText', l: 'Источник' }, { k: 'confidence', l: 'Уверенность', t: 'num' }, { k: 'status', l: 'Статус' }], c.facts));
+      h += '<div class="mvbar">' + (c.canApply ? '<button class="btn pri" data-mv="apply" data-a="' + j.generationJobId + '">Создать документы (Google Doc + PDF)</button>' : '') +
+        (j.status === 'APPLIED' ? '<button class="btn pri" data-mv="approve" data-a="' + j.generationJobId + '"' + (c.canApprove ? '' : ' disabled title="Сначала решите блокирующие проблемы и конфликты"') + '>Утвердить пакет</button>' : '') +
+        '<button class="btn" data-mv="load">‹ К списку</button></div>';
+      vBody(h);
+    },
+    apply: function (id, btn) { vDo(btn, 'ts2GenApply', [TOKEN, id], 'Документы созданы — ждут утверждения', function (c) { TS2G.card = c; VIEWS.tsGen.h.showCard(); }); },
+    approve: function (id, btn) { vDo(btn, 'ts2GenApprove', [TOKEN, id], 'Пакет утверждён, правила ККТ включены', function () { VIEWS.tsGen.h.card(id); }); },
+    resolve: function (id, btn) { var r = prompt('Как решено (это попадёт в журнал аудита):'); if (!r) return; vDo(btn, 'ts2GenResolveIssue', [TOKEN, id, r], 'Отмечено', function () { VIEWS.tsGen.h.card(TS2G.card.job.generationJobId); }); }
+  }
+};
+
+/* ---------- 2.0: данные — загрузка документов, сверка, миграция, резервные копии, аудит ---------- */
+var TS2D = { tab: 'recon' };
+VIEWS.tsData = {
+  title: 'Данные и сверка', sub: 'Загрузка документов и ТТК, проверка данных, предложения исправлений, миграция, резервные копии и журнал аудита',
+  open: function () { this.h.draw(); },
+  h: {
+    tab: function (t) { TS2D.tab = t; VIEWS.tsData.h.draw(); },
+    draw: function () {
+      var tabs = [['recon', 'Сверка'], ['import', 'Загрузка'], ['migr', 'Миграция'], ['backup', 'Резервные копии'], ['audit', 'Аудит']];
+      vBody('<div class="tabs" style="margin:6px 0 12px">' + tabs.map(function (x) { return '<button class="' + (x[0] === TS2D.tab ? 'on' : '') + '" data-mv="tab" data-a="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div><div id="ts2d"><div class="loading"><div class="spin"></div>Загрузка…</div></div>');
+      var box = function (h) { var b = document.getElementById('ts2d'); if (b) b.innerHTML = h; }, fail = function (r) { var e = vErr(r); if (e) { box('<div class="err">' + esc(e) + '</div>'); return true; } return false; };
+      var t = TS2D.tab;
+      if (t === 'recon') vCall('ts2Reconciliation', [TOKEN]).then(function (r) { if (fail(r)) return; var d = vData(r), open = d.issues.filter(function (i) { return i.status === 'OPEN'; });
+        box(vKpis([['Блокирующие', open.filter(function (i) { return i.severity === 'BLOCKER'; }).length, 'red'], ['Критичные', open.filter(function (i) { return i.severity === 'CRITICAL'; }).length, 'red'], ['Прочие', open.length], ['Предложений', d.proposals.filter(function (p) { return p.status === 'PROPOSED'; }).length, 'gold']]) +
+          '<div class="mvbar"><button class="btn pri" data-mv="recon">Запустить сверку</button><button class="btn" data-mv="applyAll">Применить согласованные</button></div>' +
+          vCard('Проблемы', vTable([{ k: 'severity', l: 'Важность' }, { k: 'entityType', l: 'Область' }, { k: 'message', l: 'Что' }, { k: 'suggestedAction', l: 'Что сделать' }, { k: 'entityId', l: 'Объект' }], open, null, 'Проблем нет')) +
+          vCard('Предложения исправлений', vTable([{ k: 'operationType', l: 'Действие' }, { k: 'entityId', l: 'Объект' }, { k: 'reason', l: 'Почему' }, { k: 'status', l: 'Статус' }], d.proposals, function (p) {
+            return p.status === 'PROPOSED' ? vBtn('Согласовать', 'pok', p.changeProposalId, true) + vBtn('Отклонить', 'pno', p.changeProposalId) : p.status === 'APPLIED' && String(p.rollbackAvailable) === 'true' ? vBtn('Откатить', 'prb', p.changeProposalId) : ''; }, 'Предложений нет'))); });
+      if (t === 'import') vCall('ts2Imports', [TOKEN]).then(function (r) { if (fail(r)) return; var jobs = vData(r);
+        box(vCard('Загрузить файлы', '<div class="rdnote">ТТК, договоры, акты, сертификаты — PDF, фото, Word, Excel. Дубликаты (по контрольной сумме) не загружаются второй раз. Распознанное попадает на проверку — в рабочие таблицы ничего не пишется без вашего подтверждения.</div>' +
+          '<input type="file" id="ts2files" multiple><div class="mvbar"><button class="btn pri" data-mv="upload">Загрузить и распознать</button></div>') +
+          jobs.map(function (j) { return vCard(j.importJobId + ' · ' + vRu(j.status), vTable([{ k: 'sourceObjectName', l: 'Файл / объект' }, { k: 'sourceObjectType', l: 'Тип' }, { k: 'confidence', l: 'Уверенность', t: 'num' }, { k: 'status', l: 'Статус' }], j.items || [], function (i) { return i.status === 'READY_FOR_REVIEW' ? vBtn('Принять', 'iok', i.importItemId) + vBtn('Отклонить', 'ino', i.importItemId) : ''; }) +
+            '<div class="mvbar">' + (j.status === 'QUEUED' || j.status === 'FAILED' ? vBtn('Распознать', 'proc', j.importJobId, true) : '') + (j.status === 'READY_FOR_REVIEW' || j.status === 'PARTIAL' || j.status === 'APPROVED' ? vBtn('Применить принятые', 'iapply', j.importJobId, true) : '') + '</div>'); }).join('')); });
+      if (t === 'migr') Promise.all([vCall('ts2MigrationAnalyze', [TOKEN]), vCall('ts2MigrationPreview', [TOKEN])]).then(function (rs) { if (fail(rs[0])) return; var a = vData(rs[0]), p = vErr(rs[1]) ? [] : vData(rs[1]);
+        box(vCard('Анализ', vTable([{ k: 'sheet', l: 'Лист' }, { k: 'rows', l: 'Строк', t: 'num' }, { k: 'mapped', l: 'Сопоставлено', t: 'num' }, { k: 'toMap', l: 'К сопоставлению', t: 'num' }, { k: 'duplicateKeys', l: 'Дубли ключей', t: 'num' }], a)) +
+          vCard('Предпросмотр (первые 300)', vTable([{ k: 'sheet', l: 'Лист' }, { k: 'key', l: 'Ключ' }, { k: 'legacyValue', l: 'Значение' }, { k: 'conflict', l: 'Конфликт' }], p, null, 'Всё сопоставлено')) +
+          vCard('Выполнить', '<div class="rdnote">Перед выполнением создаётся резервная копия. Старые листы не меняются — создаётся карта соответствия ID.</div>' + vForm([['confirm', 'Введите слово ВЫПОЛНИТЬ', 'text']]) + '<div class="mvbar"><button class="btn pri" data-mv="migrate">Выполнить миграцию</button></div>')); });
+      if (t === 'backup') vCall('ts2Backups', [TOKEN]).then(function (r) { if (fail(r)) return;
+        box('<div class="mvbar"><button class="btn pri" data-mv="backup">Создать резервную копию</button><button class="btn" data-mv="schema">Проверить структуру 2.0</button></div>' +
+          vCard('Резервные копии', vTable([{ k: 'createdAt', l: 'Когда' }, { k: 'backupType', l: 'Тип' }, { k: 'scope', l: 'Что' }, { k: 'createdBy', l: 'Кто' }, { k: 'status', l: 'Статус' }], vData(r), function (b) { return b.fileUrl ? '<a class="btn" target="_blank" href="' + esc(b.fileUrl) + '">Открыть</a>' : ''; }, 'Копий пока нет'))); });
+      if (t === 'audit') vCall('ts2VerifyAudit', [TOKEN]).then(function (r) { if (fail(r)) return; var d = vData(r);
+        box(vCard('Целостность журнала аудита', d.broken.length ? '<div class="err">Цепочка нарушена в записях: ' + esc(d.broken.slice(0, 20).join(', ')) + '. Записи изменены вручную — сообщите ответственному.</div>' : '<p>' + vChip('цепочка не нарушена', 'g') + ' Проверено записей: ' + d.records + '. Каждая запись содержит хеш предыдущей — изменение задним числом обнаруживается.</p>')); });
+    },
+    recon: function (a, btn) { vDo(btn, 'ts2RunReconciliation', [TOKEN], function (d) { return 'Сверка выполнена: проблем ' + d.issues + ', новых предложений ' + d.proposals; }, function () { VIEWS.tsData.h.draw(); }); },
+    pok: function (id, btn) { vDo(btn, 'ts2ApproveProposal', [TOKEN, id, true, ''], 'Согласовано', function () { VIEWS.tsData.h.draw(); }); },
+    pno: function (id, btn) { var c = prompt('Причина:'); if (!c) return; vDo(btn, 'ts2ApproveProposal', [TOKEN, id, false, c], 'Отклонено', function () { VIEWS.tsData.h.draw(); }); },
+    prb: function (id, btn) { if (!confirm('Откатить изменение?')) return; vDo(btn, 'ts2RollbackProposal', [TOKEN, id], 'Откатано', function () { VIEWS.tsData.h.draw(); }); },
+    applyAll: function (a, btn) { vDo(btn, 'ts2ApplyProposals', [TOKEN, []], function (d) { return 'Применено: ' + ((d.applied || []).length) + (d.failed && d.failed.length ? ', ошибок: ' + d.failed.length : ''); }, function () { VIEWS.tsData.h.draw(); }); },
+    upload: function (a, btn) {
+      var fs = document.getElementById('ts2files').files; if (!fs.length) { vMsg('Выберите файлы', 'err'); return; }
+      Promise.all([].map.call(fs, function (f) { return new Promise(function (ok) { var r = new FileReader(); r.onload = function () { ok({ name: f.name, dataUrl: r.result }); }; r.readAsDataURL(f); }); }))
+        .then(function (files) { vDo(btn, 'ts2Upload', [TOKEN, files, ''], function (d) { return 'Загружено файлов: ' + (d.files || []).length; }, function () { VIEWS.tsData.h.draw(); }); });
+    },
+    proc: function (id, btn) { vDo(btn, 'ts2ProcessImport', [TOKEN, id], 'Распознано — проверьте результат', function () { VIEWS.tsData.h.draw(); }); },
+    iok: function (id, btn) { vDo(btn, 'ts2ReviewImportItem', [TOKEN, id, 'APPROVED', null], 'Принято', function () { VIEWS.tsData.h.draw(); }); },
+    ino: function (id, btn) { vDo(btn, 'ts2ReviewImportItem', [TOKEN, id, 'REJECTED', null], 'Отклонено', function () { VIEWS.tsData.h.draw(); }); },
+    iapply: function (id, btn) { vDo(btn, 'ts2ApplyImport', [TOKEN, id], 'Применено (перед этим создана резервная копия)', function () { VIEWS.tsData.h.draw(); }); },
+    migrate: function (a, btn) { vDo(btn, 'ts2MigrationExecute', [TOKEN, vV('confirm')], 'Миграция выполнена', function () { VIEWS.tsData.h.draw(); }); },
+    backup: function (a, btn) { vDo(btn, 'ts2CreateBackup', [TOKEN], function (d) { return 'Создана копия ' + d.backupId; }, function () { VIEWS.tsData.h.draw(); }); },
+    schema: function (a, btn) { vDo(btn, 'ts2InstallSchema', [TOKEN], function (d) { return 'Структура ' + d.schemaVersion + ': создано листов ' + d.sheetsCreated + ', проверено ' + d.sheetsVerified + ', папок ' + d.folders; }); }
+  }
+};
+// статусы 2.x по-русски
+(function () { var m = { PENDING_CONFIRMATION: 'ждёт подтверждения', CONFIRMED_BY_OPERATOR: 'подтверждено', AUTO_PREPARED: 'подготовлено системой', REQUIRES_ENTERPRISE_APPROVAL: 'ждёт утверждения',
+  REQUIRES_SOURCE: 'нужен источник', REQUIRES_LOCAL_CONFIRMATION: 'подтвердите применимость', SYSTEM_APPROVED: 'утверждено поставщиком', ACTIVE_TEMPLATE: 'типовой шаблон', SUPERSEDED: 'заменено новой версией',
+  PREVIEW: 'предпросмотр', APPLIED: 'применено', BLOCKER: 'блокирует', CRITICAL: 'критично', MAJOR: 'важно', MINOR: 'незначительно', CONFLICT: 'конфликт', READY_FOR_REVIEW: 'на проверку', QUEUED: 'в очереди',
+  PROPOSED: 'предложено', ROLLED_BACK: 'откатано', NOT_APPLICABLE: 'не используется', PILOT: 'пилот', RESOLVED: 'устранено', FAILED: 'ошибка', PARTIAL: 'частично', INITIAL: 'первичная', TTK_ADDENDUM: 'дополнение по ТТК',
+  ACCEPTED: 'принято', REQUIRES_CONFIRMATION: 'подтвердите', FRIDGE: 'холодильник', FREEZER: 'морозильник', ROOM: 'помещение', FRYER: 'фритюрница', UV_LAMP: 'бактерицидная лампа', MANUAL: 'вручную',
+  PRE_UPDATE: 'перед обновлением', PRE_IMPORT: 'перед импортом', PRE_RECONCILIATION_APPLY: 'перед исправлениями', PRE_GENERATION: 'перед генерацией документов', PRE_RESTORE: 'перед откатом', DUPLICATE_KEY: 'дубль ключа' };
+  if (typeof V_RU === 'object') Object.keys(m).forEach(function (k) { if (!V_RU[k]) V_RU[k] = m[k]; }); })();
 
 </script>
 </body>

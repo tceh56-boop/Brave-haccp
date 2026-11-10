@@ -153,7 +153,7 @@ function rub(n) { return (Number(n) || 0).toLocaleString('ru-RU') + ' ₽'; }
 function d10(s) { s = String(s || ''); var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? m[3] + '.' + m[2] + '.' + m[1] : s; }
 function dt(s) { var x = new Date(s); return isNaN(x) ? String(s || '') : x.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 function chip(t, k) { return '<span class="chip ' + (k || '') + '">' + esc(t) + '</span>'; }
-var ST = { ACTIVE: ['активен', 'g'], BLOCKED: ['заблокирован', 'r'], DELETED: ['удалён', ''], REVOKED: ['отозвана', ''], EXPIRING: ['истекает', 'a'], EXPIRED: ['просрочена', 'r'], CANCELLED: ['отменена', ''],
+var ST = { PILOT: ['пилот', 'a'], STABLE: ['стабильный', 'g'], WITHDRAWN: ['отозван', 'r'], BACKUP_REQUESTED: ['ждёт копию', 'a'], BACKUP_CONFIRMED: ['копия есть', 'g'], RUNNING: ['выполняется', 'a'], DONE: ['готово', 'g'], FAILED: ['ошибка', 'r'], SKIPPED: ['пропущен', ''], NOT_STARTED: ['не начата', ''], REQUESTED: ['запрошено', 'a'], GRANTED: ['разрешено', 'g'], DENIED: ['отказано', 'r'], CLOSED: ['закрыто', ''], OPEN: ['открыто', 'a'], RESOLVED: ['решено', 'g'], GRACE: ['льготный период', 'a'], ACTIVE: ['активен', 'g'], BLOCKED: ['заблокирован', 'r'], DELETED: ['удалён', ''], REVOKED: ['отозвана', ''], EXPIRING: ['истекает', 'a'], EXPIRED: ['просрочена', 'r'], CANCELLED: ['отменена', ''],
   PAID: ['оплачен', 'g'], PENDING: ['ожидает', 'a'], FAILED: ['ошибка', 'r'], REFUNDED: ['возврат', 'b'], PUBLISHED: ['опубликовано', 'g'], DRAFT: ['черновик', 'a'], SENT: ['отправлено', 'g'], PARTIAL: ['частично', 'a'], OK: ['готово', 'g'], ISSUED: ['выставлен', 'a'] };
 function st(s) { var x = ST[s] || [s, '']; return chip(x[0], x[1]); }
 function table(cols, rows, act, empty) {
@@ -216,6 +216,7 @@ function changePwd() {
 var SECTIONS = [
   ['dashboard', 'Дашборд', '◆', 'dashboard'], ['clients', 'Клиенты', '◉', 'clients.view'], ['subs', 'Подписки', '↻', 'subs.view'], ['payments', 'Платежи', '₽', 'payments.view'],
   ['licenses', 'Лицензии', '⚿', 'licenses.view'], ['updates', 'Обновления', '⇪', 'dashboard'], ['notify', 'Уведомления', '✉', 'notify.send'], ['logs', 'Логи', '☰', 'logs.view'],
+  ['ent', 'Предприятия 2.0', '▣', 'clients.view'], ['releases', 'Релизы', '⇡', 'dashboard'], ['support', 'Поддержка', '☏', 'support'], ['datareq', 'Запросы по данным', '⚖', 'data_requests'], ['masters', 'Эталоны', '❖', 'dashboard'],
   ['backups', 'Резервные копии', '⛁', 'backups.view'], ['ttk', 'База ТТК', '❏', 'ttk.view'], ['analytics', 'Аналитика', '▲', 'analytics'], ['settings', 'Настройки', '⚙', 'settings.view'], ['users', 'Администраторы', '☺', 'users']
 ];
 function startApp() {
@@ -305,7 +306,7 @@ function clientCard(id, tab) {
       sub: c.subscription ? '<div class="form">' + [['Тариф', planName(c.subscription['Тариф'])], ['Статус', c.subscription['Статус']], ['Начало', d10(c.subscription['Начало'])], ['Окончание', d10(c.subscription['Окончание'])], ['Автоплатёж', c.subscription['Автоплатеж']], ['Способ оплаты', c.subscription['Способ оплаты']], ['Подключение', rub(c.subscription['Подключение'])], ['Обслуживание / мес', rub(c.subscription['Обслуживание в месяц'])], ['Следующее списание', d10(c.subscription['Следующее списание'])]].map(function (x) { return '<div><label>' + x[0] + '</label><div>' + esc(x[1] || '—') + '</div></div>'; }).join('') + '</div><h3 style="margin:14px 0 8px;font-size:14px">История продлений</h3>' +
         table([{ k: 'at', l: 'Дата' }, { k: 'plan', l: 'Тариф' }, { k: 'months', l: 'Мес.' }, { k: 'end', l: 'До' }, { k: 'why', l: 'Основание' }], JSON.parse(c.subscription['История'] || '[]').reverse()) : '<div class="empty">Подписки нет</div>',
       pay: table([{ l: 'Дата', f: function (p) { return dt(p['Дата']); } }, { l: 'Сумма', n: 1, f: function (p) { return rub(p['Сумма']); } }, { l: 'Статус', f: function (p) { return st(p['Статус']); } }, { k: 'Платежная система', l: 'Система' }, { k: 'Назначение', l: 'Назначение' }, { k: 'Invoice', l: 'Счёт' }], c.payments),
-      lic: table([{ k: 'License Key', l: 'Ключ' }, { l: 'Статус', f: function (l) { return st(l['Статус']); } }, { l: 'Активирована', f: function (l) { return l['Активирована'] ? dt(l['Активирована']) : '—'; } }, { l: 'До', f: function (l) { return d10(l['Дата окончания']); } }, { l: 'Последняя проверка', f: function (l) { return l['Последняя проверка'] ? dt(l['Последняя проверка']) : '—'; } }, { k: 'Версия клиента', l: 'Версия' }], c.licenses),
+      lic: table([{ l: 'Ключ', f: function (l) { return esc(l['Маска ключа'] || String(l['License Key']).slice(0, 12) + '…'); } }, { l: 'Статус', f: function (l) { return st(l['Статус']); } }, { l: 'Активирована', f: function (l) { return l['Активирована'] ? dt(l['Активирована']) : '—'; } }, { l: 'До', f: function (l) { return d10(l['Дата окончания']); } }, { l: 'Последняя проверка', f: function (l) { return l['Последняя проверка'] ? dt(l['Последняя проверка']) : '—'; } }, { k: 'Версия клиента', l: 'Версия' }], c.licenses),
       logins: table([{ l: 'Дата', f: function (l) { return dt(l['Дата']); } }, { k: 'Описание', l: 'Событие' }], c.logins, null, 'Проверок лицензии ещё не было'),
       errors: table([{ l: 'Дата', f: function (l) { return dt(l['Дата']); } }, { k: 'Сообщение', l: 'Ошибка' }], c.errors, null, 'Ошибок нет'),
       actions: table([{ l: 'Дата', f: function (l) { return dt(l['Дата']); } }, { k: 'Тип', l: 'Тип' }, { k: 'Администратор', l: 'Кто' }, { k: 'Описание', l: 'Что' }], c.actions),
@@ -390,7 +391,7 @@ function markPaid(id) { if (confirm('Отметить платёж как опл
 V.licenses = function () {
   head('Лицензии', 'Ключи систем клиентов', '<button class="btn" onclick="exportX(\'licenses\')">Excel</button>');
   call('adminLicenses', TOKEN, {}).then(function (rows) {
-    C(card('Лицензии · ' + rows.length, table([{ k: 'License Key', l: 'License Key' }, { k: 'Организация', l: 'Организация' }, { l: 'Статус', f: function (l) { return st(l['Статус']); } }, { l: 'Активирована', f: function (l) { return l['Активирована'] ? dt(l['Активирована']) : '—'; } },
+    C(card('Лицензии · ' + rows.length, table([{ l: 'Ключ', f: function (l) { return esc(l['Маска ключа'] || String(l['License Key']).slice(0, 12) + '…'); } }, { k: 'EnterpriseID', l: 'Предприятие' }, { k: 'Организация', l: 'Организация' }, { l: 'Статус', f: function (l) { return st(l['Статус']); } }, { l: 'Активирована', f: function (l) { return l['Активирована'] ? dt(l['Активирована']) : '—'; } },
       { l: 'Дата окончания', f: function (l) { return d10(l['Дата окончания']); } }, { k: 'Устройств', l: 'Устройств', n: 1 }, { l: 'Последняя проверка', f: function (l) { return l['Последняя проверка'] ? dt(l['Последняя проверка']) : '—'; } }, { k: 'Последний IP', l: 'Последний IP' }, { k: 'Версия клиента', l: 'Версия клиента' }],
       rows, function (l) {
         return can('licenses.edit') ? '<button class="btn sm" onclick="licNew(\'' + l['OrgID'] + '\')">Создать новую</button> <button class="btn sm pri" onclick="licExt(\'' + l['License Key'] + '\')">Продлить</button> ' +
@@ -545,6 +546,76 @@ function userSt(e, s) { call('adminUserUpdate', TOKEN, e, { status: s }).then(fu
 
 /* ---------- старт ---------- */
 if (TOKEN) google.script.run.withSuccessHandler(function (r) { if (r && r.ok) { ME = r.data; startApp(); } else showLogin(''); }).withFailureHandler(function () { showLogin(''); }).adminMe(TOKEN);
+
+/* ==================== управляющий контур 2.0 ==================== */
+V.ent = function () {
+  head('Предприятия 2.0', 'Подготовка (папка, таблица, проект, развёртывание), канал обновлений, режим «Готов к работе»');
+  call('adminControlOverview', TOKEN).then(function (d) {
+    C(card('Предприятия · ' + d.enterprises.length, table([{ k: 'enterpriseId', l: 'EnterpriseID' }, { l: 'Организация', f: function (o) { return '<b>' + esc(o.name) + '</b>'; } }, { l: 'Тариф', f: function (o) { return esc(planName(o.plan)); } },
+      { l: 'Подготовка', f: function (o) { return st(o.onboarding); } }, { k: 'mode', l: 'Режим' }, { k: 'version', l: 'Версия' }, { l: 'Канал', f: function (o) { return chip(o.channel === 'pilot' ? 'пилот' : 'стабильный', o.channel === 'pilot' ? 'g' : ''); } }, { k: 'licenseMasked', l: 'Ключ' }],
+      d.enterprises, function (o) {
+        return (can('provision') ? '<button class="btn sm pri" onclick="entProv(\'' + o.orgId + '\',this)">Подготовить</button> ' : '') + '<button class="btn sm" onclick="entSteps(\'' + o.orgId + '\')">Шаги</button> ' +
+          (can('releases') ? '<button class="btn sm" onclick="entCh(\'' + o.orgId + '\',\'' + (o.channel === 'pilot' ? 'stable' : 'pilot') + '\')">' + (o.channel === 'pilot' ? 'В стабильный' : 'В пилот') + '</button>' : '');
+      })) + '<div class="note">Шаги: ' + d.steps.map(function (x) { return esc(x[1]); }).join(' → ') + '. Повторный запуск продолжает с первого невыполненного шага, ничего не создаёт второй раз. Для шагов с проектом скрипта нужны свойство MASTER_SCRIPT_ID и включённый Apps Script API у владельца админ-панели.</div>');
+  }, errT);
+};
+function entProv(id, b) { busy(b, call('adminProvision', TOKEN, id)).then(function (r) { mdl('<h2>Подготовка предприятия</h2>' + table([{ k: 'step', l: 'Шаг' }, { k: 'status', l: 'Результат' }, { l: 'Детали', f: function (x) { return esc(x.error || JSON.stringify(x.result || '')); } }], r)); V.ent(); }, errT); }
+function entSteps(id) { call('adminOnboarding', TOKEN, id).then(function (d) { mdl('<h2>Шаги подготовки</h2>' + table([{ l: 'Когда', f: function (x) { return dt(x.startedAt); } }, { k: 'stepCode', l: 'Шаг' }, { l: 'Статус', f: function (x) { return st(x.status); } }, { k: 'errorMessage', l: 'Ошибка' }], d.steps.slice().reverse()) +
+  '<h3>Ресурсы</h3>' + table([{ k: 'resourceType', l: 'Тип' }, { l: 'Ссылка', f: function (r) { return r.url ? '<a target="_blank" href="' + esc(r.url) + '">открыть</a>' : esc(r.googleId); } }, { k: 'note', l: 'Примечание' }], d.resources)); }, errT); }
+function entCh(id, ch) { call('adminSetChannel', TOKEN, id, ch).then(function () { toast('Канал изменён'); V.ent(); }, errT); }
+
+V.releases = function () {
+  head('Релизы', 'Новая версия выходит в пилотный канал; обновление клиента — только после его резервной копии', can('releases') ? '<button class="btn pri" onclick="relForm()">+ Релиз</button>' : '');
+  call('adminReleases', TOKEN).then(function (d) {
+    C(card('Релизы', table([{ k: 'version', l: 'Версия' }, { l: 'Статус', f: function (r) { return st(r.status); } }, { k: 'notes', l: 'Что нового' }, { l: 'Создан', f: function (r) { return dt(r.createdAt); } }, { k: 'createdBy', l: 'Кто' }], d.releases, function (r) {
+      if (!can('releases') || r.status === 'WITHDRAWN') return '';
+      return '<button class="btn sm" onclick="relJobs(\'' + r.releaseId + '\',this)">Задания обновления</button> <button class="btn sm pri" onclick="relRun(\'' + r.releaseId + '\',this)">Обновить подтвердивших копию</button> ' +
+        (r.status === 'PILOT' ? '<button class="btn sm" onclick="relProm(\'' + r.releaseId + '\',\'STABLE\')">В стабильный</button> ' : '') + '<button class="btn sm red" onclick="relProm(\'' + r.releaseId + '\',\'WITHDRAWN\')">Отозвать</button>';
+    }, 'Релизов пока нет')) +
+      card('Задания обновления', table([{ k: 'version', l: 'Версия' }, { k: 'orgId', l: 'Клиент' }, { l: 'Статус', f: function (j) { return st(j.status); } }, { k: 'previousVersion', l: 'Было' }, { l: 'Копия', f: function (j) { return j.backupConfirmedAt ? dt(j.backupConfirmedAt) : '—'; } }, { k: 'errorMessage', l: 'Ошибка' }], d.jobs, null, 'Заданий нет')));
+  }, errT);
+};
+function relForm() { mdl('<h2>Новый релиз</h2><div class="form">' + field('rVer', 'Версия', 'text', '2.2.0') + field('rSchema', 'Версия схемы данных', 'text', '2.2.0') + field('rNotes', 'Что нового', 'textarea', '', null, true) + '</div><div class="acts"><button class="btn pri" onclick="relSave(this)">Создать (пилот)</button></div>'); }
+function relSave(b) { busy(b, call('adminReleaseCreate', TOKEN, { version: val('rVer'), schemaVersion: val('rSchema'), notes: val('rNotes') })).then(function () { closeMdl(); toast('Релиз в пилотном канале'); V.releases(); }, errT); }
+function relProm(id, stt) { if (!confirm(stt === 'STABLE' ? 'Перевести релиз в стабильный канал?' : 'Отозвать релиз?')) return; call('adminReleasePromote', TOKEN, id, stt).then(function () { toast('Готово'); V.releases(); }, errT); }
+function relJobs(id, b) { busy(b, call('adminUpdateJobsCreate', TOKEN, id, [])).then(function (r) { toast('Заданий: ' + r.created + ' — клиентам отправлена команда резервной копии'); V.releases(); }, errT); }
+function relRun(id, b) { busy(b, call('adminUpdateJobsRun', TOKEN, id, false)).then(function (r) { mdl('<h2>Результат</h2>' + table([{ k: 'org', l: 'Клиент' }, { l: 'Итог', f: function (x) { return x.ok ? chip('обновлён', 'gr') : chip(x.error || 'ошибка', 'r'); } }], r, null, 'Нет клиентов с подтверждённой копией')); V.releases(); }, errT); }
+
+V.support = function () {
+  head('Поддержка', 'Обращения клиентов, доступ только с согласия предприятия, технические события', '<button class="btn pri" onclick="supForm()">Запросить доступ</button>');
+  call('adminSupport', TOKEN).then(function (d) {
+    C(card('Обращения', table([{ l: 'Когда', f: function (t) { return dt(t.createdAt); } }, { k: 'orgId', l: 'Клиент' }, { k: 'subject', l: 'Тема' }, { k: 'text', l: 'Текст' }, { l: 'Статус', f: function (t) { return st(t.status); } }], d.tickets, function (t) { return t.status === 'OPEN' ? '<button class="btn sm" onclick="supClose(\'ticket\',\'' + t.ticketId + '\')">Решено</button>' : ''; }, 'Обращений нет')) +
+      card('Сессии доступа', table([{ l: 'Запрошено', f: function (x) { return dt(x.requestedAt); } }, { k: 'orgId', l: 'Клиент' }, { k: 'reason', l: 'Причина' }, { l: 'Статус', f: function (x) { return st(x.status); } }, { k: 'consentBy', l: 'Решил' }, { l: 'До', f: function (x) { return x.expiresAt ? dt(x.expiresAt) : '—'; } }], d.sessions, function (x) { return x.status === 'GRANTED' || x.status === 'REQUESTED' ? '<button class="btn sm" onclick="supClose(\'session\',\'' + x.sessionId + '\')">Закрыть</button>' : ''; })) +
+      card('Согласия', table([{ k: 'consentType', l: 'Тип' }, { k: 'orgId', l: 'Клиент' }, { k: 'grantedBy', l: 'Кто' }, { l: 'Когда', f: function (x) { return dt(x.grantedAt); } }, { l: 'До', f: function (x) { return x.expiresAt ? dt(x.expiresAt) : '—'; } }], d.consents)) +
+      card('Технические события', table([{ l: 'Когда', f: function (x) { return dt(x.at); } }, { k: 'orgId', l: 'Клиент' }, { k: 'level', l: 'Уровень' }, { k: 'code', l: 'Код' }, { k: 'message', l: 'Сообщение' }], d.events, null, 'Событий нет')));
+  }, errT);
+};
+function supForm() { mdl('<h2>Запрос доступа к системе клиента</h2><div class="form">' + field('sOrg', 'ID клиента (ORG-…)', 'text') + field('sReason', 'Причина', 'text') + field('sMin', 'Минут', 'number', 60) + '</div><div class="note">Клиент увидит запрос на экране «Подписка» и решит сам. Без согласия доступ не предоставляется.</div><div class="acts"><button class="btn pri" onclick="supSave(this)">Отправить</button></div>'); }
+function supSave(b) { busy(b, call('adminSupportSessionRequest', TOKEN, val('sOrg'), val('sReason'), val('sMin'), '')).then(function () { closeMdl(); toast('Запрос отправлен клиенту'); V.support(); }, errT); }
+function supClose(kind, id) { var r = kind === 'ticket' ? prompt('Как решено:') : ''; if (kind === 'ticket' && !r) return; call('adminSupportClose', TOKEN, kind, id, r).then(function () { V.support(); }, errT); }
+
+V.datareq = function () {
+  head('Запросы по данным', 'Выгрузка, удаление, передача и исправление данных предприятия: учёт и сроки', '<button class="btn pri" onclick="drqForm()">+ Запрос</button>');
+  call('adminDataRequests', TOKEN).then(function (rows) {
+    C(card('Запросы', table([{ l: 'Когда', f: function (x) { return dt(x.requestedAt); } }, { k: 'orgId', l: 'Клиент' }, { k: 'requestType', l: 'Тип' }, { l: 'Статус', f: function (x) { return st(x.status); } }, { k: 'comment', l: 'Комментарий' }], rows, function (x) { return x.status !== 'DONE' ? '<button class="btn sm" onclick="drqDone(\'' + x.requestId + '\')">Выполнено</button>' : ''; }, 'Запросов нет')));
+  }, errT);
+};
+function drqForm() { mdl('<h2>Запрос по данным</h2><div class="form">' + field('dOrg', 'ID клиента', 'text') + field('dType', 'Тип', 'select', 'EXPORT', [['EXPORT', 'Выгрузка'], ['DELETE', 'Удаление'], ['TRANSFER', 'Передача'], ['RECTIFY', 'Исправление']]) + field('dCom', 'Комментарий', 'text') + '</div><div class="acts"><button class="btn pri" onclick="drqSave(this)">Создать</button></div>'); }
+function drqSave(b) { busy(b, call('adminDataRequestSave', TOKEN, { orgId: val('dOrg'), requestType: val('dType'), comment: val('dCom') })).then(function () { closeMdl(); V.datareq(); }, errT); }
+function drqDone(id) { var c = prompt('Результат (ссылка на файл или комментарий):'); if (c === null) return; call('adminDataRequestSave', TOKEN, { requestId: id, status: 'DONE', comment: c }).then(function () { V.datareq(); }, errT); }
+
+V.masters = function () {
+  head('Эталоны', 'Шаблоны документов, правила событий и сверки, опасности, пакет первоначальной настройки, возможности тарифов', '<button class="btn" onclick="mstSeed(this)">Заполнить / проверить</button>');
+  call('adminMasters', TOKEN).then(function (d) {
+    C(card('Шаблоны системных документов · ' + d.templates.length, table([{ k: 'templateId', l: 'Код' }, { k: 'title', l: 'Документ' }, { k: 'approvalMode', l: 'Режим' }, { k: 'version', l: 'Версия' }], d.templates)) +
+      card('Правила сверки · ' + d.rules.length, table([{ k: 'ruleId', l: 'ID' }, { k: 'ruleCode', l: 'Код' }, { k: 'domain', l: 'Область' }, { k: 'severity', l: 'Важность' }], d.rules)) +
+      card('Правила событий', table([{ k: 'eventRuleId', l: 'ID' }, { k: 'eventType', l: 'Событие' }, { k: 'journalCode', l: 'Журнал' }, { k: 'measurementMode', l: 'Замер' }], d.events)) +
+      card('Опасности', table([{ k: 'hazardCode', l: 'Код' }, { k: 'operation', l: 'Операция' }, { k: 'hazardType', l: 'Тип' }, { k: 'description', l: 'Описание' }], d.hazards)) +
+      card('Возможности тарифов', table([{ k: 'featureCode', l: 'Код' }, { k: 'name', l: 'Возможность' }, { l: 'С тарифа', f: function (f) { return esc(planName(f.minPlan)); } }], d.features)) +
+      card('Обезличенная статистика клиентов', table([{ k: 'date', l: 'Дата' }, { k: 'orgId', l: 'Клиент' }, { k: 'metricsJson', l: 'Показатели' }, { k: 'version', l: 'Версия' }], d.usage, null, 'Пока нет')));
+  }, errT);
+};
+function mstSeed(b) { busy(b, call('adminSeedMasters', TOKEN)).then(function (r) { toast('Добавлено записей: ' + r.added); V.masters(); }, errT); }
 </script>
 </body>
 </html>

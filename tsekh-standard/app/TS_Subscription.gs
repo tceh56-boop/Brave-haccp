@@ -55,7 +55,7 @@ var TS_FN_FEATURE_ = {
 // разделы главного окна → возможность
 var TS_SECTION_FEATURE_ = { haccp: 'journals', sanitation: 'journals', inspection: 'journals', lab: 'lab' };
 // эти функции работают при любом состоянии лицензии
-var TS_ALWAYS_ = ['loginWithPin', 'destroySession', 'uiMe', 'getAppUrl', 'tsGetPlanInfo', 'tsActivateLicense', 'tsRefreshLicense', 'mcReplayOffline'];
+var TS_ALWAYS_ = ['loginWithPin', 'destroySession', 'uiMe', 'getAppUrl', 'tsGetPlanInfo', 'tsActivateLicense', 'tsRefreshLicense', 'mcReplayOffline', 'tsSupportRequest', 'tsSupportConsent'];
 var TS_TRIAL_DAYS_ = 14, TS_CHECK_HOURS_ = 6, TS_OFFLINE_DAYS_ = 7, TS_GRACE_DAYS_ = 3;
 
 /* --------------------------------------------------------------- состав тарифа */
@@ -99,11 +99,11 @@ function _tsLicense_(force) {
     } else {
       st = { plan: saved.plan, status: saved.status, expiresAt: saved.expiresAt, org: saved.org || '', message: saved.message || '', checkedAt: saved.checkedAt };
       var offlineTooLong = _tsNow_() - saved.checkedAt > TS_OFFLINE_DAYS_ * 864e5;
-      var expired = saved.expiresAt && saved.expiresAt + TS_GRACE_DAYS_ * 864e5 < _tsNow_();
+      var expired = saved.expiresAt && (saved.graceUntil || saved.expiresAt + TS_GRACE_DAYS_ * 864e5) < _tsNow_();
       if (saved.status === 'BLOCKED') { st.mode = 'readonly'; st.message = st.message || 'Лицензия заблокирована. Обратитесь в поддержку ЦЕХ Стандарт.'; }
       else if (expired || saved.status === 'EXPIRED') { st.mode = 'readonly'; st.status = 'EXPIRED'; st.message = 'Подписка истекла. Данные доступны для просмотра; продлите подписку.'; }
       else if (offlineTooLong) { st.mode = 'readonly'; st.status = 'OFFLINE'; st.message = 'Нет связи с админ-панелью больше ' + TS_OFFLINE_DAYS_ + ' дней — подтвердите лицензию.'; }
-      else st.mode = 'full';
+      else { st.mode = 'full'; if (saved.status === 'GRACE' || (saved.expiresAt && saved.expiresAt < _tsNow_())) { st.status = 'GRACE'; st.message = saved.message || 'Подписка закончилась — идёт льготный период. Продлите подписку.'; } }
     }
     st.source = 'license';
   }
@@ -128,7 +128,9 @@ function _tsCheckRemote_(key) {
     var L = j.license;
     if (L.key !== key) return null;
     var state = { key: key, plan: String(L.plan || 'basic'), status: String(L.status || 'ACTIVE'), expiresAt: Number(L.expiresAt || 0),
-      org: String(L.org || ''), message: String(L.message || ''), checkedAt: _tsNow_(), notices: L.notices || [] };
+      org: String(L.org || ''), message: String(L.message || ''), checkedAt: _tsNow_(), notices: L.notices || [],
+      enterpriseId: String(L.enterpriseId || ''), graceUntil: Number(L.graceUntil || 0), channel: String(L.channel || 'stable'), supportRequests: L.supportRequests || [] };
+    if (state.enterpriseId && typeof _ts2SetCfg_ === 'function') { try { if (_ts2Cfg_('ENTERPRISE_ID', '') !== state.enterpriseId) _ts2SetCfg_('ENTERPRISE_ID', state.enterpriseId, 'LICENSE'); } catch (e) {} }
     if (L.update && L.update.version) state.notices.push({ text: 'Доступно обновление ЦЕХ Стандарт ' + L.update.version + (L.update.notes ? ': ' + L.update.notes : '') + '. Установку выполняет владелец через установщик.' });
     p.setProperty('TS_LICENSE_STATE', JSON.stringify(state));
     (L.commands || []).forEach(function (c) { try { _tsRunCommand_(c); } catch (e) { _log_('WARN', 'команда админ-панели ' + c + ': ' + (e && e.message || e)); } });
@@ -140,7 +142,7 @@ function _tsRunCommand_(cmd) {
   var p = _tsProps_();
   if (cmd === 'backup') {
     var src = DriveApp.getFileById(_book_().getId()), stamp = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd_HH-mm');
-    var it = DriveApp.getFoldersByName('Бэкапы Mon Chef'), folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы Mon Chef');
+    var it = DriveApp.getFoldersByName('Бэкапы ЦЕХ Стандарт'), folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы ЦЕХ Стандарт');
     var copy = src.makeCopy('BACKUP ЦЕХ Стандарт ' + stamp, folder);
     p.setProperty('TS_LAST_BACKUP', JSON.stringify({ at: Date.now(), fileId: copy.getId(), size: copy.getSize() }));
   }
@@ -154,6 +156,9 @@ function _tsUsageStats_() {
     sh.forEach(function (s) { out.rows += Math.max(0, s.getLastRow() - 1); });
     var d = ss.getSheetByName('Блюда'); if (d) out.ttk = Math.max(0, d.getLastRow() - 1);
     var e = ss.getSheetByName('Сотрудники'); if (e) out.staff = Math.max(0, e.getLastRow() - 1);
+    var ar = ss.getSheetByName('AUTO_RECORDS'); if (ar) out.autoRecords = Math.max(0, ar.getLastRow() - 1);
+    if (typeof _ts2Prof_ === 'function' && ss.getSheetByName('AUTOMATION_PROFILE')) { out.mode = _ts2Prof_('mode', ''); out.seedVersion = _ts2Prof_('seedVersion', ''); }
+    if (typeof TS2_SCHEMA_VERSION !== 'undefined') out.schemaVersion = TS2_SCHEMA_VERSION;
   } catch (e) {}
   return out;
 }
@@ -196,10 +201,36 @@ function tsGetPlanInfo(token) {
       plan: lic.plan, planName: TS_PLANS_[lic.plan].name, status: lic.status, mode: lic.mode, message: lic.message || '',
       expiresAt: lic.expiresAt ? Utilities.formatDate(new Date(lic.expiresAt), _mcTz_(), 'dd.MM.yyyy') : '', daysLeft: lic.daysLeft,
       org: lic.org || '', features: feats, featureNames: TS_FEATURE_NAMES_, lockedSections: locked, plans: plans,
-      notices: saved && saved.notices || [], version: TS_VERSION,
+      notices: saved && saved.notices || [], version: TS_VERSION, enterpriseId: saved && saved.enterpriseId || '', channel: saved && saved.channel || 'stable',
+      supportRequests: saved && saved.supportRequests || [], supportUntil: Number(p.getProperty('TS_SUPPORT_UNTIL') || 0),
       keyMasked: (function (k) { return k ? k.slice(0, 6) + '…' + k.slice(-4) : ''; })(String(p.getProperty('TS_LICENSE_KEY') || '')),
       adminUrl: String(p.getProperty('TS_ADMIN_URL') || ''), canManage: !!(s.dev || _mcRbHas_(s, 'org_edit'))
     });
+  } catch (e) { return _failFrom_(e); }
+}
+/** Подписанный служебный запрос в админ-панель (поддержка, согласие). */
+function _tsControlCall_(payload) {
+  var p = _tsProps_(), url = String(p.getProperty('TS_ADMIN_URL') || ''), key = String(p.getProperty('TS_LICENSE_KEY') || ''), secret = String(p.getProperty('TS_LICENSE_SECRET') || '');
+  if (!url || !key || !secret) throw new Error('VALIDATION: лицензия не подключена');
+  var ts = String(Date.now()); payload.key = key; payload.ts = ts; payload.sig = _tsHmac_(key + '|' + ts, secret);
+  var r = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(payload) });
+  if (r.getResponseCode() !== 200) throw new Error('Админ-панель ответила HTTP ' + r.getResponseCode());
+  var j = JSON.parse(r.getContentText()); if (!j.ok) throw new Error(j.error || 'запрос не принят'); return j;
+}
+/** Обращение в поддержку ЦЕХ Стандарт (без вложений и персональных данных — только текст). */
+function tsSupportRequest(token, subject, text) {
+  try { var s = _requireAuth_(token); if (!String(text || '').trim()) return _fail_('VALIDATION', 'Опишите вопрос'); var j = _tsControlCall_({ action: 'support.request', subject: subject, text: text, author: s.role || '' }); return _ok_({ ticketId: j.ticketId }); }
+  catch (e) { return _failFrom_(e); }
+}
+/** Решение предприятия по запросу технического доступа поддержки. Разрешает только директор/администратор. */
+function tsSupportConsent(token, sessionId, allow) {
+  try {
+    var s = _requireAuth_(token, 'org_edit');
+    var j = _tsControlCall_({ action: 'support.consent', sessionId: sessionId, allow: allow === true || allow === 'true', by: (s.name || '') + ' (' + (s.role || '') + ')' });
+    if (j.status === 'GRANTED') _tsProps_().setProperty('TS_SUPPORT_UNTIL', String(j.expiresAt)); else _tsProps_().deleteProperty('TS_SUPPORT_UNTIL');
+    try { var st = JSON.parse(_tsProps_().getProperty('TS_LICENSE_STATE') || 'null'); if (st) { st.supportRequests = (st.supportRequests || []).filter(function (x) { return x.sessionId !== sessionId; }); _tsProps_().setProperty('TS_LICENSE_STATE', JSON.stringify(st)); } } catch (e) {}
+    if (typeof _ts2Audit_ === 'function') { try { _ts2Audit_('SUPPORT_CONSENT', 'SUPPORT_SESSION', sessionId, undefined, { status: j.status }, ''); } catch (e) {} }
+    return _ok_({ status: j.status, expiresAt: j.expiresAt });
   } catch (e) { return _failFrom_(e); }
 }
 /** Ввести ключ лицензии, адрес админ-панели и секрет. Сразу проверяет ключ. */
@@ -240,6 +271,8 @@ var TS_GATE_ = [
   { n: 'tsGetPlanInfo', need: '*' },
   { n: 'tsActivateLicense', need: 'org_edit', mut: true },
   { n: 'tsRefreshLicense', need: '*' },
+  { n: 'tsSupportRequest', need: '*', mut: true },
+  { n: 'tsSupportConsent', need: 'org_edit', mut: true },
   { n: 'tsLsGetAll', need: '*', f: 'labor_safety' },
   { n: 'tsLsGetDoc', need: '*', f: 'labor_safety' },
   { n: 'tsLsSaveDoc', need: 'personnel', mut: true, f: 'labor_safety' },

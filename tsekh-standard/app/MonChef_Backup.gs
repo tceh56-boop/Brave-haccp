@@ -1,7 +1,7 @@
 /**
  * ЦЕХ Стандарт — резервное копирование с манифестом и учение по восстановлению.
  *
- * mcCreateBackup      — копия таблицы в папку «Бэкапы Mon Chef» + манифест:
+ * mcCreateBackup      — копия таблицы в папку «Бэкапы ЦЕХ Стандарт» + манифест:
  *                       по каждому листу число строк/столбцов и SHA-256 содержимого,
  *                       общий хеш манифеста, время, оператор.
  * mcRestoreDrill      — учение: копия открывается как отдельная таблица, хеши
@@ -44,7 +44,7 @@ function mcCreateBackup(token) {
     return _withLock_(function () {
       var book = _book_(), man = _bkManifest_(book), stamp = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd HH-mm');
       var folder = null;
-      try { var it = DriveApp.getFoldersByName('Бэкапы Mon Chef'); folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы Mon Chef'); } catch (e) {}
+      try { var it = DriveApp.getFoldersByName('Бэкапы ЦЕХ Стандарт'); folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы ЦЕХ Стандарт'); } catch (e) {}
       var src = DriveApp.getFileById(book.getId ? book.getId() : SHEET_ID);
       var copy = folder ? src.makeCopy('BACKUP Mon Chef ' + stamp, folder) : src.makeCopy('BACKUP Mon Chef ' + stamp);
       var id = 'BK-' + Date.now(), rows = man.sheets.reduce(function (a, x) { return a + x.rows; }, 0);

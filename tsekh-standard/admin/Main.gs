@@ -28,6 +28,9 @@ function setupAdmin() {
   if (!findBy('System_Settings', 'Ключ', 'TARIFFS')) setSetting('TARIFFS', DEFAULT_TARIFFS, 'Тарифы и цены: подключение (разово) и обслуживание в месяц');
   if (!findBy('System_Settings', 'Ключ', 'PAYMENT_PROVIDER')) setSetting('PAYMENT_PROVIDER', 'manual', 'manual | yookassa | yoomoney');
   if (!p.getProperty('WEBHOOK_TOKEN')) p.setProperty('WEBHOOK_TOKEN', randomToken(24));
+  try { seedControlMasters_(); } catch (e) { logError('setup', 'эталоны 2.0: ' + e.message, ''); }
+  // лицензии старого формата (ключ в открытом виде) → хеш и маска
+  readAll('Licenses').filter(function (l) { return /^TS-/.test(String(l['License Key'])); }).forEach(function (l) { licFind_(l['License Key']); });
   var email = String(Session.getEffectiveUser().getEmail() || '').toLowerCase(), msg = 'База: https://docs.google.com/spreadsheets/d/' + id;
   if (email && !findBy('Users', 'Email', email)) {
     var pwd = randomToken(6) + '-' + randomToken(6), salt = Utilities.getUuid();
