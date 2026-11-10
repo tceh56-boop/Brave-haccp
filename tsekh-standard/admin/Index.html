@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ЦЕХ Стандарт Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ЦЕХ Стандарт Admin — тёмная премиум-тема: чёрный, золотой, белый, песочный */
+:root{--bg:#0b0b0b;--panel:#141210;--panel2:#1b1814;--line:#2b261f;--gold:#d4af37;--gold2:#a87b22;--sand:#e9dcc4;--text:#f4efe6;--muted:#9a8f80;
+  --green:#4caf7a;--red:#e2645a;--amber:#e3a63c;--blue:#6aa6e8;--grad:linear-gradient(135deg,#e2bf55,#d4af37 45%,#a87b22);--r:16px}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Roboto,-apple-system,"Segoe UI",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+body{background-image:radial-gradient(900px 500px at 90% -10%,rgba(212,175,55,.10),transparent 60%),radial-gradient(700px 500px at -10% 110%,rgba(168,123,34,.08),transparent 60%);background-attachment:fixed;min-height:100vh}
+h1,h2,h3{font-family:Montserrat,Roboto,Arial,sans-serif;margin:0}
+button{font:inherit;cursor:pointer}
+a{color:var(--gold)}
+input,select,textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#0f0d0b;color:var(--text);font:inherit;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--gold)}
+label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+/* вход */
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.lcard{width:min(400px,100%);background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px;box-shadow:0 30px 80px -30px rgba(0,0,0,.8)}
+.lcard img{display:block;width:240px;max-width:80%;margin:0 auto 6px}
+.lcard .sub{text-align:center;color:var(--muted);margin-bottom:20px;letter-spacing:.04em;font-size:12px}
+.lcard .f{margin-bottom:12px}
+/* каркас */
+#app{display:none}
+.side{position:fixed;inset:0 auto 0 0;width:240px;background:linear-gradient(180deg,#151009,#0b0b0b 60%);border-right:1px solid var(--line);display:flex;flex-direction:column;z-index:20}
+.side .brand{padding:18px 16px 12px;border-bottom:1px solid var(--line)}
+.side .brand img{width:190px;max-width:100%}
+.side .brand small{display:block;color:#bfa76a;font-size:11px;letter-spacing:.06em;margin-top:4px}
+.nav{flex:1;overflow:auto;padding:10px}
+.nav button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--sand);padding:10px 12px;border-radius:12px;text-align:left;margin:2px 0}
+.nav button:hover{background:rgba(212,175,55,.08)}
+.nav button.on{background:var(--grad);color:#120d06;font-weight:700;box-shadow:0 10px 24px -12px rgba(212,175,55,.8)}
+.nav button span.i{width:18px;text-align:center;opacity:.9}
+.side .me{padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.side .me b{display:block;color:var(--text);font-size:13px}
+.side .me a{cursor:pointer;margin-right:10px}
+.main{margin-left:240px;padding:22px 26px 40px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.top h1{font-size:26px;font-weight:800}
+.top .sub{color:var(--muted);font-size:13px}
+.top .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.burger{display:none;border:0;background:none;color:var(--gold);font-size:24px}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:9px 14px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--gold)}
+.btn.pri{background:var(--grad);border-color:transparent;color:#120d06}
+.btn.red{border-color:rgba(226,100,90,.5);color:#ffb3ab}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:10px}
+.btn:disabled{opacity:.5}
+.grid{display:grid;gap:14px}
+.kpis{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));margin-bottom:16px}
+.kpi{background:linear-gradient(160deg,#18140f,#110f0c);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden}
+.kpi:after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:radial-gradient(closest-side,rgba(212,175,55,.16),transparent)}
+.kpi .l{color:var(--muted);font-size:12px}
+.kpi .v{font:800 26px/1.15 Montserrat,Roboto,sans-serif;margin-top:4px}
+.kpi .v.g{color:var(--gold)}.kpi .v.r{color:var(--red)}.kpi .v.gr{color:var(--green)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin-bottom:16px;overflow:hidden}
+.card .ch{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card .ch h3{font-size:15px}
+.card .cb{padding:14px 16px}
+.cols2{grid-template-columns:1fr 1fr}
+.tw{overflow:auto}
+table{width:100%;border-collapse:collapse}
+th{position:sticky;top:0;background:#17140f;color:var(--muted);font-size:12px;font-weight:600;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid #1f1b16;vertical-align:middle}
+tr:hover td{background:rgba(212,175,55,.04)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#25211b;color:var(--sand);white-space:nowrap}
+.chip.g{background:rgba(76,175,122,.15);color:#8fe0b2}.chip.r{background:rgba(226,100,90,.15);color:#ffb3ab}.chip.a{background:rgba(227,166,60,.15);color:#f3cd86}.chip.b{background:rgba(106,166,232,.15);color:#a9cdf5}.chip.gold{background:rgba(212,175,55,.18);color:var(--gold)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.filters input,.filters select{width:auto;min-width:160px}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+.msg{position:fixed;right:18px;bottom:18px;z-index:90;max-width:420px;padding:12px 16px;border-radius:14px;background:var(--panel2);border:1px solid var(--line);box-shadow:0 20px 50px -20px #000;display:none}
+.msg.ok{border-color:rgba(76,175,122,.6)}.msg.err{border-color:rgba(226,100,90,.7)}
+.mdl{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:none;align-items:flex-start;justify-content:center;padding:30px 16px;overflow:auto;z-index:80}
+.mdl.on{display:flex}
+.mdl .box{background:var(--panel);border:1px solid var(--line);border-radius:22px;width:min(980px,100%);padding:22px;position:relative;box-shadow:0 40px 100px -30px #000}
+.mdl .x{position:absolute;right:14px;top:10px;border:0;background:none;color:var(--muted);font-size:28px}
+.mdl h2{font-size:20px;margin-bottom:4px;padding-right:30px}
+.form{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.form .w{grid-column:1/-1}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin:12px 0}
+.tabs button{border:0;background:none;color:var(--muted);padding:7px 12px;border-radius:10px;font-weight:600}
+.tabs button.on{background:rgba(212,175,55,.15);color:var(--gold)}
+.secret{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0f0d0b;border:1px dashed var(--gold);border-radius:12px;padding:10px 12px;word-break:break-all;color:var(--gold)}
+.chart{width:100%;height:190px}
+.note{color:var(--muted);font-size:12px;margin-top:8px}
+.loading{padding:40px;text-align:center;color:var(--muted)}
+.spin{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 10px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:900px){
+  .side{transform:translateX(-100%);transition:transform .2s}
+  body.menu .side{transform:none}
+  .main{margin-left:0;padding:16px}
+  .burger{display:block}
+  .cols2{grid-template-columns:1fr}
+  .form{grid-template-columns:1fr}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .filters input,.filters select{min-width:0;width:100%}
+}
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="lcard">
+    <img src="<?!= include('Logo') ?>" alt="ЦЕХ Стандарт">
+    <div class="sub">ADMIN · управление клиентами и подписками</div>
+    <div class="f"><label>Email</label><input id="lEmail" type="email" autocomplete="username"></div>
+    <div class="f"><label>Пароль</label><input id="lPwd" type="password" autocomplete="current-password"></div>
+    <button class="btn pri" style="width:100%" id="lBtn">Войти</button>
+    <div id="lErr" style="color:var(--red);min-height:20px;margin-top:10px;text-align:center"></div>
+  </div>
+</div>
+
+<div id="app">
+  <aside class="side">
+    <div class="brand"><img src="<?!= include('Logo') ?>" alt="ЦЕХ Стандарт"><small>ADMIN PANEL</small></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="me"><b id="meName"></b><span id="meRole"></span><div style="margin-top:6px"><a onclick="changePwd()">Сменить пароль</a><a onclick="logout()">Выйти</a></div></div>
+  </aside>
+  <main class="main">
+    <div class="top"><button class="burger" onclick="document.body.classList.toggle('menu')">☰</button><div><h1 id="title"></h1><div class="sub" id="subtitle"></div></div><div class="acts" id="acts"></div></div>
+    <div id="content"></div>
+  </main>
+</div>
+<div class="mdl" id="mdl" onclick="if(event.target===this)closeMdl()"><div class="box" id="mdlBox"></div></div>
+<div class="msg" id="msg"></div>
+
+<script>
+/* ==================== ядро ==================== */
+var TOKEN = null, ME = null, SEC = 'dashboard', CACHE = {};
+try { TOKEN = sessionStorage.getItem('tsa_token'); } catch (e) {}
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn) {
+  var args = [].slice.call(arguments, 1);
+  return new Promise(function (ok, no) {
+    google.script.run.withSuccessHandler(function (r) {
+      if (r && r.ok === false && r.code === 'AUTH') { showLogin(r.error); return no(new Error(r.error)); }
+      if (r && r.ok === false) return no(new Error(r.error || 'ошибка'));
+      ok(r && r.data !== undefined ? r.data : r);
+    }).withFailureHandler(function (e) { no(e); })[fn].apply(null, args);
+  });
+}
+function toast(t, kind) { var m = document.getElementById('msg'); m.className = 'msg ' + (kind || 'ok'); m.textContent = t; m.style.display = 'block'; clearTimeout(m._t); m._t = setTimeout(function () { m.style.display = 'none'; }, kind === 'err' ? 7000 : 3500); }
+function errT(e) { toast(String(e && e.message || e), 'err'); }
+function can(p) { return ME && (ME.can.indexOf('*') >= 0 || ME.can.indexOf(p) >= 0); }
+function rub(n) { return (Number(n) || 0).toLocaleString('ru-RU') + ' ₽'; }
+function d10(s) { s = String(s || ''); var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? m[3] + '.' + m[2] + '.' + m[1] : s; }
+function dt(s) { var x = new Date(s); return isNaN(x) ? String(s || '') : x.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+function chip(t, k) { return '<span class="chip ' + (k || '') + '">' + esc(t) + '</span>'; }
+var ST = { ACTIVE: ['активен', 'g'], BLOCKED: ['заблокирован', 'r'], DELETED: ['удалён', ''], REVOKED: ['отозвана', ''], EXPIRING: ['истекает', 'a'], EXPIRED: ['просрочена', 'r'], CANCELLED: ['отменена', ''],
+  PAID: ['оплачен', 'g'], PENDING: ['ожидает', 'a'], FAILED: ['ошибка', 'r'], REFUNDED: ['возврат', 'b'], PUBLISHED: ['опубликовано', 'g'], DRAFT: ['черновик', 'a'], SENT: ['отправлено', 'g'], PARTIAL: ['частично', 'a'], OK: ['готово', 'g'], ISSUED: ['выставлен', 'a'] };
+function st(s) { var x = ST[s] || [s, '']; return chip(x[0], x[1]); }
+function table(cols, rows, act, empty) {
+  if (!rows || !rows.length) return '<div class="empty">' + esc(empty || 'Записей нет') + '</div>';
+  var h = '<div class="tw"><table><thead><tr>' + cols.map(function (c) { return '<th class="' + (c.n ? 'n' : '') + '">' + esc(c.l) + '</th>'; }).join('') + (act ? '<th></th>' : '') + '</tr></thead><tbody>';
+  rows.slice(0, 500).forEach(function (r, i) { h += '<tr>' + cols.map(function (c) { var v = c.f ? c.f(r) : esc(r[c.k]); return '<td class="' + (c.n ? 'n' : '') + '">' + (v === undefined || v === null ? '' : v) + '</td>'; }).join('') + (act ? '<td style="white-space:nowrap">' + act(r, i) + '</td>' : '') + '</tr>'; });
+  return h + '</tbody></table></div>';
+}
+function kpis(list) { return '<div class="grid kpis">' + list.map(function (k) { return '<div class="kpi"><div class="l">' + esc(k[0]) + '</div><div class="v ' + (k[2] || '') + '">' + esc(k[1]) + '</div></div>'; }).join('') + '</div>'; }
+function card(title, body, extra) { return '<div class="card"><div class="ch"><h3>' + esc(title) + '</h3>' + (extra || '') + '</div><div class="cb">' + body + '</div></div>'; }
+function loading() { document.getElementById('content').innerHTML = '<div class="loading"><div class="spin"></div>Загрузка…</div>'; }
+function mdl(html) { document.getElementById('mdlBox').innerHTML = '<button class="x" onclick="closeMdl()">×</button>' + html; document.getElementById('mdl').classList.add('on'); }
+function closeMdl() { document.getElementById('mdl').classList.remove('on'); }
+function val(id) { var e = document.getElementById(id); return e ? (e.type === 'checkbox' ? e.checked : e.value.trim()) : ''; }
+function field(id, l, type, v, opts, wide) {
+  var input = type === 'select' ? '<select id="' + id + '">' + opts.map(function (o) { var ov = Array.isArray(o) ? o[0] : o, ol = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(ov) + '"' + (String(ov) === String(v) ? ' selected' : '') + '>' + esc(ol) + '</option>'; }).join('') + '</select>'
+    : type === 'textarea' ? '<textarea id="' + id + '" rows="4">' + esc(v) + '</textarea>' : '<input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(v === undefined ? '' : v) + '">';
+  return '<div class="' + (wide || type === 'textarea' ? 'w' : '') + '"><label>' + esc(l) + '</label>' + input + '</div>';
+}
+function busy(btn, p) { if (btn) btn.disabled = true; return p.then(function (r) { if (btn) btn.disabled = false; return r; }, function (e) { if (btn) btn.disabled = false; errT(e); throw e; }); }
+function download(name, b64, mime) { var a = document.createElement('a'); a.href = 'data:' + (mime || 'application/octet-stream') + ';base64,' + b64; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+
+/* ==================== графики (SVG) ==================== */
+function barChart(points, key, color, fmt) {
+  var W = 600, H = 180, pad = 26, max = Math.max.apply(null, points.map(function (p) { return p[key]; }).concat([1])), bw = (W - pad * 2) / points.length;
+  var bars = points.map(function (p, i) { var h = (p[key] / max) * (H - pad * 2); return '<rect x="' + (pad + i * bw + 1) + '" y="' + (H - pad - h) + '" width="' + Math.max(1, bw - 3) + '" height="' + h + '" rx="2" fill="' + color + '"><title>' + p.day + ': ' + (fmt ? fmt(p[key]) : p[key]) + '</title></rect>'; }).join('');
+  var lbl = points.filter(function (p, i) { return i % Math.ceil(points.length / 6) === 0; }).map(function (p) { var i = points.indexOf(p); return '<text x="' + (pad + i * bw) + '" y="' + (H - 8) + '" fill="#9a8f80" font-size="10">' + p.day.slice(5) + '</text>'; }).join('');
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none"><defs><linearGradient id="g' + key + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2bf55"/><stop offset="1" stop-color="#a87b22"/></linearGradient></defs>' +
+    '<text x="' + pad + '" y="14" fill="#9a8f80" font-size="10">макс. ' + (fmt ? fmt(max) : max) + '</text>' + bars.replace(/fill="gold"/g, 'fill="url(#g' + key + ')"') + lbl + '</svg>';
+}
+function lineChart(points, key) {
+  var W = 600, H = 180, pad = 26, vals = points.map(function (p) { return p[key]; }), max = Math.max.apply(null, vals.concat([1])), min = Math.min.apply(null, vals.concat([0]));
+  var x = function (i) { return pad + i * (W - pad * 2) / Math.max(1, points.length - 1); }, y = function (v) { return H - pad - (v - min) / Math.max(1, max - min) * (H - pad * 2); };
+  var d = points.map(function (p, i) { return (i ? 'L' : 'M') + x(i) + ' ' + y(p[key]); }).join(' ');
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none"><path d="' + d + ' L' + x(points.length - 1) + ' ' + (H - pad) + ' L' + pad + ' ' + (H - pad) + 'Z" fill="rgba(212,175,55,.12)"/>' +
+    '<path d="' + d + '" fill="none" stroke="#d4af37" stroke-width="2.5"/><text x="' + pad + '" y="14" fill="#9a8f80" font-size="10">' + min + ' – ' + max + '</text></svg>';
+}
+
+/* ==================== вход ==================== */
+function showLogin(m) { TOKEN = null; try { sessionStorage.removeItem('tsa_token'); } catch (e) {} document.getElementById('app').style.display = 'none'; document.getElementById('login').style.display = 'flex'; document.getElementById('lErr').textContent = m || ''; }
+document.getElementById('lBtn').onclick = function () {
+  var b = this; b.disabled = true; document.getElementById('lErr').textContent = 'Проверка…';
+  google.script.run.withSuccessHandler(function (r) {
+    b.disabled = false;
+    if (!r || !r.ok) { document.getElementById('lErr').textContent = r && r.error || 'Ошибка входа'; return; }
+    TOKEN = r.data.token; try { sessionStorage.setItem('tsa_token', TOKEN); } catch (e) {} ME = r.data; startApp();
+  }).withFailureHandler(function (e) { b.disabled = false; document.getElementById('lErr').textContent = String(e.message || e); }).adminLogin(val('lEmail'), document.getElementById('lPwd').value);
+};
+document.getElementById('lPwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') document.getElementById('lBtn').click(); });
+function logout() { call('adminLogout', TOKEN).then(function () {}, function () {}); showLogin(''); }
+function changePwd() {
+  mdl('<h2>Смена пароля</h2><div class="form">' + field('pOld', 'Текущий пароль', 'password') + field('pNew', 'Новый пароль (от 10 символов, буквы и цифры)', 'password') + field('pNew2', 'Повторите', 'password') + '</div><div style="margin-top:14px"><button class="btn pri" id="pSave">Сохранить</button></div>');
+  document.getElementById('pSave').onclick = function () {
+    if (val('pNew') !== val('pNew2')) return toast('Пароли не совпадают', 'err');
+    busy(this, call('adminChangePassword', TOKEN, val('pOld'), val('pNew'))).then(function () { closeMdl(); toast('Пароль изменён'); });
+  };
+}
+
+/* ==================== навигация ==================== */
+var SECTIONS = [
+  ['dashboard', 'Дашборд', '◆', 'dashboard'], ['clients', 'Клиенты', '◉', 'clients.view'], ['subs', 'Подписки', '↻', 'subs.view'], ['payments', 'Платежи', '₽', 'payments.view'],
+  ['licenses', 'Лицензии', '⚿', 'licenses.view'], ['updates', 'Обновления', '⇪', 'dashboard'], ['notify', 'Уведомления', '✉', 'notify.send'], ['logs', 'Логи', '☰', 'logs.view'],
+  ['backups', 'Резервные копии', '⛁', 'backups.view'], ['ttk', 'База ТТК', '❏', 'ttk.view'], ['analytics', 'Аналитика', '▲', 'analytics'], ['settings', 'Настройки', '⚙', 'settings.view'], ['users', 'Администраторы', '☺', 'users']
+];
+function startApp() {
+  document.getElementById('login').style.display = 'none'; document.getElementById('app').style.display = 'block';
+  document.getElementById('meName').textContent = ME.name || ME.email; document.getElementById('meRole').textContent = ME.roleName || ME.role;
+  document.getElementById('nav').innerHTML = SECTIONS.filter(function (s) { return can(s[3]); }).map(function (s) { return '<button data-s="' + s[0] + '"><span class="i">' + s[2] + '</span>' + s[1] + '</button>'; }).join('');
+  document.getElementById('nav').onclick = function (e) { var b = e.target.closest('button'); if (b) { document.body.classList.remove('menu'); go(b.getAttribute('data-s')); } };
+  var h = (location.hash || '').replace('#', ''); go(SECTIONS.some(function (s) { return s[0] === h && can(s[3]); }) ? h : 'dashboard');
+}
+function head(t, sub, acts) { document.getElementById('title').textContent = t; document.getElementById('subtitle').textContent = sub || ''; document.getElementById('acts').innerHTML = acts || ''; }
+function go(sec) {
+  SEC = sec; [].forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.getAttribute('data-s') === sec); });
+  try { history.replaceState(null, '', '#' + sec); } catch (e) {}
+  loading(); (V[sec] || V.dashboard)();
+}
+function C(h) { document.getElementById('content').innerHTML = h; }
+
+/* ==================== экраны ==================== */
+var V = {}, TARIFFS = [];
+function planName(c) { var t = TARIFFS.filter(function (x) { return x.code === c; })[0]; return t ? t.name : c; }
+
+V.dashboard = function () {
+  head('Дашборд', 'Клиенты, подписки и доход ЦЕХ Стандарт');
+  call('adminDashboard', TOKEN).then(function (d) {
+    var m = d.m; TARIFFS = d.tariffs;
+    C(kpis([['Всего клиентов', m.total], ['Активных', m.active, 'gr'], ['Заблокировано', m.blocked, m.blocked ? 'r' : ''], ['Истекает подписка', m.expiring, m.expiring ? 'g' : ''],
+      ['Новых сегодня', m.newToday], ['Доход за месяц', rub(m.incomeMonth), 'g'], ['Доход за год', rub(m.incomeYear), 'g'], ['Ожидаемые платежи', rub(m.expected)],
+      ['Активных лицензий', m.licenses], ['Ошибок за 7 дней', m.errors, m.errors ? 'r' : ''], ['Резервных копий за 7 дней', m.backups], ['MRR', rub(m.mrr), 'g']]) +
+      '<div class="grid cols2">' + card('Регистрации по дням', barChart(d.series, 'reg', 'gold')) + card('Оплаты', barChart(d.series, 'pay', 'gold', rub)) +
+      card('Рост клиентов', lineChart(d.series, 'clients')) + card('Использование системы (проверки лицензий)', barChart(d.series, 'active', 'gold')) + '</div>' +
+      card('Активность пользователей (входы в админ-панель)', barChart(d.series, 'logins', 'gold')) +
+      card('Тарифы', table([{ k: 'name', l: 'Тариф' }, { l: 'Подключение', n: 1, f: function (t) { return rub(t.setup); } }, { l: 'Обслуживание / мес', n: 1, f: function (t) { return rub(t.monthly); } }, { l: 'Возможности', f: function (t) { return esc(t.features.join(', ')) + (t.note ? ' ' + chip(t.note, 'a') : ''); } }], d.tariffs)));
+  }, errT);
+};
+
+/* ---------- клиенты ---------- */
+var CF = { q: '', status: 'ALL', plan: 'ALL' };
+V.clients = function () {
+  head('Клиенты', 'CRM: организации, тарифы, сроки, лицензии', (can('clients.edit') ? '<button class="btn pri" onclick="clientForm()">+ Новый клиент</button>' : '') + '<button class="btn" onclick="exportX(\'clients\')">Excel</button>');
+  Promise.all([call('adminClients', TOKEN, CF), TARIFFS.length ? Promise.resolve(null) : call('adminDashboard', TOKEN)]).then(function (r) {
+    if (r[1]) TARIFFS = r[1].tariffs;
+    var rows = r[0];
+    C(card('Клиенты · ' + rows.length, table([
+      { k: 'id', l: 'ID' }, { l: 'Организация', f: function (o) { return '<b>' + esc(o.name) + '</b>'; } }, { k: 'email', l: 'Email' }, { k: 'phone', l: 'Телефон' }, { k: 'inn', l: 'ИНН' }, { k: 'address', l: 'Адрес' },
+      { l: 'Регистрация', f: function (o) { return d10(o.registered); } }, { l: 'Тариф', f: function (o) { return chip(o.planName, 'gold'); } }, { l: 'Статус', f: function (o) { return st(o.status); } },
+      { l: 'Подписка до', f: function (o) { return d10(o.subEnd) + (o.daysLeft !== null ? ' ' + chip(o.daysLeft + ' дн.', o.daysLeft < 0 ? 'r' : o.daysLeft <= 14 ? 'a' : '') : ''); } },
+      { k: 'staff', l: 'Сотр.', n: 1 }, { k: 'ttk', l: 'ТТК', n: 1 }, { k: 'journals', l: 'Журн.', n: 1 }, { k: 'dbSize', l: 'Строк в базе', n: 1 }, { k: 'version', l: 'Версия' },
+      { l: 'Последний вход', f: function (o) { return o.lastSeen ? dt(o.lastSeen) : '—'; } }, { k: 'driveId', l: 'Google Drive ID' }, { k: 'licenseKey', l: 'License Key' }
+    ], rows, function (o) {
+      return '<button class="btn sm" onclick="clientCard(\'' + o.id + '\')">Просмотр</button> ' + (can('clients.edit') ? '<button class="btn sm" onclick="clientForm(\'' + o.id + '\')">Ред.</button> ' : '') +
+        (can('subs.edit') ? '<button class="btn sm" onclick="renew(\'' + o.id + '\')">Продлить</button> ' : '') +
+        (can('clients.edit') ? (o.status === 'BLOCKED' ? '<button class="btn sm" onclick="blockC(\'' + o.id + '\',false)">Разблокировать</button> ' : '<button class="btn sm red" onclick="blockC(\'' + o.id + '\',true)">Заблокировать</button> ') : '') +
+        (can('backups.create') ? '<button class="btn sm" onclick="backupC(\'' + o.id + '\')">Копия</button> ' : '') + (can('notify.send') ? '<button class="btn sm" onclick="msgC(\'' + o.id + '\')">Сообщение</button> ' : '') +
+        '<button class="btn sm" onclick="clientCard(\'' + o.id + '\',\'actions\')">Журнал</button> ' + (can('clients.delete') ? '<button class="btn sm red" onclick="delC(\'' + o.id + '\')">Удалить</button>' : '');
+    }, 'Клиентов пока нет'), '<div class="filters" style="margin-left:auto"><input id="cq" placeholder="Поиск: название, email, ИНН, ключ" value="' + esc(CF.q) + '">' +
+      '<select id="cs"><option value="ALL">Все статусы</option><option value="ACTIVE"' + (CF.status === 'ACTIVE' ? ' selected' : '') + '>Активные</option><option value="BLOCKED"' + (CF.status === 'BLOCKED' ? ' selected' : '') + '>Заблокированные</option></select>' +
+      '<select id="cp"><option value="ALL">Все тарифы</option>' + TARIFFS.map(function (t) { return '<option value="' + t.code + '"' + (CF.plan === t.code ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select><button class="btn" onclick="CF.q=val(\'cq\');CF.status=val(\'cs\');CF.plan=val(\'cp\');V.clients()">Найти</button></div>'));
+  }, errT);
+};
+function clientForm(id) {
+  var show = function (o) {
+    o = o || {};
+    mdl('<h2>' + (id ? 'Клиент ' + esc(o.name) : 'Новый клиент') + '</h2><div class="note">' + (id ? 'Смена тарифа применяется сразу; цена обслуживания — с текущей даты.' : 'Будут созданы подписка и лицензия; ключ и секрет покажутся один раз — передайте их клиенту.') + '</div><div class="form" style="margin-top:12px">' +
+      field('fName', 'Название организации *', 'text', o.name) + field('fEmail', 'Email *', 'email', o.email) + field('fPhone', 'Телефон', 'text', o.phone) + field('fInn', 'ИНН', 'text', o.inn) +
+      field('fPlan', 'Тариф *', 'select', o.plan || 'basic', TARIFFS.map(function (t) { return [t.code, t.name + ' — ' + rub(t.setup) + ' + ' + rub(t.monthly) + '/мес']; })) + (id ? '' : field('fMonths', 'Оплачено месяцев (первый период)', 'number', 1)) +
+      field('fAddr', 'Адрес', 'text', o.address, null, true) + field('fDrive', 'Google Drive ID таблицы клиента', 'text', o.driveId) + field('fMgr', 'Менеджер', 'text', o.manager) + field('fCom', 'Комментарий', 'textarea', o.comment) +
+      '</div><div style="margin-top:14px"><button class="btn pri" id="fSave">Сохранить</button></div><div id="fOut"></div>');
+    document.getElementById('fSave').onclick = function () {
+      busy(this, call('adminClientSave', TOKEN, { id: id, name: val('fName'), email: val('fEmail'), phone: val('fPhone'), inn: val('fInn'), plan: val('fPlan'), months: val('fMonths'), address: val('fAddr'), driveId: val('fDrive'), manager: val('fMgr'), comment: val('fCom') })).then(function (r) {
+        toast('Сохранено'); if (r.created) document.getElementById('fOut').innerHTML = licBox(r.licenseKey, r.secret); else closeMdl(); V.clients();
+      });
+    };
+  };
+  if (!id) show(); else call('adminClientCard', TOKEN, id).then(function (c) { show(c.info); }, errT);
+}
+function licBox(key, secret) {
+  return '<div class="card" style="margin-top:14px"><div class="cb"><b>Данные для подключения клиента</b> (секрет больше не будет показан):<div class="note">Экран «Подписка» в системе клиента: ключ, секрет и адрес админ-панели.</div>' +
+    '<label style="margin-top:10px">License Key</label><div class="secret">' + esc(key) + '</div><label style="margin-top:8px">Секрет лицензии</label><div class="secret">' + esc(secret) + '</div>' +
+    '<label style="margin-top:8px">Адрес админ-панели</label><div class="secret" id="admUrl">—</div></div></div>' + (function () { setTimeout(function () { call('adminSettings', TOKEN).then(function (s) { var e = document.getElementById('admUrl'); if (e) e.textContent = s.webAppUrl; }, function () {}); }, 50); return ''; })();
+}
+function clientCard(id, tab) {
+  call('adminClientCard', TOKEN, id).then(function (c) {
+    var o = c.info, T = tab || 'info';
+    var tabs = [['info', 'Информация'], ['sub', 'Подписка'], ['pay', 'Платежи'], ['lic', 'Лицензии'], ['logins', 'История входов'], ['errors', 'Ошибки'], ['actions', 'Последние действия'], ['usage', 'Использование'], ['drive', 'Google Drive']];
+    var body = {
+      info: '<div class="form">' + [['Организация', o.name], ['Email', o.email], ['Телефон', o.phone], ['ИНН', o.inn], ['Адрес', o.address], ['Регистрация', d10(o.registered)], ['Тариф', o.planName], ['Статус', (ST[o.status] || [o.status])[0]], ['Подписка до', d10(o.subEnd)], ['Менеджер', o.manager], ['Версия', o.version], ['Комментарий', o.comment]].map(function (x) { return '<div><label>' + x[0] + '</label><div>' + esc(x[1] || '—') + '</div></div>'; }).join('') + '</div>',
+      sub: c.subscription ? '<div class="form">' + [['Тариф', planName(c.subscription['Тариф'])], ['Статус', c.subscription['Статус']], ['Начало', d10(c.subscription['Начало'])], ['Окончание', d10(c.subscription['Окончание'])], ['Автоплатёж', c.subscription['Автоплатеж']], ['Способ оплаты', c.subscription['Способ оплаты']], ['Подключение', rub(c.subscription['Подключение'])], ['Обслуживание / мес', rub(c.subscription['Обслуживание в месяц'])], ['Следующее списание', d10(c.subscription['Следующее списание'])]].map(function (x) { return '<div><label>' + x[0] + '</label><div>' + esc(x[1] || '—') + '</div></div>'; }).join('') + '</div><h3 style="margin:14px 0 8px;font-size:14px">История продлений</h3>' +
+        table([{ k: 'at', l: 'Дата' }, { k: 'plan', l: 'Тариф' }, { k: 'months', l: 'Мес.' }, { k: 'end', l: 'До' }, { k: 'why', l: 'Основание' }], JSON.parse(c.subscription['История'] || '[]').reverse()) : '<div class="empty">Подписки нет</div>',
+      pay: table([{ l: 'Дата', f: function (p) { return dt(p['Дата']); } }, { l: 'Сумма', n: 1, f: function (p) { return rub(p['Сумма']); } }, { l: 'Статус', f: function (p) { return st(p['Статус']); } }, { k: 'Платежная система', l: 'Система' }, { k: 'Назначение', l: 'Назначение' }, { k: 'Invoice', l: 'Счёт' }], c.payments),
+      lic: table([{ k: 'License Key', l: 'Ключ' }, { l: 'Статус', f: function (l) { return st(l['Статус']); } }, { l: 'Активирована', f: function (l) { return l['Активирована'] ? dt(l['Активирована']) : '—'; } }, { l: 'До', f: function (l) { return d10(l['Дата окончания']); } }, { l: 'Последняя проверка', f: function (l) { return l['Последняя проверка'] ? dt(l['Последняя проверка']) : '—'; } }, { k: 'Версия клиента', l: 'Версия' }], c.licenses),
+      logins: table([{ l: 'Дата', f: function (l) { return dt(l['Дата']); } }, { k: 'Описание', l: 'Событие' }], c.logins, null, 'Проверок лицензии ещё не было'),
+      errors: table([{ l: 'Дата', f: function (l) { return dt(l['Дата']); } }, { k: 'Сообщение', l: 'Ошибка' }], c.errors, null, 'Ошибок нет'),
+      actions: table([{ l: 'Дата', f: function (l) { return dt(l['Дата']); } }, { k: 'Тип', l: 'Тип' }, { k: 'Администратор', l: 'Кто' }, { k: 'Описание', l: 'Что' }], c.actions),
+      usage: '<div class="grid kpis">' + [['Сотрудников', c.stats.staff], ['ТТК', c.stats.ttk], ['Листов в базе', c.stats.sheets], ['Строк в базе', c.stats.rows]].map(function (k) { return '<div class="kpi"><div class="l">' + k[0] + '</div><div class="v">' + esc(k[1] === undefined ? '—' : k[1]) + '</div></div>'; }).join('') + '</div><div class="note">Данные приходят с проверкой лицензии (раз в 6 часов). Без персональных данных.</div>',
+      drive: '<div class="form">' + [['Google Drive ID', o.driveId], ['Script ID', o.scriptId], ['Адрес системы', o.appUrl], ['Последняя копия', c.backups[0] ? dt(c.backups[0]['Дата']) : '—'], ['Копий', c.backups.length], ['Команды в очереди', c.commands || '—']].map(function (x) { return '<div><label>' + x[0] + '</label><div style="word-break:break-all">' + esc(x[1] || '—') + '</div></div>'; }).join('') + '</div>' +
+        table([{ l: 'Дата', f: function (b) { return dt(b['Дата']); } }, { l: 'Размер', n: 1, f: function (b) { return b['Размер'] ? Math.round(b['Размер'] / 1024) + ' КБ' : ''; } }, { l: 'Файл', f: function (b) { return b['Ссылка'] ? '<a target="_blank" href="' + esc(b['Ссылка']) + '">открыть</a>' : ''; } }, { k: 'Кто', l: 'Кто' }], c.backups, null, 'Резервных копий нет')
+    }[T];
+    mdl('<h2>' + esc(o.name) + ' ' + st(o.status) + ' ' + chip(o.planName, 'gold') + '</h2><div class="note">' + esc(o.id) + ' · ' + esc(o.licenseKey || 'без лицензии') + '</div><div class="tabs">' + tabs.map(function (t) { return '<button class="' + (t[0] === T ? 'on' : '') + '" onclick="clientCard(\'' + id + '\',\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('') + '</div>' + body);
+  }, errT);
+}
+function renew(id) {
+  mdl('<h2>Продлить подписку</h2><div class="form">' + field('rM', 'Месяцев', 'number', 1) + field('rPaid', 'Как', 'select', 'invoice', [['invoice', 'Выставить счёт (продлится после оплаты)'], ['paid', 'Оплачено вне системы — продлить сейчас']], true) + '</div><div style="margin-top:14px"><button class="btn pri" id="rGo">Продлить</button></div><div id="rOut"></div>');
+  document.getElementById('rGo').onclick = function () {
+    busy(this, call('adminSubscriptionRenew', TOKEN, id, Number(val('rM')), val('rPaid') === 'paid')).then(function (r) {
+      toast(r.invoice ? 'Счёт ' + r.invoice + ' выставлен' : 'Подписка продлена');
+      document.getElementById('rOut').innerHTML = r.url ? '<div class="note" style="margin-top:10px">Ссылка на оплату для клиента:</div><div class="secret">' + esc(r.url) + '</div>' : '';
+      if (!r.url) closeMdl(); if (SEC === 'clients') V.clients(); if (SEC === 'subs') V.subs();
+    });
+  };
+}
+function blockC(id, b) { if (!confirm(b ? 'Заблокировать клиента? Его система перейдёт в режим только чтения.' : 'Разблокировать клиента?')) return; call('adminClientBlock', TOKEN, id, b).then(function () { toast('Готово'); V.clients(); }, errT); }
+function delC(id) { if (!confirm('Удалить клиента? Лицензии будут отозваны, история платежей сохранится.')) return; call('adminClientDelete', TOKEN, id).then(function () { toast('Клиент удалён'); V.clients(); }, errT); }
+function backupC(id) { call('adminBackupCreate', TOKEN, id).then(function (r) { toast(r.queued ? 'Клиенту отправлена команда сделать копию (при следующей проверке лицензии)' : 'Копия создана'); }, errT); }
+function msgC(id) {
+  mdl('<h2>Сообщение клиенту</h2><div class="form">' + field('mS', 'Тема', 'text', '', null, true) + field('mT', 'Текст', 'textarea') + '</div><div style="margin-top:14px"><button class="btn pri" id="mGo">Отправить email</button></div>');
+  document.getElementById('mGo').onclick = function () { busy(this, call('adminClientMessage', TOKEN, id, val('mS'), val('mT'))).then(function () { closeMdl(); toast('Отправлено'); }); };
+}
+function exportX(kind) { toast('Готовлю Excel…'); call('adminExportXlsx', TOKEN, kind).then(function (r) { download(r.name, r.b64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); }, errT); }
+
+/* ---------- подписки ---------- */
+var SG = 'ALL';
+V.subs = function () {
+  head('Подписки', 'Активные, истекающие, просроченные, отменённые, автоплатёж', '<button class="btn" onclick="exportX(\'subscriptions\')">Excel</button>');
+  call('adminSubscriptions', TOKEN, { group: SG }).then(function (rows) {
+    var g = [['ALL', 'Все'], ['ACTIVE', 'Активные'], ['EXPIRING', 'Истекающие'], ['EXPIRED', 'Просроченные'], ['CANCELLED', 'Отменённые'], ['AUTOPAY', 'Автоплатёж']];
+    C('<div class="tabs">' + g.map(function (x) { return '<button class="' + (x[0] === SG ? 'on' : '') + '" onclick="SG=\'' + x[0] + '\';V.subs()">' + x[1] + '</button>'; }).join('') + '</div>' +
+      card('Подписки · ' + rows.length, table([{ k: 'org', l: 'Клиент' }, { l: 'Тариф', f: function (r) { return chip(r.planName, 'gold'); } }, { l: 'Состояние', f: function (r) { return st(r.state); } },
+        { l: 'Окончание', f: function (r) { return d10(r.end); } }, { l: 'Осталось дней', n: 1, f: function (r) { return r.daysLeft === null ? '—' : r.daysLeft; } }, { l: 'Следующее списание', f: function (r) { return d10(r.nextCharge); } },
+        { l: 'В месяц', n: 1, f: function (r) { return rub(r.monthly); } }, { l: 'Способ оплаты', f: function (r) { return esc(r.method || '—') + (r.autopay ? ' ' + chip('автоплатёж', 'b') : ''); } },
+        { l: 'Продлений', n: 1, f: function (r) { return r.history.length; } }], rows, function (r) {
+        return can('subs.edit') ? '<button class="btn sm pri" onclick="renew(\'' + r.orgId + '\')">Продлить</button> <button class="btn sm" onclick="chPlan(\'' + r.orgId + '\',\'' + r.plan + '\')">Изменить тариф</button> <button class="btn sm" onclick="autopay(\'' + r.orgId + '\',' + !r.autopay + ')">' + (r.autopay ? 'Выкл. автоплатёж' : 'Автоплатёж') + '</button> <button class="btn sm" onclick="histSub(' + esc(JSON.stringify(JSON.stringify(r.history))) + ')">История</button> ' + (r.state !== 'CANCELLED' ? '<button class="btn sm red" onclick="cancelSub(\'' + r.orgId + '\')">Отменить</button>' : '') : '';
+      })));
+  }, errT);
+};
+function chPlan(id, cur) {
+  var go = function () {
+    mdl('<h2>Изменить тариф</h2><div class="form">' + field('npl', 'Тариф', 'select', cur, TARIFFS.map(function (t) { return [t.code, t.name + ' — ' + rub(t.monthly) + '/мес']; }), true) + '</div><div style="margin-top:14px"><button class="btn pri" id="npGo">Сохранить</button></div>');
+    document.getElementById('npGo').onclick = function () { busy(this, call('adminSubscriptionChangePlan', TOKEN, id, val('npl'))).then(function () { closeMdl(); toast('Тариф изменён'); V.subs(); }); };
+  };
+  if (TARIFFS.length) go(); else call('adminDashboard', TOKEN).then(function (d) { TARIFFS = d.tariffs; go(); }, errT);
+}
+function autopay(id, on) { call('adminSubscriptionSetAutopay', TOKEN, id, on, on ? prompt('Способ оплаты (например: карта ЮKassa)', 'карта ЮKassa') : '').then(function () { toast('Готово'); V.subs(); }, errT); }
+function cancelSub(id) { if (confirm('Отменить подписку? Она будет действовать до конца оплаченного периода.')) call('adminSubscriptionCancel', TOKEN, id).then(function () { toast('Отменена'); V.subs(); }, errT); }
+function histSub(j) { mdl('<h2>История продлений</h2>' + table([{ k: 'at', l: 'Дата' }, { k: 'plan', l: 'Тариф' }, { k: 'months', l: 'Мес.' }, { k: 'end', l: 'До' }, { k: 'why', l: 'Основание' }], JSON.parse(j).reverse())); }
+
+/* ---------- платежи ---------- */
+var PF = { status: 'ALL', q: '', from: '', to: '' };
+V.payments = function () {
+  head('Платежи', 'Журнал всех платежей и счетов', (can('payments.edit') ? '<button class="btn pri" onclick="invForm()">+ Счёт</button>' : '') + '<button class="btn" onclick="exportX(\'payments\')">Экспорт Excel</button>');
+  call('adminPayments', TOKEN, PF).then(function (rows) {
+    var sum = rows.filter(function (p) { return p['Статус'] === 'PAID'; }).reduce(function (a, p) { return a + Number(p['Сумма']); }, 0);
+    C(kpis([['Платежей', rows.length], ['Оплачено', rub(sum), 'g'], ['Ожидает', rows.filter(function (p) { return p['Статус'] === 'PENDING'; }).length]]) +
+      card('Платежи', table([{ l: 'Дата', f: function (p) { return dt(p['Дата']); } }, { k: 'Клиент', l: 'Клиент' }, { l: 'Сумма', n: 1, f: function (p) { return rub(p['Сумма']); } }, { l: 'Статус', f: function (p) { return st(p['Статус']); } },
+        { k: 'Платежная система', l: 'Платёжная система' }, { k: 'ID платежа', l: 'ID платежа' }, { k: 'Invoice', l: 'Invoice' }, { l: 'Назначение', f: function (p) { return p['Назначение'] === 'SETUP' ? 'подключение' : 'обслуживание ' + (p['Месяцев'] || '') + ' мес.'; } }, { k: 'Комментарий', l: 'Комментарий' }],
+        rows, function (p) {
+          return (p['Invoice'] ? '<button class="btn sm" onclick="invPdf(\'' + p['Invoice'] + '\')">PDF</button> ' : '') + '<button class="btn sm" onclick="recheck(\'' + p['ID'] + '\')">Повторить запрос статуса</button> ' +
+            (can('payments.edit') && p['Статус'] === 'PENDING' ? '<button class="btn sm pri" onclick="markPaid(\'' + p['ID'] + '\')">Оплачен</button> ' : '') + (p['Ссылка на оплату'] && p['Статус'] === 'PENDING' ? '<a class="btn sm" target="_blank" href="' + esc(p['Ссылка на оплату']) + '">Ссылка</a>' : '');
+        }), '<div class="filters" style="margin-left:auto"><input id="pq" placeholder="Поиск" value="' + esc(PF.q) + '"><select id="ps">' + ['ALL', 'PAID', 'PENDING', 'FAILED', 'REFUNDED'].map(function (s) { return '<option' + (PF.status === s ? ' selected' : '') + ' value="' + s + '">' + (s === 'ALL' ? 'Все' : (ST[s] || [s])[0]) + '</option>'; }).join('') + '</select><input id="pf" type="date" value="' + PF.from + '"><input id="pt" type="date" value="' + PF.to + '"><button class="btn" onclick="PF={q:val(\'pq\'),status:val(\'ps\'),from:val(\'pf\'),to:val(\'pt\')};V.payments()">Найти</button></div>'));
+  }, errT);
+};
+function invForm() {
+  call('adminClients', TOKEN, {}).then(function (cl) {
+    mdl('<h2>Выставить счёт</h2><div class="form">' + field('iO', 'Клиент', 'select', '', cl.map(function (c) { return [c.id, c.name + ' (' + c.planName + ')']; }), true) + field('iP', 'Назначение', 'select', 'MONTHLY', [['MONTHLY', 'Обслуживание'], ['SETUP', 'Подключение']]) + field('iM', 'Месяцев (для обслуживания)', 'number', 1) + '</div><div style="margin-top:14px"><button class="btn pri" id="iGo">Выставить</button></div><div id="iOut"></div>');
+    document.getElementById('iGo').onclick = function () { busy(this, call('adminInvoiceCreate', TOKEN, val('iO'), val('iP'), Number(val('iM')))).then(function (r) { toast('Счёт ' + r.invoice); document.getElementById('iOut').innerHTML = r.url ? '<div class="note" style="margin-top:10px">Ссылка на оплату:</div><div class="secret">' + esc(r.url) + '</div>' : '<div class="note">Счёт без онлайн-оплаты (провайдер: manual). Скачайте PDF в журнале платежей.</div>'; V.payments(); }); };
+  }, errT);
+}
+function invPdf(no) { toast('Готовлю PDF…'); call('adminInvoicePdf', TOKEN, no).then(function (r) { window.open(r.url, '_blank'); }, errT); }
+function recheck(id) { call('adminPaymentRecheck', TOKEN, id).then(function (r) { toast('Статус: ' + r.status + (r.note ? ' — ' + r.note : '')); V.payments(); }, errT); }
+function markPaid(id) { if (confirm('Отметить платёж как оплаченный? Подписка будет продлена.')) call('adminPaymentMarkPaid', TOKEN, id).then(function () { toast('Оплата отмечена'); V.payments(); }, errT); }
+
+/* ---------- лицензии ---------- */
+V.licenses = function () {
+  head('Лицензии', 'Ключи систем клиентов', '<button class="btn" onclick="exportX(\'licenses\')">Excel</button>');
+  call('adminLicenses', TOKEN, {}).then(function (rows) {
+    C(card('Лицензии · ' + rows.length, table([{ k: 'License Key', l: 'License Key' }, { k: 'Организация', l: 'Организация' }, { l: 'Статус', f: function (l) { return st(l['Статус']); } }, { l: 'Активирована', f: function (l) { return l['Активирована'] ? dt(l['Активирована']) : '—'; } },
+      { l: 'Дата окончания', f: function (l) { return d10(l['Дата окончания']); } }, { k: 'Устройств', l: 'Устройств', n: 1 }, { l: 'Последняя проверка', f: function (l) { return l['Последняя проверка'] ? dt(l['Последняя проверка']) : '—'; } }, { k: 'Последний IP', l: 'Последний IP' }, { k: 'Версия клиента', l: 'Версия клиента' }],
+      rows, function (l) {
+        return can('licenses.edit') ? '<button class="btn sm" onclick="licNew(\'' + l['OrgID'] + '\')">Создать новую</button> <button class="btn sm pri" onclick="licExt(\'' + l['License Key'] + '\')">Продлить</button> ' +
+          (l['Статус'] !== 'REVOKED' ? '<button class="btn sm red" onclick="licSt(\'' + l['License Key'] + '\',\'REVOKED\')">Отозвать</button> ' : '') + (l['Статус'] === 'BLOCKED' ? '<button class="btn sm" onclick="licSt(\'' + l['License Key'] + '\',\'ACTIVE\')">Разблокировать</button>' : l['Статус'] === 'ACTIVE' ? '<button class="btn sm red" onclick="licSt(\'' + l['License Key'] + '\',\'BLOCKED\')">Заблокировать</button>' : '') : '';
+      })) + '<div class="note">IP клиента Apps Script не передаёт: проверка идёт с серверов Google. Устройства — системы клиента, проверявшие ключ.</div>');
+  }, errT);
+};
+function licNew(org) { if (confirm('Выпустить новую лицензию? Действующие ключи клиента будут отозваны.')) call('adminLicenseCreate', TOKEN, org).then(function (r) { mdl('<h2>Новая лицензия</h2>' + licBox(r.key, r.secret)); V.licenses(); }, errT); }
+function licExt(key) { var m = prompt('Продлить на сколько месяцев?', '1'); if (m) call('adminLicenseExtend', TOKEN, key, Number(m)).then(function (r) { toast('Продлено до ' + d10(r.end)); V.licenses(); }, errT); }
+function licSt(key, s) { if (confirm('Изменить статус лицензии на ' + s + '?')) call('adminLicenseSetStatus', TOKEN, key, s).then(function () { toast('Готово'); V.licenses(); }, errT); }
+
+/* ---------- обновления ---------- */
+V.updates = function () {
+  head('Обновления', 'Версии системы ЦЕХ Стандарт');
+  Promise.all([call('adminUpdates', TOKEN), call('adminClients', TOKEN, { status: 'ACTIVE' })]).then(function (r) {
+    var u = r[0], cl = r[1];
+    C(kpis([['Текущая версия', u.current, 'g'], ['Выпусков', u.list.length], ['Проект-эталон', u.master ? 'подключён' : 'не задан', u.master ? 'gr' : 'r']]) +
+      (can('updates') ? card('Опубликовать обновление', '<div class="form">' + field('uV', 'Версия (1.2.3)', 'text') + field('uL', 'Ссылка на сборку (необязательно)', 'text') + field('uD', 'Описание изменений', 'textarea') + '</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="uPub">Опубликовать обновление</button></div>') +
+        card('Обновить клиентов', '<div class="note">Код из проекта-эталона (MASTER_SCRIPT_ID) записывается в проекты клиентов через Apps Script API, создаётся версия и обновляется развёртывание. Нужен доступ на редактирование проектов клиентов.</div><div class="form" style="margin-top:10px"><div class="w"><label>Клиенты (для выбранных)</label><select id="uOrgs" multiple size="6">' + cl.filter(function (c) { return c.scriptId; }).map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + ' · v' + esc(c.version || '?') + '</option>'; }).join('') + '</select></div></div>' +
+          '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="uAll">Обновить всех клиентов</button><button class="btn" id="uSel">Обновить выбранных клиентов</button></div><div id="uOut"></div>') : '') +
+      card('История изменений', table([{ k: 'Версия', l: 'Версия' }, { l: 'Дата выпуска', f: function (x) { return d10(x['Дата']); } }, { k: 'Описание', l: 'Описание' }, { l: 'Статус', f: function (x) { return st(x['Статус']); } }, { k: 'Опубликовал', l: 'Опубликовал' }, { k: 'Обновлено клиентов', l: 'Обновлено', n: 1 }], u.list)));
+    if (!can('updates')) return;
+    document.getElementById('uPub').onclick = function () { busy(this, call('adminUpdatePublish', TOKEN, { version: val('uV'), description: val('uD'), link: val('uL') })).then(function () { toast('Опубликовано: клиенты увидят уведомление'); V.updates(); }); };
+    var run = function (btn, ids) { if (!confirm('Обновить код ' + (ids ? 'выбранных' : 'всех') + ' клиентов?')) return; busy(btn, call('adminUpdateClients', TOKEN, ids, u.current)).then(function (r) { document.getElementById('uOut').innerHTML = '<div class="note" style="margin-top:10px">Обновлено ' + r.done + ' из ' + r.total + '</div>' + table([{ k: 'org', l: 'Клиент' }, { l: 'Итог', f: function (x) { return x.ok ? chip('готово', 'g') : chip('ошибка', 'r'); } }, { k: 'note', l: 'Подробности' }], r.results); }); };
+    document.getElementById('uAll').onclick = function () { run(this, null); };
+    document.getElementById('uSel').onclick = function () { var ids = [].map.call(document.getElementById('uOrgs').selectedOptions, function (o) { return o.value; }); if (!ids.length) return toast('Выберите клиентов', 'err'); run(this, ids); };
+  }, errT);
+};
+
+/* ---------- уведомления ---------- */
+V.notify = function () {
+  head('Уведомления', 'Рассылка сообщений клиентам');
+  Promise.all([call('adminNotifications', TOKEN), TARIFFS.length ? Promise.resolve(null) : call('adminDashboard', TOKEN)]).then(function (r) {
+    if (r[1]) TARIFFS = r[1].tariffs;
+    C(card('Новая рассылка', '<div class="form">' + field('nC', 'Канал', 'select', 'EMAIL', [['EMAIL', 'Email'], ['SYSTEM', 'Системное уведомление'], ['PUSH', 'Push (в системе клиента)']]) +
+      field('nG', 'Группа', 'select', 'ALL', [['ALL', 'Все'], ['EXPIRING', 'Истекает подписка'], ['NEW', 'Новые клиенты (30 дней)'], ['EXPIRED', 'Просроченные']].concat(TARIFFS.map(function (t) { return ['PLAN:' + t.code, 'Тариф ' + t.name]; }))) +
+      field('nS', 'Тема', 'text') + field('nT', 'Текст', 'textarea') + '</div><div style="margin-top:12px"><button class="btn pri" id="nGo">Отправить</button></div><div class="note">Системные и push-уведомления клиент видит на экране «Подписка» после ближайшей проверки лицензии (до 6 часов).</div>') +
+      card('Отправленные', table([{ l: 'Дата', f: function (n) { return dt(n['Дата']); } }, { k: 'Канал', l: 'Канал' }, { k: 'Группа', l: 'Группа' }, { k: 'Тема', l: 'Тема' }, { k: 'Получателей', l: 'Получателей', n: 1 }, { l: 'Статус', f: function (n) { return st(n['Статус']); } }, { k: 'Кто', l: 'Кто' }], r[0])));
+    document.getElementById('nGo').onclick = function () { if (!confirm('Отправить рассылку?')) return; busy(this, call('adminNotify', TOKEN, { channel: val('nC'), group: val('nG'), subject: val('nS'), text: val('nT') })).then(function (x) { toast('Отправлено: ' + x.sent + (x.errors ? ', ошибок: ' + x.errors : '')); V.notify(); }); };
+  }, errT);
+};
+
+/* ---------- логи ---------- */
+var LF = { type: 'ALL', q: '', from: '', to: '', kind: '' };
+V.logs = function () {
+  head('Логи', 'Все события системы: входы, ошибки, изменения, оплаты, пользователи, удаления, обновления');
+  call('adminLogs', TOKEN, LF).then(function (rows) {
+    var types = ['ALL', 'LOGIN', 'LOGIN_FAIL', 'ERROR', 'CHANGE', 'PAYMENT', 'USER', 'DELETE', 'UPDATE', 'LICENSE', 'NOTIFY', 'BACKUP'];
+    C(card('События · ' + rows.length, table([{ l: 'Дата', f: function (l) { return dt(l['Дата']); } }, { l: 'Тип', f: function (l) { return chip(l['Тип'], /ERROR|FAIL|DELETE/.test(l['Тип']) ? 'r' : l['Тип'] === 'PAYMENT' ? 'g' : ''); } }, { k: 'Администратор', l: 'Кто' }, { k: 'Объект', l: 'Объект' }, { k: 'Описание', l: 'Описание' }], rows),
+      '<div class="filters" style="margin-left:auto"><select id="lk"><option value="">Журнал событий</option><option value="errors"' + (LF.kind === 'errors' ? ' selected' : '') + '>Ошибки системы</option></select><select id="lt">' + types.map(function (t) { return '<option' + (LF.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select><input id="lq" placeholder="Поиск" value="' + esc(LF.q) + '"><input id="lf" type="date" value="' + LF.from + '"><input id="lto" type="date" value="' + LF.to + '"><button class="btn" onclick="LF={kind:val(\'lk\'),type:val(\'lt\'),q:val(\'lq\'),from:val(\'lf\'),to:val(\'lto\')};V.logs()">Фильтр</button></div>'));
+  }, errT);
+};
+
+/* ---------- резервные копии ---------- */
+V.backups = function () {
+  head('Резервные копии', 'Копии базы админ-панели и таблиц клиентов на Google Drive', can('backups.create') ? '<button class="btn pri" onclick="call(\'adminBackupCreate\',TOKEN,\'\').then(function(){toast(\'Копия создана\');V.backups()},errT)">Создать копию базы</button>' : '');
+  call('adminBackups', TOKEN, '').then(function (rows) {
+    C(card('Копии · ' + rows.length, table([{ l: 'Дата', f: function (b) { return dt(b['Дата']); } }, { l: 'Размер', n: 1, f: function (b) { return b['Размер'] ? Math.round(b['Размер'] / 1024) + ' КБ' : '—'; } }, { k: 'Клиент', l: 'Клиент' }, { l: 'Google Drive', f: function (b) { return b['Ссылка'] ? '<a target="_blank" href="' + esc(b['Ссылка']) + '">открыть</a>' : ''; } }, { k: 'Кто', l: 'Кто' }],
+      rows, function (b) { return can('settings') ? (!b['OrgID'] ? '<button class="btn sm" onclick="restoreB(\'' + b['ID'] + '\')">Восстановить</button> ' : '') + '<button class="btn sm red" onclick="delB(\'' + b['ID'] + '\')">Удалить</button>' : ''; })));
+  }, errT);
+};
+function restoreB(id) { if (confirm('Восстановить базу админ-панели из этой копии? Текущая база останется на Диске, панель переключится на восстановленную.')) call('adminBackupRestore', TOKEN, id).then(function () { toast('База восстановлена'); V.backups(); }, errT); }
+function delB(id) { if (confirm('Удалить копию? Файл уйдёт в корзину Диска.')) call('adminBackupDelete', TOKEN, id).then(function () { toast('Удалено'); V.backups(); }, errT); }
+
+/* ---------- база ТТК ---------- */
+V.ttk = function () {
+  head('База отработанных ТТК', 'Библиотека для клиентов Pro Max: опубликованные карты доступны в их системе', can('ttk.edit') ? '<button class="btn pri" onclick="ttkForm()">+ Карта</button><button class="btn" onclick="ttkImport()">Импорт CSV</button>' : '');
+  call('adminTtkList', TOKEN, '').then(function (rows) {
+    C(card('Карты · ' + rows.length, table([{ k: 'name', l: 'Название' }, { k: 'category', l: 'Категория' }, { k: 'yield', l: 'Выход' }, { k: 'kcal', l: 'Ккал', n: 1 }, { l: 'Статус', f: function (t) { return st(t.status); } }, { k: 'source', l: 'Источник' }],
+      rows, function (t) { return '<button class="btn sm" onclick="ttkForm(\'' + t.id + '\')">' + (can('ttk.edit') ? 'Ред.' : 'Открыть') + '</button>'; }, 'Карт пока нет — добавьте вручную или импортом CSV')));
+  }, errT);
+};
+function ttkForm(id) {
+  var show = function (t) {
+    t = t || {};
+    var F = [['Название', 'text'], ['Категория', 'text'], ['Выход', 'text'], ['Белки', 'text'], ['Жиры', 'text'], ['Углеводы', 'text'], ['Ккал', 'text'], ['Срок годности', 'text'], ['Условия хранения', 'text'], ['Источник', 'text']];
+    mdl('<h2>' + esc(t['Название'] || 'Новая карта') + '</h2><div class="form">' + F.map(function (f, i) { return field('t' + i, f[0], f[1], t[f[0]]); }).join('') + field('tS', 'Статус', 'select', t['Статус'] || 'DRAFT', [['DRAFT', 'Черновик'], ['PUBLISHED', 'Опубликована']]) +
+      field('tJ', 'Состав (JSON): [{"name":"Говядина","brutto":120,"netto":100,"unit":"г"}]', 'textarea', t['Состав (JSON)'] || '[]') + field('tM', 'Технология', 'textarea', t['Технология']) + '</div>' + (can('ttk.edit') ? '<div style="margin-top:12px"><button class="btn pri" id="tGo">Сохранить</button></div>' : ''));
+    if (!can('ttk.edit')) return;
+    document.getElementById('tGo').onclick = function () {
+      var o = { 'ID': id || '', 'Статус': val('tS'), 'Состав (JSON)': val('tJ'), 'Технология': val('tM') }; F.forEach(function (f, i) { o[f[0]] = val('t' + i); });
+      busy(this, call('adminTtkSave', TOKEN, o)).then(function () { closeMdl(); toast('Сохранено'); V.ttk(); });
+    };
+  };
+  if (!id) show(); else call('adminTtkGet', TOKEN, id).then(show, errT);
+}
+function ttkImport() {
+  mdl('<h2>Импорт CSV</h2><div class="note">Разделитель «;». Колонки: Название;Категория;Выход;Продукт:брутто:нетто:ед|Продукт:…;Технология;Б;Ж;У;Ккал;Срок;Хранение;Источник. Импортированные карты — черновики: проверьте и опубликуйте.</div><div class="form" style="margin-top:10px">' + field('cv', 'CSV', 'textarea') + '</div><input type="file" id="cvf" accept=".csv,text/csv" style="margin-top:8px"><div style="margin-top:12px"><button class="btn pri" id="cvGo">Импортировать</button></div>');
+  document.getElementById('cvf').onchange = function () { var f = this.files[0]; if (!f) return; var r = new FileReader(); r.onload = function () { document.getElementById('cv').value = r.result; }; r.readAsText(f, 'utf-8'); };
+  document.getElementById('cvGo').onclick = function () { busy(this, call('adminTtkImportCsv', TOKEN, val('cv'))).then(function (r) { closeMdl(); toast('Импортировано: ' + r.imported); V.ttk(); }); };
+}
+
+/* ---------- аналитика ---------- */
+V.analytics = function () {
+  head('Аналитика', 'MRR, ARR, LTV, отток, средний чек, активность');
+  call('adminAnalytics', TOKEN).then(function (d) {
+    var m = d.m;
+    C(kpis([['MRR', rub(m.mrr), 'g'], ['ARR', rub(m.arr), 'g'], ['LTV', rub(m.ltv)], ['Churn Rate (30 дн.)', m.churnRate + '%', m.churnRate > 5 ? 'r' : 'gr'], ['Новых за месяц', m.newMonth], ['Ушедших (30 дн.)', m.churned, m.churned ? 'r' : ''], ['Средний чек', rub(m.avgCheck)], ['Активных', m.active, 'gr']]) +
+      '<div class="grid cols2">' + card('Рост клиентов (90 дней)', lineChart(d.series, 'clients')) + card('Оплаты (90 дней)', barChart(d.series, 'pay', 'gold', rub)) +
+      card('Клиенты по тарифам', table([{ l: 'Тариф', f: function (x) { return esc(planName(x.k)); } }, { k: 'n', l: 'Клиентов', n: 1 }], Object.keys(d.byPlan).map(function (k) { return { k: k, n: d.byPlan[k] }; }))) +
+      card('Самые используемые функции', table([{ k: 'name', l: 'Функция' }, { k: 'orgs', l: 'Организаций', n: 1 }], d.features)) + '</div>' +
+      card('Самые активные организации', table([{ k: 'org', l: 'Организация' }, { l: 'Тариф', f: function (x) { return esc(planName(x.plan)); } }, { k: 'rows', l: 'Строк в базе', n: 1 }, { k: 'ttk', l: 'ТТК', n: 1 }, { k: 'staff', l: 'Сотрудников', n: 1 }, { l: 'Последний вход', f: function (x) { return x.lastSeen ? dt(x.lastSeen) : '—'; } }], d.activity)));
+  }, errT);
+};
+
+/* ---------- настройки ---------- */
+V.settings = function () {
+  head('Настройки', 'Тарифы, платежи, почта, webhook, Google Drive, API-ключи, Script Properties');
+  call('adminSettings', TOKEN).then(function (s) {
+    TARIFFS = s.tariffs; var ed = s.canEdit;
+    C(card('Тарифы и стоимость подписки', '<div class="tw"><table><thead><tr><th>Код</th><th>Название</th><th class="n">Подключение, ₽</th><th class="n">Обслуживание в месяц, ₽</th><th>Возможности</th></tr></thead><tbody>' + s.tariffs.map(function (t, i) {
+      return '<tr><td>' + esc(t.code) + '</td><td><input id="tn' + i + '" value="' + esc(t.name) + '"' + (ed ? '' : ' disabled') + '></td><td><input id="ts' + i + '" type="number" value="' + t.setup + '"' + (ed ? '' : ' disabled') + '></td><td><input id="tm' + i + '" type="number" value="' + t.monthly + '"' + (ed ? '' : ' disabled') + '></td><td>' + esc(t.features.join(', ')) + (t.note ? '<div class="note">' + esc(t.note) + '</div>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' + (ed ? '<div style="margin-top:12px"><button class="btn pri" id="sTar">Сохранить тарифы</button></div>' : '')) +
+      '<div class="grid cols2">' + card('ЮMoney / ЮKassa', '<div class="form">' + field('sProv', 'Платёжная система', 'select', s.provider, [['manual', 'Без онлайн-оплаты (счета)'], ['yookassa', 'ЮKassa (API)'], ['yoomoney', 'ЮMoney (кошелёк)']], true) + field('sRet', 'Адрес возврата после оплаты', 'text', s.returnUrl, null, true) + '</div>' +
+        '<label style="margin-top:12px">Webhook (уведомления об оплате) — укажите в кабинете ЮKassa / ЮMoney</label><div class="secret">' + esc(s.webhookUrl || 'появится после развёртывания веб-приложения') + '</div>') +
+        card('Реквизиты поставщика (для счетов)', '<div class="form">' + field('vN', 'Название', 'text', s.vendor.name, null, true) + field('vI', 'ИНН', 'text', s.vendor.inn) + field('vB', 'Банк', 'text', s.vendor.bank) + field('vA', 'Расчётный счёт', 'text', s.vendor.account) + '</div>') + '</div>' +
+      card('Script Properties (секреты)', '<div class="note">Значения хранятся только в свойствах скрипта и не показываются целиком. Пустое поле — без изменений.</div><div class="form" style="margin-top:10px">' + s.props.map(function (p) { return field('pp_' + p.key, p.key + (p.set ? ' (задано: ' + p.masked + ')' : ' (не задано)'), 'password', ''); }).join('') + '</div>' + (ed ? '<div style="margin-top:12px"><button class="btn pri" id="sSave">Сохранить платежи, реквизиты и секреты</button></div>' : '')) +
+      '<div class="grid cols2">' + card('Почта', '<div>Отправка писем — MailApp от аккаунта владельца. Осталось писем на сегодня: <b>' + s.mailQuota + '</b></div>') +
+        card('Google Drive', '<div>База админ-панели: <a target="_blank" href="https://docs.google.com/spreadsheets/d/' + esc(s.sheetId) + '">открыть таблицу</a></div><div class="note">Папка «ЦЕХ Стандарт Admin» на Диске: счета, резервные копии.</div><div style="margin-top:8px">Адрес API для систем клиентов:</div><div class="secret">' + esc(s.webAppUrl || '—') + '</div>') + '</div>' +
+      card('API Keys', table([{ k: 'name', l: 'Название' }, { k: 'rights', l: 'Права' }, { l: 'Создан', f: function (k) { return dt(k.created); } }, { l: 'Использован', f: function (k) { return k.used ? dt(k.used) : '—'; } }, { l: 'Статус', f: function (k) { return st(k.status); } }], s.apiKeys, function (k) { return ed && k.status === 'ACTIVE' ? '<button class="btn sm red" onclick="revokeKey(\'' + k.id + '\')">Отозвать</button>' : ''; }, 'Ключей нет'), ed ? '<button class="btn sm pri" style="margin-left:auto" onclick="newKey()">+ Ключ</button>' : ''));
+    if (!ed) return;
+    document.getElementById('sTar').onclick = function () {
+      var t = s.tariffs.map(function (x, i) { return { code: x.code, name: val('tn' + i), setup: Number(val('ts' + i)), monthly: Number(val('tm' + i)), features: x.features }; });
+      busy(this, call('adminSettingsSave', TOKEN, { tariffs: t })).then(function () { toast('Тарифы сохранены'); });
+    };
+    document.getElementById('sSave').onclick = function () {
+      var props = {}; s.props.forEach(function (p) { var v = val('pp_' + p.key); if (v) props[p.key] = v; });
+      busy(this, call('adminSettingsSave', TOKEN, { provider: val('sProv'), returnUrl: val('sRet'), vendor: { name: val('vN'), inn: val('vI'), bank: val('vB'), account: val('vA') }, props: props })).then(function () { toast('Сохранено'); V.settings(); });
+    };
+  }, errT);
+};
+function newKey() { var n = prompt('Название ключа (для чего)'); if (n) call('adminApiKeyCreate', TOKEN, n, 'read').then(function (r) { mdl('<h2>API-ключ</h2><div class="note">Ключ показывается один раз.</div><div class="secret">' + esc(r.key) + '</div>'); V.settings(); }, errT); }
+function revokeKey(id) { if (confirm('Отозвать ключ?')) call('adminApiKeyRevoke', TOKEN, id).then(function () { toast('Отозван'); V.settings(); }, errT); }
+
+/* ---------- администраторы ---------- */
+V.users = function () {
+  head('Администраторы', 'Super Admin, Manager, Support, Developer', '<button class="btn pri" onclick="userForm()">+ Администратор</button>');
+  call('adminUsersList', TOKEN).then(function (rows) {
+    C(card('Администраторы', table([{ k: 'email', l: 'Email' }, { k: 'name', l: 'Имя' }, { k: 'role', l: 'Роль' }, { l: 'Статус', f: function (u) { return st(u.status); } }, { l: 'Последний вход', f: function (u) { return u.lastLogin ? dt(u.lastLogin) : '—'; } }],
+      rows, function (u) { return '<button class="btn sm" onclick="userRole(\'' + u.email + '\',\'' + u.role + '\')">Роль</button> <button class="btn sm" onclick="userReset(\'' + u.email + '\')">Сбросить пароль</button> ' + (u.status === 'ACTIVE' ? '<button class="btn sm red" onclick="userSt(\'' + u.email + '\',\'BLOCKED\')">Заблокировать</button>' : '<button class="btn sm" onclick="userSt(\'' + u.email + '\',\'ACTIVE\')">Разблокировать</button>'); })) +
+      card('Права ролей', '<div class="note">Super Admin — всё. Manager — клиенты, подписки, платежи, лицензии, рассылки, аналитика. Support — просмотр клиентов, рассылки, логи, резервные копии. Developer — обновления, логи, ошибки, копии, база ТТК, просмотр настроек.</div>'));
+  }, errT);
+};
+var ROLE_OPTS = [['SUPER_ADMIN', 'Super Admin'], ['MANAGER', 'Manager'], ['SUPPORT', 'Support'], ['DEVELOPER', 'Developer']];
+function userForm() {
+  mdl('<h2>Новый администратор</h2><div class="form">' + field('uE', 'Email', 'email') + field('uN', 'Имя', 'text') + field('uR', 'Роль', 'select', 'MANAGER', ROLE_OPTS) + '</div><div style="margin-top:12px"><button class="btn pri" id="uGo">Создать</button></div><div id="uOut2"></div>');
+  document.getElementById('uGo').onclick = function () { busy(this, call('adminUserCreate', TOKEN, { email: val('uE'), name: val('uN'), role: val('uR') })).then(function (r) { document.getElementById('uOut2').innerHTML = '<label style="margin-top:12px">Временный пароль (показывается один раз)</label><div class="secret">' + esc(r.password) + '</div>'; V.users(); }); };
+}
+function userRole(e, r) { mdl('<h2>Роль ' + esc(e) + '</h2><div class="form">' + field('urr', 'Роль', 'select', r, ROLE_OPTS, true) + '</div><div style="margin-top:12px"><button class="btn pri" id="urGo">Сохранить</button></div>'); document.getElementById('urGo').onclick = function () { busy(this, call('adminUserUpdate', TOKEN, e, { role: val('urr') })).then(function () { closeMdl(); V.users(); }); }; }
+function userReset(e) { if (confirm('Сбросить пароль ' + e + '?')) call('adminUserResetPassword', TOKEN, e).then(function (r) { mdl('<h2>Новый пароль</h2><div class="secret">' + esc(r.password) + '</div>'); }, errT); }
+function userSt(e, s) { call('adminUserUpdate', TOKEN, e, { status: s }).then(function () { V.users(); }, errT); }
+
+/* ---------- старт ---------- */
+if (TOKEN) google.script.run.withSuccessHandler(function (r) { if (r && r.ok) { ME = r.data; startApp(); } else showLogin(''); }).withFailureHandler(function () { showLogin(''); }).adminMe(TOKEN);
+</script>
+</body>
+</html>
