@@ -54,7 +54,7 @@ function _ts2MadeAt_(dishName, before) {
 function _ts2CateringLabels_(eventId, responsible) {
   var e = _ts2Event_(eventId); if (!e) throw new Error('NOT_FOUND: банкет не найден');
   var org = {}; try { org = _mcOrg_(); } catch (x) {}
-  var issue = _ts2Rows_('AUTO_RECORDS', function (r) { return r.eventType === 'RELEASE_TO_HALL' && String(r.sourceId).indexOf(String(eventId) + '|') === 0; }).pop();
+  var issue = _ts2FindAll_('AUTO_RECORDS', 'eventType', 'RELEASE_TO_HALL', function (r) { return String(r.sourceId).indexOf(String(eventId) + '|') === 0; }).pop();
   var issuedAt = issue ? new Date(issue.createdAt) : new Date(), gaps = [];
   if (!org.name || !(org.actualAddress || org.legalAddress)) gaps.push('название и адрес предприятия (Настройки → Организация)');
   var esc = function (s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };

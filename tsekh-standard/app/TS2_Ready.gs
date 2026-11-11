@@ -151,7 +151,8 @@ function _ts2GenerateDay_(day) {
   day = day || _ts2Today_();
   var mode = _ts2Prof_('mode', ''); if (!mode) return 0;
   var dow = (new Date(day + 'T12:00:00').getDay() + 6) % 7 + 1, dom = Number(day.slice(8, 10));
-  var keys = {}; _ts2Rows_('JOURNAL_EXPECTATIONS', function (e) { return String(e.dueAt).slice(0, 10) === day; }).forEach(function (e) { keys[e.idempotencyKey] = true; });
+  _ts2ExpireMissed_(day);
+  var keys = {}; _ts2Tail_('JOURNAL_EXPECTATIONS', 2000, function (e) { return String(e.dueAt).slice(0, 10) === day; }).forEach(function (e) { keys[e.idempotencyKey] = true; });
   var objs = _ts2Rows_('MEASUREMENT_OBJECTS', function (o) { return o.status === 'ACTIVE'; }), ws = _ts2Rows_('WORKSHOPS', function (w) { return w.status === 'ACTIVE' && w.zoneType === 'WORKSHOP'; });
   var rows = [], push = function (s, time, objType, objId, title) {
     var key = [_ts2Ent_(), day, s[0], objId, time].join('|'); if (keys[key]) return; keys[key] = true;
@@ -172,6 +173,19 @@ function _ts2GenerateDay_(day) {
   });
   _ts2InsertMany_('JOURNAL_EXPECTATIONS', rows);
   return rows.length;
+}
+
+/** Задачи, не выполненные за 2 суток после срока, — «пропущено» (факт для проверяющего) и одно сводное уведомление.
+ *  Так список открытых задач остаётся коротким и «Сейчас» не читает историю за год. */
+function _ts2ExpireMissed_(day) {
+  var p = PropertiesService.getScriptProperties(); if (p.getProperty('TS2_MISSED_DAY') === day) return 0;
+  var lim = new Date(day + 'T00:00:00'); lim.setDate(lim.getDate() - 2); var limIso = _ts2Iso_(lim), n = 0, titles = [];
+  _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return String(e.dueAt) < limIso; }).forEach(function (e) {
+    _ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', e.expectationId, { status: 'MISSED', completedAt: _ts2Iso_(), completedBy: 'система: срок истёк' }); n++; if (titles.length < 5) titles.push(e.title + ' (' + String(e.dueAt).slice(0, 10) + ')');
+  });
+  if (n) _ts2Exception_('TASKS_MISSED', 'Пропущено задач: ' + n + '. ' + titles.join('; ') + (n > titles.length ? ' …' : ''), 'MISSED|' + day);
+  p.setProperty('TS2_MISSED_DAY', day);
+  return n;
 }
 
 /* ------------------------------------------------------------------ автоматические записи по событиям */
@@ -287,7 +301,7 @@ function _ts2OnGateCall_(name, args, res) {
 function _ts2NowTasks_() {
   _ts2GenerateDay_();
   var day = _ts2Today_(), objs = {}; _ts2Rows_('MEASUREMENT_OBJECTS').forEach(function (o) { objs[o.objectId] = o; });
-  var list = _ts2Rows_('JOURNAL_EXPECTATIONS', function (e) { return e.status === 'OPEN' && String(e.dueAt).slice(0, 10) <= day; });
+  var list = _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return String(e.dueAt).slice(0, 10) <= day; });
   list.sort(function (a, b) { return String(a.dueAt) < String(b.dueAt) ? -1 : 1; });
   return list.map(function (e) {
     var o = objs[e.objectId] || null, kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : (String(e.eventRuleId).indexOf('EVR-') === 0 ? 'CCP' : '');
@@ -338,7 +352,7 @@ function _ts2Measure_(id, value, comment, token) {
 /** Ожидание по событию (замер ККТ) закрыто — соответствующая запись PENDING получает итог. */
 function _ts2CloseAutoPending_(e, v, res) {
   if (e.eventRuleId.indexOf('EVR-') !== 0) return;
-  var p = _ts2Rows_('AUTO_RECORDS', function (r) { return r.result === 'PENDING_CONFIRMATION' && r.ruleVersion.indexOf(e.eventRuleId) === 0 && (r.productionId === e.productionId || r.sourceId === e.objectId); })[0];
+  var p = _ts2FindAll_('AUTO_RECORDS', 'result', 'PENDING_CONFIRMATION', function (r) { return r.ruleVersion.indexOf(e.eventRuleId) === 0 && (r.productionId === e.productionId || r.sourceId === e.objectId); })[0];
   if (p) _ts2Update_('AUTO_RECORDS', 'autoRecordId', p.autoRecordId, { status: 'SUPERSEDED' });
 }
 
@@ -413,7 +427,7 @@ function _ts2Readiness_() {
     ['TTK', 'Основные ТТК сопоставлены', _ts2Rows_('MIGRATION_MAP', function (m) { return m.entityType === 'DISH' || m.entityType === 'TTK'; }).length > 0],
     ['JOURNALS', 'Обязательные журналы и ККТ заведены', _ts2Rows_('EVENT_RULES', function (r) { return String(r.active) === 'true'; }).length >= TS2_EVENT_RULES_.length],
     ['ORG', 'Реквизиты предприятия подтверждены', orgOk],
-    ['TEST_CYCLE', 'Тестовый производственный цикл пройден', _ts2Rows_('AUTO_RECORDS', function (r) { return r.eventType === 'PRODUCTION_RELEASE'; }).length > 0],
+    ['TEST_CYCLE', 'Тестовый производственный цикл пройден', !!_ts2Find_('AUTO_RECORDS', 'eventType', 'PRODUCTION_RELEASE')],
     ['PROTOCOL', 'Протокол запуска подписан ответственным', _ts2Rows_('APPROVAL_QUEUE', function (q) { return q.objectType === 'LAUNCH_PROTOCOL' && q.status === 'APPROVED'; }).length > 0]
   ];
   var pass = crit.filter(function (c) { return c[2]; }).length, id = _ts2Id_('READINESS_RUNS');
@@ -454,9 +468,9 @@ function ts2Measure(token, id, value, comment) { try { _requireAuth_(token); ret
 function ts2Exceptions(token) {
   try {
     _requireAuth_(token); _ts2EnsureSchema_(false);
-    var ex = _ts2Rows_('AUTO_RECORDS', function (r) { return r.recordType === 'DEVIATION' && r.status === 'OPEN'; }).reverse();
-    var pend = _ts2Rows_('JOURNAL_EXPECTATIONS', function (e) { return e.status === 'OPEN' && String(e.dueAt) < _ts2Iso_(); });
-    return _ok_({ exceptions: ex, overdue: pend, autoToday: _ts2Rows_('AUTO_RECORDS', function (r) { return String(r.createdAt).slice(0, 10) === _ts2Today_(); }).length });
+    var ex = _ts2FindAll_('AUTO_RECORDS', 'recordType', 'DEVIATION', function (r) { return r.status === 'OPEN'; }).reverse();
+    var pend = _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return String(e.dueAt) < _ts2Iso_(); });
+    return _ok_({ exceptions: ex, overdue: pend, autoToday: _ts2Tail_('AUTO_RECORDS', 2000, function (r) { return String(r.createdAt).slice(0, 10) === _ts2Today_(); }).length });
   } catch (e) { return _failFrom_(e); }
 }
 function ts2ResolveException(token, id, action) {

@@ -40,7 +40,31 @@ function _ts2Rows_(name, filter) {
   }
   return out;
 }
-function _ts2Find_(name, key, val) { var r = _ts2Rows_(name, function (o) { return String(o[key]) === String(val); }); return r[0] || null; }
+/** Строки, у которых в колонке key ровно val. Поиск — TextFinder на стороне Таблиц: читаются только найденные строки
+ *  (лист автозаписей за год — десятки тысяч строк; полное чтение на каждое событие было бы секундами). */
+function _ts2FindAll_(name, key, val, filter) {
+  var sh = _ts2Sheet_(name), last = sh.getLastRow(); if (last < 2) return [];
+  var h = _ts2Head_(sh), c = h.indexOf(key), out = [];
+  if (c < 0) return [];
+  var col = sh.getRange(2, c + 1, last - 1, 1);
+  if (typeof col.createTextFinder !== 'function') return _ts2Rows_(name, function (o) { return String(o[key]) === String(val) && (!filter || filter(o)); });
+  if (String(val) === '') return _ts2Rows_(name, function (o) { return String(o[key]) === '' && (!filter || filter(o)); });
+  col.createTextFinder(String(val)).matchEntireCell(true).matchCase(true).findAll().forEach(function (cell) {
+    var row = cell.getRow(), v = sh.getRange(row, 1, 1, h.length).getValues()[0];
+    if (v[0] === '' || v[0] === null || String(_ts2Val_(v[c])) !== String(val)) return;
+    var o = { _row: row }; for (var j = 0; j < h.length; j++) o[h[j]] = _ts2Val_(v[j]);
+    if (!filter || filter(o)) out.push(o);
+  });
+  return out.sort(function (a, b) { return a._row - b._row; });
+}
+function _ts2Find_(name, key, val) { return _ts2FindAll_(name, key, val)[0] || null; }
+/** Последние n строк листа (листы событий дописываются по времени — «сегодня» всегда в конце). */
+function _ts2Tail_(name, n, filter) {
+  var sh = _ts2Sheet_(name), last = sh.getLastRow(); if (last < 2) return [];
+  var from = Math.max(2, last - n + 1), h = _ts2Head_(sh), v = sh.getRange(from, 1, last - from + 1, h.length).getValues(), out = [];
+  for (var i = 0; i < v.length; i++) { if (v[i][0] === '' || v[i][0] === null) continue; var o = { _row: from + i }; for (var j = 0; j < h.length; j++) o[h[j]] = _ts2Val_(v[i][j]); if (!filter || filter(o)) out.push(o); }
+  return out;
+}
 function _ts2Cell_(v) { return v === undefined || v === null ? '' : (typeof v === 'object' && !(v instanceof Date) ? JSON.stringify(v) : v); }
 function _ts2Insert_(name, obj) {
   var sh = _ts2Sheet_(name), h = _ts2Head_(sh);

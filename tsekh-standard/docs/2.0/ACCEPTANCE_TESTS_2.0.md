@@ -8,6 +8,8 @@ node tests/license_flow.test.js
 node tests/gate_security.test.js
 node tests/security_patch_0_1.test.js
 node tests/norms_registry.test.js
+node tests/now_offline.browser.test.js
+node tests/setup_buttons.browser.test.js
 node tools/inventory_entry_points.js
 node tools/check_syntax.js app && node tools/check_syntax.js admin
 ```
@@ -44,6 +46,10 @@ node tools/check_syntax.js app && node tools/check_syntax.js admin
 | A-26 | Реестр нормативов: СанПиН 3590-20 и СП 3670-20 утратили силу, действуют СанПиН 4282-26, СП 4284-26, СП 4285-26; перенос в таблицы предприятий не затирает их собственные проверки | нормативы | norms_registry |
 | A-27 | Датчики: ключ хешем, закрытие задачи замера, журнал не чаще 15 мин, отклонение без дублей уведомлений, отключение; doPost без сессии только для датчиков | 2.1 §7.3 | ts2_acceptance, gate_security |
 | A-28 | Нормативы: срок действия, правила R-016 (истекает) и R-017 (истёк) | нормативы | ts2_acceptance, norms_registry |
+| A-29 | Раздача 3 ч (п. 32), кейтеринг: комплектование (п. 54), ярлыки и 3 ч в изотермических ёмкостях (п. 55); TPL-026; R-018, R-019 | СанПиН 4282-26 | ts2_acceptance |
+| A-30 | «Сейчас» без связи: очередь устройства, без повторных нажатий, отправка с временем отметки | офлайн | now_offline.browser, ts2_acceptance |
+| A-31 | Кнопки мастера и документов вызывают сервер | интерфейс | setup_buttons.browser |
+| A-32 | Год работы: запись события ≤ 20 000 ячеек, экраны ≤ 200 000; пропущенные задачи | производительность | ts2_acceptance |
 
 ## Ручные (на реальном Google-аккаунте, перед запуском у клиента)
 | № | Проверка | Ожидаемый результат |

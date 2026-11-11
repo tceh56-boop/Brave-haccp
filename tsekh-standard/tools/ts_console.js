@@ -559,6 +559,6 @@ VIEWS.tsData = {
   REQUIRES_SOURCE: 'нужен источник', REQUIRES_LOCAL_CONFIRMATION: 'подтвердите применимость', SYSTEM_APPROVED: 'утверждено поставщиком', ACTIVE_TEMPLATE: 'типовой шаблон', SUPERSEDED: 'заменено новой версией',
   PREVIEW: 'предпросмотр', APPLIED: 'применено', BLOCKER: 'блокирует', CRITICAL: 'критично', MAJOR: 'важно', MINOR: 'незначительно', CONFLICT: 'конфликт', READY_FOR_REVIEW: 'на проверку', QUEUED: 'в очереди',
   PROPOSED: 'предложено', ROLLED_BACK: 'откатано', NOT_APPLICABLE: 'не используется', PILOT: 'пилот', RESOLVED: 'устранено', FAILED: 'ошибка', PARTIAL: 'частично', INITIAL: 'первичная', TTK_ADDENDUM: 'дополнение по ТТК',
-  ACCEPTED: 'принято', REQUIRES_CONFIRMATION: 'подтвердите', FRIDGE: 'холодильник', FREEZER: 'морозильник', ROOM: 'помещение', FRYER: 'фритюрница', UV_LAMP: 'бактерицидная лампа', MANUAL: 'вручную',
+  ACCEPTED: 'принято', MISSED: 'пропущено', REQUIRES_CONFIRMATION: 'подтвердите', FRIDGE: 'холодильник', FREEZER: 'морозильник', ROOM: 'помещение', FRYER: 'фритюрница', UV_LAMP: 'бактерицидная лампа', MANUAL: 'вручную',
   PRE_UPDATE: 'перед обновлением', PRE_IMPORT: 'перед импортом', PRE_RECONCILIATION_APPLY: 'перед исправлениями', PRE_GENERATION: 'перед генерацией документов', PRE_RESTORE: 'перед откатом', DUPLICATE_KEY: 'дубль ключа' };
   if (typeof V_RU === 'object') Object.keys(m).forEach(function (k) { if (!V_RU[k]) V_RU[k] = m[k]; }); })();

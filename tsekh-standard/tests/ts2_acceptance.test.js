@@ -10,7 +10,9 @@ function sheet(name) {
     appendRow(r) { s.data.push(r.slice()); },
     getRange(r, c, nr = 1, nc = 1) { return {
       setValues(v) { v.forEach((row, i) => { s.data[r - 1 + i] = s.data[r - 1 + i] || []; row.forEach((x, j) => { s.data[r - 1 + i][c - 1 + j] = x; }); }); return this; },
-      getValues() { const o = []; for (let i = 0; i < nr; i++) { const row = []; for (let j = 0; j < nc; j++) row.push(((s.data[r - 1 + i] || [])[c - 1 + j]) ?? ''); o.push(row); } return o; },
+      getValues() { G.__cells = (G.__cells || 0) + nr * nc; const o = []; for (let i = 0; i < nr; i++) { const row = []; for (let j = 0; j < nc; j++) row.push(((s.data[r - 1 + i] || [])[c - 1 + j]) ?? ''); o.push(row); } return o; },
+      // поиск на стороне Таблиц: ячейки не передаются в скрипт и в счётчик чтения не входят
+      createTextFinder(text) { const f = { matchEntireCell() { return f; }, matchCase() { return f; }, findAll() { const out = []; for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) { const v = (s.data[r - 1 + i] || [])[c - 1 + j]; if (v !== undefined && String(v) === String(text)) out.push({ getRow: () => r + i }); } return out; } }; return f; },
       getValue() { return ((s.data[r - 1] || [])[c - 1]) ?? ''; }, setValue(v) { s.data[r - 1] = s.data[r - 1] || []; s.data[r - 1][c - 1] = v; return this; },
       setFontWeight() { return this; }, setBackground() { return this; }, setFontColor() { return this; }, setNumberFormat() { return this; } }; } };
   return s;
@@ -275,5 +277,30 @@ t('офлайн: отметка из очереди устройства зап�
   try { C._ts2Confirm_('EXP-OFF', true); } finally { delete G._mcNow_; }
   const e = C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-OFF'), r = C._ts2Find_('AUTO_RECORDS', 'autoRecordId', e.factId);
   assert.strictEqual(e.completedAt, C._ts2Iso_(dev)); assert.strictEqual(r.confirmedAt, C._ts2Iso_(dev), 'время отметки — с устройства');
+});
+t('производительность: год работы (30 000 автозаписей, 20 000 задач) — запись события и экран «Сейчас» не читают историю', () => {
+  const fill = (name, n, mk) => { const sh = sheets[name], head = sh.data[0]; for (let i = 0; i < n; i++) { const o = mk(i); sh.data.push(head.map(h => o[h] === undefined ? '' : o[h])); } };
+  const old = i => C._ts2Iso_(new Date(Date.now() - (400 - i / 100) * 864e5));
+  fill('AUTO_RECORDS', 30000, i => ({ autoRecordId: 'ARC-OLD-' + i, eventType: 'PRODUCTION_RELEASE', recordType: 'PRODUCTION_JOURNAL', result: 'PASS', status: 'ACTIVE', createdAt: old(i), idempotencyKey: 'old|' + i }));
+  fill('JOURNAL_EXPECTATIONS', 20000, i => ({ expectationId: 'EXP-OLD-' + i, status: 'DONE', dueAt: old(i), title: 'старая', idempotencyKey: 'old-e|' + i }));
+  const meas = (f) => { G.__cells = 0; const t0 = Date.now(); f(); return { cells: G.__cells, ms: Date.now() - t0 }; };
+  G.__ccp = { items: [{ controlId: 'C1', point: 'Тепловая обработка', status: 'OK', value: 82, unit: '°C' }] };
+  const rel = meas(() => C._ts2OnGateCall_('completeProduction', ['P-PERF', 1], JSON.stringify({ success: true, data: {} })));
+  const now = meas(() => C._ts2NowTasks_());
+  const exc = meas(() => J(C.ts2Exceptions('t')));
+  console.log('      ячеек прочитано: выпуск — ' + rel.cells + ', «Сейчас» — ' + now.cells + ', отклонения — ' + exc.cells + ' (полное чтение автозаписей — ' + (sheets['AUTO_RECORDS'].data.length * 27) + ')');
+  assert(rel.cells < 20000, 'запись события не читает журнал целиком: ' + rel.cells);
+  assert(now.cells < 200000 && exc.cells < 200000, 'экраны читают только «хвост» и найденные строки');
+  assert(rows('AUTO_RECORDS').some(r => r.productionId === 'P-PERF' && Number(r.value) === 82), 'событие записано');
+});
+t('пропущенные задачи: не выполненные 2 суток после срока — «пропущено» и одно сводное уведомление', () => {
+  const d = new Date(Date.now() - 5 * 864e5);
+  C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-MISS', enterpriseId: 'E', journalCode: 'J-SHIFT', eventRuleId: 'SCHED-SHIFT_OPEN', objectType: 'SHIFT', objectId: 'SHIFT', dueAt: C._ts2Iso_(d), status: 'OPEN', confirmationMode: 'CONFIRM', title: 'Открытие смены', idempotencyKey: 'k-miss' });
+  G.PropertiesService.getScriptProperties().deleteProperty('TS2_MISSED_DAY');
+  const today = C._ts2Today_(); const n = C._ts2ExpireMissed_(today);
+  assert(n >= 1 && C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-MISS').status === 'MISSED');
+  assert(rows('AUTO_RECORDS').some(r => r.recordType === 'DEVIATION' && /Пропущено задач/.test(r.value)));
+  assert.strictEqual(C._ts2ExpireMissed_(today), 0, 'в тот же день повторно не выполняется');
+  assert(!C._ts2NowTasks_().some(t => t.id === 'EXP-MISS'), 'в «Сейчас» пропущенной задачи нет');
 });
 console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

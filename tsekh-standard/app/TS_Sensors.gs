@@ -65,7 +65,7 @@ function _tsSnsReceive_(body) {
 /** Закрыть открытые задачи замера по объекту в окне −2 ч … +30 мин от времени показания. */
 function _tsSnsCloseTasks_(o, kind, now, v, res, factId, who) {
   var from = _ts2Iso_(new Date(now.getTime() - 2 * 3600000)), to = _ts2Iso_(new Date(now.getTime() + 30 * 60000)), n = 0;
-  _ts2Rows_('JOURNAL_EXPECTATIONS', function (e) { return e.status === 'OPEN' && e.objectId === o.objectId && (kind === 'ROOM_HUMIDITY' ? e.objectType === 'ROOM_HUMIDITY' : e.objectType !== 'ROOM_HUMIDITY') && String(e.dueAt) >= from && String(e.dueAt) <= to; })
+  _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return e.objectId === o.objectId && (kind === 'ROOM_HUMIDITY' ? e.objectType === 'ROOM_HUMIDITY' : e.objectType !== 'ROOM_HUMIDITY') && String(e.dueAt) >= from && String(e.dueAt) <= to; })
     .forEach(function (e) { _ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', e.expectationId, { status: res === 'FAIL' ? 'FAILED' : 'DONE', completedAt: _ts2Iso_(now), completedBy: who, factId: factId }); n++; });
   return n;
 }

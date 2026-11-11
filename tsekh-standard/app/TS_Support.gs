@@ -22,8 +22,8 @@ function _tsUsageMetrics_() {
   var m = _tsUsageStats_(); delete m.lastBackup;
   try {
     if (typeof _ts2Rows_ === 'function' && _book_().getSheetByName('JOURNAL_EXPECTATIONS')) {
-      m.expectationsOpen = _ts2Rows_('JOURNAL_EXPECTATIONS', function (e) { return e.status === 'OPEN'; }).length;
-      m.exceptionsOpen = _ts2Rows_('AUTO_RECORDS', function (r) { return r.recordType === 'DEVIATION' && r.status === 'OPEN'; }).length;
+      m.expectationsOpen = _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN').length;
+      m.exceptionsOpen = _ts2FindAll_('AUTO_RECORDS', 'recordType', 'DEVIATION', function (r) { return r.status === 'OPEN'; }).length;
       var rd = _ts2Rows_('READINESS_RUNS').pop(); m.readiness = rd ? rd.status + ' ' + rd.passCount + '/' + (Number(rd.passCount) + Number(rd.failCount)) : '';
       m.enterpriseType = _ts2Prof_('enterpriseType', '');
     }
