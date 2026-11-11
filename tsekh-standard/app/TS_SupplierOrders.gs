@@ -140,3 +140,72 @@ function tsOrdersSendMany(token, idsJson) {
     return _ok_({ results: (ids || []).map(function (id) { try { var r = _tsPoSend_(id, _tsPoWho_(s)); return { orderId: id, ok: true, to: r.to }; } catch (e) { return { orderId: id, ok: false, error: String(e.message || e).replace(/^[A-Z_]+:\s*/, '') }; } }) });
   } catch (e) { return _failFrom_(e); }
 }
+
+/* ------------------------------------------------------------------ карточка поставщика */
+/**
+ * Всё о поставщике на одном экране: реквизиты и контакты, заказы и письма, поставки (партии) с решением
+ * входного контроля, документы на сырьё и договоры со сроками, сводка. Только чтение из существующих листов.
+ */
+function _tsSupDay_(v) {
+  if (!v) return '';
+  var d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d) && typeof _sdDate_ === 'function') d = _sdDate_(v);
+  return d && !isNaN(d) ? Utilities.formatDate(d, _mcTz_(), 'yyyy-MM-dd') : String(v).slice(0, 10);
+}
+function _tsSupValues_(name) { var sh = _book_().getSheetByName(name); if (!sh || sh.getLastRow() < 2) return []; return sh.getDataRange().getValues(); }
+function _tsSupplierCard_(supplierId) {
+  var s = _mdSuppliers_().filter(function (x) { return x.id === String(supplierId); })[0];
+  if (!s) throw new Error('NOT_FOUND: поставщик не найден');
+  var nk = _mdNorm_(s.name), mine = function (id, name) { return (id && String(id) === s.id) || (!id && name && _mdNorm_(String(name)).replace(/\s*\(.*\)\s*$/, '') === nk); };
+  var today = _tsSupDay_(new Date()), soon = _tsSupDay_(new Date(Date.now() + 30 * 86400000));
+  var term = function (to) { return !to ? '' : to < today ? 'EXPIRED' : to <= soon ? 'EXPIRING' : 'OK'; };
+  // заказы (колонка 12 — SupplierID, 13–15 — письмо)
+  var orders = [];
+  _tsSupValues_('Заказы_Поставщикам').slice(1).forEach(function (r) {
+    if (!r[0] || !mine(r[11], r[2])) return;
+    var items = []; try { items = JSON.parse(r[4] || '[]'); } catch (e) {}
+    orders.push({ id: String(r[0]), date: _tsSupDay_(r[1]), status: String(r[3] || 'draft'), lines: items.length, total: Number(r[5]) || 0, dueDate: _tsSupDay_(r[7]),
+      receivedDate: _tsSupDay_(r[9]), sentAt: _tsSupDay_(r[12]), sentTo: String(r[13] || ''), file: String(r[14] || '') });
+  });
+  orders.reverse();
+  // последнее решение входного контроля по партии
+  var ic = {};
+  _tsSupValues_('Входной_Контроль').slice(1).forEach(function (r) { if (r[1]) ic[String(r[1])] = { decision: String(r[11] || ''), reasons: String(r[12] || '') }; });
+  // поставки: партии с SupplierID (колонка 19), старые — по названию в «Источнике»
+  var batches = [];
+  _tsSupValues_('Склад_Партии').slice(1).forEach(function (r) {
+    if (!r[0]) return;
+    var sid = String(r[18] || ''), byName = !sid && nk && _mdNorm_(String(r[7] || '')).indexOf(nk) >= 0;
+    if (!(sid === s.id || byName)) return;
+    var c = ic[String(r[0])] || {};
+    batches.push({ id: String(r[0]), product: String(r[1] || ''), qty: Number(r[3]) || 0, unit: String(r[2] || ''), received: _tsSupDay_(r[4]), expiry: _tsSupDay_(r[5]),
+      price: Number(r[6]) || 0, status: String(r[10] || ''), control: c.decision || '', reasons: c.reasons || '' });
+  });
+  batches.sort(function (a, b) { return a.received < b.received ? 1 : -1; });
+  // документы на сырьё
+  var docs = [];
+  _tsSupValues_('Документы_Сырьё').slice(1).forEach(function (r) {
+    if (!r[0] || !mine(r[5], r[6])) return;
+    var to = _tsSupDay_(r[4]);
+    docs.push({ id: String(r[0]), type: String(r[1] || ''), number: String(r[2] || ''), date: _tsSupDay_(r[3]), validTo: to, product: String(r[8] || ''), status: String(r[12] || ''), term: term(to) });
+  });
+  // договоры: по ИНН, без ИНН — по названию контрагента
+  var contracts = [];
+  _tsSupValues_('ЦС_Договоры').slice(1).forEach(function (r) {
+    if (!r[0]) return;
+    var inn = String(r[4] || '').replace(/\D/g, '');
+    if (!((s.inn && inn === s.inn) || (!inn && _mdNorm_(r[3]) === nk))) return;
+    var to = _tsSupDay_(r[9]);
+    contracts.push({ id: String(r[0]), number: String(r[1] || ''), kind: String(r[5] || ''), start: _tsSupDay_(r[8]), end: to, auto: String(r[10] || ''), status: String(r[13] || ''), term: String(r[10]) === 'да' ? 'OK' : term(to) });
+  });
+  var bad = function (x) { return x.term === 'EXPIRED' || x.term === 'EXPIRING'; };
+  return {
+    supplier: { id: s.id, name: s.name, inn: s.inn, address: s.address, contacts: s.contacts, contactPerson: s.contactPerson, phone: s.phone, email: s.email, deliveryDays: s.deliveryDays,
+      categories: s.categories, documents: s.documents, status: s.status, note: s.note },
+    summary: { orders: orders.length, ordersActive: orders.filter(function (o) { return o.status !== 'received' && o.status !== 'cancelled'; }).length,
+      ordersSum: Math.round(orders.reduce(function (a, o) { return a + (o.status === 'cancelled' ? 0 : o.total); }, 0) * 100) / 100,
+      batches: batches.length, lastDelivery: batches.length ? batches[0].received : '', rejected: batches.filter(function (b) { return b.control === 'QUARANTINE'; }).length,
+      docsProblems: docs.filter(bad).length + contracts.filter(bad).length },
+    orders: orders.slice(0, 50), batches: batches.slice(0, 50), documents: docs, contracts: contracts };
+}
+function tsSupplierCard(token, supplierId) { try { _requireAuth_(token, 'procurement'); return _ok_(_tsSupplierCard_(supplierId)); } catch (e) { return _failFrom_(e); } }

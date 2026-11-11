@@ -333,6 +333,7 @@ var TS_GATE_ = [
   { n: 'ts2SensorRevoke', need: 'org_edit', mut: true, f: 'journals' },
   { n: 'ts2SensorCalibrate', need: 'org_edit', mut: true, f: 'journals' },
   { n: 'tsOrderDraft', need: 'procurement' },
+  { n: 'tsSupplierCard', need: 'procurement' },
   { n: 'tsOrdersBuild', need: 'procurement', mut: true },
   { n: 'tsOrderLetter', need: 'procurement' },
   { n: 'tsOrderSend', need: 'procurement', mut: true },

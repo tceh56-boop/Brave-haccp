@@ -18,7 +18,7 @@ for i, p in enumerate(doc):
         pix.save(f'{W}/src/p{i+1:03d}_x{x}.png')
 PY
 python3 tools/manual_images.py "$W/src" "$W/img" brand/logo_dark.png
-for pl in basic basic_pro pro pro_max; do node tools/manual_shots.js "$PWD/app/Console.html" "$W/shots/$pl" $pl; node tests/orders_build.browser.test.js "$W/shots/$pl" >/dev/null; done
+for pl in basic basic_pro pro pro_max; do node tools/manual_shots.js "$PWD/app/Console.html" "$W/shots/$pl" $pl; node tests/orders_build.browser.test.js "$W/shots/$pl" >/dev/null; node tests/supplier_card.browser.test.js "$W/shots/$pl" >/dev/null; done
 mkdir -p dist/manuals && rm -f dist/manuals/*.pdf
 python3 tools/build_manuals.py docs/ДОК_9_*.pdf "$W/img" "$W/shots" dist/manuals
 rm -rf "$W"

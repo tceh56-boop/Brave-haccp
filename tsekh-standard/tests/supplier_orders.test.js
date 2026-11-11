@@ -102,4 +102,25 @@ t('отменённый заказ письмом не отправляется;
   assert(/заблокирован/.test(F(C.tsOrdersBuild('t', JSON.stringify([{ name: 'Сливки', qty: 1, unit: 'л', supplier: 'Молочник' }]), '', '')).error.message));
   assert(!J(C.tsOrderDraft('t')).suppliers.some(s => s.name === 'Молочник'));
 });
+t('карточка поставщика: реквизиты, заказы с письмом, поставки с входным контролем, документы и договоры со сроками, сводка', () => {
+  const sup = C._mdSuppliers_().find(x => x.name === 'ООО «Птица»'), day = d => { const x = new Date(); x.setDate(x.getDate() + d); return x; };
+  const add = (name, head, rows) => { const s = book.getSheetByName(name) || book.insertSheet(name); if (!s.data.length) s.appendRow(head); rows.forEach(r => s.appendRow(r)); };
+  const bh = ['ID', 'Продукт', 'Ед.изм', 'Кол-во', 'Получено', 'Срок годности', 'Цена за ед.', 'Источник', 'Использовано', 'Остаток', 'Статус', '', '', '', '', '', '', 'ProductID', 'SupplierID'];
+  const b = (id, prod, rec, src, sid) => [id, prod, 'кг', 10, rec, day(5), 400, src, 0, 10, 'ACTIVE', '', '', '', '', '', '', 'P', sid];
+  add('Склад_Партии', bh, [b('MC-1', 'Филе куриное', day(-3), 'Приход', sup.id), b('MC-2', 'Бедро куриное', day(-1), 'Приход', sup.id), b('B-OLD', 'Окорочка', day(-30), 'Приход: ООО «Птица»', ''), b('MC-3', 'Сливки', day(-2), 'Приход', 'SUP-X')]);
+  add('Входной_Контроль', ['ControlID', 'BatchID', 'Продукт', 'Источник', 'Документ', 'Этап', 't', 'mn', 'mx', 'О', 'У', 'Решение', 'Причины'], [['IC1', 'MC-1', '', '', '', '', '', '', '', '', '', 'RELEASED', ''], ['IC2', 'MC-2', '', '', '', '', '', '', '', '', '', 'QUARANTINE', 't° 9 °C выше нормы']]);
+  add('Документы_Сырьё', ['DocumentID', 'Тип', 'Номер', 'Дата', 'Действует до', 'SupplierID', 'Поставщик', 'ProductID', 'Продукт', 'BatchID', 'FileID', 'Hash', 'Статус'],
+    [['D1', 'Декларация', 'ЕАЭС N RU Д-1', day(-300), day(10), sup.id, '', '', 'Филе куриное', '', '', '', 'ПРОВЕРЕН'], ['D2', 'Сертификат', 'С-2', day(-500), day(-1), '', 'ООО «Птица»', '', 'Бедро', '', '', '', ''], ['D3', 'Декларация', 'X', '', day(100), 'SUP-X', '', '', '', '', '', '', '']]);
+  add('ЦС_Договоры', ['ID', 'Номер', 'Дата', 'Контрагент', 'ИНН', 'Вид', 'Предмет', 'Сумма', 'Начало', 'Окончание', 'Автопролонгация', 'Ответственный', 'Файл', 'Статус'],
+    [['C1', '12/П', '', 'ООО Птица', '7712345678', 'Поставка продуктов', '', '', day(-200), day(200), 'нет', '', '', 'ACTIVE'], ['C2', '1', '', 'Другой', '7700000001', 'Аренда', '', '', '', day(5), 'нет', '', '', '']]);
+  const c = J(C.tsSupplierCard('t', sup.id));
+  assert.strictEqual(c.supplier.contactPerson, 'Петрова Мария Ивановна');
+  assert(c.orders.length === 1 && c.orders[0].sentTo.includes('zakaz@ptica.example') && c.orders[0].file && c.orders[0].status === 'cancelled', JSON.stringify(c.orders));
+  assert.deepStrictEqual(c.batches.map(x => x.id), ['MC-2', 'MC-1', 'B-OLD'], 'партии поставщика (по ID и старые по названию), новые сверху');
+  assert(c.batches[0].control === 'QUARANTINE' && /9 °C/.test(c.batches[0].reasons) && c.batches[1].control === 'RELEASED');
+  assert.deepStrictEqual(c.documents.map(d => d.id + ':' + d.term), ['D1:EXPIRING', 'D2:EXPIRED']);
+  assert.deepStrictEqual(c.contracts.map(x => x.id + ':' + x.term), ['C1:OK'], 'договор по ИНН');
+  assert(c.summary.batches === 3 && c.summary.rejected === 1 && c.summary.docsProblems === 2 && c.summary.ordersSum === 0 && c.summary.orders === 1);
+  assert(/не найден/.test(F(C.tsSupplierCard('t', 'SUP-NONE')).error.message));
+});
 console.log('Заявки поставщикам: ' + n + ' сценариев пройдено');
