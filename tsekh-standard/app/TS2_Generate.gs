@@ -157,13 +157,13 @@ function _ts2GenDoc_(folderCode, title, sections, meta) {
     var folder = _ts2Folder_(folderCode), doc = DocumentApp.create(title), b = doc.getBody();
     try { var org = _mcOrg_(); if (org && org.name) b.appendParagraph(org.name + (org.inn ? ', ИНН ' + org.inn : '')).setHeading(DocumentApp.ParagraphHeading.SUBTITLE); } catch (e) {}
     b.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.TITLE);
-    b.appendParagraph('Статус: ПОДГОТОВЛЕНО СИСТЕМОЙ — ТРЕБУЕТ УТВЕРЖДЕНИЯ ПРЕДПРИЯТИЕМ. Версия: ' + meta.version + '. Задание: ' + meta.job + '. Контрольная сумма: ' + hash.slice(0, 16));
+    b.appendParagraph(meta.statusLine || ('Статус: ПОДГОТОВЛЕНО СИСТЕМОЙ — ТРЕБУЕТ УТВЕРЖДЕНИЯ ПРЕДПРИЯТИЕМ. Версия: ' + meta.version + '. Задание: ' + meta.job + '.') + ' Контрольная сумма: ' + hash.slice(0, 16));
     sections.forEach(function (s) {
       b.appendParagraph(s.title).setHeading(DocumentApp.ParagraphHeading.HEADING2);
       if (s.text) b.appendParagraph(s.text);
       if (s.rows && s.rows.length) b.appendTable([s.head].concat(s.rows.map(function (r) { return r.map(function (v) { return String(v === undefined || v === null ? '' : v); }); })));
     });
-    b.appendParagraph('Источник каждого значения указан в графе «Источник». Значения с пометкой REQUIRES_SOURCE система не заполняет — их вносит и подтверждает предприятие.');
+    if (meta.footer !== false) b.appendParagraph('Источник каждого значения указан в графе «Источник». Значения с пометкой REQUIRES_SOURCE система не заполняет — их вносит и подтверждает предприятие.');
     b.appendParagraph('Утверждаю: ____________________ / ____________________ /   «___» ____________ 20___ г.');
     doc.saveAndClose();
     var f = DriveApp.getFileById(doc.getId()); f.moveTo(folder); out.fileId = doc.getId();

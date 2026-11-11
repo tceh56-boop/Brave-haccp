@@ -318,6 +318,7 @@ var TS_GATE_ = [
   { n: 'ts2Exceptions', need: '*', f: 'journals' },
   { n: 'ts2ResolveException', need: 'haccp|haccp_approve', mut: true, f: 'journals' },
   { n: 'ts2ApprovalQueue', need: '*' },
+  { n: 'ts2SystemDoc', need: '*', mut: true },
   { n: 'ts2ApproveQueueItem', need: 'haccp_approve|org_edit|ppk_approve', mut: true },
   { n: 'ts2RequestLaunchProtocol', need: 'org_edit|haccp_approve', mut: true },
   // 2.2: ТТК → ТУ / СТО / ППК (ППК — с Basic Pro; ТУ создаются только при тарифе с лабораторией)

@@ -390,6 +390,10 @@ function _ts2ApproveQueue_(id, approve, comment) {
     if (!ok) throw new Error('FORBIDDEN: утверждает роль «' + q.requiredRole + '»');
   }
   if (q.objectType === 'GENERATION_PACKAGE' && approve) _ts2GenCheck_(q.objectId);   // BLOCKER и конфликты не дают утвердить
+  if (q.objectType === 'SYSTEM_DOCUMENT' && approve) {   // утверждают текст, а не строку реестра: документ формируется до утверждения
+    var sd = _ts2Find_('SYSTEM_DOCUMENTS', 'documentId', q.objectId);
+    if (sd && !sd.fileId) _ts2SdocGenerate_(q.objectId, false);
+  }
   var a = _ts2Actor_(), st = approve ? 'APPROVED' : 'REJECTED';
   _ts2Update_('APPROVAL_QUEUE', 'approvalId', id, { status: st, approvedBy: a.name, approvedAt: _ts2Iso_(), comment: comment || '' });
   if (q.objectType === 'SYSTEM_DOCUMENT') _ts2Update_('SYSTEM_DOCUMENTS', 'documentId', q.objectId, { localApprovalStatus: st, status: approve ? 'ACTIVE' : 'REJECTED', approvedByEnterprise: approve ? a.name + ' (' + a.role + ')' : '', approvedAt: approve ? _ts2Iso_() : '', updatedAt: _ts2Iso_() });

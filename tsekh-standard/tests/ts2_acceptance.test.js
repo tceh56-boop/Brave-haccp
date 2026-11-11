@@ -23,7 +23,9 @@ const folder = () => ({ getId: () => 'FOLDER', getUrl: () => 'u', isTrashed: () 
 let docs = 0;
 G.DriveApp = { getFolderById: folder, getFoldersByName: () => ({ hasNext: () => false }), createFolder: folder,
   getFileById: id => ({ moveTo() {}, getBlob: () => ({ getDataAsString: () => files[id] || '' }), getAs: () => ({ setName() { return this; } }), makeCopy: () => ({ getId: () => 'COPY', getSize: () => 1, getUrl: () => 'u' }) }) };
-G.DocumentApp = { ParagraphHeading: {}, create: () => { docs++; const p = { setHeading() { return p; } }; return { getId: () => 'DOC' + docs, saveAndClose() {}, getBody: () => ({ appendParagraph: () => p, appendTable() {} }) }; } };
+const docText = {};
+G.DocumentApp = { ParagraphHeading: {}, create: (title) => { docs++; const id = 'DOC' + docs, t = docText[id] = [title]; const p = { setHeading() { return p; } };
+  return { getId: () => id, saveAndClose() {}, getBody: () => ({ appendParagraph: x => { t.push(x); return p; }, appendTable: rows => { rows.forEach(r => t.push(r.join(' | '))); } }) }; } };
 G.SpreadsheetApp.ProtectionType = { SHEET: 'SHEET' };
 G.Utilities.newBlob = () => ({}); G.Utilities.formatDate = (d, tz, f) => { const x = new Date(d), p = n => String(n).padStart(2, '0');
   return f.replace('yyyy', x.getFullYear()).replace('MM', p(x.getMonth() + 1)).replace('dd', p(x.getDate())).replace("'T'", 'T').replace('HH', p(x.getHours())).replace('mm', p(x.getMinutes())).replace('ss', p(x.getSeconds())); };
@@ -45,7 +47,7 @@ legacy('Состав', ['code', 'name', 'unit', 'qty', 'base', 'netto'], [['D-1'
 legacy('Сотрудники', ['last', 'first', 'middle', 'pos', 'role'], []);
 legacy('Температурные_Объекты', ['ObjectID', 'Тип', 'Название', 'EquipmentID', 'Мин', 'Макс', 'Ед.', 'Статус', 'Установленная t°', 'Время проверок'], [['T-1', 'REFRIGERATOR', 'Холодильник 1', '', 2, 6, '°C', 'ACTIVE', 4, '09:00']]);
 const ctx = vm.createContext(G);
-['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
+['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
 const C = ctx, J = s => { const r = JSON.parse(s); if (!r.success) throw new Error(r.error.message); return r.data; };
 const rows = n => C._ts2Rows_(n);
 let pass = 0; const t = (name, fn) => { fn(); pass++; console.log('  ✓ ' + name); };
@@ -163,5 +165,24 @@ t('2.0: BLOCKER → предложение → согласование → back
   assert(rows('AUDIT_CHAIN').some(a => a.action === 'PROPOSAL_APPROVE'));
   C._ts2Rollback_(p.changeProposalId); assert.strictEqual(cell(), '', 'откат вернул прежнее значение');
   assert.strictEqual(C._ts2VerifyAudit_().broken.length, 0);
+});
+t('2.1: 25 системных документов формируются из данных; без изменений — та же версия; изменение утверждённого → новая версия и повторное утверждение', () => {
+  session = { name: 'Сидорова', role: 'Ответственный за ХАССП' };
+  const all = rows('SYSTEM_DOCUMENTS'); assert.strictEqual(all.length, 25);
+  all.forEach(d => { const r = C._ts2SdocGenerate_(d.documentId, false); assert(r.fileId && r.changed, d.templateId); });
+  const txt = id => docText[rows('SYSTEM_DOCUMENTS').find(d => d.templateId === id).fileId].join('\n');
+  assert(/Котлета куриная/.test(txt('TPL-005')) && /75/.test(txt('TPL-005')), 'реестр ККТ содержит ККТ из утверждённой ТТК');
+  assert(/Холодильник 1/.test(txt('TPL-023')), 'реестр оборудования — из объектов замеров');
+  assert(/НЕТ ДАННЫХ: директор/.test(txt('TPL-001')), 'нет директора — документ прямо говорит, где внести');
+  assert(/показателей вносятся по протоколам/.test(txt('TPL-002')), 'ППК не выдумывает лабораторные показатели');
+  assert(/J-KKT-THERMAL/.test(txt('TPL-007')) && /Акт списания/.test(txt('TPL-019')) && /FEFO/.test(txt('TPL-010')));
+  const d5 = rows('SYSTEM_DOCUMENTS').find(d => d.templateId === 'TPL-005');
+  assert.strictEqual(C._ts2SdocGenerate_(d5.documentId, false).changed, false, 'без изменений данных — без новой версии');
+  const q = rows('APPROVAL_QUEUE').find(x => x.objectId === d5.documentId && x.status === 'PENDING'); C._ts2ApproveQueue_(q.approvalId, true);
+  assert.strictEqual(C._ts2Find_('SYSTEM_DOCUMENTS', 'documentId', d5.documentId).status, 'ACTIVE');
+  C._ts2Insert_('MEASUREMENT_OBJECTS', { objectId: 'OBJ-X', enterpriseId: 'E', objectType: 'FREEZER', name: 'Морозильник 2', minValue: -25, maxValue: -18, status: 'ACTIVE' });
+  const r2 = C._ts2SdocGenerate_(d5.documentId, false); assert(r2.changed && r2.version === 2, 'данные изменились — версия 2');
+  assert.strictEqual(C._ts2Find_('SYSTEM_DOCUMENTS', 'documentId', d5.documentId).status, 'REQUIRES_ENTERPRISE_APPROVAL', 'изменённый документ снова на утверждении');
+  assert(rows('APPROVAL_QUEUE').some(x => x.objectId === d5.documentId && x.status === 'PENDING'));
 });
 console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

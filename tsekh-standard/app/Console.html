@@ -5238,7 +5238,10 @@ VIEWS.tsSetup = {
         '<div class="mvbar"><button class="btn pri" data-mv="save6">Сохранить</button><button class="btn" onclick="openView(\'tsData\')">Загрузить файлы</button><button class="btn" onclick="openView(\'tsGen\')">ТТК → ТУ/СТО/ППК</button></div>');
       if (n === 7) b = vCard('Шаг 7. Проверка готовности', '<div id="ts2ready"><div class="mvbar"><button class="btn pri" data-mv="ready">Проверить готовность</button></div></div>');
       var q = (TS2S.q.queue || []).filter(function (x) { return x.status === 'PENDING'; });
-      b += vCard('Ждут утверждения предприятием · ' + q.length, vTable([{ k: 'title', l: 'Документ' }, { k: 'reason', l: 'Почему' }, { k: 'requiredRole', l: 'Утверждает' }], q, function (r) { return vBtn('Утвердить', 'approve', r.approvalId, true) + vBtn('Отклонить', 'reject', r.approvalId); }, 'Всё утверждено'));
+      b += vCard('Ждут утверждения предприятием · ' + q.length, vTable([{ k: 'title', l: 'Документ' }, { k: 'reason', l: 'Почему' }, { k: 'requiredRole', l: 'Утверждает' }], q, function (r) { return (r.objectType === 'SYSTEM_DOCUMENT' ? vBtn('Открыть', 'sdoc', r.objectId) : '') + vBtn('Утвердить', 'approve', r.approvalId, true) + vBtn('Отклонить', 'reject', r.approvalId); }, 'Всё утверждено'));
+      var docs = TS2S.q.documents || [];
+      if (docs.length) b += vCard('Системные документы · ' + docs.length, '<div class="rdnote">Документ формируется из данных предприятия при первом открытии. Изменили данные (сотрудники, оборудование, ТТК) — нажмите «Обновить»: появится новая версия, утверждённый документ вернётся на утверждение.</div>' +
+        vTable([{ k: 'templateId', l: 'Код' }, { k: 'title', l: 'Документ' }, { k: 'status', l: 'Статус' }, { k: 'approvedByEnterprise', l: 'Утвердил' }], docs, function (d) { return vBtn('Открыть', 'sdoc', d.documentId) + (d.fileId ? vBtn('Обновить', 'sdocr', d.documentId) : ''); }));
       vBody(h + b);
     },
     save: function (step, data, btn, next) { vDo(btn, 'ts2WizardSave', [TOKEN, step, data], 'Сохранено', function (d) { if (step === 5 && d && d.errors && d.errors.length) vMsg('Не добавлены: ' + d.errors.join('; '), 'err'); if (next) TS2S.step = next; VIEWS.tsSetup.h.load(); }); },
@@ -5258,6 +5261,13 @@ VIEWS.tsSetup = {
       });
     },
     protocol: function (a, btn) { vDo(btn, 'ts2RequestLaunchProtocol', [TOKEN], 'Протокол запуска — в очереди утверждения', function () { VIEWS.tsSetup.h.load(); }); },
+    sdoc: function (id, btn) { this.sdocGo(id, btn, false); },
+    sdocr: function (id, btn) { this.sdocGo(id, btn, true); },
+    sdocGo: function (id, btn, refresh) {
+      var w = window.open('', '_blank');
+      vDo(btn, 'ts2SystemDoc', [TOKEN, id, refresh], function (d) { return (d.changed ? 'Сформирована версия ' + d.version : 'Документ без изменений') + (d.gaps && d.gaps.length ? '. Не хватает данных: ' + d.gaps.join(', ') : ''); },
+        function (d) { if (w) w.location = d.url; else window.open(d.url, '_blank'); VIEWS.tsSetup.h.load(); }).then(function (r) { if (!r && w) w.close(); });
+    },
     approve: function (id, btn) { vDo(btn, 'ts2ApproveQueueItem', [TOKEN, id, true, ''], 'Утверждено', function () { VIEWS.tsSetup.h.load(); }); },
     reject: function (id, btn) { var c = prompt('Причина отклонения:'); if (!c) return; vDo(btn, 'ts2ApproveQueueItem', [TOKEN, id, false, c], 'Отклонено', function () { VIEWS.tsSetup.h.load(); }); }
   }
