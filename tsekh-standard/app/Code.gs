@@ -577,7 +577,7 @@ function _tenantFromSession_(session) {
    ========================================================================== */
 var _BOOK_CACHE_ = null;
 function _book_() {
-  if (!_BOOK_CACHE_) _BOOK_CACHE_ = _mcReadCache_(SpreadsheetApp.openById(SHEET_ID));
+  if (!_BOOK_CACHE_) _BOOK_CACHE_ = _mcReadCache_(SpreadsheetApp.openById(_tsTenantSpreadsheetId_()));
   return _BOOK_CACHE_;
 }
 
@@ -1042,7 +1042,7 @@ function _recordMigration_(id, title, status, result, op, backupUrl) {
 function createSystemBackup(token) {
   try {
     _requireAuth_(token, 'archive');
-    var src = DriveApp.getFileById(SHEET_ID);
+    var src = DriveApp.getFileById(_tsTenantSpreadsheetId_());
     var stamp = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd HH-mm');
     var name = 'BACKUP ЦЕХ Стандарт ' + stamp;
     var folder;
@@ -2894,7 +2894,7 @@ function photoMap() {
  if (typeof _uiPhotoMap_ === 'function') return _uiPhotoMap_();
  var map = {};
  try {
-   var folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
+   var folder = DriveApp.getFolderById(_tsTenantFolderId_('PHOTO', PHOTO_FOLDER_ID));
    var it = folder.getFiles();
    while (it.hasNext()) {
      var f = it.next();
@@ -3066,7 +3066,7 @@ function _applyDishContent_(code, dish) {
    try { _ttkStampProductIds_([code], true); } catch (idErr) { _log_('WARN', 'ProductID в составе ' + code + ': ' + idErr); }
    var fileName = String(dv[dishRow - 1][6] || '');
    if (fileName) {
-     try { _rewriteTTKFile_(DriveApp.getFolderById(TTK_FOLDER_ID), fileName, dish); } catch (fe) { /* не критично — Sheets уже обновлены */ }
+     try { _rewriteTTKFile_(DriveApp.getFolderById(_tsTenantFolderId_('TTK_SOURCE', TTK_FOLDER_ID)), fileName, dish); } catch (fe) { /* не критично — Sheets уже обновлены */ }
    }
 }
 /* ==========================================================================
@@ -3264,7 +3264,7 @@ function _savePhoto_core_(code, dataUrl, token) {
    var ct = m[1];
    var bytes = Utilities.base64Decode(m[2]);
    var ext = ct.indexOf('pdf') > -1 ? 'pdf' : ct.indexOf('png') > -1 ? 'png' : (ct.indexOf('webp') > -1 ? 'webp' : 'jpg');
-   var folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
+   var folder = DriveApp.getFolderById(_tsTenantFolderId_('PHOTO', PHOTO_FOLDER_ID));
    // удалить прежние фото этого блюда (любое расширение)
    ['jpg', 'jpeg', 'png', 'webp'].forEach(function (e) {
      var ex = folder.getFilesByName(code + '.' + e);
@@ -3278,7 +3278,7 @@ function _savePhoto_core_(code, dataUrl, token) {
        var sess = _getSession_(token), who = sess ? (sess.fullName || sess.name || '') : '', dsh = _dpSheet_();
        _dpRows_().forEach(function (r) { if (r.code === String(code) && r.active) dsh.getRange(r.row, 9).setValue(false); });
        var dn = ''; try { var bv = _book_().getSheetByName('Блюда').getDataRange().getValues(); for (var bi = 1; bi < bv.length; bi++) if (String(bv[bi][0]) === String(code)) { dn = String(bv[bi][1] || ''); break; } } catch (e) {}
-       dsh.appendRow([String(code), dn, f.getId(), f.getName(), PHOTO_FOLDER_ID ? 'Фото блюд' : '', 'из карточки', who, new Date(), true, '', Math.round(bytes.length / 1024)]);
+       dsh.appendRow([String(code), dn, f.getId(), f.getName(), _tsTenantFolderId_('PHOTO', PHOTO_FOLDER_ID) ? 'Фото блюд' : '', 'из карточки', who, new Date(), true, '', Math.round(bytes.length / 1024)]);
        _dpDropCache_(true);
      }
    } catch (e) {}
@@ -4032,7 +4032,7 @@ function _exportTTKBanquet_core_(eventJson, aggJson, token) {
     // P0-5 (ЭТАП 2, ТЗ §24): публичная ссылка УБРАНА — файл остаётся приватным.
     // Выдача только через приложение с проверкой прав: getSecureFile(fileId, token).
    try {
-     var folder = DriveApp.getFolderById(TTK_BANQUET_FOLDER_ID);
+     var folder = DriveApp.getFolderById(_tsTenantFolderId_('TTK_BANQUET', TTK_BANQUET_FOLDER_ID));
      folder.addFile(file);
      DriveApp.getRootFolder().removeFile(file);
    } catch (e) {}
@@ -4052,6 +4052,7 @@ function getSecureFile(fileId, token) {
     var s = _requireAuth_(token, null);
     if (!_mcRbHasExact_(s, 'stock_view|receiving|documents_view|invoices_view|haccp_view|audit_view')) { _mcRbAuditDenied_(s, 'getSecureFile', 'stock_view', fileId); return _mcRbDenyJson_('Файл недоступен для вашей роли.'); }
     if (!/^[A-Za-z0-9_-]{10,}$/.test(String(fileId || '')) || !_mcFileKnown_(String(fileId))) { _mcRbAuditDenied_(s, 'getSecureFile', 'file-not-registered', fileId); return coreErr('FILE_ACCESS_DENIED', 'Файл не зарегистрирован в системе'); }
+    if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(String(fileId), 'ROOT');
     var f = DriveApp.getFileById(fileId);
     var blob = f.getBlob();
     return coreOk({
@@ -4236,7 +4237,7 @@ function _syncTTKImpl_() {
    if (!f) manual[c] = dv[i];                    // блюдо создано в приложении, файла-карточки нет
    var m = c.match(/(\d+)/); if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
  }
- var root = DriveApp.getFolderById(TTK_FOLDER_ID);
+ var root = DriveApp.getFolderById(_tsTenantFolderId_('TTK_SOURCE', TTK_FOLDER_ID));
  var st = { byFile: byFile, maxN: maxN, dishesRows: [], sostavRows: [], added: 0, folders: [], failed: 0 };
  _walkTTK_(root, 'без категории', st, [], 0);
  st.dishesRows.forEach(function (row) {
@@ -4364,7 +4365,7 @@ function getTTKTree() {
        xls: Number(r[5]) || 0, other: String(r[6] || '').split('\n').filter(Boolean), failed: String(r[7] || '').split('\n').filter(Boolean) };
    });
    var upd = v.length && v[0][8] ? Utilities.formatDate(new Date(v[0][8]), _mcTz_(), 'dd.MM.yyyy HH:mm') : '';
-   return JSON.stringify({ ok: true, rootId: TTK_FOLDER_ID, rootName: folders.length ? folders[0].name : 'ttk', folders: folders, updated: upd,
+   return JSON.stringify({ ok: true, rootId: _tsTenantFolderId_('TTK_SOURCE', TTK_FOLDER_ID), rootName: folders.length ? folders[0].name : 'ttk', folders: folders, updated: upd,
      appPath: TTK_APP_PATH, synced: folders.length > 0 });
  } catch (e) { return JSON.stringify({ ok: false, error: String(e), folders: [] }); }
 }
@@ -4485,10 +4486,11 @@ function _nextText_(cells, cols, after) { for (var i = 0; i < cols.length; i++) 
 function _clean_(s) { return (s || '').replace(/\&quot;/g, '"').replace(/&#10;/g, ' ').replace(/\&amp;/g, '&').replace(/\&lt;/g, '<').replace(/\&gt;/g, '>').replace(/\s+/g, ' ').trim(); }
   
 function _blanksFolder_() {
+ if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) return _ts2Folder_('BLANKS');
  // дерево предприятия: у каждого клиента своя папка (номер BLANKS_FOLDER_ID — папка исходной установки; при установке
  // нескольких клиентов с одного аккаунта бланки разных предприятий смешались бы)
  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) return _tsTreeFolder_('INBOX', 'Бланки заявок', ['Бланки заявок']);
- try { return DriveApp.getFolderById(BLANKS_FOLDER_ID); } catch (e) {}
+ try { return DriveApp.getFolderById(_tsTenantFolderId_('BLANKS', BLANKS_FOLDER_ID)); } catch (e) {}
  // фолбэк, если фиксированный ID когда-нибудь стал недействителен (папку удалили вручную)
  var it = DriveApp.getFoldersByName('Бланки заявок');
  return it.hasNext() ? it.next() : DriveApp.createFolder('Бланки заявок');
@@ -4516,8 +4518,9 @@ function saveBlankPhoto(dataUrl, label) {
 }
 
 function _invoicesFolder_() {
+ if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) return _ts2Folder_('INVOICES');
  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) return _tsTreeFolder_('PRODUCTS', 'Накладные', ['Накладные']);
- try { return DriveApp.getFolderById(INVOICES_FOLDER_ID); } catch (e) {}
+ try { return DriveApp.getFolderById(_tsTenantFolderId_('INVOICES', INVOICES_FOLDER_ID)); } catch (e) {}
  // фолбэк, если фиксированный ID когда-нибудь стал недействителен (папку удалили вручную)
  var it = DriveApp.getFoldersByName('Накладные');
  return it.hasNext() ? it.next() : DriveApp.createFolder('Накладные');
@@ -10338,7 +10341,7 @@ function exportJournalToPdf(journalId, token) {
     if (!sh) return JSON.stringify({ error: 'no-sheet' });
 
     var gid = sh.getSheetId();
-    var url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export' +
+    var url = 'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(_tsTenantSpreadsheetId_()) + '/export' +
       '?format=pdf&gid=' + gid +
       '&size=A4&portrait=false&fitw=true&gridlines=true' +
       '&top_margin=0.4&bottom_margin=0.4&left_margin=0.4&right_margin=0.4' +

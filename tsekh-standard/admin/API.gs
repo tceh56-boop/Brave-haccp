@@ -27,11 +27,18 @@ function doPost(e) {
     if (p.action === 'license.check') out = licenseCheck_(p);
     else if (p.action === 'ttk.library') { var org = verifyClient_(p); out = org ? ttkLibraryForClient_(org) : { ok: false, error: 'Подпись запроса не принята' }; }
     else if (p.action === 'api.clients') out = apiClients_(p);
-    else if (['release.check', 'support.request', 'support.consent', 'usage.report', 'tech.event', 'reconciliation.template', 'seed.package', 'norms.registry'].indexOf(p.action) >= 0) out = apiControl_(p);
+    else if (['release.check', 'support.request', 'support.consent', 'usage.report', 'tech.event', 'reconciliation.template', 'seed.package', 'norms.registry', 'tenant.bootstrap'].indexOf(p.action) >= 0) out = apiControl_(p);
     else out = { ok: false, error: 'unknown action' };
   } catch (err) {
-    logError('api', String(err && err.message || err), err && err.stack);
-    out = { ok: false, error: 'internal error' };
+    var msg = String(err && err.message || err);
+    // Отказ по изоляции или проверке данных — ответ клиенту с причиной (без внутренних подробностей) и событие безопасности.
+    if (/^(TENANT_ISOLATION|TENANT_OWNERSHIP|TENANT_BOUNDARY|ONBOARDING_REQUIRED|VALIDATION):/.test(msg)) {
+      try { logEvent('SECURITY', 'клиент', '', 'Отклонено: ' + msg.slice(0, 300)); } catch (e2) {}
+      out = { ok: false, error: msg.slice(0, 300) };
+    } else {
+      logError('api', msg, err && err.stack);
+      out = { ok: false, error: 'internal error' };
+    }
   }
   return json_(out);
 }

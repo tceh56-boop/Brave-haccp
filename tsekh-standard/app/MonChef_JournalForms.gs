@@ -741,7 +741,7 @@ function _jfFileName_(f, iso) { return _mcV8SafeFileName_(f.id + ' ' + (f.name |
 function _jfWriteToFolder_(f, folder, name) {
   var it = folder.getFilesByName(name), ss = null, file = null;
   while (it.hasNext()) { var x = it.next(); try { if (!ss && /spreadsheet/.test(String(x.getMimeType ? x.getMimeType() : 'spreadsheet'))) { ss = SpreadsheetApp.openById(x.getId()); file = x; } } catch (e) {} }
-  if (!ss) { ss = SpreadsheetApp.create(name); file = DriveApp.getFileById(ss.getId()); try { file.moveTo(folder); } catch (e) { folder.addFile(file); try { DriveApp.getRootFolder().removeFile(file); } catch (e2) {} } }
+  if (!ss) { ss = SpreadsheetApp.create(name); file = DriveApp.getFileById(ss.getId()); try { file.moveTo(folder); } catch (e) { if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) { try { file.setTrashed(true); } catch (e2) {} throw new Error('JOURNAL_FORM_MOVE_FAILED: ' + String(e.message || e)); } folder.addFile(file); try { DriveApp.getRootFolder().removeFile(file); } catch (e2) {} } if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(file.getId(), 'ROOT'); }
   var sh = ss.getSheets()[0]; try { sh.setName(f.id); } catch (e) {}
   _jfApplyLayout_(sh, _jfLayout_(f));
   SpreadsheetApp.flush();

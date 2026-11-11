@@ -1,3 +1,4 @@
+/* Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович */
 /**
  * ЦЕХ Стандарт 2.0 — сверка и адаптация (ТЗ 2.0 §6.12, §7.10–7.14, §10.4–10.5, §15.3).
  *   правило → проблема (RECONCILIATION_ISSUES) → предложение (CHANGE_PROPOSALS) → согласование (APPROVALS)
@@ -208,6 +209,8 @@ function _ts2ApplyProposals_(ids, token) {
 function _ts2Rollback_(proposalId) {
   var p = _ts2Find_('CHANGE_PROPOSALS', 'changeProposalId', proposalId); if (!p) throw new Error('NOT_FOUND: предложение не найдено');
   if (p.status !== 'APPLIED' || String(p.rollbackAvailable) !== 'true') throw new Error('VALIDATION: откат недоступен для этого предложения');
+  if (!p.rollbackDataFileId) throw new Error('VALIDATION: файл отката отсутствует');
+  _tsTenantAssertFileWithin_(p.rollbackDataFileId, 'SYS_RECON_REPORTS');
   var rb = _ts2Json_(DriveApp.getFileById(p.rollbackDataFileId).getBlob().getDataAsString(), {}), after = _ts2Json_(p.afterJson, {});
   _ts2Backup_('PRE_RESTORE', proposalId);
   _withLock_(function () { _book_().getSheetByName(after.target.sheet).getRange(after.target.row, after.target.col).setValue(rb.actualBefore === undefined ? '' : rb.actualBefore); });

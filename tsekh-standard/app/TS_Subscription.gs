@@ -285,6 +285,7 @@ var TS_GATE_ = [
   { n: 'tsLsSaveDoc', need: 'personnel', mut: true, f: 'labor_safety' },
   { n: 'tsLsSaveRecord', need: 'personnel', mut: true, f: 'labor_safety' },
   { n: 'tsLsVerifyNorm', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },
+  { n: 'ts4TenantIntegrityCheck', need: 'org_edit' },
   { n: 'tsLsNormsSync', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },
   { n: 'tsLsCreateAct', need: 'personnel|haccp|documents', mut: true, f: 'labor_safety' },
   { n: 'tsLsGetAct', need: '*', f: 'labor_safety' },

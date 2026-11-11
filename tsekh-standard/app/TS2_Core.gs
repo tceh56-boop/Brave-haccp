@@ -1,4 +1,5 @@
 /**
+ * Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович
  * ЦЕХ Стандарт 2.0 — ядро контура предприятия: схема, ID, настройки, реестр Диска, аудит с цепочкой хешей,
  * резервные копии перед массовыми операциями (ТЗ 2.0 §4, §5.2, §7, §14).
  *
@@ -139,7 +140,15 @@ function _ts2SetCfg_(key, value, source) {
 }
 /** enterpriseId: из настроек; если ещё нет — из лицензии; иначе временный LOCAL (до подключения к управляющему контуру). */
 function _ts2Ent_() {
+  // В tenant-режиме предприятие задаёт конфигурация, внедрённая CONTROL (её нельзя подменить правкой таблицы).
+  // Таблица с другим ENTERPRISE_ID — чужая или скопированная: работа останавливается.
+  if (TS_TENANT_CONFIG_ && TS_TENANT_CONFIG_.mode === '1' && TS_TENANT_CONFIG_.enterpriseId) {
+    var inj = String(TS_TENANT_CONFIG_.enterpriseId), inSheet = String(_ts2Cfg_('ENTERPRISE_ID', '') || '');
+    if (inSheet && inSheet !== inj) throw new Error('TENANT_BOUNDARY: таблица принадлежит предприятию ' + inSheet + ', а проект настроен на ' + inj);
+    return inj;
+  }
   var e = _ts2Cfg_('ENTERPRISE_ID', '');
+  if (!e && TS_TENANT_CONFIG_ && TS_TENANT_CONFIG_.enterpriseId) e = TS_TENANT_CONFIG_.enterpriseId;
   if (e) return String(e);
   try { var st = JSON.parse(PropertiesService.getScriptProperties().getProperty('TS_LICENSE_STATE') || 'null'); if (st && st.enterpriseId) return st.enterpriseId; } catch (x) {}
   return 'ENT-LOCAL';
@@ -172,31 +181,104 @@ function _ts2VerifyAudit_() {
 }
 
 /* ------------------------------------------------------------------ Диск предприятия (ТЗ 2.0 §5.2) */
+// Injected by CONTROL during provisioning; points to the customer-owned Drive root.
+var TS2_TENANT_ROOT_ID = '';
+// Заполняется CONTROL при каждом provisioning/release; не содержит секретов.
+var TS_TENANT_CONFIG_ = { mode: '', rootFolderId: '', spreadsheetId: '', enterpriseId: '', ownerEmail: '' };
 var TS2_DRIVE_TREE_ = [
   ['ROOT', null, '{ENT} — {NAME}'], ['SYS', 'ROOT', '00_Система'], ['SYS_EXPORTS', 'SYS', 'exports'], ['SYS_IMPORT_REPORTS', 'SYS', 'import_reports'],
   ['SYS_RECON_REPORTS', 'SYS', 'reconciliation_reports'], ['SYS_BACKUPS', 'SYS', 'backups'], ['ORG', 'ROOT', '01_Организация'], ['TTK', 'ROOT', '02_ТТК_и_Меню'],
   ['PRODUCTS', 'ROOT', '03_Продукты_и_Поставщики'], ['PRODUCTION', 'ROOT', '04_Производство'], ['STOCK', 'ROOT', '05_Склад_и_Партии'], ['HACCP', 'ROOT', '06_ХАССП_и_ППК'],
   ['OT', 'ROOT', '07_Охрана_труда'], ['CONTRACTS', 'ROOT', '08_Договоры'], ['STAFF', 'ROOT', '09_Персонал'], ['LAB', 'ROOT', '10_Лаборатория'],
   ['EQUIPMENT', 'ROOT', '11_Оборудование'], ['JOURNALS', 'ROOT', '12_Журналы'], ['PHOTO', 'ROOT', '13_Фото'], ['BACKUPS', 'ROOT', '14_Резервные_копии'],
-  ['ARCHIVE', 'ROOT', '99_Архив'], ['GEN_TU', 'HACCP', 'ТУ'], ['GEN_STO', 'HACCP', 'СТО'], ['GEN_PPK', 'HACCP', 'ППК'], ['INBOX', 'ROOT', '00_Входящие_документы']
+  ['ARCHIVE', 'ROOT', '99_Архив'], ['GEN_TU', 'HACCP', 'ТУ'], ['GEN_STO', 'HACCP', 'СТО'], ['GEN_PPK', 'HACCP', 'ППК'], ['INBOX', 'ROOT', '00_Входящие_документы'],
+  ['BLANKS', 'INBOX', 'Бланки заявок'], ['INVOICES', 'PRODUCTS', 'Накладные'], ['TTK_SOURCE', 'TTK', 'Исходные файлы'], ['TTK_BANQUET', 'TTK', 'Банкетные ТТК']
 ];
 function _ts2FolderOk_(id) { try { var f = DriveApp.getFolderById(id); return !f.isTrashed() ? f : null; } catch (e) { return null; } }
-/** Папка по логическому коду: lookup-or-create, ID — в DRIVE_REGISTRY. Повторный вызов не создаёт вторую папку. */
+function _tsTenantMode_() { return String((TS_TENANT_CONFIG_ && TS_TENANT_CONFIG_.mode) || PropertiesService.getScriptProperties().getProperty('TS_TENANT_MODE') || '') === '1'; }
+function _tsTenantRootId_() {
+  var p = PropertiesService.getScriptProperties();
+  return String((TS_TENANT_CONFIG_ && TS_TENANT_CONFIG_.rootFolderId) || p.getProperty('TS_TENANT_ROOT_ID') || p.getProperty('TS2_ROOT_PARENT_ID') || TS2_TENANT_ROOT_ID || '').trim();
+}
+function _tsTenantSpreadsheetId_() {
+  var p = PropertiesService.getScriptProperties(), id = String((TS_TENANT_CONFIG_ && TS_TENANT_CONFIG_.spreadsheetId) || p.getProperty('TS_TENANT_SHEET_ID') || '').trim();
+  if (id) return id;
+  if (_tsTenantMode_()) throw new Error('TENANT_STORAGE_NOT_CONFIGURED: TS_TENANT_SHEET_ID отсутствует; доступ к общей базе запрещён');
+  return String(typeof SHEET_ID !== 'undefined' ? SHEET_ID : '').trim();
+}
+/** ID логической папки. В tenant-режиме запрещён fallback на глобальные папки поставщика. */
+function _tsTenantFolderId_(code, legacyId) {
+  if (_tsTenantMode_()) return _ts2Folder_(code).getId();
+  var f = null;
+  try { f = _ts2Folder_(code); } catch (e) {}
+  return f ? f.getId() : String(legacyId || '');
+}
+/** Проверка, что папка/файл действительно находится внутри логической папки текущего клиента. */
+function _tsTenantIsWithin_(itemId, rootCode, isFile) {
+  if (!_tsTenantMode_()) return true;
+  var root = _ts2Folder_(rootCode), rootId = root.getId(), item;
+  try { item = isFile ? DriveApp.getFileById(String(itemId)) : DriveApp.getFolderById(String(itemId)); }
+  catch (e) { return false; }
+  if (item.isTrashed && item.isTrashed()) return false;
+  var frontier = [], seen = {}, parents = item.getParents();
+  while (parents.hasNext()) frontier.push(parents.next());
+  for (var depth = 0; depth < 16 && frontier.length; depth++) {
+    var next = [];
+    for (var i = 0; i < frontier.length; i++) {
+      var f = frontier[i], id = f.getId();
+      if (id === rootId) return true;
+      if (seen[id]) continue; seen[id] = true;
+      var pp = f.getParents(); while (pp.hasNext()) next.push(pp.next());
+    }
+    frontier = next;
+  }
+  return String(itemId) === rootId && !isFile;
+}
+function _tsTenantAssertFolderWithin_(folderId, rootCode) {
+  if (!_tsTenantIsWithin_(folderId, rootCode, false)) throw new Error('TENANT_BOUNDARY: выбранная папка находится вне дерева предприятия');
+  return true;
+}
+function _tsTenantAssertFileWithin_(fileId, rootCode) {
+  if (!_tsTenantIsWithin_(fileId, rootCode, true)) throw new Error('TENANT_BOUNDARY: выбранный файл находится вне дерева предприятия');
+  return true;
+}
+/** Папка по логическому коду: lookup-or-create в пределах клиентского корня. */
 function _ts2Folder_(code) {
-  var reg = _ts2Find_('DRIVE_REGISTRY', 'logicalCode', code), f = reg && reg.googleId ? _ts2FolderOk_(reg.googleId) : null;
-  if (f) return f;
+  var ent = _ts2Ent_(), tenantMode = _tsTenantMode_();
+  var reg = _ts2Find_('DRIVE_REGISTRY', 'logicalCode', code);
+  if (reg && reg.enterpriseId && String(reg.enterpriseId) !== String(ent)) throw new Error('TENANT_BOUNDARY: DRIVE_REGISTRY принадлежит другому предприятию');
+  var rootId = _tsTenantRootId_();
+  if (code === 'ROOT') {
+    if (!rootId && tenantMode) throw new Error('TENANT_STORAGE_NOT_CONFIGURED: не задан корень клиентского Google Drive');
+    var root = rootId ? _ts2FolderOk_(rootId) : null;
+    if (rootId && !root) throw new Error('TENANT_STORAGE_UNAVAILABLE: корневая папка клиента недоступна или удалена');
+    if (!root) {
+      var legacyRoot = reg && reg.googleId ? _ts2FolderOk_(reg.googleId) : null;
+      if (legacyRoot) root = legacyRoot;
+      else if (!tenantMode) root = DriveApp.createFolder(ent + ' — ' + String(_ts2Cfg_('ENTERPRISE_NAME', 'Предприятие')));
+      else throw new Error('TENANT_STORAGE_NOT_CONFIGURED: создание корня на диске поставщика запрещено');
+    }
+    var rootRow = { resourceId: reg ? reg.resourceId : _ts2Id_('DRIVE_REGISTRY'), enterpriseId: ent, resourceType: 'FOLDER', logicalCode: 'ROOT', name: root.getName(), googleId: root.getId(), parentGoogleId: '', url: root.getUrl(), status: 'ACTIVE', lastCheckedAt: new Date(), hash: '' };
+    if (reg) _ts2Update_('DRIVE_REGISTRY', 'logicalCode', 'ROOT', rootRow); else _ts2Insert_('DRIVE_REGISTRY', rootRow);
+    return root;
+  }
+  var f = reg && reg.googleId ? _ts2FolderOk_(reg.googleId) : null;
   var spec = TS2_DRIVE_TREE_.filter(function (t) { return t[0] === code; })[0];
   if (!spec) throw new Error('VALIDATION: неизвестная папка ' + code);
-  var name = spec[2].replace('{ENT}', _ts2Ent_()).replace('{NAME}', String(_ts2Cfg_('ENTERPRISE_NAME', '') || (typeof _mcOrg_ === 'function' && _mcOrg_().name) || 'Предприятие'));
+  var name = spec[2].replace('{ENT}', ent).replace('{NAME}', String(_ts2Cfg_('ENTERPRISE_NAME', '') || (typeof _mcOrg_ === 'function' && _mcOrg_().name) || 'Предприятие'));
   var parent = spec[1] ? _ts2Folder_(spec[1]) : null;
-  if (!parent) {
-    var pid = PropertiesService.getScriptProperties().getProperty('TS2_ROOT_PARENT_ID');
-    parent = pid ? _ts2FolderOk_(pid) : null;
+  if (f) {
+    if (tenantMode && parent && reg.parentGoogleId && String(reg.parentGoogleId) !== String(parent.getId())) throw new Error('TENANT_BOUNDARY: папка ' + code + ' зарегистрирована вне ожидаемого родителя');
+    if (tenantMode && parent) {
+      var ps = f.getParents(), hasParent = false; while (ps.hasNext()) if (ps.next().getId() === parent.getId()) hasParent = true;
+      if (!hasParent) throw new Error('TENANT_BOUNDARY: папка ' + code + ' находится вне дерева предприятия');
+    }
+    return f;
   }
+  if (tenantMode && !parent) throw new Error('TENANT_BOUNDARY: дочерняя папка без родителя запрещена');
   var it = parent ? parent.getFoldersByName(name) : DriveApp.getFoldersByName(name);
   f = it.hasNext() ? it.next() : (parent ? parent.createFolder(name) : DriveApp.createFolder(name));
-  var row = { resourceId: reg ? reg.resourceId : _ts2Id_('DRIVE_REGISTRY'), enterpriseId: _ts2Ent_(), resourceType: 'FOLDER', logicalCode: code, name: name, googleId: f.getId(),
-    parentGoogleId: parent ? parent.getId() : '', url: f.getUrl(), status: 'ACTIVE', lastCheckedAt: new Date(), hash: '' };
+  var row = { resourceId: reg ? reg.resourceId : _ts2Id_('DRIVE_REGISTRY'), enterpriseId: ent, resourceType: 'FOLDER', logicalCode: code, name: name, googleId: f.getId(), parentGoogleId: parent ? parent.getId() : '', url: f.getUrl(), status: 'ACTIVE', lastCheckedAt: new Date(), hash: '' };
   if (reg) _ts2Update_('DRIVE_REGISTRY', 'logicalCode', code, row); else _ts2Insert_('DRIVE_REGISTRY', row);
   return f;
 }

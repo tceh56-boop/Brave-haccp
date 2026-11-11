@@ -110,7 +110,8 @@ function _dpDishes_() {
 /** Список файлов папки. После привязки экран перечитывает его из кэша (10 минут), «Проверить папку снова» — с Диска. */
 function _dpTree_(fresh) {
   if (!fresh) try { var hit = CacheService.getScriptCache().get('mc_dp_tree_full'); if (hit) return JSON.parse(hit); } catch (e) {}
-  var out = [], q = [{ f: DriveApp.getFolderById(PHOTO_FOLDER_ID), path: '', depth: 0 }];
+  var photoRootId = _tsTenantFolderId_('PHOTO', PHOTO_FOLDER_ID);
+  var out = [], q = [{ f: DriveApp.getFolderById(photoRootId), path: '', depth: 0 }];
   while (q.length) {
     var it = q.shift(), files = it.f.getFiles();
     while (files.hasNext()) {
@@ -128,6 +129,7 @@ function _dpTree_(fresh) {
 /** Файл лежит в «Фото блюд» (с подпапками) или записан в реестре фото — только такие отдаёт getPhoto. */
 function _dpAllowed_(fileId) {
   fileId = String(fileId || ''); if (!fileId) return false;
+  if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) { try { _tsTenantAssertFileWithin_(fileId, 'PHOTO'); } catch (tenantErr) { return false; } }
   try { var ids = CacheService.getScriptCache().get('mc_dp_tree'); if (ids && JSON.parse(ids).indexOf(fileId) >= 0) return true; } catch (e) {}
   try { var pm = typeof _uiPhotoMap_ === 'function' ? _uiPhotoMap_() : {}; for (var k in pm) if (pm[k] === fileId) return true; } catch (e) {}   // корень папки (кэш 5 мин)
   if (_dpRows_().some(function (x) { return x.fileId === fileId || x.preview === fileId; })) return true;
@@ -137,7 +139,7 @@ function _dpAllowed_(fileId) {
     for (var d = 0; d < 8 && frontier.length; d++) {
       var next = [];
       for (var i = 0; i < frontier.length; i++) {
-        var id = frontier[i].getId(); if (id === PHOTO_FOLDER_ID) return true;
+        var id = frontier[i].getId(); if (id === _tsTenantFolderId_('PHOTO', PHOTO_FOLDER_ID)) return true;
         if (seen[id]) continue; seen[id] = 1;
         var pp = frontier[i].getParents(); while (pp.hasNext()) next.push(pp.next());
       }
@@ -283,11 +285,11 @@ function _dpResized_(fileId, px) {
 function _dpForCard_(fileId) {
   var row = _dpRows_().filter(function (x) { return x.fileId === fileId && x.active; })[0];
   if (!row) return fileId;   // копия делается только для подтверждённой связи — иначе плодились бы копии при каждом открытии
-  if (row.preview) return row.preview;
+  if (row.preview) { if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(row.preview, 'PHOTO'); return row.preview; }
   var f = DriveApp.getFileById(fileId); if ((Number(f.getSize()) || 0) <= MC_DP_BIG_) return fileId;
   var u = _dpResized_(fileId, MC_DP_PREVIEW_PX_); if (!u) return fileId;
   try {
-    var m = u.match(/^data:([^;]+);base64,(.*)$/), root = DriveApp.getFolderById(PHOTO_FOLDER_ID), it = root.getFoldersByName(MC_DP_PREVIEW_DIR_), dir = it.hasNext() ? it.next() : root.createFolder(MC_DP_PREVIEW_DIR_);
+    var m = u.match(/^data:([^;]+);base64,(.*)$/), root = DriveApp.getFolderById(_tsTenantFolderId_('PHOTO', PHOTO_FOLDER_ID)), it = root.getFoldersByName(MC_DP_PREVIEW_DIR_), dir = it.hasNext() ? it.next() : root.createFolder(MC_DP_PREVIEW_DIR_);
     var pf = dir.createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], 'для карточки ' + f.getName().replace(/\.[a-z0-9]+$/i, '') + '.jpg'));
     var use = pf.getId();
     _withLock_(function () {   // двое открыли одно фото одновременно — остаётся одна копия

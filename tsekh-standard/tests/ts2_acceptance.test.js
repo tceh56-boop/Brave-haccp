@@ -21,7 +21,7 @@ function sheet(name) {
 const sheets = {}; const book = { getId: () => 'BOOK', getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = sheet(n)), getSheets: () => Object.values(sheets) };
 function legacy(name, head, rows) { const s = book.insertSheet(name); s.data.push(head); rows.forEach(r => s.data.push(r)); }
 const files = {};
-const folder = () => ({ getId: () => 'FOLDER', getUrl: () => 'u', isTrashed: () => false, getFoldersByName: () => ({ hasNext: () => false }), createFolder: folder,
+const folder = () => ({ getId: () => 'FOLDER', getName: () => 'Папка', getUrl: () => 'u', isTrashed: () => false, getParents: () => ({ hasNext: () => false }), getFoldersByName: () => ({ hasNext: () => false }), createFolder: folder,
   createFile: (n, content) => { const id = 'FILE' + Math.random().toString(36).slice(2, 9); files[id] = typeof content === 'string' ? content : ''; return { getId: () => id, getUrl: () => 'u' }; } });
 let docs = 0;
 G.DriveApp = { getFolderById: folder, getFoldersByName: () => ({ hasNext: () => false }), createFolder: folder,

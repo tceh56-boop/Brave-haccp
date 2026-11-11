@@ -1,3 +1,4 @@
+/* Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович */
 /**
  * ЦЕХ Стандарт — ежемесячный архив журналов событий 2.x и их вырезание из рабочей таблицы.
  *
@@ -31,7 +32,11 @@ function _ts2RowsHash_(head, rows) { return _ts2Sha_(JSON.stringify([head].conca
 /** Архив месяца: таблица с вкладкой на каждый журнал. Повторный запуск не создаёт второй файл. */
 function _ts2ArchiveMonth_(y, m, folder) {
   var key = _ts2MonthKey_(y, m), st = _ts2ArchState_();
-  if (st[key] && st[key].fileId) return st[key];
+  if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) folder = _ts2Folder_('ARCHIVE');
+  if (st[key] && st[key].fileId) {
+    if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(st[key].fileId, 'ARCHIVE');
+    return st[key];
+  }
   var label = typeof _mcV8ArchiveMonthLabel_ === 'function' ? _mcV8ArchiveMonthLabel_(new Date(y, m, 1)) : key;
   var ss = SpreadsheetApp.create('ЦЕХ Стандарт — журналы событий — ' + label), first = true, info = { month: key, label: label, sheets: {}, createdAt: _ts2Iso_() };
   TS2_ARCH_SHEETS_.forEach(function (d) {
@@ -45,7 +50,11 @@ function _ts2ArchiveMonth_(y, m, folder) {
     info.sheets[d[0]] = { tab: d[2], rows: rows.length, sha256: _ts2RowsHash_(head, rows), firstId: rows.length ? String(rows[0][0]) : '', lastId: rows.length ? String(rows[rows.length - 1][0]) : '',
       firstPrevHash: rows.length && pc >= 0 ? String(rows[0][pc]) : '', lastHash: rows.length && hc >= 0 ? String(rows[rows.length - 1][hc]) : '' };
   });
-  var file = DriveApp.getFileById(ss.getId()); if (folder) { try { file.moveTo(folder); } catch (e) {} }
+  var file = DriveApp.getFileById(ss.getId());
+  if (folder) {
+    try { file.moveTo(folder); } catch (moveError) { try { file.setTrashed(true); } catch (trashError) {} throw new Error('ARCHIVE_MOVE_FAILED: не удалось переместить архив в папку предприятия: ' + String(moveError.message || moveError)); }
+  }
+  if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(ss.getId(), 'ARCHIVE');
   info.fileId = ss.getId(); info.url = 'https://docs.google.com/spreadsheets/d/' + ss.getId();
   if (folder) { try { folder.createFile(Utilities.newBlob(JSON.stringify(info, null, 1), 'application/json', 'MANIFEST журналы событий — ' + label + '.json')); } catch (e) {} }
   _ts2Insert_('BACKUP_CATALOG', { backupId: _ts2Id_('BACKUP_CATALOG'), enterpriseId: _ts2Ent_(), backupType: 'MONTH_ARCHIVE', scope: 'журналы событий ' + label, fileId: info.fileId, fileUrl: info.url,
@@ -61,6 +70,7 @@ function _ts2RotateMonth_(y, m) {
   if (!info || !info.fileId) throw new Error('VALIDATION: архива за ' + key + ' нет — вырезать нельзя');
   if (info.rotatedAt) return { month: key, skipped: 'уже вырезано ' + info.rotatedAt };
   // 1. сверка: архивный файл читается заново и сравнивается с манифестом
+  if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(info.fileId, 'ARCHIVE');
   var arc = SpreadsheetApp.openById(info.fileId), bad = [];
   Object.keys(info.sheets).forEach(function (name) {
     var s = info.sheets[name], tab = arc.getSheetByName(s.tab); if (!tab) { bad.push(name + ': нет вкладки'); return; }

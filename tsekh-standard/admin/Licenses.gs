@@ -136,9 +136,27 @@ function planFeatures_(plan) {
   return out;
 }
 /** Подпись запроса клиента для служебных вызовов: HMAC(key|ts, секрет), ts не старше 10 минут, повтор подписи отклоняется. */
+/** Каноническая запись тела запроса для подписи v2 (ключи по алфавиту, без поля sig) — как в TS_TenantBootstrap.gs. */
+function canonicalJson_(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(canonicalJson_).join(',') + ']';
+  return '{' + Object.keys(v).filter(function (k) { return v[k] !== undefined; }).sort().map(function (k) { return JSON.stringify(k) + ':' + canonicalJson_(v[k]); }).join(',') + '}';
+}
+// Действия, где подпись обязана покрывать тело запроса (v2): подмена параметров при перехвате недопустима.
+var SIG_V2_REQUIRED_ = ['tenant.bootstrap'];
+/**
+ * Подпись запроса системы клиента.
+ *   v1: HMAC(key|ts) — прежние системы клиентов (проверка лицензии, статистика);
+ *   v2: HMAC(key|ts|canonical(тело без sig)) — тело защищено; обязательно для SIG_V2_REQUIRED_.
+ */
 function verifyClient_(p) {
   var f = licFind_(p.key); if (!f || !f.secret) return null;
-  if (Math.abs(Date.now() - Number(p.ts || 0)) > 600000 || !safeEqual(hmac(String(p.key) + '|' + p.ts, f.secret), p.sig)) return null;
+  if (Math.abs(Date.now() - Number(p.ts || 0)) > 600000) return null;
+  var v2 = Number(p.sigV) === 2;
+  if (!v2 && SIG_V2_REQUIRED_.indexOf(String(p.action || '')) >= 0) return null;
+  var body = {}; if (v2) Object.keys(p).forEach(function (k) { if (k !== 'sig') body[k] = p[k]; });
+  var expected = v2 ? hmac(String(p.key) + '|' + p.ts + '|' + canonicalJson_(body), f.secret) : hmac(String(p.key) + '|' + p.ts, f.secret);
+  if (!safeEqual(expected, p.sig)) return null;
   var cache = CacheService.getScriptCache(), rk = 'sig_' + String(p.sig).slice(0, 40) + '_' + String(p.action || '');
   if (cache.get(rk)) return null; cache.put(rk, '1', 900);
   if (!f.row || f.row['Статус'] !== 'ACTIVE') return null;

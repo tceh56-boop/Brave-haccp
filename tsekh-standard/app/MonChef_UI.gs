@@ -591,7 +591,7 @@ function _uiPhotoMap_() {
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   var map = {};
   try {
-    var it = DriveApp.getFolderById(PHOTO_FOLDER_ID).getFiles();
+    var it = DriveApp.getFolderById(_tsTenantFolderId_('PHOTO', PHOTO_FOLDER_ID)).getFiles();
     while (it.hasNext()) { var f = it.next(); if (/^image\//.test(f.getMimeType() || '')) map[norm(f.getName())] = f.getId(); }
   } catch (e) {}
   try { cache.put('mc_ui_photo_map', JSON.stringify(map), 300); } catch (e) {}

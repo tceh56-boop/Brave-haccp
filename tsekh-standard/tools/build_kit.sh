@@ -8,6 +8,8 @@ mkdir -p "$R/2_Загрузить_на_Диск" "$R/3_Установщик" "$R
 cp docs/ДОК_12_Развёртывание_распознавание_почта.md "$R/1_Инструкция_развёртывание_распознавание_почта.md"
 cp dist/TsekhStandard_Application.zip "$R/2_Загрузить_на_Диск/"
 cp installer/TsekhInstaller.gs "$R/3_Установщик/"; cp installer/appsscript.json "$R/3_Установщик/appsscript.json"
+cp installer/TS_TenantBootstrap.gs installer/README_TENANT_BOOTSTRAP.md "$R/3_Установщик/"
+mkdir -p "$R/6_Документы/SaaS"; cp docs/saas/*.md "$R/6_Документы/SaaS/"
 cp dist/manuals/*.pdf "$R/4_Для_персонала/"
 cp admin/*.gs admin/*.html admin/appsscript.json "$R/5_Админ-панель/"
 cp README.md "$R/6_Документы/README_ЦЕХ_Стандарт.md"; cp docs/ДОК_*.md docs/PATCH_*.md docs/ДОК_*.pdf docs/ДОК_8_Функции_и_роли.csv docs/Шаблон_таблицы_сроков.csv "$R/6_Документы/"

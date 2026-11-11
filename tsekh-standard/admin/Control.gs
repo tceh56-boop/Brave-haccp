@@ -1,4 +1,5 @@
 /**
+ * Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович
  * ЦЕХ Стандарт Admin — управляющий контур 2.0 (ТЗ 2.0 §6, §10–§13, §16–§18).
  *   • подготовка предприятия (provisioning): папка, таблица, проект скрипта, развёртывание — по шагам, идемпотентно;
  *   • релизы с пилотным каналом и задания обновления: сначала резервная копия у клиента, затем код;
@@ -86,36 +87,83 @@ function resource_(o, type, googleId, url, note) {
   if (readAll('ENTERPRISE_RESOURCES').some(function (r) { return r.orgId === o['ID'] && r.resourceType === type && r.googleId === googleId; })) return;
   insert('ENTERPRISE_RESOURCES', { resourceId: newId('RES'), enterpriseId: enterpriseIdOf_(o), orgId: o['ID'], resourceType: type, googleId: googleId, url: url || '', status: 'ACTIVE', createdAt: new Date(), checkedAt: new Date(), note: note || '' });
 }
+/** Запрет повторного использования одного Google-ресурса разными организациями. */
+function assertTenantResourceUnique_(orgId, fieldName, resourceId) {
+  var id = String(resourceId || '').trim();
+  if (!id) throw new Error('VALIDATION: пустой идентификатор ресурса (' + fieldName + ')');
+  var collision = readAll('Organizations').filter(function (x) {
+    return x['ID'] !== orgId && String(x[fieldName] || '').trim() === id && x['Статус'] !== 'DELETED';
+  })[0];
+  if (collision) throw new Error('TENANT_ISOLATION: ресурс ' + fieldName + ' уже закреплён за другим предприятием (' + collision['ID'] + '). Подключение запрещено.');
+  return true;
+}
+
+
+/** Внедряет несекретную привязку клиентского проекта. Script Properties bootstrap-проекта не наследуются новым bound-проектом. */
+function injectTenantConfigSource_(file, org) {
+  var src = String(file.source || '');
+  if (/^Code(?:\.gs)?$/.test(String(file.name)) && org['Google Drive ID']) src = src.replace(/var\s+SHEET_ID\s*=\s*'[^']*'/, "var SHEET_ID        = '" + String(org['Google Drive ID']) + "'");
+  if (/^TS2_Core(?:\.gs)?$/.test(String(file.name))) {
+    var cfg = { mode: '1', rootFolderId: String(org['Customer Drive Root ID'] || ''), spreadsheetId: String(org['Google Drive ID'] || ''), enterpriseId: String(enterpriseIdOf_(org) || ''), ownerEmail: String(org['Customer Drive Owner Email'] || '').toLowerCase() };
+    if (!cfg.rootFolderId || !cfg.spreadsheetId || !cfg.enterpriseId || !cfg.ownerEmail) throw new Error('ONBOARDING_REQUIRED: для клиентского ядра не хватает rootFolderId, spreadsheetId, enterpriseId или ownerEmail');
+    var next = src.replace(/var\s+TS_TENANT_CONFIG_\s*=\s*\{[^;]*\};/, 'var TS_TENANT_CONFIG_ = ' + JSON.stringify(cfg) + ';');
+    if (next === src) throw new Error('TENANT_CONFIG_TEMPLATE_MISSING: в TS2_Core.gs отсутствует TS_TENANT_CONFIG_');
+    src = next;
+    // Сохраняем совместимость с кодом, который ещё читает старую глобальную переменную.
+    src = src.replace(/var\s+TS2_TENANT_ROOT_ID\s*=\s*'[^']*'/, "var TS2_TENANT_ROOT_ID = '" + cfg.rootFolderId + "'");
+  }
+  return { name: file.name, type: file.type, source: src };
+}
+
 /** Пройти шаги подготовки; уже выполненные пропускаются. Повторный вызов продолжает с первого невыполненного шага. */
 function provisionOrg_(s, orgId) {
   var o = findBy('Organizations', 'ID', orgId); if (!o) throw new Error('NOT_FOUND: клиент не найден');
   var ent = enterpriseIdOf_(o), out = [], who = s ? s.email : 'система', P = PropertiesService.getScriptProperties();
   var run = function (code, fn) {
-    if (stepDone_(orgId, code)) { out.push({ step: code, status: 'SKIPPED (уже выполнен)' }); return true; }
+    if (stepDone_(orgId, code) && ['DRIVE_ROOT', 'SPREADSHEET'].indexOf(code) < 0) { out.push({ step: code, status: 'SKIPPED (уже выполнен)' }); return true; }
     try { var r = fn(); withLock(function () { stepMark_(o, code, 'DONE', r, '', who); }); out.push({ step: code, status: 'DONE', result: r }); o = findBy('Organizations', 'ID', orgId); return true; }
     catch (e) { withLock(function () { stepMark_(o, code, 'FAILED', null, String(e.message || e), who); }); out.push({ step: code, status: 'FAILED', error: String(e.message || e) }); return false; }
   };
   var folderName = ent + ' — ' + o['Название'], folder = null;
   var ok1 = run('DRIVE_ROOT', function () {
-    var it = DriveApp.getFoldersByName(folderName); folder = it.hasNext() ? it.next() : DriveApp.createFolder(folderName);
-    resource_(o, 'DRIVE_ROOT', folder.getId(), folder.getUrl(), folderName); return { folderId: folder.getId() };
+    // SaaS tenant isolation: root folder must be created by the customer bootstrap
+    // and explicitly shared with the provider. Never silently create it in provider Drive.
+    var rootId = String(o['Customer Drive Root ID'] || '').trim();
+    if (!rootId) throw new Error('ONBOARDING_REQUIRED: клиент должен выполнить TS_TenantBootstrap.gs и передать папку своего Google Drive');
+    assertTenantResourceUnique_(orgId, 'Customer Drive Root ID', rootId);
+    folder = DriveApp.getFolderById(rootId);
+    if (folder.isTrashed()) throw new Error('DRIVE_ROOT: папка предприятия находится в корзине');
+    var owner = folder.getOwner && folder.getOwner();
+    var ownerEmail = owner && owner.getEmail ? String(owner.getEmail()).toLowerCase() : '';
+    var expectedOwner = String(o['Customer Drive Owner Email'] || '').toLowerCase();
+    if (!ownerEmail || !expectedOwner || ownerEmail !== expectedOwner) throw new Error('TENANT_OWNERSHIP: владелец папки не совпадает с подтверждённым владельцем клиента');
+    resource_(o, 'DRIVE_ROOT', rootId, folder.getUrl(), 'клиентская папка; владелец подтверждён через DriveApp');
+    return { folderId: rootId, ownerEmail: ownerEmail, customerOwned: true };
   });
   if (!ok1) return out;
-  if (!folder) { var r0 = readAll('ENTERPRISE_RESOURCES').filter(function (r) { return r.orgId === orgId && r.resourceType === 'DRIVE_ROOT'; })[0]; folder = r0 ? DriveApp.getFolderById(r0.googleId) : null; }
+  if (!folder && o['Customer Drive Root ID']) folder = DriveApp.getFolderById(String(o['Customer Drive Root ID']));
   var ok2 = run('SPREADSHEET', function () {
-    if (o['Google Drive ID']) { resource_(o, 'SPREADSHEET', o['Google Drive ID'], 'https://docs.google.com/spreadsheets/d/' + o['Google Drive ID'], 'указана вручную'); return { spreadsheetId: o['Google Drive ID'], existing: true }; }
-    var ss = SpreadsheetApp.create('ЦЕХ Стандарт — ' + o['Название']); DriveApp.getFileById(ss.getId()).moveTo(folder);
-    withLock(function () { update('Organizations', orgId, { 'Google Drive ID': ss.getId() }); });
-    resource_(o, 'SPREADSHEET', ss.getId(), ss.getUrl(), ''); return { spreadsheetId: ss.getId() };
+    var sheetId = String(o['Google Drive ID'] || '').trim();
+    if (!sheetId) throw new Error('ONBOARDING_REQUIRED: клиентская таблица не зарегистрирована');
+    assertTenantResourceUnique_(orgId, 'Google Drive ID', sheetId);
+    var existingFile = DriveApp.getFileById(sheetId);
+    if (existingFile.isTrashed()) throw new Error('SPREADSHEET: указанная таблица находится в корзине');
+    var parentIds = [], parents = existingFile.getParents(); while (parents.hasNext()) parentIds.push(parents.next().getId());
+    if (parentIds.indexOf(folder.getId()) < 0) throw new Error('TENANT_OWNERSHIP: таблица не находится в зарегистрированной папке предприятия');
+    var sheetOwner = existingFile.getOwner && existingFile.getOwner(), sheetOwnerEmail = sheetOwner && sheetOwner.getEmail ? String(sheetOwner.getEmail()).toLowerCase() : '';
+    if (!sheetOwnerEmail || sheetOwnerEmail !== String(o['Customer Drive Owner Email'] || '').toLowerCase()) throw new Error('TENANT_OWNERSHIP: владелец таблицы не совпадает с владельцем папки');
+    resource_(o, 'SPREADSHEET', sheetId, 'https://docs.google.com/spreadsheets/d/' + sheetId, 'клиентская таблица; владелец и родительская папка проверены');
+    return { spreadsheetId: sheetId, customerOwned: true, ownerEmail: sheetOwnerEmail };
   });
   if (!ok2) return out;
   var master = P.getProperty('MASTER_SCRIPT_ID');
   var ok3 = run('SCRIPT_PROJECT', function () {
     if (!master) throw new Error('не задано свойство MASTER_SCRIPT_ID (проект-эталон)');
     var sid = o['Script ID'];
+    if (sid) assertTenantResourceUnique_(orgId, 'Script ID', sid);
     if (!sid) { var pr = scriptApi_('post', '', { title: 'ЦЕХ Стандарт — ' + o['Название'], parentId: o['Google Drive ID'] }); sid = pr.scriptId; withLock(function () { update('Organizations', orgId, { 'Script ID': sid }); }); }
     var content = scriptApi_('get', '/' + master + '/content');
-    var files = content.files.map(function (f) { return f.name === 'Code' ? { name: f.name, type: f.type, source: f.source.replace(/var\s+SHEET_ID\s*=\s*'[^']*'/, "var SHEET_ID        = '" + o['Google Drive ID'] + "'") } : f; });
+    var files = content.files.map(function (f) { return injectTenantConfigSource_(f, o); });
     scriptApi_('put', '/' + sid + '/content', { files: files });
     resource_(o, 'SCRIPT_PROJECT', sid, 'https://script.google.com/d/' + sid + '/edit', ''); return { scriptId: sid };
   });
@@ -149,7 +197,8 @@ function confirmUpdateBackups_(orgId, at) {
   });
 }
 function updateOneOrg_(o, content, version) {
-  var files = content.files.map(function (f) { return f.name === 'Code' && o['Google Drive ID'] ? { name: f.name, type: f.type, source: f.source.replace(/var\s+SHEET_ID\s*=\s*'[^']+'/, "var SHEET_ID        = '" + o['Google Drive ID'] + "'") } : f; });
+  if (!o['Customer Drive Root ID'] || !o['Google Drive ID']) throw new Error('ONBOARDING_REQUIRED: нельзя обновлять клиент без подтверждённого клиентского хранилища');
+  var files = content.files.map(function (f) { return injectTenantConfigSource_(f, o); });
   scriptApi_('put', '/' + o['Script ID'] + '/content', { files: files });
   var ver = scriptApi_('post', '/' + o['Script ID'] + '/versions', { description: 'ЦЕХ Стандарт ' + version });
   var dep = (/\/macros\/s\/([\w-]+)\/exec/.exec(String(o['App URL'] || '')) || [])[1];
@@ -166,6 +215,26 @@ function supportRequestsFor_(orgId) {
 function apiControl_(p) {
   var org = verifyClient_(p); if (!org) return { ok: false, error: 'Подпись запроса не принята' };
   var ent = enterpriseIdOf_(org);
+  if (p.action === 'tenant.bootstrap') {
+    var rootId = String(p.rootFolderId || '').trim(), sheetId = String(p.spreadsheetId || '').trim(), ownerEmail = String(p.ownerEmail || '').trim().toLowerCase();
+    if (!/^[A-Za-z0-9_-]{10,}$/.test(rootId) || !/^[A-Za-z0-9_-]{10,}$/.test(sheetId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) return { ok: false, error: 'VALIDATION: неверные идентификаторы или email владельца' };
+    assertTenantResourceUnique_(org['ID'], 'Customer Drive Root ID', rootId);
+    assertTenantResourceUnique_(org['ID'], 'Google Drive ID', sheetId);
+    var root = DriveApp.getFolderById(rootId), file = DriveApp.getFileById(sheetId);
+    if (root.isTrashed() || file.isTrashed()) return { ok: false, error: 'Ресурс находится в корзине' };
+    var ro = root.getOwner && root.getOwner(), fo = file.getOwner && file.getOwner();
+    var re = ro && ro.getEmail ? String(ro.getEmail()).toLowerCase() : '', fe = fo && fo.getEmail ? String(fo.getEmail()).toLowerCase() : '';
+    if (!re || !fe || re !== ownerEmail || fe !== ownerEmail) return { ok: false, error: 'TENANT_OWNERSHIP: владелец папки и таблицы не совпадает с заявленным владельцем' };
+    var parents = file.getParents(), linked = false; while (parents.hasNext()) if (parents.next().getId() === rootId) linked = true;
+    if (!linked) return { ok: false, error: 'TENANT_OWNERSHIP: таблица должна находиться внутри папки предприятия' };
+    withLock(function () {
+      update('Organizations', org['ID'], { 'Customer Drive Root ID': rootId, 'Google Drive ID': sheetId, 'Customer Drive Owner Email': ownerEmail, 'Drive Ownership Verified At': new Date() });
+      resource_(org, 'DRIVE_ROOT', rootId, root.getUrl(), 'owner verified via tenant.bootstrap');
+      resource_(org, 'SPREADSHEET', sheetId, 'https://docs.google.com/spreadsheets/d/' + sheetId, 'owner verified via tenant.bootstrap');
+    });
+    logEvent('ONBOARDING', 'клиент', org['ID'], 'Подтверждено клиентское хранилище Google Drive');
+    return { ok: true, enterpriseId: ent, rootFolderId: rootId, spreadsheetId: sheetId, ownerEmail: ownerEmail, ownershipVerified: true };
+  }
   if (p.action === 'release.check') { var ch = org['Канал обновлений'] === 'pilot' ? 'pilot' : 'stable', r = latestRelease_(ch); return { ok: true, channel: ch, release: r ? { version: r.version, notes: r.notes || '', schemaVersion: r.schemaVersion || '' } : null }; }
   if (p.action === 'support.request') {
     var t = { ticketId: newId('TCK'), enterpriseId: ent, orgId: org['ID'], subject: String(p.subject || 'Обращение').slice(0, 200), text: String(p.text || '').slice(0, 4000), status: 'OPEN', createdAt: new Date(), createdBy: String(p.author || '').slice(0, 100), assignedTo: '', resolvedAt: '', resolution: '' };

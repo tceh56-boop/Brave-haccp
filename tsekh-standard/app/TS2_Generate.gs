@@ -1,3 +1,4 @@
+/* Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович */
 /**
  * ЦЕХ Стандарт 2.2 — из ТТК автоматически готовятся изменения ТУ, СТО и ППК (ТЗ 2.2).
  *   ТТК → факты (TTK_SOURCE_FACTS, у каждого — источник и уверенность) → проверка полноты → процессы и опасности →
@@ -152,9 +153,9 @@ function _ts2GenCard_(job, existing) {
 /* ------------------------------------------------------------------ применение: документы-изменения (не утверждены) */
 function _ts2GenDoc_(folderCode, title, sections, meta) {
   var json = JSON.stringify({ title: title, meta: meta, sections: sections, schemaVersion: TS2_SCHEMA_VERSION }), hash = _ts2Sha_(json);
-  var out = { fileId: '', pdfFileId: '', jsonFileId: '', hash: hash };
+  var out = { fileId: '', pdfFileId: '', jsonFileId: '', hash: hash }, createdDocId = '';
   try {
-    var folder = _ts2Folder_(folderCode), doc = DocumentApp.create(title), b = doc.getBody();
+    var folder = _ts2Folder_(folderCode), doc = DocumentApp.create(title), b = doc.getBody(); createdDocId = doc.getId();
     try { var org = _mcOrg_(); if (org && org.name) b.appendParagraph(org.name + (org.inn ? ', ИНН ' + org.inn : '')).setHeading(DocumentApp.ParagraphHeading.SUBTITLE); } catch (e) {}
     b.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.TITLE);
     b.appendParagraph(meta.statusLine || ('Статус: ПОДГОТОВЛЕНО СИСТЕМОЙ — ТРЕБУЕТ УТВЕРЖДЕНИЯ ПРЕДПРИЯТИЕМ. Версия: ' + meta.version + '. Задание: ' + meta.job + '.') + ' Контрольная сумма: ' + hash.slice(0, 16));
@@ -166,10 +167,13 @@ function _ts2GenDoc_(folderCode, title, sections, meta) {
     if (meta.footer !== false) b.appendParagraph('Источник каждого значения указан в графе «Источник». Значения с пометкой REQUIRES_SOURCE система не заполняет — их вносит и подтверждает предприятие.');
     b.appendParagraph('Утверждаю: ____________________ / ____________________ /   «___» ____________ 20___ г.');
     doc.saveAndClose();
-    var f = DriveApp.getFileById(doc.getId()); f.moveTo(folder); out.fileId = doc.getId();
+    var f = DriveApp.getFileById(doc.getId());
+    try { f.moveTo(folder); } catch (moveError) { try { f.setTrashed(true); } catch (trashError) {} throw new Error('DOCUMENT_MOVE_FAILED: ' + String(moveError.message || moveError)); }
+    if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(doc.getId(), folderCode);
+    out.fileId = doc.getId();
     out.pdfFileId = folder.createFile(f.getAs('application/pdf').setName(title + '.pdf')).getId();
     out.jsonFileId = folder.createFile(title + '.json', json, 'application/json').getId();
-  } catch (e) { out.error = String(e && e.message || e); }
+  } catch (e) { if (createdDocId) { try { DriveApp.getFileById(createdDocId).setTrashed(true); } catch (cleanupError) {} } out.error = String(e && e.message || e); }
   return out;
 }
 function _ts2GenApply_(job) {

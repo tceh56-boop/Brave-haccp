@@ -1,3 +1,4 @@
+/* Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович */
 /**
  * ЦЕХ Стандарт 2.0 — конвейер документов (ТЗ 2.0 §10):
  *   приём файла → SHA-256 → реестр FILES/DOCUMENTS/DOCUMENT_VERSIONS → классификация → IMPORT_JOB →
@@ -59,6 +60,8 @@ function _ts2Intake_(files, sourceType, docTypeHint) {
 /* ------------------------------------------------------------------ распознавание */
 /** Текст файла. Google Drive делает распознавание PDF и изображений при копировании в Google Документ. Результат — отдельный файл. */
 function _ts2ExtractText_(fileRow) {
+  if (!fileRow || !fileRow.googleFileId) throw new Error('VALIDATION: у документа отсутствует Google Drive ID');
+  _tsTenantAssertFileWithin_(fileRow.googleFileId, 'INBOX');
   var mime = String(fileRow.mimeType), id = fileRow.googleFileId, token = ScriptApp.getOAuthToken();
   if (/^text\/|csv/.test(mime)) return { text: DriveApp.getFileById(id).getBlob().getDataAsString('UTF-8'), parser: 'TEXT', confidence: 1 };
   var target = /sheet|excel|spreadsheetml/.test(mime) ? 'application/vnd.google-apps.spreadsheet' : 'application/vnd.google-apps.document';

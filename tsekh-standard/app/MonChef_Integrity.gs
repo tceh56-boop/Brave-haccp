@@ -65,7 +65,7 @@ function mcOnEditAudit(e) {
   } catch (err) {}
 }
 function mcInstallEditAudit() {
-  try { ScriptApp.newTrigger('mcOnEditAudit').forSpreadsheet(SHEET_ID).onEdit().create(); return true; } catch (e) { _log_('WARN', 'триггер аудита правок не установлен: ' + e); return false; }
+  try { ScriptApp.newTrigger('mcOnEditAudit').forSpreadsheet(_tsTenantSpreadsheetId_()).onEdit().create(); return true; } catch (e) { _log_('WARN', 'триггер аудита правок не установлен: ' + e); return false; }
 }
 
 function _mcSwitchState_() {

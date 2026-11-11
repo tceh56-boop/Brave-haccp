@@ -17,7 +17,7 @@ function mkSheet(name) {
   return s;
 }
 function mkBook(id) { const sheets = {}; return { getId: () => id, getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = mkSheet(n)), getSheets: () => Object.values(sheets), deleteSheet: s => delete sheets[s.name] }; }
-function props() { const m = {}; return { getProperty: k => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = String(v); }, deleteProperty: k => { delete m[k]; }, _m: m }; }
+function props() { const m = {}; return { getProperty: k => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = String(v); }, deleteProperty: k => { delete m[k]; }, setProperties: (o, deleteOthers) => { if (deleteOthers) Object.keys(m).forEach(k => { delete m[k]; }); Object.keys(o).forEach(k => { m[k] = String(o[k]); }); }, getProperties: () => Object.assign({}, m), _m: m }; }
 function cache() { const m = {}; return { get: k => m[k] ?? null, put: (k, v) => { m[k] = v; }, remove: k => { delete m[k]; } }; }
 const toBytes = buf => [...buf].map(b => (b > 127 ? b - 256 : b));
 function make(email) {

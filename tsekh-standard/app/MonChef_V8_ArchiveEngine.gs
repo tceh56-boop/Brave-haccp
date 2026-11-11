@@ -1,3 +1,4 @@
+/* Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович */
 /* ============================================================================
  * ЦЕХ Стандарт V8 — MONTHLY DRIVE ARCHIVE ENGINE
  *
@@ -157,8 +158,8 @@ function _mcV8CopySheetMonth_(sheetName, archiveFolder, displayName, year, month
   SpreadsheetApp.flush();
 
   var file = DriveApp.getFileById(archiveSS.getId());
-  archiveFolder.addFile(file);
-  try { DriveApp.getRootFolder().removeFile(file); } catch (e) {}
+  try { file.moveTo(archiveFolder); } catch (moveError) { try { file.setTrashed(true); } catch (trashError) {} throw new Error('ARCHIVE_MOVE_FAILED: ' + String(moveError.message || moveError)); }
+  if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(file.getId(), 'ARCHIVE');
 
   var pdfFileId = '';
   try {
@@ -185,6 +186,7 @@ function _mcV8CopySheetMonth_(sheetName, archiveFolder, displayName, year, month
 function _mcV8CopyDriveFile_(fileId, folder, prefix) {
   if (!fileId) return null;
   try {
+    if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(String(fileId), 'ROOT');
     var file = DriveApp.getFileById(String(fileId));
     var copyName = _mcV8SafeFileName_(prefix ? prefix + ' — ' + file.getName() : file.getName());
     var copy = file.makeCopy(copyName, folder);
@@ -269,7 +271,8 @@ function _mcV8ArchiveReceiving_(monthFolder, year, month) {
   a.setFrozenRows(1); SpreadsheetApp.flush();
   var file = DriveApp.getFileById(out.getId());
   var folder = _mcV8ArchiveSubFolder_(monthFolder, '02 Приход продукции');
-  folder.addFile(file); try { DriveApp.getRootFolder().removeFile(file); } catch(e) {}
+  try { file.moveTo(folder); } catch (moveError) { try { file.setTrashed(true); } catch (trashError) {} throw new Error('ARCHIVE_MOVE_FAILED: ' + String(moveError.message || moveError)); }
+  if (typeof _tsTenantMode_ === 'function' && _tsTenantMode_()) _tsTenantAssertFileWithin_(file.getId(), 'ARCHIVE');
   return { name: name, fileId: file.getId(), rows: selected.length, batches: batches.length, status: 'ARCHIVED' };
 }
 
