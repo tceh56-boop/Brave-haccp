@@ -10,6 +10,7 @@ python3 tools/inject_ts_console.py app >/dev/null
 node tools/check_syntax.js app
 node tools/check_syntax.js admin
 node tests/license_flow.test.js
+if command -v g++ >/dev/null; then g++ -std=c++11 -I sensors/esp32_aht20 tests/aht20_test.cpp -o /tmp/ts_aht20_test && /tmp/ts_aht20_test; fi
 mkdir -p dist && rm -f dist/*.zip
 ( cd app && zip -q -X ../dist/TsekhStandard_Application.zip *.gs *.html appsscript.json )
 ( cd brand && zip -q -X ../dist/TsekhStandard_Application.zip *.png )

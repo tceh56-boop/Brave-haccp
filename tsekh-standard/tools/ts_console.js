@@ -423,6 +423,8 @@ VIEWS.tsSetup = {
         var mdl = document.getElementById('mdl'), box = document.getElementById('mdlBox'); mdl.classList.remove('dish'); mdl.classList.add('on');
         box.innerHTML = '<button class="x" onclick="closeMdl()">×</button><h2>Датчик ' + esc(d.deviceId) + '</h2><p>Настройте устройство или шлюз (Home Assistant, ESP, облако датчика) отправлять <b>POST</b> на адрес:</p><pre style="white-space:pre-wrap;word-break:break-all">' + esc(d.url) + '</pre>' +
           '<p>Тело запроса (JSON), значение — температура в °C; для помещения можно добавить <code>"humidity": 55</code>:</p><pre style="white-space:pre-wrap;word-break:break-all">' + esc(JSON.stringify(d.example)) + '</pre>' +
+          '<p>Для прошивки ЦЕХ Стандарт (ESP32 + модуль AHT20/Winsen, папка «8_Датчики» комплекта) — замените эти строки в начале файла:</p><pre style="white-space:pre-wrap;word-break:break-all">' +
+          esc('const char* TS_URL    = "' + d.url + '";\nconst char* TS_DEVICE = "' + d.deviceId + '";\nconst char* TS_TOKEN  = "' + d.token + '";') + '</pre>' +
           '<div class="err" style="border-radius:10px">Ключ показывается один раз. Если он потерян — отключите датчик и подключите заново.</div>';
         VIEWS.tsSetup.h.snsLoad(); });
     },

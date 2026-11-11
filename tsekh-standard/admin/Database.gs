@@ -81,5 +81,10 @@ function setSetting(key, value, descr) {
   if (r) update('System_Settings', key, { 'Значение': v, 'Описание': descr || r['Описание'] });
   else insert('System_Settings', { 'Ключ': key, 'Значение': v, 'Описание': descr || '' });
 }
-function tariffs() { return getSetting('TARIFFS', DEFAULT_TARIFFS); }
+function tariffs() {
+  var t = getSetting('TARIFFS', DEFAULT_TARIFFS);
+  // цена Pro Max подтверждена — снять прежнюю пометку из сохранённых настроек
+  (t || []).forEach(function (x) { if (x && x.code === 'pro_max' && /требует подтверждения/.test(x.note || '')) delete x.note; });
+  return t;
+}
 function tariff(code) { return tariffs().filter(function (t) { return t.code === code; })[0] || null; }
