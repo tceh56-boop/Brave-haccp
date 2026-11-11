@@ -1,3 +1,4 @@
+// Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович.
 /**
  * ==========================================================================
  *  ЦЕХ Стандарт — система управления рестораном
@@ -6251,7 +6252,7 @@ function createEmployee(empJson, token) {
     var emp = JSON.parse(empJson);
     if (!emp.lastName || !emp.firstName) return JSON.stringify({ error: 'Фамилия и имя обязательны' });
     if (!emp.pin || !/^\d{4}$/.test(String(emp.pin))) return JSON.stringify({ success: false, error: 'ПИН-код должен состоять из 4 цифр' });
-    if (_mcRbIsDevPin_(emp.pin) || String(emp.pin) === MC_RB_DEV_PIN_DEFAULT_) return JSON.stringify({ success: false, error: 'Этот ПИН-код зарезервирован — выберите другой' });
+    if (_mcRbIsDevPin_(emp.pin)) return JSON.stringify({ success: false, error: 'Этот ПИН-код зарезервирован — выберите другой' });
     var rc = _mcRbCheckRoleChange_(_op.session, null, '', emp.role || '');   // этап 10.7: только роли ТЗ; «Директор» — технический доступ
     if (rc) { _endOp_(_op, 'FAILED'); return JSON.stringify({ success: false, error: rc }); }
 
@@ -6307,7 +6308,7 @@ function updateEmployee(empJson, token) {
       if (rc) { _endOp_(_op, 'FAILED'); return JSON.stringify({ success: false, error: rc }); }
     }
     if (emp.active === false && String(emp.id) === String(_op.session && _op.session.user_id)) { _endOp_(_op, 'FAILED'); return JSON.stringify({ success: false, error: 'Себя отключить нельзя' }); }
-    if (emp.pin && (_mcRbIsDevPin_(emp.pin) || String(emp.pin) === MC_RB_DEV_PIN_DEFAULT_)) { _endOp_(_op, 'FAILED'); return JSON.stringify({ success: false, error: 'Этот ПИН-код зарезервирован — выберите другой' }); }
+    if (emp.pin && _mcRbIsDevPin_(emp.pin)) { _endOp_(_op, 'FAILED'); return JSON.stringify({ success: false, error: 'Этот ПИН-код зарезервирован — выберите другой' }); }
 
     // проверка уникальности ПИН-кода (кроме текущего)
     if (emp.pin) {
@@ -6454,10 +6455,9 @@ function getExpiringMedicalDocs(days) {
 // функциям. Строка в листе «Сотрудники» создаётся (или восстанавливается) сама
 // при первом входе с этим ПИН; в таблице хранится только хеш.
 // ---------------------------------------------------------------------------
-var CREATOR_PIN = '2258';
 var CREATOR_POSITION = 'Создатель системы';
 
-// Этап 10.7: код 2258 — технический доступ (MonChef_Rbac.gs), а не учётная запись сотрудника.
+// Технический доступ использует только явно настроенный хеш MC_DEV_PIN_HASH.
 // Строку «Создатель системы» система больше не создаёт и не восстанавливает; существующая скрыта из списков.
 function ensureCreatorAccount() {
   var sh = _authEmployeesSheet_(), v = sh.getDataRange().getValues();

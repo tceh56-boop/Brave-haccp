@@ -1,3 +1,4 @@
+// Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович.
 /**
  * ЦЕХ Стандарт — роли и права доступа (этап 10.7, ТЗ «Система ролей и разграничения прав доступа»).
  *
@@ -11,7 +12,7 @@
  *   • открытие страницы (doGet) и разделы нового интерфейса — по картам MC_RB_MODULES_ и MC_RB_SECTIONS_.
  * Права берутся из ТЕКУЩЕЙ роли при каждом вызове (_mcRbRefresh_): смена роли и увольнение действуют сразу.
  *
- * Технический доступ (код 2258): не роль и не сотрудник — в списках, выборе исполнителя и шапке его нет.
+ * Технический доступ: секрет настраивается владельцем установки; общего PIN по умолчанию нет.
  * Полный доступ к настройкам и данным, но записи ХАССП (журналы, бракераж, приёмка, гашение ВСД, подписи)
  * не делает — их автор должен быть сотрудником с ролью и медицинским допуском. Каждый вход и действие — в аудите
  * с автором «Технический доступ». Код хранится только хешем; ошибки ввода блокируют технический вход
@@ -263,8 +264,7 @@ function _mcRbAllPerms_() { var p = { all: true }; MC_RB_PERMS_.forEach(function
 /* ------------------------------------------------------------------ сотрудники (кэш состояния) ---- */
 var _MC_RB_EMP_ = null, _MC_RB_GR_ = null;
 function _mcRbIsCreatorRow_(row) {
-  if (String(row[3] || '').trim() === MC_RB_CREATOR_POS_) return true;
-  try { return String(row[8] || '').trim() === _hashPin_(MC_RB_DEV_PIN_DEFAULT_); } catch (e) { return false; }
+  return String(row[3] || '').trim() === MC_RB_CREATOR_POS_;
 }
 function _mcRbEmpState_() {
   if (_MC_RB_EMP_) return _MC_RB_EMP_;
@@ -402,10 +402,28 @@ function _mcRbAuditDenied_(s, what, need, objectId) {
 }
 
 /* ------------------------------------------------------------------ технический доступ и вход ---- */
-var MC_RB_DEV_PIN_DEFAULT_ = '2258';
 var MC_RB_DEV_PROP_ = 'MC_DEV_PIN_HASH';
-function _mcRbDevHash_() { var h = ''; try { h = String(PropertiesService.getScriptProperties().getProperty(MC_RB_DEV_PROP_) || ''); } catch (e) {} return h || _hashPin_(MC_RB_DEV_PIN_DEFAULT_); }
-function _mcRbIsDevPin_(pin) { try { return _hashPin_(String(pin)) === _mcRbDevHash_(); } catch (e) { return false; } }
+/** Возвращает только явно настроенный хеш. Отсутствие секрета означает запрет технического входа. */
+function _mcRbDevHash_() {
+  try { return String(PropertiesService.getScriptProperties().getProperty(MC_RB_DEV_PROP_) || '').trim(); }
+  catch (e) { return ''; }
+}
+function _mcRbIsDevPin_(pin) {
+  try { var stored = _mcRbDevHash_(); return !!stored && _hashPin_(String(pin)) === stored; }
+  catch (e) { return false; }
+}
+/** Однократная первичная настройка технического PIN из редактора Apps Script.
+ * Запускать вручную владельцу проекта. Функция недоступна через клиентский API.
+ * Если хеш уже задан, используйте mcRbSetDevPin() из авторизованной сессии.
+ */
+function mcRbBootstrapDevPin_(pin) {
+  var p = String(pin || '').trim();
+  if (!/^\d{6}$/.test(p)) throw new Error('Первичный технический PIN должен содержать ровно 6 цифр.');
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(MC_RB_DEV_PROP_)) throw new Error('Технический PIN уже настроен; используйте штатную смену PIN.');
+  props.setProperty(MC_RB_DEV_PROP_, _hashPin_(p));
+  return 'Технический PIN настроен. Сохранён только хеш.';
+}
 /** Счётчики неудачных попыток: устройство (5 → 15 мин), технический вход (нарастающая блокировка), вся система (30 за 15 мин). */
 var MC_RB_LOCK_ = { device: 5, deviceMin: 15, tech: 5, techMin: [15, 60, 1440], global: 30, globalMin: 15 };
 function _mcRbCache_() { return CacheService.getScriptCache(); }

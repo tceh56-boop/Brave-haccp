@@ -1,3 +1,4 @@
+// Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович.
 /**
  * ЦЕХ Стандарт — единый шлюз приложения (MC Application API).
  * Файл сгенерирован (audit/gengate.js) и идёт ПОСЛЕДНИМ в проекте.
@@ -126,12 +127,21 @@ function mcGateSession_() { return _MC_GATE_SESSION; }
           return _mcRbDenyJson_('Технический вход не делает записи ХАССП (журналы, бракераж, приёмка, гашение ВСД, подписи) — войдите под своим ПИН-кодом.', 'TECH_NO_HACCP_RECORDS');
         }
         // ЦЕХ Стандарт: тариф подписки и состояние лицензии (технический доступ не ограничивается)
-        if (!dev && typeof _tsPlanGate_ === 'function') {
-          _MC_GATE_DEPTH++; var pg = ''; try { pg = _tsPlanGate_(name, need, !!MUT[name], args); } catch (e) { pg = ''; } finally { _MC_GATE_DEPTH--; }
+        if (!dev) {
+          if (typeof _tsPlanGate_ !== 'function') return _mcGateErr_('PLAN_CHECK_UNAVAILABLE', 'Проверка тарифа недоступна. Операция заблокирована до восстановления проверки.');
+          _MC_GATE_DEPTH++; var pg = null, planCheckFailed = false;
+          try { pg = _tsPlanGate_(name, need, !!MUT[name], args); }
+          catch (e) { planCheckFailed = true; }
+          finally { _MC_GATE_DEPTH--; }
+          if (planCheckFailed || typeof pg !== 'string') return _mcGateErr_('PLAN_CHECK_UNAVAILABLE', 'Не удалось подтвердить тариф. Операция заблокирована; повторите позже или обратитесь к администратору.');
           if (pg) return _mcGateErr_('PLAN_LIMIT', pg);
         }
         if (MUT[name] && need && need !== '*' && typeof _mcComplianceGate_ === 'function') {
-          _MC_GATE_DEPTH++; var cg = ''; try { cg = _mcComplianceGate_(name, session, need); } catch (e) { cg = ''; } finally { _MC_GATE_DEPTH--; }
+          _MC_GATE_DEPTH++; var cg = null, complianceCheckFailed = false;
+          try { cg = _mcComplianceGate_(name, session, need); }
+          catch (e) { complianceCheckFailed = true; }
+          finally { _MC_GATE_DEPTH--; }
+          if (complianceCheckFailed || typeof cg !== 'string') return _mcGateErr_('COMPLIANCE_CHECK_UNAVAILABLE', 'Проверка допуска недоступна. Записывающая операция заблокирована.');
           if (cg) return _mcGateErr_('MEDICAL_ADMISSION', cg);
         }
       }
