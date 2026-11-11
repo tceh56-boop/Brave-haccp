@@ -300,6 +300,10 @@ var TS_GATE_ = [
   { n: 'ttkProcSetStatus', need: 'ttk_edit', mut: true },
   { n: 'ttkProcAiSuggest', need: 'ttk_edit|haccp', mut: true },
   { n: 'ttkProcDictionarySave', need: 'ttk_approve|haccp_approve', mut: true },
+  // Мастер-промт 4.0, этап 3 — связь ТТК → ХАССП
+  { n: 'haccpLinkSync', need: 'haccp|haccp_approve|ppk_edit', mut: true },
+  { n: 'haccpLinkMap', need: 'haccp|haccp_view|haccp_approve|ppk_view|ppk_edit' },
+  { n: 'haccpHazardDecide', need: 'haccp_approve', mut: true },
   { n: 'v43GetDeviations', need: 'sanitation|checklists' },
   { n: 'tsBackgroundEnable', need: 'org_edit', mut: true },
   { n: 'tsLsNormsSync', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },

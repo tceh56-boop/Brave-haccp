@@ -981,6 +981,9 @@ tsContractSave;TS_Contracts.gs;интерфейс (сессия);да;documents;
 tsContractUpload;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
 tsExecStatus;TS_Execution.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
 tsBackgroundEnable;TS_Execution.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+haccpLinkSync;TS_HaccpLink.gs;интерфейс (сессия);да;haccp|haccp_approve|ppk_edit;сессия → право «haccp|haccp_approve|ppk_edit» → тариф → допуск → блокировка → аудит
+haccpLinkMap;TS_HaccpLink.gs;интерфейс (сессия);;haccp|haccp_view|haccp_approve|ppk_view|ppk_edit;сессия → право «haccp|haccp_view|haccp_approve|ppk_view|ppk_edit» → тариф
+haccpHazardDecide;TS_HaccpLink.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
 tsLsNormsSync;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp_approve;сессия → право «personnel|haccp_approve» → тариф → допуск → блокировка → аудит
 tsLsGetAll;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsLsGetDoc;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф

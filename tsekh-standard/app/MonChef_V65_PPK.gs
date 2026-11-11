@@ -196,6 +196,8 @@ function _v65Check_(ppkId) {
   D.processes.forEach(function (x) { var hz = D.hazards.filter(function (h) { return String(h.ProcessID) === String(x.ProcessID); });
     if (!hz.length) p.push('процесс «' + x.Name + '»: не проанализированы опасности'); else if (hz.some(function (h) { return !String(h.PreventiveMeasure || '').trim(); })) p.push('процесс «' + x.Name + '»: есть опасность без меры контроля'); });
   push('HAZARDS', 'Для каждого процесса есть опасности и меры контроля', p, D.processes.length ? 'REVIEW' : 'MISSING_EVIDENCE');
+  // 2а. Мастер-промт 4.0, этап 3: операции действующих ТТК связаны с анализом опасностей, значимые — под контролем
+  if (typeof _hzlGaps_ === 'function') { var tg = []; try { tg = _hzlGaps_(); } catch (e) { tg = ['связь ТТК → ХАССП не проверена: ' + e.message]; } push('TTK_HACCP', 'Операции действующих ТТК учтены в анализе опасностей', tg); }
   // 3. ККТ: предел, частота, ответственный, журнал
   // ККТ не требуются безусловно: если анализ опасностей документирован (по каждой опасности решено «значима/нет»,
   // у значимых есть мера управления и доказательство), отсутствие ККТ обосновано (ОППУ / программы предварительных условий).

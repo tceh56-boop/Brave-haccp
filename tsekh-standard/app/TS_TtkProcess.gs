@@ -167,12 +167,16 @@ function _ttkpAnalyze_(codes, opts) {
       nested: walk.nodes.map(function (n) { return n.d.code; }), cycles: walk.cycles });
   });
   var scope = {}; targets.forEach(function (d) { scope[d.code] = 1; });
+  // полный анализ: карты в архиве, удалённые из реестра и черновики выходят из модели (у черновика остаётся только DRAFT_ANALYSIS)
+  var statusOf = {}; reg.forEach(function (d) { statusOf[d.code] = d.status; });
+  var outOfModel = function (r) { return !codes && !scope[r.ttkId] && !(statusOf[r.ttkId] === 'DRAFT' && r.reviewStatus === 'DRAFT_ANALYSIS'); };
   // сверка с прежним результатом — по всей таблице одним проходом
   return _withLock_(function () {
     var diff = { added: [], removed: [], kept: 0 }, seen = {}, ins = [];
     var map = _ttkpTable_('TTK_PROCESS_MAP');
     map.rows.forEach(function (r) {
-      if (!scope[r.ttkId] || r.reviewStatus === 'SUPERSEDED') return;
+      if (r.reviewStatus === 'SUPERSEDED') return;
+      if (!scope[r.ttkId]) { if (outOfModel(r)) { map.set(r, { reviewStatus: 'SUPERSEDED' }, now); diff.removed.push(r.ttkId + ':' + r.processCode + ' (ТТК не действует)'); } return; }
       var w = want[r.rowKey];
       if (w) { seen[r.rowKey] = 1; diff.kept++;
         var keepDecision = r.reviewStatus === 'CONFIRMED' || r.reviewStatus === 'REJECTED';
@@ -185,7 +189,7 @@ function _ttkpAnalyze_(codes, opts) {
     if (ins.length) _ts2InsertMany_('TTK_PROCESS_MAP', ins);
     // замечания: новые открываются, исчезнувшие — RESOLVED
     var iss = _ttkpTable_('TTK_PROCESS_ISSUES'), seenI = {}, insI = [];
-    iss.rows.forEach(function (r) { if (!scope[r.ttkId]) return; if (wantIssues[r.issueKey]) { seenI[r.issueKey] = 1; if (r.status !== 'OPEN') iss.set(r, { status: 'OPEN', resolvedAt: '' }); }
+    iss.rows.forEach(function (r) { if (!scope[r.ttkId]) { if (!codes && r.status === 'OPEN' && statusOf[r.ttkId] !== 'DRAFT') iss.set(r, { status: 'RESOLVED', resolvedAt: now }); return; } if (wantIssues[r.issueKey]) { seenI[r.issueKey] = 1; if (r.status !== 'OPEN') iss.set(r, { status: 'OPEN', resolvedAt: '' }); }
       else if (r.status === 'OPEN') iss.set(r, { status: 'RESOLVED', resolvedAt: now }); });
     iss.flush();
     Object.keys(wantIssues).forEach(function (k) { if (seenI[k]) return; var w = wantIssues[k]; insI.push({ organizationId: w.organizationId, ttkId: w.ttkId, ttkVersion: w.ttkVersion, code: w.code,
@@ -232,7 +236,8 @@ function _ttkpProcessesOf_(ttkId) {
 }
 /** Активная производственная модель: процессы всех действующих ТТК (для ППК, этапы 3–4). */
 function _ttkpActiveModel_() {
-  var by = {}; _ts2Rows_('TTK_PROCESS_MAP').forEach(function (r) { if (['SUPERSEDED', 'REJECTED', 'DRAFT_ANALYSIS'].indexOf(r.reviewStatus) >= 0) return;
+  var act = {}; _ttkpRegistry_().forEach(function (d) { if (d.status === 'ACTIVE') act[d.code] = 1; });
+  var by = {}; _ts2Rows_('TTK_PROCESS_MAP').forEach(function (r) { if (['SUPERSEDED', 'REJECTED', 'DRAFT_ANALYSIS'].indexOf(r.reviewStatus) >= 0 || !act[r.ttkId]) return;
     var p = by[r.processCode] = by[r.processCode] || { processCode: r.processCode, processId: r.processId, ttk: {}, review: 0 }; p.ttk[r.ttkId] = 1; if (r.reviewStatus === 'REVIEW_REQUIRED') p.review++; });
   return Object.keys(by).map(function (k) { var p = by[k]; return { processCode: k, processId: p.processId, ttkCount: Object.keys(p.ttk).length, ttk: Object.keys(p.ttk), reviewRequired: p.review }; });
 }

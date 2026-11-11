@@ -85,6 +85,9 @@ t('Статус ТТК: черновик не входит в активную �
   C._ttkpAnalyze_(['D1']); assert(live().filter(x => x.ttkId === 'D1').every(x => x.reviewStatus === 'DRAFT_ANALYSIS'));
   const model = C._ttkpActiveModel_(); assert(!model.some(p => p.ttk.includes('D1')), 'черновик не в модели ППК');
   assert(model.some(p => p.processCode === 'STEW' && p.ttk.includes('A1')));
+  J(C.ttkProcSetStatus('tok', 'A1', 'ARCHIVED')); const ra = C._ttkpAnalyze_(null);
+  assert(ra.removed.some(x => /^A1:/.test(x)) && !live().some(x => x.ttkId === 'A1' && x.reviewStatus !== 'SUPERSEDED'), 'карта ушла в архив — её операции вышли из модели');
+  assert(!C._ttkpActiveModel_().some(p => p.ttk.includes('A1'))); assert(live().some(x => x.ttkId === 'D1' && x.reviewStatus === 'DRAFT_ANALYSIS'), 'анализ черновика сохранён');
 });
 t('Неоднозначность → REVIEW_REQUIRED; справочник расширяется предприятием; неверное правило отклоняется', () => {
   reset([dish('M1', 'Овощи', 'Обжарить или запечь до готовности 10 мин. Подают горячим.')], []);

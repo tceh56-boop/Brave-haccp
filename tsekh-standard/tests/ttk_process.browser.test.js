@@ -13,6 +13,8 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
       ts2Wizard: () => JSON.stringify({ success: true, data: st }), v43GetDashboard: () => ({ openTasks: 1 }), v43GetMyTasks: () => [], v43GetLinks: () => [{ linkId: 'L1', text: 'Дезинфекция столов', disinfectantId: 'D1', regimeId: 'RG-1', method: 'PRODUCT_NAME', confidence: 0.82, status: 'REVIEW' }], v43GetDeviations: () => [{ alertId: 'A1', at: '2026-11-11T10:00', message: 'Концентрация 0.3', status: 'OPEN' }, { alertId: 'A2', at: '2026-11-11T11:00', message: 'x', status: 'VERIFY_REQUIRED' }], v43ReviewLink: () => ({ ok: true }), v43ResolveDeviation: () => ({ ok: true }), v43VerifyDeviation: () => ({ ok: true }), ts2WizardSave: () => JSON.stringify({ success: true, data: st }), ts2Sensors: () => JSON.stringify({ success: true, data: { url: '', devices: [{ deviceId: 'SNS-1', object: 'Холодильник', objectId: 'OBJ-1', status: 'ACTIVE', inputMode: 'MANUAL', lastValue: 4.2, silentMin: 2, rssi: -60, offset: 0, calibratedAt: '', calDueDays: 90 }], calibrations: [] } }),
       ttkProcOverview: () => JSON.stringify({ success: true, data: { ttk: { ACTIVE: 3, DRAFT: 1 }, analyzed: 3, model: [{ processCode: 'FRY', name: 'Жарка', ttkCount: 2, reviewRequired: 1 }], review: [{ id: 'TPM-000001', ttkId: 'M1', process: 'Жарка', text: 'Обжарить или запечь', parent: '', confidence: 0.6, method: 'DICTIONARY', note: '' }],
         issues: [{ ttkId: 'T2', code: 'NO_COOLING_STAGE', message: 'После тепловой обработки продукт хранится, но этап охлаждения не описан' }], issuesTotal: 1, dictionary: [], dictVersion: 'x' } }),
+      haccpLinkMap: () => JSON.stringify({ success: true, data: { counts: { NEEDS_DECISION: 1 }, gaps: ['значимая опасность «x»: нет ККТ/ОППУ и доказательства'], rows: [{ processName: 'Жарка', ttkCount: 2, hazard: 'Выживание патогенов', controlMeasure: '', journalId: 'J-KKT-THERMAL', status: 'NEEDS_DECISION', v30HazardId: 'HZ-1', controlType: '' }] } }),
+      haccpHazardDecide: () => JSON.stringify({ success: true, data: { needDecision: 0 } }), haccpLinkSync: () => JSON.stringify({ success: true, data: { processesAdded: 1, hazardsProposed: 2, needDecision: 2 } }),
       ttkProcAnalyze: () => JSON.stringify({ success: true, data: { analyzed: 3, added: ['a'], removed: [], openIssues: 1 } }), ttkProcReview: () => JSON.stringify({ success: true, data: { status: 'CONFIRMED' } }),
       ttkProcAiSuggest: () => JSON.stringify({ success: true, data: { suggested: 'FRY', note: 'Предложение не утверждено' } }),
       ts2SensorCalibrate: () => JSON.stringify({ success: true, data: { result: 'OK', offsetAfter: 0.3, difference: 0.3 } }), ts2ObjectInputMode: () => JSON.stringify({ success: true, data: { inputMode: 'SENSOR' } }),
@@ -34,7 +36,12 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
   await p.click('button[data-mv="ai"][data-a="TPM-000001"]'); await p.waitForTimeout(300); assert(/ttkProcAiSuggest/.test(await calls()), 'подсказка AI');
   await p.click('button[data-mv="tab"][data-a="issues"]'); await p.waitForTimeout(200);
   txt = await p.textContent('#vbody'); assert(/нет охлаждения/.test(txt), 'замечания показаны');
+  await p.evaluate(() => { window.prompt = (q) => /Обоснование|Доказательство/.test(q) ? 'журнал' : 'ОППУ термощуп'; });
+  await p.click('button[data-mv="tab"][data-a="haccp"]'); await p.waitForTimeout(400);
+  txt = await p.textContent('#vbody'); assert(/Выживание патогенов/.test(txt) && /Пробелы для ППК/.test(txt), 'опасности ХАССП показаны');
+  await p.click('button[data-mv="hzYes"][data-a="HZ-1"]'); await p.waitForTimeout(500); assert(/haccpHazardDecide:\["x","HZ-1","да","ОППУ термощуп","журнал"\]/.test(await calls()), 'решение «значима» с мерой и доказательством');
+  await p.click('button[data-mv="hzSync"]'); await p.waitForTimeout(400); assert(/haccpLinkSync/.test(await calls()), 'связать с ТТК');
   await p.click('button[data-mv="run"]'); await p.waitForTimeout(300); assert(/ttkProcAnalyze:\["x",""\]/.test(await calls()), 'анализ всех ТТК');
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
-  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания');
+  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП');
 })().catch(e => { console.error(e); process.exit(1); });
