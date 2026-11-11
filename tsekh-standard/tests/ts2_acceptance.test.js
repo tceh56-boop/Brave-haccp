@@ -166,6 +166,27 @@ t('2.0: BLOCKER → предложение → согласование → back
   C._ts2Rollback_(p.changeProposalId); assert.strictEqual(cell(), '', 'откат вернул прежнее значение');
   assert.strictEqual(C._ts2VerifyAudit_().broken.length, 0);
 });
+t('2.1: охлаждение и разогрев — отдельные журналы; замер ККТ сразу, без дубля при закрытии; ТТК без тепловой ККТ — без ложной задачи', () => {
+  const pid = 'P-10', ok = JSON.stringify({ success: true, data: {} });
+  G.__ccp = { items: [{ controlId: 'C1', point: 'Тепловая обработка', status: 'OK', value: 80, unit: '°C' }, { controlId: 'C2', point: 'Шоковое охлаждение', status: 'OK', value: 3, unit: '°C' }] };
+  C._ts2OnGateCall_('mcRecordProductionCcp', [JSON.stringify({ productionId: pid, controlId: 'C2', value: 3 })], JSON.stringify({ success: true, data: { state: G.__ccp } }));
+  const cool = () => rows('AUTO_RECORDS').filter(r => r.productionId === pid && r.journalCode === 'J-COOLING');
+  assert.strictEqual(cool().length, 1); assert.strictEqual(Number(cool()[0].value), 3);
+  C._ts2OnGateCall_('completeProduction', [pid, 5], ok);
+  assert.strictEqual(cool().length, 1, 'при закрытии заказа замер охлаждения не дублируется');
+  assert(rows('AUTO_RECORDS').some(r => r.productionId === pid && r.journalCode === 'J-KKT-THERMAL' && Number(r.value) === 80));
+  assert(!rows('AUTO_RECORDS').some(r => r.productionId === pid && r.journalCode === 'J-REHEAT'), 'разогрева в ТТК нет — записи нет');
+  G.__ccp = { items: [] }; C._ts2OnGateCall_('completeProduction', ['P-11', 5], ok);
+  assert(!rows('AUTO_RECORDS').some(r => r.productionId === 'P-11' && r.recordType === 'HACCP_FACT'), 'ТТК без тепловой ККТ (салат) — нет ложного ожидания замера');
+  assert(rows('AUTO_RECORDS').some(r => r.productionId === 'P-11' && r.journalCode === 'J-RELEASE'), 'журнал выпуска пишется всегда');
+});
+t('2.1: размораживание — запись с фактической t°; отклонение блокирует и уведомляет', () => {
+  C._ts2OnGateCall_('mcDefrostFinish', [JSON.stringify({ batchId: 'B-7', temperature: 2 })], JSON.stringify({ success: true, data: { batchId: 'B-7', blocked: false } }));
+  const r = rows('AUTO_RECORDS').find(x => x.batchId === 'B-7' && x.journalCode === 'J-DEFROST'); assert(r && Number(r.value) === 2 && r.result === 'PASS');
+  C._ts2OnGateCall_('mcDefrostFinish', [JSON.stringify({ batchId: 'B-8', temperature: 9 })], JSON.stringify({ success: true, data: { batchId: 'B-8', blocked: true, reasons: ['t° в толще 9 °C выше нормы'] } }));
+  assert.strictEqual(rows('AUTO_RECORDS').find(x => x.batchId === 'B-8' && x.journalCode === 'J-DEFROST').result, 'FAIL');
+  assert(rows('AUTO_RECORDS').some(x => x.recordType === 'DEVIATION' && /B-8/.test(x.value)));
+});
 t('2.1: 25 системных документов формируются из данных; без изменений — та же версия; изменение утверждённого → новая версия и повторное утверждение', () => {
   session = { name: 'Сидорова', role: 'Ответственный за ХАССП' };
   const all = rows('SYSTEM_DOCUMENTS'); assert.strictEqual(all.length, 25);

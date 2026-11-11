@@ -177,6 +177,7 @@ function _ts2Emit_(eventType, ctx) {
   ctx = ctx || {}; var out = [], rules = _ts2Rows_('EVENT_RULES', function (r) { return r.eventType === eventType && String(r.active) === 'true'; });
   rules.forEach(function (rule) {
     var subject = ctx.productionId || ctx.batchId || ctx.sourceId || '';
+    if (ctx.noCcp && rule.createsRecordType === 'HACCP_FACT') return;   // в ТТК нет такой ККТ — нечего ждать
     var meas = (ctx.measurements || []).filter(function (m) { return rule.createsRecordType === 'HACCP_FACT'; });
     var base = { eventType: eventType, sourceType: ctx.sourceType || eventType, sourceId: ctx.sourceId || subject, recordType: rule.createsRecordType, journalCode: rule.journalCode,
       productionId: ctx.productionId || '', batchId: ctx.batchId || '', ttkId: ctx.ttkId || rule.sourceTtkId || '', unit: '', confidence: 1, operationId: ctx.operationId || '',
@@ -187,8 +188,8 @@ function _ts2Emit_(eventType, ctx) {
         var rec = Object.assign({}, base, { kktId: m.kktId || '', value: m.value, unit: m.unit || '', measurementMode: m.sensor ? 'SENSOR' : 'DERIVED', result: m.ok === false ? 'FAIL' : 'PASS',
           idempotencyKey: key(m.kktId), confirmedByEmployee: m.who || '', confirmedAt: m.at || '' });
         rec.sourceType = m.factId ? 'PRODUCTION_EVENT+LEGACY_FACT:' + m.factId : base.sourceType;
-        out.push(_ts2AutoRecord_(rec));
-        if (m.ok === false) _ts2Exception_('KKT_FAIL', 'ККТ вне предела: ' + (m.point || m.kktId) + ' = ' + m.value + ' ' + (m.unit || ''), subject);
+        var ar = _ts2AutoRecord_(rec); out.push(ar);
+        if (m.ok === false && !ar.duplicate) _ts2Exception_('KKT_FAIL', 'ККТ вне предела: ' + (m.point || m.kktId) + ' = ' + m.value + ' ' + (m.unit || ''), subject);
       });
       else if (rule.measurementMode === 'SENSOR_OR_DERIVED_OR_PENDING' || ctx.measurementRequired) {
         // §7.3: нет замера — не придумываем число; создаём ожидание ручного замера
@@ -219,6 +220,14 @@ function _ts2Exception_(type, text, objectId) {
   return r;
 }
 
+/** Вид ККТ по названию точки: тепловая обработка / охлаждение / разогрев. */
+function _ts2CcpKind_(point) { var p = String(point || '').toLowerCase(); return /охлажд/.test(p) ? 'COOLING' : /разогр|регенер/.test(p) ? 'REHEAT' : 'THERMAL'; }
+function _ts2CcpGroups_(items) {
+  var g = { THERMAL: { items: [], meas: [] }, COOLING: { items: [], meas: [] }, REHEAT: { items: [], meas: [] } };
+  items.forEach(function (x) { var k = _ts2CcpKind_(x.point); g[k].items.push(x);
+    if (x.status === 'OK' || x.status === 'DEVIATION') g[k].meas.push({ kktId: x.controlId, point: x.point, value: x.value, unit: x.unit, ok: x.status === 'OK', factId: x.factId, who: x.who, at: x.at }); });
+  return g;
+}
 /** Хук шлюза: после успешной записи из интерфейса создаёт события. Ошибка здесь никогда не ломает исходную операцию. */
 function _ts2OnGateCall_(name, args, res) {
   try {
@@ -228,12 +237,27 @@ function _ts2OnGateCall_(name, args, res) {
     if (name === 'completeProduction' || name === 'completeV27Production') {
       var pid = String(a[0]), code = '', ccp = { items: [] };
       try { var f = _findProduction_(_productionSheet_(), pid); if (f) { code = String(f.data[PROD_COL_.code]); ccp = _tccpState_(code, pid); } } catch (e) {}
-      var meas = (ccp.items || []).filter(function (x) { return x.status === 'OK' || x.status === 'DEVIATION'; }).map(function (x) { return { kktId: x.controlId, point: x.point, value: x.value, unit: x.unit, ok: x.status === 'OK', factId: x.factId, who: x.who, at: x.at }; });
-      _ts2Emit_('PRODUCTION_RELEASE', { sourceType: 'PRODUCTION_EVENT', sourceId: pid, productionId: pid, batchId: d.batchId || d.batch || '', ttkId: code, measurements: meas, title: code });
+      var by = _ts2CcpGroups_(ccp.items || []), base = { sourceType: 'PRODUCTION_EVENT', sourceId: pid, productionId: pid, batchId: d.batchId || d.batch || '', ttkId: code, title: code };
+      // выпуск: журналы выпуска и маркировки всегда; ККТ тепловой обработки — только если она есть в ТТК
+      _ts2Emit_('PRODUCTION_RELEASE', Object.assign({}, base, { measurements: by.THERMAL.meas, noCcp: !by.THERMAL.items.length }));
+      if (by.COOLING.items.length) _ts2Emit_('COOLING_FINISHED', Object.assign({}, base, { measurements: by.COOLING.meas }));
+      if (by.REHEAT.items.length) _ts2Emit_('REHEAT_FINISHED', Object.assign({}, base, { measurements: by.REHEAT.meas }));
+    } else if (name === 'mcRecordProductionCcp') {
+      // замер охлаждения / разогрева записывается сразу, не дожидаясь закрытия заказа (повтор при закрытии не дублируется)
+      var q = _ts2Json_(a[0], {}), st = d.state || { items: [] }, it = (st.items || []).filter(function (x) { return String(x.controlId) === String(q.controlId); })[0];
+      var kind = it ? _ts2CcpKind_(it.point) : '';
+      if (it && (kind === 'COOLING' || kind === 'REHEAT') && (it.status === 'OK' || it.status === 'DEVIATION'))
+        _ts2Emit_(kind === 'COOLING' ? 'COOLING_FINISHED' : 'REHEAT_FINISHED', { sourceType: 'PRODUCTION_EVENT', sourceId: String(q.productionId), productionId: String(q.productionId), measurements: _ts2CcpGroups_([it])[kind].meas });
     } else if (name === 'createBatchFromReceiving' || name === 'mcRecordIncomingControl') {
       var j = _ts2Json_(a[0], {}); _ts2Emit_('RECEIVING_CONFIRMED', { sourceType: 'RECEIVING', sourceId: d.batchId || j.batchId || (d.batches && d.batches[0] && d.batches[0].batchId) || '', batchId: d.batchId || j.batchId || '' });
     } else if (name === 'openBatchContainer') { _ts2Emit_('BATCH_OPENED', { sourceType: 'BATCH', sourceId: String(a[0]) + '|' + _ts2Iso_().slice(0, 16), batchId: String(a[0]) }); }
-    else if (name === 'mcDefrostFinish') { _ts2Emit_('DEFROST_FINISHED', { sourceType: 'DEFROST', sourceId: String(_ts2Json_(a[0], {}).id || a[0]), measurementRequired: true }); }
+    else if (name === 'mcDefrostFinish') {
+      var df = _ts2Json_(a[0], {}), tv = _ts2Num_(df.temperature);
+      _ts2Emit_('DEFROST_FINISHED', { sourceType: 'DEFROST', sourceId: String(d.batchId || df.batchId), batchId: String(d.batchId || df.batchId), measurementRequired: true,
+        measurements: tv === null ? [] : [{ kktId: 'DEFROST', point: 'Размораживание: t° в толще', value: tv, unit: '°C', ok: !d.blocked, who: '', at: _ts2Iso_() }] });
+      if (d.blocked) _ts2Exception_('DEFROST_FAIL', 'Размораживание партии ' + (d.batchId || df.batchId) + ': ' + (d.reasons || []).join('; '), String(d.batchId || df.batchId));
+    }
+    else if (name === 'mcDefrostMeasure') { if (d.result === 'DEVIATION') { var dm = _ts2Json_(a[0], {}); _ts2Exception_('DEFROST_FAIL', 'Размораживание партии ' + dm.batchId + ': t° в толще ' + dm.temperature + ' °C выше нормы — партия заблокирована до решения', String(dm.batchId)); } }
     else if (name === 'issueV28Banquet') { _ts2Emit_('RELEASE_TO_HALL', { sourceType: 'BANQUET_ISSUE', sourceId: String(a[0]) + '|' + _ts2Iso_().slice(0, 13), title: 'банкет ' + a[0] }); }
     else if (name === 'mcTakeDailySample') { _ts2Emit_('DAILY_SAMPLE_TAKEN', { sourceType: 'DAILY_SAMPLE', sourceId: String(d.id || d.sampleId || _ts2Json_(a[0], {}).batchId || ''), batchId: String(_ts2Json_(a[0], {}).batchId || '') }); }
     else if (name === 'saveChecklistExecution') { _ts2Emit_('SANITATION_CONFIRMED', { sourceType: 'CHECKLIST', sourceId: String(d.id || d.executionId || _ts2Iso_()) }); }

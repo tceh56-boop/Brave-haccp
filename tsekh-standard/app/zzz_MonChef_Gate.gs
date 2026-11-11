@@ -47,7 +47,7 @@ var MC_GATE_ENTRY_ = ["doGet"];
   });
 })();
 // функции, после которых создаются события режима «Готов к работе» (TS2_Ready.gs)
-var TS2_EVENT_FNS_ = { completeProduction: 1, completeV27Production: 1, createBatchFromReceiving: 1, mcRecordIncomingControl: 1, openBatchContainer: 1, issueV28Banquet: 1, mcTakeDailySample: 1, saveChecklistExecution: 1 };
+var TS2_EVENT_FNS_ = { completeProduction: 1, completeV27Production: 1, createBatchFromReceiving: 1, mcRecordIncomingControl: 1, openBatchContainer: 1, issueV28Banquet: 1, mcTakeDailySample: 1, saveChecklistExecution: 1, mcRecordProductionCcp: 1, mcDefrostFinish: 1, mcDefrostMeasure: 1 };
 var MC_GATE_DEDUP_SEC_ = 15;
 // Нагрузочный сценарий: вызов может ждать общую блокировку дольше 15 с. Метка «выполняется» живёт до предела
 // выполнения Apps Script (6 мин) — повторное нажатие во время ожидания не запустит ту же операцию второй раз.
