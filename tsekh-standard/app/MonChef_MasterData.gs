@@ -9,14 +9,21 @@
  * (реквизиты подтверждает человек); партия от заблокированного поставщика уходит в карантин.
  */
 var MC_SUP_SHEET_ = 'Поставщики';
-var MC_SUP_HEAD_ = ['SupplierID', 'Название', 'ИНН', 'Адрес', 'Контакты', 'Категории', 'Документы', 'Статус', 'Комментарий', 'Создан', 'Обновлено', 'Кто'];
+var MC_SUP_HEAD_ = ['SupplierID', 'Название', 'ИНН', 'Адрес', 'Контакты', 'Категории', 'Документы', 'Статус', 'Комментарий', 'Создан', 'Обновлено', 'Кто',
+  'Контактное лицо', 'Телефон', 'E-mail для заявок', 'Дни поставки'];   // карточка для заявок (колонки 13–16 дописываются в старый лист)
 var MC_BATCH_ID_COLS_ = { product: 18, supplier: 19 };   // номера колонок (1-based) в «Склад_Партии»
 
 function _mdNorm_(x) { return String(x == null ? '' : x).toLowerCase().replace(/ё/g, 'е').replace(/[«»"']/g, '').replace(/\s+/g, ' ').trim(); }
-function _mdSupSheet_() { return _bcSheet_(MC_SUP_SHEET_, MC_SUP_HEAD_); }
+function _mdSupSheet_() {
+  var sh = _bcSheet_(MC_SUP_SHEET_, MC_SUP_HEAD_);
+  try { var w = MC_SUP_HEAD_.length, h = sh.getRange(1, 1, 1, w).getValues()[0]; if (!h[w - 1]) sh.getRange(1, 1, 1, w).setValues([MC_SUP_HEAD_]).setFontWeight('bold'); } catch (e) {}
+  return sh;
+}
+function _mdEmailOk_(e) { return /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(String(e || '').trim()); }
 function _mdSuppliers_() {
-  var v = _mdSupSheet_().getDataRange().getValues(), out = [];
-  for (var i = 1; i < v.length; i++) if (v[i][0]) out.push({ row: i + 1, id: String(v[i][0]), name: v[i][1], inn: String(v[i][2] || ''), address: v[i][3], contacts: v[i][4], categories: v[i][5], documents: v[i][6], status: String(v[i][7] || 'REVIEW'), note: v[i][8] });
+  var sh = _mdSupSheet_(), v = sh.getRange(1, 1, Math.max(1, sh.getLastRow()), MC_SUP_HEAD_.length).getValues(), out = [];
+  for (var i = 1; i < v.length; i++) if (v[i][0]) out.push({ row: i + 1, id: String(v[i][0]), name: v[i][1], inn: String(v[i][2] || ''), address: v[i][3], contacts: v[i][4], categories: v[i][5], documents: v[i][6], status: String(v[i][7] || 'REVIEW'), note: v[i][8],
+    contactPerson: String(v[i][12] || ''), phone: String(v[i][13] || ''), email: String(v[i][14] || '').trim(), deliveryDays: String(v[i][15] || '') });
   return out;
 }
 function _mdSupplierId_(name, inn) { var key = inn ? 'INN' + String(inn).replace(/\D/g, '') : _mdNorm_(name); return 'SUP-' + _v53Hash_(key); }
@@ -27,7 +34,7 @@ function _mdResolveSupplier_(ref, autoCreate, who) {
   var hit = list.filter(function (s) { return s.id === r || (s.inn && s.inn === r.replace(/\D/g, '')) || _mdNorm_(s.name) === k; })[0];
   if (hit || !autoCreate) return hit || null;
   var id = _mdSupplierId_(r.replace(/\s*\(.*\)\s*$/, ''), '');
-  _mdSupSheet_().appendRow([id, r.replace(/\s*\(.*\)\s*$/, ''), '', '', '', '', '', 'REVIEW', 'заведён автоматически из прихода/заказа — подтвердите реквизиты', new Date(), new Date(), who || 'SYSTEM']);
+  _mdSupSheet_().appendRow([id, r.replace(/\s*\(.*\)\s*$/, ''), '', '', '', '', '', 'REVIEW', 'заведён автоматически из прихода/заказа — подтвердите реквизиты', new Date(), new Date(), who || 'SYSTEM', '', '', '', '']);
   return { id: id, name: r, status: 'REVIEW' };
 }
 /** ProductID по названию: из реестра «Продукты_ID_V53», при отсутствии — регистрируется (тот же стабильный хеш). */
@@ -64,16 +71,19 @@ function mcSaveSupplier(json, token) {
     if (!String(d.name || '').trim()) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'Укажите название поставщика', op.id); }
     var inn = String(d.inn || '').replace(/\D/g, '');
     if (inn && inn.length !== 10 && inn.length !== 12) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'ИНН — 10 или 12 цифр', op.id); }
+    var email = String(d.email || '').trim();
+    if (email && !_mdEmailOk_(email)) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'E-mail для заявок указан с ошибкой: ' + email, op.id); }
     var st = d.status === 'BLOCKED' ? 'BLOCKED' : (inn ? (d.status === 'REVIEW' ? 'REVIEW' : 'ACTIVE') : 'REVIEW');
     return _withLock_(function () {
       var list = _mdSuppliers_(), cur = d.id ? list.filter(function (s) { return s.id === d.id; })[0] : null;
       var dupInn = inn && list.filter(function (s) { return s.inn === inn && s.id !== d.id; })[0];
       if (dupInn) { _endOp_(op, 'FAILED'); return _fail_('DUPLICATE', 'Поставщик с ИНН ' + inn + ' уже есть: ' + dupInn.name, op.id); }
       var id = cur ? cur.id : _mdSupplierId_(d.name, inn), who = (op.session && op.session.name) || '';
-      var row = [id, d.name, inn, d.address || '', d.contacts || '', d.categories || '', d.documents || '', st, d.note || '', cur ? '' : new Date(), new Date(), who];
+      var row = [id, d.name, inn, d.address || '', d.contacts || '', d.categories || '', d.documents || '', st, d.note || '', cur ? '' : new Date(), new Date(), who,
+        String(d.contactPerson || '').trim(), String(d.phone || '').trim(), email, String(d.deliveryDays || '').trim()];
       var sh = _mdSupSheet_();
       if (cur) { row[9] = sh.getRange(cur.row, 10).getValue(); sh.getRange(cur.row, 1, 1, row.length).setValues([row]); } else sh.appendRow(row);
-      _audit_(op, 'SUPPLIER_SAVE', 'Поставщик', id, cur ? [cur.name, cur.inn, cur.status] : null, [d.name, inn, st]);
+      _audit_(op, 'SUPPLIER_SAVE', 'Поставщик', id, cur ? [cur.name, cur.inn, cur.status, cur.contactPerson, cur.email] : null, [d.name, inn, st, row[12], email]);
       _endOp_(op, 'COMPLETED');
       return _ok_({ id: id, status: st, note: st === 'REVIEW' ? 'Без ИНН поставщик остаётся на проверке' : '' }, op.id);
     });

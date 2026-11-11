@@ -20,9 +20,9 @@ textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:
 .msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
 .empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
 .tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}.tbl th{font-size:12px;color:var(--mut)}
-</style><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"><style id="tsTheme">/* ЦЕХ Стандарт — фирменное оформление */body{font-family:Roboto,-apple-system,"Segoe UI",Arial,sans-serif}h1,h2,h3,.h1,.title{font-family:Montserrat,Roboto,Arial,sans-serif;letter-spacing:-.01em}.btn.pri,button.pri{background:linear-gradient(135deg,#d4af37,#a87b22)!important;border-color:#a87b22!important;color:#fff!important}</style></head><body><div class="wrap">
+.ov{position:fixed;inset:0;background:rgba(20,15,10,.45);display:flex;align-items:flex-start;justify-content:center;padding:20px 10px;overflow:auto;z-index:9}.ov .card{max-width:760px;width:100%}.lt{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff;margin:10px 0;max-height:52vh;overflow:auto}.warn{background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:8px 12px;font-size:13px;margin:8px 0}</style><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"><style id="tsTheme">/* ЦЕХ Стандарт — фирменное оформление */body{font-family:Roboto,-apple-system,"Segoe UI",Arial,sans-serif}h1,h2,h3,.h1,.title{font-family:Montserrat,Roboto,Arial,sans-serif;letter-spacing:-.01em}.btn.pri,button.pri{background:linear-gradient(135deg,#d4af37,#a87b22)!important;border-color:#a87b22!important;color:#fff!important}</style></head><body><div class="wrap">
 <h1>Заказы поставщикам</h1>
-<div class="sub">Заказ → отправлен → подтверждён → приёмка на склад партиями в карантин.</div>
+<div class="sub">Заявка → письмо поставщику → подтверждён → приёмка на склад партиями в карантин. «По поставщикам» — система соберёт заявки по поставщикам и отправит каждому письмо.</div>
 <div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
 </div>
 <script>
@@ -47,8 +47,9 @@ function setTab(t) { TAB = t; draw(); }
 var LINES = [];
 function draw() {
   var open = O.filter(function (o) { return o.status !== 'received' && o.status !== 'cancelled'; });
-  tabs([['open', 'В работе', open.length], ['new', '+ Новый заказ', ''], ['all', 'Все', O.length]], TAB, 'setTab');
+  tabs([['open', 'В работе', open.length], ['build', 'По поставщикам', ''], ['new', '+ Новый заказ', ''], ['all', 'Все', O.length]], TAB, 'setTab');
   var h = '';
+  if (TAB === 'build') { document.getElementById('body').innerHTML = '<div class="empty">Загрузка…</div>'; buildLoad(); return; }
   if (TAB === 'new') { if (!LINES.length) LINES = [{ name: '', qty: '', unit: 'кг', price: '' }];
     h = '<div class="card"><div class="grid"><div style="grid-column:span 2"><label>Поставщик *</label><input id="oSup" list="supL"><datalist id="supL">' + SUP.map(function (s) { return '<option value="' + esc(s.name) + '">'; }).join('') + '</datalist></div>' + fld('oDue', 'Срок поставки', '', 'date') + fld('oCom', 'Комментарий', '', 'text', ' style="grid-column:span 3"') + '</div>' +
       '<label style="margin-top:10px">Позиции</label><div id="lines"></div><div class="acts"><button class="btn" onclick="LINES.push({name:\'\',qty:\'\',unit:\'кг\',price:\'\'});drawLines()">+ Позиция</button><button class="btn pri" onclick="create(this)">Создать заказ</button></div><div class="note">Заказ у заблокированного поставщика не создаётся. Закупка под конкретный банкет — в карточке банкета.</div></div>'; }
@@ -68,7 +69,7 @@ function toggle(id) {
   var box = document.getElementById('od_' + id); if (box.innerHTML) { box.innerHTML = ''; return; }
   var o = O.filter(function (x) { return x.id === id; })[0], h = '<div style="margin-top:10px">' + (o.items || []).map(function (it, i) { return '<div class="grid" style="grid-template-columns:3fr 1fr 1fr 1fr 1.4fr;margin-top:6px;align-items:center"><div>' + esc(it.name) + '<div class="meta">заказано ' + esc(it.qty) + ' ' + esc(it.unit) + '</div></div>' +
     (o.status === 'cancelled' || o.status === 'received' ? '' : '<input id="rq_' + i + '" type="number" step="any" value="' + esc(it.qty) + '" title="Принято"><input id="ru_' + i + '" value="' + esc(it.unit || 'кг') + '"><input id="rp_' + i + '" type="number" step="any" value="' + esc(it.price || '') + '" placeholder="Цена"><input id="re_' + i + '" type="date" title="Срок годности">') + '</div>'; }).join('');
-  if (o.status !== 'cancelled' && o.status !== 'received') h += '<div class="acts">' + (o.status === 'draft' ? '<button class="btn" onclick="act(\'sendSupplierOrder\',\'' + esc(id) + '\')">Отправлен поставщику</button>' : '') + (o.status === 'sent' ? '<button class="btn" onclick="act(\'confirmSupplierOrder\',\'' + esc(id) + '\')">Поставщик подтвердил</button>' : '') +
+  if (o.status !== 'cancelled' && o.status !== 'received') h += '<div class="acts">' + (o.status === 'draft' || o.status === 'sent' ? '<button class="btn pri" onclick="letter(\'' + esc(id) + '\')">✉ ' + (o.status === 'sent' ? 'Отправить письмо ещё раз' : 'Письмо поставщику') + '</button>' : '') + (o.status === 'draft' ? '<button class="btn" onclick="act(\'sendSupplierOrder\',\'' + esc(id) + '\')">Отправлен без письма (по телефону)</button>' : '') + (o.status === 'sent' ? '<button class="btn" onclick="act(\'confirmSupplierOrder\',\'' + esc(id) + '\')">Поставщик подтвердил</button>' : '') +
     '<button class="btn pri" onclick="receive(\'' + esc(id) + '\',this)">Принять на склад</button>' + (EDITABLE[o.status] ? '<button class="btn" onclick="editItems(\'' + esc(id) + '\')">✎ Изменить позиции</button>' : '') +
     '<button class="btn bad" onclick="act(\'cancelSupplierOrder\',\'' + esc(id) + '\')">Отменить</button>' + (o.status !== 'partial' ? '<button class="btn bad" onclick="delOrder(\'' + esc(id) + '\',this)">🗑 Удалить</button>' : '') + '</div><div class="note">Принятые товары приходуются партиями в карантин — дальше входной контроль (Склад → «Контроль партий»).</div>';
   else if (o.status === 'cancelled') h += '<div class="acts"><button class="btn bad" onclick="delOrder(\'' + esc(id) + '\',this)">🗑 Удалить заказ</button></div>';
@@ -106,6 +107,72 @@ function receive(id, btn) {
   if (!confirm('Принять товары и оприходовать на склад?')) return;
   btn.disabled = true;
   call('receiveSupplierOrder', [id, JSON.stringify(items), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не принято: ' + errText(r)); msg('Заказ принят: партии на складе ждут входного контроля', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+/* ---------- заявки по поставщикам ---------- */
+var BD = null, BUILT = [];
+function buildLoad() {
+  if (BD) return buildDraw();
+  call('tsOrderDraft', [TOKEN]).then(function (r) { if (!okOf(r)) { document.getElementById('body').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } BD = dataOf(r); buildDraw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; });
+}
+function supOpts(cur) {
+  var known = BD.suppliers.some(function (s) { return s.name === cur; });
+  return '<option value="">— поставщик —</option>' + (cur && !known ? '<option selected>' + esc(cur) + '</option>' : '') + BD.suppliers.map(function (s) { return '<option' + (s.name === cur ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('');
+}
+function buildDraw() {
+  var L = BD.lines, groups = {};
+  L.forEach(function (l) { if (l.name && l.supplier && parseFloat(l.qty) > 0) groups[l.supplier] = (groups[l.supplier] || 0) + 1; });
+  var gk = Object.keys(groups), noEmail = gk.filter(function (g) { var s = BD.suppliers.filter(function (x) { return x.name === g; })[0]; return !s || !s.email; });
+  var h = '<div class="card"><div class="nm">Заявки по поставщикам</div><div class="meta">Система предложила товары ниже минимального остатка и последнего поставщика по приходу. Исправьте количество и поставщика, добавьте свои строки — по каждому поставщику будет своя заявка.</div>' +
+    (L.length || BUILT.length ? '' : '<div class="warn">Товаров ниже минимума нет. Добавьте строки вручную.</div>') +
+    L.map(function (l, i) { return '<div class="grid" style="grid-template-columns:2.4fr .9fr .8fr 2fr 34px;margin-top:6px;align-items:center"><div><input value="' + esc(l.name) + '" placeholder="Товар" onchange="BD.lines[' + i + '].name=this.value">' + (l.source ? '<div class="meta">остаток ' + esc(l.stock) + ' ' + esc(l.unit) + ', минимум ' + esc(l.min) + '</div>' : '') + '</div>' +
+      '<input type="number" step="any" value="' + esc(l.qty) + '" placeholder="Кол-во" onchange="BD.lines[' + i + '].qty=this.value">' +
+      '<select onchange="BD.lines[' + i + '].unit=this.value">' + ['кг', 'г', 'л', 'мл', 'шт'].map(function (u) { return '<option' + (u === l.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select>' +
+      '<select onchange="BD.lines[' + i + '].supplier=this.value;buildDraw()">' + supOpts(l.supplier) + '</select><button class="btn" onclick="BD.lines.splice(' + i + ',1);buildDraw()">×</button></div>'; }).join('') +
+    '<div class="acts"><button class="btn" onclick="BD.lines.push({name:\'\',qty:\'\',unit:\'кг\',supplier:\'\'});buildDraw()">+ Строка</button></div>' +
+    '<div class="grid" style="margin-top:10px">' + fld('bDue', 'Срок поставки', BD.due || '', 'date') + fld('bCom', 'Комментарий в заявке', BD.com || '', 'text', ' style="grid-column:span 2"') + '</div>' +
+    (gk.length ? '<div class="meta" style="margin-top:8px">Будет заявок: <b>' + gk.length + '</b> — ' + gk.map(function (g) { return esc(g) + ' (' + groups[g] + ')'; }).join(', ') + '</div>' : '') +
+    (noEmail.length ? '<div class="warn">Нет e-mail для заявок: ' + noEmail.map(esc).join(', ') + '. Заявка будет создана, а письмо можно отправить после того, как e-mail появится в карточке поставщика.</div>' : '') +
+    '<div class="acts"><button class="btn pri" onclick="buildCreate(this)">Сформировать заявки</button><button class="btn" onclick="BD=null;buildLoad()">Обновить предложение</button></div></div>';
+  if (BUILT.length) h += '<div class="card"><div class="nm">Созданы заявки</div>' + BUILT.map(function (b) { return '<div class="row" style="cursor:default;margin-top:8px"><div>' + esc(b.orderId) + ' · <b>' + esc(b.supplier) + '</b> · позиций ' + b.lines + '<div class="meta">' + (b.sent ? '✓ письмо отправлено на ' + esc(b.sent) : b.error ? '<span style="color:var(--red)">' + esc(b.error) + '</span>' : b.email ? '✉ ' + esc(b.email) + (b.contactPerson ? ' · ' + esc(b.contactPerson) : '') : '<span style="color:var(--amber)">нет e-mail в карточке поставщика</span>') + '</div></div>' +
+    (b.sent ? '' : '<button class="btn" onclick="letter(\'' + esc(b.orderId) + '\')">Письмо</button>') + '</div>'; }).join('') +
+    (BUILT.some(function (b) { return b.email && !b.sent; }) ? '<div class="acts"><button class="btn pri" onclick="sendAll(this)">✉ Отправить все письма</button></div>' : '') + '</div>';
+  document.getElementById('body').innerHTML = h;
+}
+function buildCreate(btn) {
+  BD.due = v('bDue'); BD.com = v('bCom');
+  var lines = BD.lines.filter(function (l) { return String(l.name || '').trim(); });
+  if (!lines.length) return msg('Добавьте строки с товаром');
+  btn.disabled = true;
+  call('tsOrdersBuild', [TOKEN, JSON.stringify(lines), BD.due, BD.com]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Заявки не созданы: ' + errText(r));
+    BUILT = dataOf(r).orders; BD.lines = []; msg('Создано заявок: ' + BUILT.length, true); call('getSupplierOrders', ['', TOKEN]).then(function (a) { O = Array.isArray(a) ? a : (dataOf(a) || []); }); buildDraw(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function sendAll(btn) {
+  var ids = BUILT.filter(function (b) { return b.email && !b.sent; }).map(function (b) { return b.orderId; });
+  if (!confirm('Отправить ' + ids.length + ' писем поставщикам с почты системы?')) return;
+  btn.disabled = true;
+  call('tsOrdersSendMany', [TOKEN, JSON.stringify(ids)]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r));
+    var ok = 0; dataOf(r).results.forEach(function (x) { var b = BUILT.filter(function (y) { return y.orderId === x.orderId; })[0]; if (!b) return; if (x.ok) { b.sent = x.to; ok++; } else b.error = x.error; });
+    msg('Отправлено писем: ' + ok + ' из ' + ids.length, ok === ids.length); buildDraw(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+/* ---------- письмо поставщику: просмотр и отправка ---------- */
+function letter(id) {
+  var ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'ov'; ov.innerHTML = '<div class="card"><div class="empty">Готовлю письмо…</div></div>'; document.body.appendChild(ov);
+  ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+  call('tsOrderLetter', [TOKEN, id]).then(function (r) {
+    if (!okOf(r)) { ov.firstChild.innerHTML = '<div class="msg err">' + esc(errText(r)) + '</div><div class="acts"><button class="btn" onclick="document.getElementById(\'ov\').remove()">Закрыть</button></div>'; return; }
+    var L = dataOf(r);
+    ov.firstChild.innerHTML = '<div class="nm">Письмо поставщику</div><div class="meta">Кому: <b>' + esc(L.to || '— нет e-mail —') + '</b>' + (L.cc ? ' · копия и ответ: ' + esc(L.cc) : '') + '<br>Тема: ' + esc(L.subject) + '<br>Отправка с почты системы (Google-аккаунт ЦЕХ Стандарт), PDF заявки — во вложении и в папке «Заявки поставщикам».</div>' +
+      (L.missing.length ? '<div class="warn">Заполните: ' + L.missing.map(esc).join('; ') + '</div>' : '') + '<div class="lt">' + L.html + '</div>' +
+      '<label>Дополнение к письму (необязательно)</label><input id="lNote" placeholder="например, просим привезти до 10:00">' +
+      '<div class="acts">' + (L.to ? '<button class="btn pri" onclick="sendOne(\'' + esc(id) + '\',this)">✉ Отправить</button>' : '') + '<button class="btn" onclick="document.getElementById(\'ov\').remove()">Закрыть</button></div><div class="msg" id="lm"></div>';
+  }, function () { ov.firstChild.innerHTML = '<div class="msg err">Нет связи</div>'; });
+}
+function sendOne(id, btn) {
+  btn.disabled = true;
+  call('tsOrderSend', [TOKEN, id, v('lNote')]).then(function (r) { btn.disabled = false; var m = document.getElementById('lm');
+    if (!okOf(r)) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    var d = dataOf(r), b = BUILT.filter(function (y) { return y.orderId === id; })[0]; if (b) b.sent = d.to;
+    document.getElementById('ov').remove(); msg('Письмо отправлено на ' + d.to + (d.cc ? ' (копия ' + d.cc + ')' : '') + '. Заказ — «Отправлен».', true); load(); }, function () { btn.disabled = false; });
 }
 load();
 

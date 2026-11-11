@@ -998,6 +998,11 @@ tsActivateLicense;TS_Subscription.gs;интерфейс (сессия);да;org_
 tsRefreshLicense;TS_Subscription.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsLicenseDailyCheck;TS_Subscription.gs;служебная;;;только технический доступ или владелец проекта
 installTsTriggers;TS_Subscription.gs;служебная;;;только технический доступ или владелец проекта
+tsOrderDraft;TS_SupplierOrders.gs;интерфейс (сессия);;procurement;сессия → право «procurement» → тариф
+tsOrdersBuild;TS_SupplierOrders.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+tsOrderLetter;TS_SupplierOrders.gs;интерфейс (сессия);;procurement;сессия → право «procurement» → тариф
+tsOrderSend;TS_SupplierOrders.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+tsOrdersSendMany;TS_SupplierOrders.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
 tsSupportRevoke;TS_Support.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
 dedupeChecklistItems;zz_MonChef_Runtime.gs;служебная;;;только технический доступ или владелец проекта
 getAppUrl;zz_MonChef_Runtime.gs;публичная;;;адрес приложения

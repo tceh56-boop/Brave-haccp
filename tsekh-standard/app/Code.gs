@@ -6928,8 +6928,12 @@ function _supplierOrdersSheet_() {
   return sh;
 }
 
+// Номер по времени; несколько заказов за один вызов (заявки по поставщикам, недельный план) создаются в одну
+// миллисекунду — без этого счётчика они получали одинаковый номер.
+var _PO_LAST_TS_ = 0;
 function _nextOrderId_() {
-  return 'PO' + Date.now();
+  var t = Date.now(); if (t <= _PO_LAST_TS_) t = _PO_LAST_TS_ + 1; _PO_LAST_TS_ = t;
+  return 'PO' + t;
 }
 
 /**

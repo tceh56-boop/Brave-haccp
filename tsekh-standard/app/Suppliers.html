@@ -21,7 +21,7 @@ textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:
 .empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
 </style><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"><style id="tsTheme">/* ЦЕХ Стандарт — фирменное оформление */body{font-family:Roboto,-apple-system,"Segoe UI",Arial,sans-serif}h1,h2,h3,.h1,.title{font-family:Montserrat,Roboto,Arial,sans-serif;letter-spacing:-.01em}.btn.pri,button.pri{background:linear-gradient(135deg,#d4af37,#a87b22)!important;border-color:#a87b22!important;color:#fff!important}</style></head><body><div class="wrap">
 <h1>Поставщики</h1>
-<div class="sub">Единый реестр: заказы и партии ссылаются на поставщика по ID. Новый поставщик из прихода попадает сюда «на проверке» — подтвердите ИНН. Партия от заблокированного поставщика уходит в карантин.</div>
+<div class="sub">Карточка поставщика: организация, контактное лицо и e-mail, на который система отправляет заявки. Единый реестр: заказы и партии ссылаются на поставщика по ID. Новый поставщик из прихода попадает сюда «на проверке» — подтвердите ИНН. Партия от заблокированного поставщика уходит в карантин.</div>
 <div class="acts" style="margin:0 0 12px"><button class="btn pri" onclick="edit(-1)">+ Поставщик</button><button class="btn" onclick="migrate(this)">Перенести из истории заказов</button></div>
 <div class="msg" id="msg"></div><div id="form"></div>
 <div id="list"><div class="empty">Загрузка…</div></div>
@@ -35,20 +35,21 @@ var ST = { ACTIVE: ['g', 'Действует'], REVIEW: ['a', 'На провер
 function load() { call('mcGetSuppliers', [TOKEN]).then(function (r) { if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } L = r.data || []; draw(); }, function () { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; }); }
 function draw() {
   document.getElementById('list').innerHTML = L.length ? L.map(function (s, i) { var st = ST[s.status] || ['', s.status];
-    return '<div class="card"><div class="row" onclick="edit(' + i + ')"><div><div class="nm">' + esc(s.name) + '</div><div class="meta">' + esc(s.id) + (s.inn ? ' · ИНН ' + esc(s.inn) : ' · ИНН не указан') + (s.categories ? ' · ' + esc(s.categories) : '') + (s.contacts ? ' · ' + esc(s.contacts) : '') + '</div>' + (s.note ? '<div class="meta">' + esc(s.note) + '</div>' : '') + '</div><span class="chip ' + st[0] + '">' + st[1] + '</span></div></div>'; }).join('') : '<div class="empty">Реестр пуст</div>';
+    return '<div class="card"><div class="row" onclick="edit(' + i + ')"><div><div class="nm">' + esc(s.name) + '</div><div class="meta">' + esc(s.id) + (s.inn ? ' · ИНН ' + esc(s.inn) : ' · ИНН не указан') + (s.categories ? ' · ' + esc(s.categories) : '') + (s.contacts ? ' · ' + esc(s.contacts) : '') + '</div><div class="meta">' + (s.contactPerson ? '👤 ' + esc(s.contactPerson) + ' · ' : '') + (s.phone ? esc(s.phone) + ' · ' : '') + (s.email ? '✉ ' + esc(s.email) : '<span style="color:var(--amber)">нет e-mail для заявок</span>') + (s.deliveryDays ? ' · поставка: ' + esc(s.deliveryDays) : '') + '</div>' + (s.note ? '<div class="meta">' + esc(s.note) + '</div>' : '') + '</div><span class="chip ' + st[0] + '">' + st[1] + '</span></div></div>'; }).join('') : '<div class="empty">Реестр пуст</div>';
 }
 function f(id, l, v) { return '<div><label>' + l + '</label><input id="' + id + '" value="' + esc(v || '') + '"></div>'; }
 function edit(i) {
   var s = i >= 0 ? L[i] : {};
   document.getElementById('form').innerHTML = '<div class="card open"><div class="nm">' + (s.id ? esc(s.id) : 'Новый поставщик') + '</div><div class="form" style="display:block"><div class="grid">' +
-    f('n', 'Название', s.name) + f('inn', 'ИНН', s.inn) + f('a', 'Адрес', s.address) + f('c', 'Контакты', s.contacts) + f('cat', 'Категории товаров', s.categories) + f('doc', 'Документы (декларации, сертификаты)', s.documents) +
+    f('n', 'Название организации', s.name) + f('inn', 'ИНН', s.inn) + f('a', 'Адрес', s.address) +
+    f('cp', 'Контактное лицо (ФИО)', s.contactPerson) + f('ph', 'Телефон', s.phone) + f('em', 'E-mail для заявок', s.email) + f('dd', 'Дни поставки / приёма заявок', s.deliveryDays) + f('c', 'Другие контакты', s.contacts) + f('cat', 'Категории товаров', s.categories) + f('doc', 'Документы (декларации, сертификаты)', s.documents) +
     '<div><label>Статус</label><select id="st"><option value="ACTIVE">действует</option><option value="REVIEW"' + (s.status === 'REVIEW' ? ' selected' : '') + '>на проверке</option><option value="BLOCKED"' + (s.status === 'BLOCKED' ? ' selected' : '') + '>заблокирован</option></select></div>' + f('note', 'Комментарий', s.note) +
     '</div><div class="acts"><button class="btn pri" onclick="save(\'' + esc(s.id || '') + '\')">Сохранить</button><button class="btn" onclick="document.getElementById(\'form\').innerHTML=\'\'">Отмена</button></div><div class="msg" id="fm"></div></div></div>';
   window.scrollTo(0, 0);
 }
 function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
 function save(id) {
-  call('mcSaveSupplier', [JSON.stringify({ id: id, name: v('n'), inn: v('inn'), address: v('a'), contacts: v('c'), categories: v('cat'), documents: v('doc'), status: v('st'), note: v('note') }), TOKEN]).then(function (r) {
+  call('mcSaveSupplier', [JSON.stringify({ id: id, name: v('n'), inn: v('inn'), address: v('a'), contacts: v('c'), contactPerson: v('cp'), phone: v('ph'), email: v('em'), deliveryDays: v('dd'), categories: v('cat'), documents: v('doc'), status: v('st'), note: v('note') }), TOKEN]).then(function (r) {
     var m = document.getElementById('fm'); if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
     document.getElementById('form').innerHTML = ''; var g = document.getElementById('msg'); g.className = 'msg ok'; g.textContent = 'Сохранено' + (r.data.note ? ': ' + r.data.note : ''); load();
   }, function () { var m = document.getElementById('fm'); m.className = 'msg err'; m.textContent = 'Нет связи'; });
