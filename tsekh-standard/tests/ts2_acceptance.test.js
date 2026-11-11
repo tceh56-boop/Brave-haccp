@@ -268,4 +268,12 @@ t('документ, добавленный в пакет после настр�
   assert.strictEqual(C._ts2SeedSync_(), 1); assert.strictEqual(C._ts2SeedSync_(), 0);
   const n = rows('SYSTEM_DOCUMENTS').find(x => x.templateId === 'TPL-026'); assert(n && rows('APPROVAL_QUEUE').some(q => q.objectId === n.documentId && q.status === 'PENDING'), 'новый документ — на утверждение');
 });
+t('офлайн: отметка из очереди устройства записывается со временем отметки, а не временем отправки', () => {
+  session = { name: 'Повар', role: 'Повар горячего цеха' };
+  C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-OFF', enterpriseId: 'E', journalCode: 'J-SHIFT', eventRuleId: 'SCHED-SHIFT_OPEN', objectType: 'SHIFT', objectId: 'SHIFT', dueAt: C._ts2Iso_(), status: 'OPEN', confirmationMode: 'CONFIRM', title: 'Открытие смены', idempotencyKey: 'k-off' });
+  const dev = new Date(Date.now() - 2 * 3600000); G._mcNow_ = () => new Date(dev.getTime());
+  try { C._ts2Confirm_('EXP-OFF', true); } finally { delete G._mcNow_; }
+  const e = C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-OFF'), r = C._ts2Find_('AUTO_RECORDS', 'autoRecordId', e.factId);
+  assert.strictEqual(e.completedAt, C._ts2Iso_(dev)); assert.strictEqual(r.confirmedAt, C._ts2Iso_(dev), 'время отметки — с устройства');
+});
 console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

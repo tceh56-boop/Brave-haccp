@@ -20,8 +20,8 @@
   // бракераж (выпуск) и медкнижки (допуск) без связи не принимаются — нужно подтверждение сервера сразу
   var QUEUE = { addJournalEntry: 'Запись журнала', answerJournalCheck: 'Ответ на проверку',
     addSaleEntry: 'Продажа', addBactericidalLampReading: 'Бактерицидная лампа', saveChecklistExecution: 'Чек-лист',
-    updateKanbanTask: 'Задача' };
-  var READ = /^(get|ui|calculateKBZHU|mcGet)/, NO_CACHE = /^(getPhoto|getDocumentFile|getPrintJob)$/;
+    updateKanbanTask: 'Задача', ts2Confirm: 'Подтверждение задачи', ts2Measure: 'Замер' };
+  var READ = /^(get|ui|calculateKBZHU|mcGet|ts2Now$|ts2Exceptions$)/, NO_CACHE = /^(getPhoto|getDocumentFile|getPrintJob)$/;
   var online = navigator.onLine !== false, flushing = false;
 
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -5160,7 +5160,7 @@ VIEWS.tsTtkLib = {
 /* ==========================================================================
    ЦЕХ Стандарт 2.1 — «Сейчас»: экран повара. Только «Да / Нет» и разрешённые физические замеры.
    ========================================================================== */
-var TS2N = { tasks: [] };
+var TS2N = { tasks: [], done: {} };   // done — задачи, отмеченные без связи (ждут отправки)
 VIEWS.tsNow = {
   title: 'Сейчас', sub: 'Задачи смены: подтвердите «Да» или «Нет». Цифры вводятся только для замеров (холодильник, помещение, фритюр, лампа)',
   open: function () { this.h.load(); },
@@ -5169,9 +5169,15 @@ VIEWS.tsNow = {
       vLoading();
       Promise.all([vCall('ts2Now', [TOKEN]), vCall('ts2Exceptions', [TOKEN])]).then(function (rs) {
         var e = vErr(rs[0]); if (e) { vMsg(e, 'err'); vBody(''); return; }
-        var d = vData(rs[0]), x = vErr(rs[1]) ? { exceptions: [], overdue: [], autoToday: 0 } : vData(rs[1]); TS2N.tasks = d.tasks;
+        var d = vData(rs[0]), x = vErr(rs[1]) ? { exceptions: [], overdue: [], autoToday: 0 } : vData(rs[1]);
+        // очередь на устройстве пуста — всё отправлено; что сервер не принял, снова показывается как задача
+        var pend = []; try { pend = JSON.parse(localStorage.getItem('mc_offline_q') || '[]'); } catch (e) {}
+        if (!pend.some(function (it) { return /^ts2(Confirm|Measure)$/.test(it.fn); })) TS2N.done = {};
+        d.tasks = (d.tasks || []).filter(function (t) { return !TS2N.done[t.id]; }); TS2N.tasks = d.tasks;
+        var waiting = Object.keys(TS2N.done).length;
         if (!d.mode) { vBody(vCard('Режим «Готов к работе» не включён', '<p>Директор или ответственный за ХАССП включает его в разделе «Настройка и готовность» — система сама создаст документы, зоны, журналы и правила.</p><div class="mvbar"><button class="btn pri" onclick="openView(\'tsSetup\')">Открыть настройку</button></div>')); return; }
         var h = vKpis([['Задач сейчас', d.tasks.length, d.tasks.length ? 'gold' : 'green'], ['Просрочено', d.tasks.filter(function (t) { return t.overdue; }).length, 'red'], ['Отклонения', x.exceptions.length, x.exceptions.length ? 'red' : 'green'], ['Записей сделано системой сегодня', x.autoToday]]);
+        if (waiting) h += '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Нет связи: ' + waiting + ' отметок сохранено на устройстве и уйдёт на сервер, когда связь появится. В журнал они попадут с временем отметки.</div>';
         if (d.mode === 'PILOT') h += '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Пилотный режим: записи помечаются «ПИЛОТ» и не идут в официальные журналы до протокола запуска.</div>';
         h += d.tasks.length ? d.tasks.map(function (t) {
           var head = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:16px">' + esc(t.title) + '</b>' + vChip(t.overdue ? 'просрочено ' + t.due : 'до ' + t.due, t.overdue ? 'r' : 'a') + '</div>';
@@ -5189,15 +5195,16 @@ VIEWS.tsNow = {
         vBody(h);
       }, function (e) { vMsg(String(e), 'err'); });
     },
-    yes: function (id, btn) { vDo(btn, 'ts2Confirm', [TOKEN, id, true, '', ''], 'Подтверждено', function () { VIEWS.tsNow.h.load(); }); },
+    after: function (id) { return function (d, r) { if (r && r.queued) TS2N.done[id] = true; VIEWS.tsNow.h.load(); }; },
+    yes: function (id, btn) { vDo(btn, 'ts2Confirm', [TOKEN, id, true, '', ''], function (d, r) { return r && r.queued ? 'Нет связи — отметка сохранена на устройстве' : 'Подтверждено'; }, VIEWS.tsNow.h.after(id)); },
     no: function (id, btn) {
       var r = prompt('Почему «Нет»? Например: не выполнено, оборудование неисправно, продукт не соответствует'); if (!r) return;
-      vDo(btn, 'ts2Confirm', [TOKEN, id, false, r, ''], 'Записано отклонение — ответственный получит уведомление', function () { VIEWS.tsNow.h.load(); });
+      vDo(btn, 'ts2Confirm', [TOKEN, id, false, r, ''], function (d, x) { return x && x.queued ? 'Нет связи — отметка сохранена на устройстве' : 'Записано отклонение — ответственный получит уведомление'; }, VIEWS.tsNow.h.after(id));
     },
     measure: function (id, btn) {
       var v = document.getElementById('ts2v_' + id).value, c = document.getElementById('ts2c_' + id).value;
       if (v === '') { vMsg('Введите значение', 'err'); return; }
-      vDo(btn, 'ts2Measure', [TOKEN, id, v, c], function (d) { return d.result === 'FAIL' ? 'Вне нормы — записано отклонение' : 'Записано: ' + d.value + ' ' + d.unit; }, function () { VIEWS.tsNow.h.load(); });
+      vDo(btn, 'ts2Measure', [TOKEN, id, v, c], function (d, x) { return x && x.queued ? 'Нет связи — замер сохранён на устройстве' : d.result === 'FAIL' ? 'Вне нормы — записано отклонение' : 'Записано: ' + d.value + ' ' + d.unit; }, VIEWS.tsNow.h.after(id));
     },
     labels: function (eventId, btn) {
       vDo(btn, 'ts2CateringLabels', [TOKEN, eventId], function (d) { return 'Ярлыков: ' + d.count + (d.gaps.length ? '. Впишите от руки: ' + d.gaps.join('; ') : ''); }, function (d) { var w = window.open('', '_blank'); if (!w) { alert('Разрешите всплывающие окна для печати'); return; } w.document.write(d.html); w.document.close(); setTimeout(function () { try { w.print(); } catch (e) {} }, 300); });
@@ -5268,15 +5275,15 @@ VIEWS.tsSetup = {
     },
     snsOff: function (id, btn) { if (!confirm('Отключить датчик? Его ключ перестанет работать.')) return; vDo(btn, 'ts2SensorRevoke', [TOKEN, id], 'Датчик отключён', function () { VIEWS.tsSetup.h.snsLoad(); }); },
     save: function (step, data, btn, next) { vDo(btn, 'ts2WizardSave', [TOKEN, step, data], 'Сохранено', function (d) { if (step === 5 && d && d.errors && d.errors.length) vMsg('Не добавлены: ' + d.errors.join('; '), 'err'); if (next) TS2S.step = next; VIEWS.tsSetup.h.load(); }); },
-    save1: function (a, btn) { this.save(1, { org: { name: vV('name'), inn: vV('inn'), actualAddress: vV('actualAddress'), responsibleName: vV('responsibleName') }, timezone: vV('tz') }, btn, 2); },
-    save2: function (a, btn) { this.save(2, { type: vV('type'), mode: vV('mode') }, btn, 3); },
-    save3: function (a, btn) { var w = [].map.call(document.querySelectorAll('.ts2ws'), function (c) { return { workshopId: c.getAttribute('data-id'), active: c.checked, reason: document.querySelector('.ts2wr[data-id="' + c.getAttribute('data-id') + '"]').value }; }); this.save(3, { workshops: w }, btn, 4); },
-    save4: function (a, btn) { this.save(4, { object: { objectType: vV('otype'), name: vV('oname'), minValue: vV('omin'), maxValue: vV('omax'), setpoint: vV('oset'), checkTimes: vV('otimes') } }, btn); },
+    save1: function (a, btn) { VIEWS.tsSetup.h.save(1, { org: { name: vV('name'), inn: vV('inn'), actualAddress: vV('actualAddress'), responsibleName: vV('responsibleName') }, timezone: vV('tz') }, btn, 2); },
+    save2: function (a, btn) { VIEWS.tsSetup.h.save(2, { type: vV('type'), mode: vV('mode') }, btn, 3); },
+    save3: function (a, btn) { var w = [].map.call(document.querySelectorAll('.ts2ws'), function (c) { return { workshopId: c.getAttribute('data-id'), active: c.checked, reason: document.querySelector('.ts2wr[data-id="' + c.getAttribute('data-id') + '"]').value }; }); VIEWS.tsSetup.h.save(3, { workshops: w }, btn, 4); },
+    save4: function (a, btn) { VIEWS.tsSetup.h.save(4, { object: { objectType: vV('otype'), name: vV('oname'), minValue: vV('omin'), maxValue: vV('omax'), setpoint: vV('oset'), checkTimes: vV('otimes') } }, btn); },
     save5: function (a, btn) {
       var list = vV('emps').split('\n').map(function (l) { var p = l.split(';').map(function (x) { return x.trim(); }), fio = (p[0] || '').split(/\s+/); return p[0] ? { lastName: fio[0], firstName: fio[1] || '', middleName: fio[2] || '', role: p[1] || 'Повар горячего цеха', pin: p[2] || '' } : null; }).filter(Boolean);
-      if (!list.length) { vMsg('Введите хотя бы одного сотрудника', 'err'); return; } this.save(5, { employees: list }, btn);
+      if (!list.length) { vMsg('Введите хотя бы одного сотрудника', 'err'); return; } VIEWS.tsSetup.h.save(5, { employees: list }, btn);
     },
-    save6: function (a, btn) { this.save(6, { choice: vV('ttk') }, btn, 7); },
+    save6: function (a, btn) { VIEWS.tsSetup.h.save(6, { choice: vV('ttk') }, btn, 7); },
     ready: function (a, btn) {
       vDo(btn, 'ts2Readiness', [TOKEN], function (d) { return d.ready ? 'Готово к работе' : 'Выполнено ' + d.pass + ' из ' + d.total; }, function (d) {
         document.getElementById('ts2ready').innerHTML = vTable([{ k: 'title', l: 'Критерий' }, { l: 'Состояние', html: true, f: function (x) { return x.ok ? vChip('выполнено', 'g') : vChip('не выполнено', 'r'); } }], d.criteria) +
@@ -5284,8 +5291,8 @@ VIEWS.tsSetup = {
       });
     },
     protocol: function (a, btn) { vDo(btn, 'ts2RequestLaunchProtocol', [TOKEN], 'Протокол запуска — в очереди утверждения', function () { VIEWS.tsSetup.h.load(); }); },
-    sdoc: function (id, btn) { this.sdocGo(id, btn, false); },
-    sdocr: function (id, btn) { this.sdocGo(id, btn, true); },
+    sdoc: function (id, btn) { VIEWS.tsSetup.h.sdocGo(id, btn, false); },
+    sdocr: function (id, btn) { VIEWS.tsSetup.h.sdocGo(id, btn, true); },
     sdocGo: function (id, btn, refresh) {
       var w = window.open('', '_blank');
       vDo(btn, 'ts2SystemDoc', [TOKEN, id, refresh], function (d) { return (d.changed ? 'Сформирована версия ' + d.version : 'Документ без изменений') + (d.gaps && d.gaps.length ? '. Не хватает данных: ' + d.gaps.join(', ') : ''); },

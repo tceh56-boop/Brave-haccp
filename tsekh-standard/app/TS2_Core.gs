@@ -62,7 +62,8 @@ function _ts2Update_(name, key, val, patch) {
 }
 function _ts2Json_(s, dflt) { if (s && typeof s === 'object') return s; try { return s ? JSON.parse(s) : dflt; } catch (e) { return dflt; } }
 function _ts2Now_() { return new Date(); }
-function _ts2Iso_(d) { return Utilities.formatDate(d || new Date(), _mcTz_(), "yyyy-MM-dd'T'HH:mm:ss"); }
+// время события: при отправке из офлайн-очереди — время на устройстве (_mcNow_, MonChef_Offline.gs), иначе текущее
+function _ts2Iso_(d) { return Utilities.formatDate(d || (typeof _mcNow_ === 'function' ? _mcNow_() : new Date()), _mcTz_(), "yyyy-MM-dd'T'HH:mm:ss"); }
 function _ts2Sha_(text) {
   var b = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(text), Utilities.Charset.UTF_8);
   return b.map(function (x) { return ('0' + (x & 255).toString(16)).slice(-2); }).join('');

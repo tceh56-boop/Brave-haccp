@@ -14,7 +14,8 @@
 // Бракераж (решение о выпуске) и медкнижки (допуск к работе) без связи не принимаются:
 // решение должно быть подтверждено сервером сразу (ТЗ, раздел 38).
 var MC_OFFLINE_FNS_ = ['addJournalEntry', 'answerJournalCheck', 'addSaleEntry',
-  'addBactericidalLampReading', 'saveChecklistExecution', 'updateKanbanTask'];
+  'addBactericidalLampReading', 'saveChecklistExecution', 'updateKanbanTask',
+  'ts2Confirm', 'ts2Measure'];   // ЦЕХ Стандарт 2.1: «Да / Нет» и физические замеры экрана «Сейчас»
 var MC_OFFLINE_MAX_DAYS_ = 14;
 var _MC_CLIENT_NOW = null;
 
