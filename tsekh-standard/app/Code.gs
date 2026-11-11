@@ -63,6 +63,8 @@ function doGet(e) {
   var params = (e && e.parameter) || {};
   // ТЗ §39: QR «Проверить документ» — отдельная публичная страница, без входа и без доступа к системе
   if (params.verify) return _mcVerifyPage_(params.verify);
+  // диагностика для поддержки ЦЕХ Стандарт — только по ключу, выданному с согласия директора (TS_Support.gs)
+  if (params.diag && typeof _tsDiagPage_ === 'function') return _tsDiagPage_(params.diag);
   // Этап 10.7: страница открывается только при праве (карта MC_RB_MODULES_); иначе — «403 — нет доступа» и запись в аудит.
   // Без ключа в адресе (QR партии с телефона) страница загрузится, но каждый вызов сервера проверит шлюз.
   if (params.audit !== '1') {

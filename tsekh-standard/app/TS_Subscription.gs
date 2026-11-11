@@ -55,7 +55,7 @@ var TS_FN_FEATURE_ = {
 // разделы главного окна → возможность
 var TS_SECTION_FEATURE_ = { haccp: 'journals', sanitation: 'journals', inspection: 'journals', lab: 'lab' };
 // эти функции работают при любом состоянии лицензии
-var TS_ALWAYS_ = ['loginWithPin', 'destroySession', 'uiMe', 'getAppUrl', 'tsGetPlanInfo', 'tsActivateLicense', 'tsRefreshLicense', 'mcReplayOffline', 'tsSupportRequest', 'tsSupportConsent'];
+var TS_ALWAYS_ = ['loginWithPin', 'destroySession', 'uiMe', 'getAppUrl', 'tsGetPlanInfo', 'tsActivateLicense', 'tsRefreshLicense', 'mcReplayOffline', 'tsSupportRequest', 'tsSupportConsent', 'tsSupportRevoke'];
 var TS_TRIAL_DAYS_ = 14, TS_CHECK_HOURS_ = 6, TS_OFFLINE_DAYS_ = 7, TS_GRACE_DAYS_ = 3;
 
 /* --------------------------------------------------------------- состав тарифа */
@@ -133,6 +133,7 @@ function _tsCheckRemote_(key) {
     if (state.enterpriseId && typeof _ts2SetCfg_ === 'function') { try { if (_ts2Cfg_('ENTERPRISE_ID', '') !== state.enterpriseId) _ts2SetCfg_('ENTERPRISE_ID', state.enterpriseId, 'LICENSE'); } catch (e) {} }
     if (L.update && L.update.version) state.notices.push({ text: 'Доступно обновление ЦЕХ Стандарт ' + L.update.version + (L.update.notes ? ': ' + L.update.notes : '') + '. Установку выполняет владелец через установщик.' });
     p.setProperty('TS_LICENSE_STATE', JSON.stringify(state));
+    try { if (typeof _tsAfterCheck_ === 'function') _tsAfterCheck_(); } catch (e) {}
     (L.commands || []).forEach(function (c) { try { _tsRunCommand_(c); } catch (e) { _log_('WARN', 'команда админ-панели ' + c + ': ' + (e && e.message || e)); } });
     return state;
   } catch (e) { _log_('WARN', 'лицензия: ' + (e && e.message || e)); return null; }
@@ -208,11 +209,13 @@ function tsGetPlanInfo(token) {
     });
   } catch (e) { return _failFrom_(e); }
 }
+var _TS_CTL_TS_ = 0;
 /** Подписанный служебный запрос в админ-панель (поддержка, согласие). */
 function _tsControlCall_(payload) {
   var p = _tsProps_(), url = String(p.getProperty('TS_ADMIN_URL') || ''), key = String(p.getProperty('TS_LICENSE_KEY') || ''), secret = String(p.getProperty('TS_LICENSE_SECRET') || '');
   if (!url || !key || !secret) throw new Error('VALIDATION: лицензия не подключена');
-  var ts = String(Date.now()); payload.key = key; payload.ts = ts; payload.sig = _tsHmac_(key + '|' + ts, secret);
+  var now = Date.now(); _TS_CTL_TS_ = now > _TS_CTL_TS_ ? now : _TS_CTL_TS_ + 1;   // строго возрастает: две подписи в одну мс не совпадут
+  var ts = String(_TS_CTL_TS_); payload.key = key; payload.ts = ts; payload.sig = _tsHmac_(key + '|' + ts, secret);
   var r = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(payload) });
   if (r.getResponseCode() !== 200) throw new Error('Админ-панель ответила HTTP ' + r.getResponseCode());
   var j = JSON.parse(r.getContentText()); if (!j.ok) throw new Error(j.error || 'запрос не принят'); return j;
@@ -226,8 +229,11 @@ function tsSupportRequest(token, subject, text) {
 function tsSupportConsent(token, sessionId, allow) {
   try {
     var s = _requireAuth_(token, 'org_edit');
-    var j = _tsControlCall_({ action: 'support.consent', sessionId: sessionId, allow: allow === true || allow === 'true', by: (s.name || '') + ' (' + (s.role || '') + ')' });
-    if (j.status === 'GRANTED') _tsProps_().setProperty('TS_SUPPORT_UNTIL', String(j.expiresAt)); else _tsProps_().deleteProperty('TS_SUPPORT_UNTIL');
+    var yes = allow === true || allow === 'true', req = null;
+    try { req = (JSON.parse(_tsProps_().getProperty('TS_LICENSE_STATE') || '{}').supportRequests || []).filter(function (x) { return x.sessionId === sessionId; })[0]; } catch (e) {}
+    var until = Date.now() + Math.min(480, Number(req && req.minutes) || 60) * 60000, key = yes && typeof _tsDiagIssue_ === 'function' ? _tsDiagIssue_(sessionId, until) : '';
+    var j = _tsControlCall_({ action: 'support.consent', sessionId: sessionId, allow: yes, diagKey: key, by: (s.name || '') + ' (' + (s.role || '') + ')' });
+    if (j.status === 'GRANTED') _tsProps_().setProperty('TS_SUPPORT_UNTIL', String(j.expiresAt)); else if (typeof _tsDiagRevoke_ === 'function') _tsDiagRevoke_(); else _tsProps_().deleteProperty('TS_SUPPORT_UNTIL');
     try { var st = JSON.parse(_tsProps_().getProperty('TS_LICENSE_STATE') || 'null'); if (st) { st.supportRequests = (st.supportRequests || []).filter(function (x) { return x.sessionId !== sessionId; }); _tsProps_().setProperty('TS_LICENSE_STATE', JSON.stringify(st)); } } catch (e) {}
     if (typeof _ts2Audit_ === 'function') { try { _ts2Audit_('SUPPORT_CONSENT', 'SUPPORT_SESSION', sessionId, undefined, { status: j.status }, ''); } catch (e) {} }
     return _ok_({ status: j.status, expiresAt: j.expiresAt });
@@ -273,6 +279,7 @@ var TS_GATE_ = [
   { n: 'tsRefreshLicense', need: '*' },
   { n: 'tsSupportRequest', need: '*', mut: true },
   { n: 'tsSupportConsent', need: 'org_edit', mut: true },
+  { n: 'tsSupportRevoke', need: 'org_edit', mut: true },
   { n: 'tsLsGetAll', need: '*', f: 'labor_safety' },
   { n: 'tsLsGetDoc', need: '*', f: 'labor_safety' },
   { n: 'tsLsSaveDoc', need: 'personnel', mut: true, f: 'labor_safety' },

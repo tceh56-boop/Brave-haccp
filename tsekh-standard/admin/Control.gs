@@ -168,12 +168,21 @@ function apiControl_(p) {
     withLock(function () { insert('SUPPORT_TICKETS', t); }); logEvent('SUPPORT', 'клиент', org['ID'], 'Обращение: ' + t.subject); return { ok: true, ticketId: t.ticketId };
   }
   if (p.action === 'support.consent') {
-    var se = findBy('SUPPORT_SESSIONS', 'sessionId', p.sessionId); if (!se || se.orgId !== org['ID'] || se.status !== 'REQUESTED') return { ok: false, error: 'Запрос доступа не найден' };
+    var se = findBy('SUPPORT_SESSIONS', 'sessionId', p.sessionId); if (!se || se.orgId !== org['ID']) return { ok: false, error: 'Запрос доступа не найден' };
+    if (p.revoke === true) {   // предприятие отозвало доступ досрочно
+      if (se.status !== 'GRANTED') return { ok: true, status: se.status };
+      withLock(function () { update('SUPPORT_SESSIONS', se.sessionId, { status: 'REVOKED', closedAt: new Date() });
+        readAll('CONSENTS').filter(function (c) { return c.objectId === se.sessionId && !c.revokedAt; }).forEach(function (c) { update('CONSENTS', c.consentId, { revokedAt: new Date() }); }); });
+      PropertiesService.getScriptProperties().deleteProperty('DIAG_' + se.sessionId);
+      logEvent('SUPPORT', 'клиент', org['ID'], 'Доступ поддержки отозван предприятием'); return { ok: true, status: 'REVOKED' };
+    }
+    if (se.status !== 'REQUESTED') return { ok: false, error: 'Запрос доступа уже рассмотрен' };
     var allow = p.allow === true, exp = new Date(Date.now() + Math.min(480, Number(se.minutes) || 60) * 60000);
     withLock(function () {
       update('SUPPORT_SESSIONS', se.sessionId, { status: allow ? 'GRANTED' : 'DENIED', consentBy: String(p.by || '').slice(0, 100), consentAt: new Date(), expiresAt: allow ? exp : '' });
       insert('CONSENTS', { consentId: newId('CNS'), enterpriseId: ent, orgId: org['ID'], consentType: 'SUPPORT_ACCESS', objectId: se.sessionId, grantedBy: String(p.by || '').slice(0, 100), grantedAt: new Date(), expiresAt: allow ? exp : '', revokedAt: allow ? '' : new Date(), evidence: 'подписанный запрос клиента' });
     });
+    if (allow && p.diagKey) PropertiesService.getScriptProperties().setProperty('DIAG_' + se.sessionId, String(p.diagKey).slice(0, 200));   // ключ — только в свойствах скрипта
     logEvent('SUPPORT', 'клиент', org['ID'], 'Доступ поддержки ' + (allow ? 'разрешён до ' + fmtDate(exp, 'dd.MM.yyyy HH:mm') : 'отклонён'));
     return { ok: true, status: allow ? 'GRANTED' : 'DENIED', expiresAt: allow ? exp.getTime() : 0 };
   }
@@ -290,10 +299,25 @@ function adminSupportSessionRequest(token, orgId, reason, minutes, ticketId) {
     logEvent('SUPPORT', s.email, orgId, 'Запрошен доступ поддержки: ' + reason); return ok({ sessionId: id });
   } catch (e) { return fail(e); }
 }
+/** Диагностика системы клиента по разрешённой сессии: только чтение, без персональных данных; каждое чтение — в аудите клиента. */
+function adminSupportDiagnostics(token, sessionId) {
+  try {
+    var s = requireRole(token, 'support'), se = findBy('SUPPORT_SESSIONS', 'sessionId', sessionId); if (!se) throw new Error('NOT_FOUND: сессия не найдена');
+    if (se.status !== 'GRANTED' || !se.expiresAt || new Date(se.expiresAt) < new Date()) throw new Error('VALIDATION: доступ не разрешён клиентом или срок истёк');
+    var key = PropertiesService.getScriptProperties().getProperty('DIAG_' + sessionId), o = findBy('Organizations', 'ID', se.orgId);
+    if (!key) throw new Error('VALIDATION: клиент не передал ключ диагностики (обновите систему клиента)');
+    if (!o || !o['App URL']) throw new Error('VALIDATION: у клиента не указан адрес системы (App URL)');
+    var r = UrlFetchApp.fetch(String(o['App URL']) + (String(o['App URL']).indexOf('?') >= 0 ? '&' : '?') + 'diag=' + encodeURIComponent(key), { muteHttpExceptions: true, followRedirects: true });
+    var d = {}; try { d = JSON.parse(r.getContentText()); } catch (e) { d = { ok: false, error: 'ответ не JSON (HTTP ' + r.getResponseCode() + ')' }; }
+    logEvent('SUPPORT', s.email, se.orgId, 'Чтение диагностики по сессии ' + sessionId + ': ' + (d.ok ? 'OK' : d.error));
+    return ok(d);
+  } catch (e) { return fail(e); }
+}
 function adminSupportClose(token, kind, id, resolution) {
   try {
     var s = requireRole(token, 'support');
     withLock(function () { if (kind === 'ticket') update('SUPPORT_TICKETS', id, { status: 'RESOLVED', resolvedAt: new Date(), resolution: resolution || '', assignedTo: s.email }); else update('SUPPORT_SESSIONS', id, { status: 'CLOSED', closedAt: new Date() }); });
+    if (kind !== 'ticket') PropertiesService.getScriptProperties().deleteProperty('DIAG_' + id);
     logEvent('SUPPORT', s.email, id, 'Закрыто: ' + (resolution || '')); return ok(true);
   } catch (e) { return fail(e); }
 }

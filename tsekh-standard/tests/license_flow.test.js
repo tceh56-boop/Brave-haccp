@@ -22,7 +22,7 @@ G.UrlFetchApp = { fetch: (url, opt) => { const r = A.doPost({ parameter: {}, pos
 Object.assign(G, { _log_: () => {}, _book_: () => ({ getSheets: () => [], getSheetByName: () => null, getId: () => 'X' }), _mcTz_: () => 'Europe/Moscow',
   _ok_: d => JSON.stringify({ success: true, data: d }), _fail_: (c, m) => JSON.stringify({ success: false, error: { code: c, message: m } }), _failFrom_: e => JSON.stringify({ success: false, error: { message: String(e.message || e) } }),
   _requireAuth_: () => ({ name: 'Директор', dev: false }), _mcRbHas_: () => true, _audit_: () => {}, _defaultTenant_: () => 't' });
-const Cl = load('app', ['TS_Subscription.gs'], G);
+const Cl = load('app', ['TS_Subscription.gs', 'TS_Support.gs'], G);
 // без ключа — пробный период pro_max
 assert.strictEqual(Cl._tsLicense_(true).status, 'TRIAL');
 // подключение лицензии
@@ -101,5 +101,23 @@ assert(cons.ok && cons.status === 'GRANTED' && A.readAll('CONSENTS').length === 
 const rel = A.adminReleaseCreate(T, { version: '2.2.0', notes: 'ЦЕХ Стандарт 2.2' }); assert(rel.ok);
 assert.strictEqual(A.readAll('APP_RELEASES')[0].status, 'PILOT', 'новый релиз — в пилотном канале');
 assert(A.adminReleasePromote(T, rel.data.releaseId, 'STABLE').ok);
+// диагностика по согласию: запрос → клиент разрешил (ключ уходит в админ-панель) → чтение сводки → отзыв
+A.UrlFetchApp = { fetch: url => { const m = /[?&]diag=([^&]+)/.exec(url); const r = m ? Cl._tsDiagPage_(decodeURIComponent(m[1])) : { text: '{}' }; return { getResponseCode: () => 200, getContentText: () => r.text }; } };
+const sr2 = A.adminSupportSessionRequest(T, orgId, 'Ошибка печати этикеток', 30); assert(sr2.ok);
+Cl._tsLicense_(true);
+assert.strictEqual(A.adminSupportDiagnostics(T, sr2.data.sessionId).ok, false, 'до согласия диагностики нет');
+const c2 = JSON.parse(Cl.tsSupportConsent('tok', sr2.data.sessionId, true)); assert(c2.success && c2.data.status === 'GRANTED', JSON.stringify(c2));
+assert(!JSON.stringify(A.readAll('SUPPORT_SESSIONS')).includes(A.PropertiesService.getScriptProperties().getProperty('DIAG_' + sr2.data.sessionId)), 'ключ диагностики не лежит в таблице');
+const dg = A.adminSupportDiagnostics(T, sr2.data.sessionId); assert(dg.ok && dg.data.ok && dg.data.version, 'диагностика читается: ' + JSON.stringify(dg));
+assert(!/client@example|Кафе Тест/.test(JSON.stringify(dg.data)), 'в диагностике нет персональных данных и названия клиента');
+assert.strictEqual(JSON.parse(Cl._tsDiagPage_('чужой-ключ').text).ok, false, 'чужой ключ не принимается');
+assert(JSON.parse(Cl.tsSupportRevoke('tok')).success);
+assert.strictEqual(A.readAll('SUPPORT_SESSIONS').find(x => x.sessionId === sr2.data.sessionId).status, 'REVOKED', 'отзыв дошёл до админ-панели');
+assert.strictEqual(A.adminSupportDiagnostics(T, sr2.data.sessionId).ok, false, 'после отзыва диагностики нет');
+// статистика и технические ошибки уходят после проверки лицензии, без персональных данных
+Cl._tsTechEvent_('EXCEPTION', 'createDish', 'Ошибка для client@example.com 79991234567');
+G.PropertiesService.getScriptProperties().deleteProperty('TS_USAGE_SENT_AT'); Cl._tsLicense_(true);
+assert(A.readAll('AGGREGATED_USAGE').length >= 1, 'обезличенная статистика получена');
+const te = A.readAll('TECH_EVENTS'); assert(te.length >= 1 && !/client@example|79991234567/.test(JSON.stringify(te)), 'тех. ошибка получена, почта и номер вырезаны: ' + JSON.stringify(te));
 console.log('OK: контур 2.0 — хеш ключа, nonce, льготный период, поддержка с согласием, эталоны, релизы');
 console.log('OK: лицензия, подпись, тарифы, режим только чтения, продление, роли, оплата ЮMoney — все проверки пройдены');

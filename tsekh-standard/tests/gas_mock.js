@@ -38,7 +38,7 @@ function make(email) {
       computeDigest: (alg, s) => toBytes(crypto.createHash(alg === 'SHA_1' ? 'sha1' : alg === 'MD5' ? 'md5' : 'sha256').update(String(s), 'utf8').digest()),
       computeHmacSha256Signature: (s, k) => toBytes(crypto.createHmac('sha256', String(k)).update(String(s), 'utf8').digest()),
       DigestAlgorithm: { SHA_256: 'SHA_256', SHA_1: 'SHA_1', MD5: 'MD5' }, Charset: { UTF_8: 'utf8' },
-      base64Encode: s => Buffer.from(s).toString('base64'), formatDate: (d, tz, f) => { const x = new Date(d); const p = n => String(n).padStart(2, '0');
+      base64Encode: s => Buffer.from(s).toString('base64'), base64EncodeWebSafe: b => Buffer.from(Array.isArray(b) ? b.map(x => x & 255) : String(b)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_'), formatDate: (d, tz, f) => { const x = new Date(d); const p = n => String(n).padStart(2, '0');
         return f.replace('yyyy', x.getFullYear()).replace('yy', String(x.getFullYear()).slice(2)).replace('MM', p(x.getMonth() + 1)).replace('dd', p(x.getDate())).replace('HH', p(x.getHours())).replace('mm', p(x.getMinutes())).replace('ss', p(x.getSeconds())); },
       sleep() {}
     }

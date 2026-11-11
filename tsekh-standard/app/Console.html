@@ -4948,7 +4948,7 @@ VIEWS.tsPlan = {
         if ((p.supportRequests || []).length && p.canManage) h += vCard('Запрос доступа поддержки ЦЕХ Стандарт', (p.supportRequests || []).map(function (q) {
           return '<p><b>' + esc(q.reason) + '</b> — на ' + esc(q.minutes) + ' мин., запросил ' + esc(q.requestedBy) + '. Поддержка получит доступ только после вашего разрешения; решение записывается в журнал аудита.</p><div class="mvbar">' +
             '<button class="btn pri" data-mv="consent" data-a="' + esc(q.sessionId) + '|1">Разрешить</button><button class="btn" data-mv="consent" data-a="' + esc(q.sessionId) + '|0">Отказать</button></div>'; }).join(''));
-        if (p.supportUntil && p.supportUntil > Date.now()) h += '<div class="ttnote" style="margin-bottom:10px;border-radius:12px">Доступ поддержки разрешён до ' + esc(new Date(p.supportUntil).toLocaleString('ru-RU')) + '.</div>';
+        if (p.supportUntil && p.supportUntil > Date.now()) h += '<div class="ttnote" style="margin-bottom:10px;border-radius:12px">Поддержке разрешено читать диагностику (версии, счётчики, ошибки — без персональных данных) до ' + esc(new Date(p.supportUntil).toLocaleString('ru-RU')) + '.' + (p.canManage ? ' <button class="btn" data-mv="revoke">Отозвать доступ</button>' : '') + '</div>';
         h += vCard('Написать в поддержку', vForm([['supSubj', 'Тема', 'text'], ['supText', 'Вопрос', 'textarea', '', 'Опишите, что происходит. Не указывайте персональные данные сотрудников.']]) + '<div class="mvbar"><button class="btn" data-mv="support">Отправить</button></div>');
         h += '<div class="rdnote" style="margin-top:12px">Версия ЦЕХ Стандарт ' + esc(p.version) + (p.enterpriseId ? ' · предприятие ' + esc(p.enterpriseId) : '') + (p.channel === 'pilot' ? ' · пилотный канал обновлений' : '') + '</div>';
         vBody(h);
@@ -4956,6 +4956,7 @@ VIEWS.tsPlan = {
     },
     activate: function (a, btn) { vDo(btn, 'tsActivateLicense', [TOKEN, vV('key'), vV('url'), vV('secret')], 'Лицензия подключена', function () { VIEWS.tsPlan.h.load(); }); },
     refresh: function (a, btn) { vDo(btn, 'tsRefreshLicense', [TOKEN], function (d) { return 'Проверено: ' + d.status; }, function () { VIEWS.tsPlan.h.load(); }); },
+    revoke: function (a, btn) { vDo(btn, 'tsSupportRevoke', [TOKEN], 'Доступ поддержки отозван', function () { VIEWS.tsPlan.h.load(); }); },
     consent: function (a, btn) { var x = a.split('|'); vDo(btn, 'tsSupportConsent', [TOKEN, x[0], x[1] === '1'], x[1] === '1' ? 'Доступ разрешён' : 'В доступе отказано', function () { VIEWS.tsPlan.h.load(); }); },
     support: function (a, btn) { vDo(btn, 'tsSupportRequest', [TOKEN, vV('supSubj'), vV('supText')], function (d) { return 'Обращение ' + d.ticketId + ' отправлено'; }); }
   }

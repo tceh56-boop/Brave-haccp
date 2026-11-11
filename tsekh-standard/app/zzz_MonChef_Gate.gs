@@ -177,6 +177,7 @@ function mcGateSession_() { return _MC_GATE_SESSION; }
         } catch (err) {
           if (op) { try { _audit_(op, 'API_' + name + '_FAILED', 'API', '', null, { error: String(err && err.message || err) }); _closeOperation_(op.id, 'FAILED'); } catch (e) {} }
           if (cache) try { cache.remove(key); } catch (e) {}
+          try { if (typeof _tsTechEvent_ === 'function') _tsTechEvent_('EXCEPTION', name, err && err.message || err); } catch (e) {}
           throw err;
         }
         var rf = resultFailed(res);

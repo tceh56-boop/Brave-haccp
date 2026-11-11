@@ -261,7 +261,7 @@ function _ts2OnGateCall_(name, args, res) {
     else if (name === 'issueV28Banquet') { _ts2Emit_('RELEASE_TO_HALL', { sourceType: 'BANQUET_ISSUE', sourceId: String(a[0]) + '|' + _ts2Iso_().slice(0, 13), title: 'банкет ' + a[0] }); }
     else if (name === 'mcTakeDailySample') { _ts2Emit_('DAILY_SAMPLE_TAKEN', { sourceType: 'DAILY_SAMPLE', sourceId: String(d.id || d.sampleId || _ts2Json_(a[0], {}).batchId || ''), batchId: String(_ts2Json_(a[0], {}).batchId || '') }); }
     else if (name === 'saveChecklistExecution') { _ts2Emit_('SANITATION_CONFIRMED', { sourceType: 'CHECKLIST', sourceId: String(d.id || d.executionId || _ts2Iso_()) }); }
-  } catch (e) { try { _log_('WARN', 'ЦЕХ 2.1 событие ' + name + ': ' + (e && e.message || e)); } catch (x) {} }
+  } catch (e) { try { _log_('WARN', 'ЦЕХ 2.1 событие ' + name + ': ' + (e && e.message || e)); } catch (x) {} try { if (typeof _tsTechEvent_ === 'function') _tsTechEvent_('EVENT_HOOK', name, e && e.message || e); } catch (x) {} }
 }
 
 /* ------------------------------------------------------------------ экран повара */
