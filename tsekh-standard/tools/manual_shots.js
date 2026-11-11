@@ -47,8 +47,10 @@ const fakeInit = () => {
     ts2Wizard: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', enterpriseType: 'RESTAURANT', types: { RESTAURANT: 'Ресторан', CANTEEN: 'Столовая', CAFE: 'Кафе', CONFECTIONERY: 'Кондитерское производство', CATERING: 'Кейтеринг' },
       org: { name: 'ООО «Тест»', inn: '7700000000', address: 'г. Москва, ул. Тестовая, 1', responsible: 'Хассапова Тест', complete: true }, timezone: 'Europe/Moscow', employees: 12, dishes: 148,
       workshops: [['WS-1', 'Горячий цех', 'ACTIVE', ''], ['WS-2', 'Холодный цех', 'ACTIVE', ''], ['WS-3', 'Кондитерский цех', 'NOT_APPLICABLE', 'Десерты закупаем готовыми'], ['WS-4', 'Склад сырья', 'ACTIVE', ''], ['WS-5', 'Зона отгрузки и выдачи', 'ACTIVE', '']].map(w => ({ workshopId: w[0], name: w[1], status: w[2], notApplicableReason: w[3], zoneType: 'WORKSHOP' })),
-      objects: [{ name: 'Холодильник мясной №1', objectType: 'FRIDGE', minValue: 2, maxValue: 6, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Морозильник №2', objectType: 'FREEZER', minValue: -25, maxValue: -18, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Горячий цех', objectType: 'ROOM', minValue: 16, maxValue: 28, checkTimes: '10:00', status: 'ACTIVE' }],
+      objects: [{ objectId: 'OBJ-1', name: 'Холодильник мясной №1', objectType: 'FRIDGE', minValue: 2, maxValue: 6, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Морозильник №2', objectType: 'FREEZER', minValue: -25, maxValue: -18, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Горячий цех', objectType: 'ROOM', minValue: 16, maxValue: 28, checkTimes: '10:00', status: 'ACTIVE' }],
       summary: { created: 214, requiresDecision: 15, numericObjects: 3, blockers: 1 } } }),
+    ts2Sensors: () => JSON.stringify({ success: true, data: { url: 'https://script.google.com/macros/s/TEST/exec', devices: [{ deviceId: 'SNS-000001', object: 'Холодильник мясной №1', status: 'ACTIVE', lastValue: 4.2, silentMin: 3 }] } }),
+    ts2SensorRegister: () => JSON.stringify({ success: true, data: { deviceId: 'SNS-000002', token: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4', url: 'https://script.google.com/macros/s/TEST/exec', example: { device: 'SNS-000002', token: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4', value: 4.2 } } }),
     ts2ApprovalQueue: () => JSON.stringify({ success: true, data: { queue: [
       { approvalId: 'APQ-1', objectType: 'SYSTEM_DOCUMENT', objectId: 'SDOC-2', title: 'Программа производственного контроля', reason: 'Документ подготовлен системой — утвердите от имени предприятия', requiredRole: 'Директор', status: 'PENDING' },
       { approvalId: 'APQ-2', objectType: 'SYSTEM_DOCUMENT', objectId: 'SDOC-9', title: 'Инструкция по приёмке сырья', reason: 'Подтвердите применимость типовой инструкции', requiredRole: 'Ответственный за ХАССП', status: 'PENDING' },
@@ -146,7 +148,11 @@ const MARK = (boxes) => {
   await p.click('button[data-mv="go"][data-a="2"]'); await p.waitForTimeout(300);
   await shot('setup_mode', ['.kpis', '.tabs', '#mvf_type', '#mvf_mode', 'button[data-mv="save2"]'], { x: 0, y: 0, width: 1400, height: 900 });
   await p.click('button[data-mv="go"][data-a="4"]'); await p.waitForTimeout(300);
-  await shot('setup_equipment', ['#mvf_otype', '#mvf_omin', '#mvf_omax', 'button[data-mv="save4"]'], null);
+  await p.waitForTimeout(300);
+  await shot('setup_equipment', ['#mvf_otype', '#mvf_omin', '#mvf_omax', 'button[data-mv="save4"]', 'button[data-mv="snsAdd"]'], null);
+  await p.click('button[data-mv="snsAdd"]'); await p.waitForTimeout(400);
+  await shot('setup_sensor', ['#mdlBox pre'], null);
+  await p.evaluate(() => closeMdl());
   await p.click('button[data-mv="go"][data-a="7"]'); await p.waitForTimeout(300);
   await shot('setup_queue', ['button[data-mv="sdoc"]', 'button[data-mv="approve"]', 'button[data-mv="sdocr"]'], null);
   await view('tsGen');

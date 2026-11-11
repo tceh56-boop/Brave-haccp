@@ -397,7 +397,7 @@ VIEWS.tsSetup = {
       b += vCard('Ждут утверждения предприятием · ' + q.length, vTable([{ k: 'title', l: 'Документ' }, { k: 'reason', l: 'Почему' }, { k: 'requiredRole', l: 'Утверждает' }], q, function (r) { return (r.objectType === 'SYSTEM_DOCUMENT' ? vBtn('Открыть', 'sdoc', r.objectId) : '') + vBtn('Утвердить', 'approve', r.approvalId, true) + vBtn('Отклонить', 'reject', r.approvalId); }, 'Всё утверждено'));
       var docs = TS2S.q.documents || [];
       if (docs.length) b += vCard('Системные документы · ' + docs.length, '<div class="rdnote">Документ формируется из данных предприятия при первом открытии. Изменили данные (сотрудники, оборудование, ТТК) — нажмите «Обновить»: появится новая версия, утверждённый документ вернётся на утверждение.</div>' +
-        vTable([{ k: 'templateId', l: 'Код' }, { k: 'title', l: 'Документ' }, { k: 'status', l: 'Статус' }, { k: 'approvedByEnterprise', l: 'Утвердил' }], docs, function (d) { return vBtn('Открыть', 'sdoc', d.documentId) + (d.fileId ? vBtn('Обновить', 'sdocr', d.documentId) : ''); }));
+        vTable([{ l: 'Код', html: true, f: function (d) { return '<span style="white-space:nowrap">' + esc(d.templateId) + '</span>'; } }, { k: 'title', l: 'Документ' }, { k: 'status', l: 'Статус' }, { k: 'approvedByEnterprise', l: 'Утвердил' }], docs, function (d) { return vBtn('Открыть', 'sdoc', d.documentId) + (d.fileId ? vBtn('Обновить', 'sdocr', d.documentId) : ''); }));
       vBody(h + b);
       if (n === 4) VIEWS.tsSetup.h.snsLoad();
     },
