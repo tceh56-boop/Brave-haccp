@@ -2620,7 +2620,7 @@ VIEWS.haccptasks = {
 
 /* ---------- Санитария и чек-листы (V43) ---------- */
 VIEWS.sanitationauto = {
-  fns: { gen: 'v43GenerateTasks', setup: 'setupV43SanitationChecklist', links: 'v43BuildChecklistLinks', install: 'v43InstallAutomation', done: 'v43CompleteChecklistItem', fail: 'v43CompleteChecklistItem' },
+  fns: { gen: 'v43GenerateTasks', setup: 'setupV43SanitationChecklist', links: 'v43BuildChecklistLinks', install: 'v43InstallAutomation', done: 'v43CompleteChecklistItem', fail: 'v43CompleteChecklistItem', lok: 'v43ReviewLink', lno: 'v43ReviewLink', fix: 'v43ResolveDeviation', vok: 'v43VerifyDeviation', vno: 'v43VerifyDeviation' },
   title: 'Санитария и чек-листы', sub: 'Режим дезсредства — только из утверждённого; выполнение записывается фактом и идёт в журналы ХАССП.',
   acts: [['Создать задачи на сегодня', 'gen', '', true]],
   open: function () { this.h.load(); },
@@ -2632,7 +2632,8 @@ VIEWS.sanitationauto = {
         var h = vKpis([['Открытых задач', d.openTasks, d.openTasks ? 'gold' : ''], ['Просрочено', d.overdueTasks, d.overdueTasks ? 'red' : ''], ['Пробелов в чек-листах', d.openGaps, d.openGaps ? 'gold' : ''], ['Связей пунктов', d['Санитария_Чеклисты_Связи_V43']], ['Фактов выполнения', d['Санитария_ЧеклистФакты_V43']]]);
         h += vCard('Мои санитарные задачи', vForm([['emp', 'Сотрудник (ФИО или код; пусто — все)', 'text', ACC && ACC.name || '']]) + '<div class="mvbar">' + vBtn('Показать задачи', 'my', '', true) + '</div><div id="mvtasks"></div>');
         if (ACC && (ACC.dev || canDo('sanitation'))) h += vCard('Настройка контура', '<div class="mvbar">' + vBtn('1. Подготовить листы', 'setup') + vBtn('2. Сопоставить пункты', 'links') + vBtn('3. Включить автообновление', 'install') + '</div>');
-        vBody(h); VIEWS.sanitationauto.h.my();
+        h += '<div id="mvsanrev"></div>';
+        vBody(h); VIEWS.sanitationauto.h.my(); VIEWS.sanitationauto.h.review();
       });
     },
     my: function () {
@@ -2651,6 +2652,25 @@ VIEWS.sanitationauto = {
     },
     done: function (id, btn) { VIEWS.sanitationauto.h.finish(id, 'DONE', btn); },
     fail: function (id, btn) { VIEWS.sanitationauto.h.finish(id, 'FAILED', btn); },
+    // связи «пункт → режим дезсредства» утверждает человек; нарушения: устранение отдельно от проверки
+    review: function () {
+      Promise.all([vCall('v43GetLinks', []), vCall('v43GetDeviations', [])]).then(function (r) {
+        var box = document.getElementById('mvsanrev'); if (!box) return;
+        var links = (Array.isArray(r[0]) ? r[0] : vData(r[0]) || []).filter(function (l) { return l.status === 'REVIEW'; }), devs = Array.isArray(r[1]) ? r[1] : vData(r[1]) || [];
+        var h = links.length ? vCard('Связи на проверке · ' + links.length, '<div class="rdnote">Система предложила режим дезсредства для пункта чек-листа. Задачи по пункту появятся только после утверждения ответственным.</div>' +
+          vTable([{ k: 'text', l: 'Пункт' }, { k: 'disinfectantId', l: 'Средство' }, { k: 'regimeId', l: 'Режим' }, { l: 'Сопоставление', f: function (l) { return l.method + ', ' + l.confidence; } }], links,
+            function (l) { return vBtn('Утвердить', 'lok', l.linkId, true) + vBtn('Отклонить', 'lno', l.linkId); })) : '';
+        h += devs.length ? vCard('Нарушения санитарии · ' + devs.length, '<div class="rdnote">«Устранено» записывает корректирующее действие. Закрыть нарушение может только другой сотрудник после проверки.</div>' +
+          vTable([{ l: 'Когда', f: function (d) { return String(d.at || '').replace('T', ' ').slice(0, 16); } }, { k: 'message', l: 'Нарушение' }, { k: 'status', l: 'Статус' }], devs,
+            function (d) { return d.status === 'VERIFY_REQUIRED' ? vBtn('Подтвердить', 'vok', d.alertId, true) + vBtn('Не подтверждено', 'vno', d.alertId) : vBtn('Устранено', 'fix', d.alertId, true); })) : '';
+        box.innerHTML = h;
+      });
+    },
+    lok: function (id, btn) { vDo(btn, 'v43ReviewLink', [id, 'APPROVED', ''], 'Связь утверждена', function () { VIEWS.sanitationauto.h.review(); }); },
+    lno: function (id, btn) { var c = prompt('Почему отклонено?') || ''; vDo(btn, 'v43ReviewLink', [id, 'REJECTED', c], 'Связь отклонена', function () { VIEWS.sanitationauto.h.review(); }); },
+    fix: function (id, btn) { var c = prompt('Что сделано для устранения?'); if (!c) return; vDo(btn, 'v43ResolveDeviation', [id, c], 'Устранение записано — ждёт проверки', function () { VIEWS.sanitationauto.h.review(); }); },
+    vok: function (id, btn) { vDo(btn, 'v43VerifyDeviation', [id, true, prompt('Чем подтверждено (замер, осмотр)?') || ''], 'Нарушение закрыто', function () { VIEWS.sanitationauto.h.review(); }); },
+    vno: function (id, btn) { vDo(btn, 'v43VerifyDeviation', [id, false, prompt('Что не так?') || ''], 'Нарушение снова открыто', function () { VIEWS.sanitationauto.h.review(); }); },
     gen: function (a, btn) { vDo(btn, 'v43GenerateTasks', [new Date().toISOString()], function (d) { return 'Задачи созданы' + (d && d.created !== undefined ? ': ' + d.created : ''); }, function () { VIEWS.sanitationauto.h.load(); }); },
     setup: function (a, btn) { vDo(btn, 'setupV43SanitationChecklist', [], 'Листы подготовлены'); },
     links: function (a, btn) { vDo(btn, 'v43BuildChecklistLinks', [], function (d) { return 'Пункты сопоставлены' + (d && d.links !== undefined ? ': ' + d.links : ''); }, function () { VIEWS.sanitationauto.h.load(); }); },

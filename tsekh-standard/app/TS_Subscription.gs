@@ -287,6 +287,12 @@ var TS_GATE_ = [
   { n: 'tsLsVerifyNorm', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },
   { n: 'ts4TenantIntegrityCheck', need: 'org_edit' },
   { n: 'tsExecStatus', need: 'org_edit' },
+  // V43: проверка связей и нарушения (Мастер-промт 4.0, этап 1)
+  { n: 'v43ReviewLink', need: 'sanitation|haccp_approve', mut: true },
+  { n: 'v43ResolveDeviation', need: 'sanitation|checklists', mut: true },
+  { n: 'v43VerifyDeviation', need: 'sanitation|haccp_approve', mut: true },
+  { n: 'v43GetLinks', need: 'sanitation|checklists' },
+  { n: 'v43GetDeviations', need: 'sanitation|checklists' },
   { n: 'tsBackgroundEnable', need: 'org_edit', mut: true },
   { n: 'tsLsNormsSync', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },
   { n: 'tsLsCreateAct', need: 'personnel|haccp|documents', mut: true, f: 'labor_safety' },

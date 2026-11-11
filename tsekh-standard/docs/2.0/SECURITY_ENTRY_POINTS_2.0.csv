@@ -730,6 +730,11 @@ v43BuildOverdueAlerts;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;служебн�
 v43AutomationTick;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
 v43InstallAutomation;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
 v43GetDashboard;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;checklists|sanitation;сессия → право «checklists|sanitation» → тариф
+v43ReviewLink;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);да;sanitation|haccp_approve;сессия → право «sanitation|haccp_approve» → тариф → допуск → блокировка → аудит
+v43ResolveDeviation;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);да;sanitation|checklists;сессия → право «sanitation|checklists» → тариф → допуск → блокировка → аудит
+v43VerifyDeviation;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);да;sanitation|haccp_approve;сессия → право «sanitation|haccp_approve» → тариф → допуск → блокировка → аудит
+v43GetLinks;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;sanitation|checklists;сессия → право «sanitation|checklists» → тариф
+v43GetDeviations;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;sanitation|checklists;сессия → право «sanitation|checklists» → тариф
 setupV44TaskCenter;MonChef_V44_TASK_CENTER.gs;служебная;;;только технический доступ или владелец проекта
 v44CreateTask;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
 v44SyncProductionTasks;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит

@@ -156,7 +156,13 @@ function _v65AutoActivities_(ppkId, D, ppk) {
     add({ object: c.Object || c.Name, parameter: c.Question || c.Name, normative: (c.Min !== '' || c.Max !== '') && (c.Min || c.Max) ? (c.Min + '…' + c.Max + ' ' + (c.Unit || '')) : '',
       frequency: c.ScheduleType === 'в_заданное_время' ? 'ежедневно в ' + c.Parameter : (c.ScheduleType || ''), role: c.Responsible, journal: c.JournalID, evidence: 'FACT', ca: c.Notes || '' });
   });
-  D.zones.forEach(function (z) { add({ area: z.AreaID, object: z.AreaName, parameter: 'Санитарная обработка зоны', frequency: z.Frequency || '', role: 'Ответственный за ХАССП', journal: _v65J_(/уборк|санитар|мойк/i), evidence: 'CHECKLIST', method: 'чек-лист санитарии' }); });
+  // санитарные планы V42: по зоне — конкретные операции с утверждённым режимом дезсредства вместо общей «обработки зоны»
+  var planByZone = {}; (D.sanPlans || []).forEach(function (sp) { if (/CANCEL|ARCHIV/i.test(String(sp.Status || ''))) return; var k = String(sp.AreaID || ''), t = String(sp.TaskName || '').trim(); if (!t) return;
+    planByZone[k] = planByZone[k] || {}; if (!planByZone[k][t]) planByZone[k][t] = sp; });
+  D.zones.forEach(function (z) { var pl = planByZone[String(z.AreaID)]; if (!pl) return;
+    Object.keys(pl).forEach(function (t) { var sp = pl[t]; add({ area: z.AreaID, object: z.AreaName, parameter: 'Санитарная обработка: ' + t + (sp.RegimeID ? ' (режим ' + sp.RegimeID + ')' : ''), frequency: z.Frequency || '',
+      role: sp.AssignedTo || 'Ответственный за ХАССП', journal: _v65J_(/уборк|санитар|мойк/i), evidence: 'CHECKLIST', method: 'чек-лист санитарной обработки; режим — из утверждённого реестра дезсредств', ca: 'повторная обработка, проверка концентрации раствора' }); }); });
+  D.zones.forEach(function (z) { if (planByZone[String(z.AreaID)]) return; add({ area: z.AreaID, object: z.AreaName, parameter: 'Санитарная обработка зоны', frequency: z.Frequency || '', role: 'Ответственный за ХАССП', journal: _v65J_(/уборк|санитар|мойк/i), evidence: 'CHECKLIST', method: 'чек-лист санитарии' }); });
   D.lab.forEach(function (l) { var f = l.FrequencyDays || l['Периодичность, дней'];
     add({ object: l.ObjectName || l['Объект контроля'], parameter: 'Лабораторное исследование: ' + (l.Indicator || l['Вид исследования']), normative: l.Normative || l['Норматив'] || '', frequency: f ? 'раз в ' + f + ' дней' : '',
       method: l.Method || '', role: l.ResponsibleRole || l['Ответственный'] || '', journal: 'LAB:' + (l.PlanID || l.ID), evidence: 'LAB_PROTOCOL', ca: 'при несоответствии — блокировка партии, повторное исследование, отклонение и корректирующее действие' }); });
@@ -171,7 +177,7 @@ function _v65AutoActivities_(ppkId, D, ppk) {
   add({ object: 'Каждая партия готовой продукции', parameter: 'Бракераж и суточная проба', frequency: 'каждая партия', method: 'органолептическая оценка', role: 'Шеф-повар', journal: _v65J_(/бракераж.*готов/i), evidence: 'FACT', ca: 'запрет выдачи, утилизация' });
   add({ object: 'Персонал', parameter: 'Медицинские осмотры и гигиеническая аттестация', frequency: 'по сроку медицинской книжки', method: 'медицинская книжка', role: 'Директор', journal: 'Медкнижки', evidence: 'DOCUMENT', ca: 'отстранение от работы до прохождения' });
   add({ object: 'Персонал', parameter: 'Ежедневный осмотр на допуск к работе', frequency: 'ежедневно', method: 'осмотр, опрос', role: 'Шеф-повар', journal: _v65J_(/гигиен|здоров/i), evidence: 'FACT', ca: 'отстранение от работы' });
-  add({ object: 'Рабочие растворы дезсредств', parameter: 'Концентрация рабочего раствора', frequency: 'при каждом приготовлении', method: 'тест-полоски / по инструкции средства', role: 'Ответственный за ХАССП', journal: _v65J_(/концентрац/i), evidence: 'FACT', ca: 'приготовить раствор заново' });
+  if ((D.dis || []).length) add({ object: 'Рабочие растворы дезсредств', parameter: 'Концентрация рабочего раствора', frequency: 'при каждом приготовлении', method: 'тест-полоски / по инструкции средства', role: 'Ответственный за ХАССП', journal: _v65J_(/концентрац/i), evidence: 'FACT', ca: 'приготовить раствор заново' });
   add({ object: 'Программа производственного контроля', parameter: 'Верификация выполнения ППК', frequency: 'ежемесячно', method: 'анализ графика, отклонений, протоколов', role: 'Ответственный за ХАССП', evidence: 'VERIFICATION' });
   return out;
 }
@@ -191,12 +197,22 @@ function _v65Check_(ppkId) {
     if (!hz.length) p.push('процесс «' + x.Name + '»: не проанализированы опасности'); else if (hz.some(function (h) { return !String(h.PreventiveMeasure || '').trim(); })) p.push('процесс «' + x.Name + '»: есть опасность без меры контроля'); });
   push('HAZARDS', 'Для каждого процесса есть опасности и меры контроля', p, D.processes.length ? 'REVIEW' : 'MISSING_EVIDENCE');
   // 3. ККТ: предел, частота, ответственный, журнал
-  var c = []; if (!D.ccp.length) c.push('ККТ не определены (ХАССП → точки контроля)');
+  // ККТ не требуются безусловно: если анализ опасностей документирован (по каждой опасности решено «значима/нет»,
+  // у значимых есть мера управления и доказательство), отсутствие ККТ обосновано (ОППУ / программы предварительных условий).
+  var c = [];
+  if (!D.ccp.length) {
+    var hzAll = D.hazards.filter(function (h) { return String(h.Status) !== 'ARCHIVED'; });
+    var undecided = hzAll.filter(function (h) { return !String(h.Significant === undefined ? '' : h.Significant).trim(); });
+    var sig = hzAll.filter(function (h) { return _v65Bool_(h.Significant); }), uncontrolled = sig.filter(function (h) { return !String(h.ExistingControl || '').trim() || !String(h.Evidence || '').trim(); });
+    if (!D.processes.length || !hzAll.length) c.push('ККТ не определены и анализ опасностей не документирован (ХАССП → процессы и опасности)');
+    else { undecided.forEach(function (h) { c.push('опасность «' + h.Hazard + '»: не решено, значима ли (обоснование отсутствия ККТ)'); });
+      uncontrolled.forEach(function (h) { c.push('значимая опасность «' + h.Hazard + '»: без ККТ нужна мера управления (ОППУ) и доказательство'); }); }
+  }
   D.ccp.forEach(function (x) { var m = D.mon.filter(function (y) { return String(y.ControlID) === String(x.ControlID); })[0], miss = [];
     if (!String(x.CriticalLimit || '').trim()) miss.push('критический предел'); if (!String(x.Frequency || (m && m.Frequency) || '').trim()) miss.push('частота');
     if (!String(x.Responsible || (m && m.Responsible) || '').trim()) miss.push('ответственный'); if (!String((m && m.JournalID) || x.RecordSource || '').trim()) miss.push('журнал');
     if (miss.length) c.push('ККТ «' + x.ControlPoint + '»: нет — ' + miss.join(', ')); });
-  push('CCP', 'Для каждой ККТ есть предел, частота, ответственный и журнал', c, D.ccp.length ? 'REVIEW' : 'MISSING_EVIDENCE');
+  push('CCP', D.ccp.length ? 'Для каждой ККТ есть предел, частота, ответственный и журнал' : 'ККТ не определены — отсутствие обосновано анализом опасностей', c, D.ccp.length || D.hazards.length ? 'REVIEW' : 'MISSING_EVIDENCE');
   // 4. лабораторные показатели: метод и периодичность
   var l = []; if (!D.lab.length) l.push('нет программы лабораторных исследований (Лаборатория → план)');
   D.lab.forEach(function (x) { var nm = (x.ObjectName || x['Объект контроля']) + ' / ' + (x.Indicator || x['Вид исследования']);
@@ -402,7 +418,10 @@ function v65Activate(ppkId, token) {
       var from = _v64Date_(p.DateFrom) || new Date(), archived = [];
       _v65Objs_('PPK').forEach(function (x) { if (x.PPKID === p.PPKID || x.Status !== 'ACTIVE') return; var to = _v64Date_(x.DateTo);
         if (!to || to >= from) { _v65SetCell_('PPK', x._row, 'Status', 'ARCHIVED'); _v65SetCell_('PPK', x._row, 'DateTo', new Date(from.getTime() - 86400000)); _v65Approval_(x.PPKID, 'Архивирование', 'ARCHIVED', 'заменена версией ' + p.Version, op); archived.push(x.PPKID); } });
-      _v65SetCell_('PPK', p._row, 'Status', 'ACTIVE'); _v65Approval_(ppkId, 'Ввод в действие', 'ACTIVE', archived.length ? 'в архив: ' + archived.join(', ') : '', op);
+      // задачи архивных версий с датой с момента ввода новой версии отменяются (история выполненных сохраняется)
+      var cancelled = 0; _v65Objs_('SCH').forEach(function (sc) { if (archived.indexOf(sc.PPKID) < 0) return; var dd = _v64Date_(sc.DueDate);
+        if ((String(sc.Status) === 'PLANNED' && dd && dd >= from) || String(sc.Status) === 'EVENT_RULE') { _v65SetCell_('SCH', sc._row, 'Status', 'CANCELLED'); cancelled++; } });
+      _v65SetCell_('PPK', p._row, 'Status', 'ACTIVE'); _v65Approval_(ppkId, 'Ввод в действие', 'ACTIVE', (archived.length ? 'в архив: ' + archived.join(', ') : '') + (cancelled ? '; отменено задач прежней версии: ' + cancelled : ''), op);
       PropertiesService.getScriptProperties().setProperty('MC_ORG_PPK', String(ppkId));
       var sch = _v65BuildSchedule_(ppkId, null, null);
       _audit_(op, 'V65_ACTIVATE', 'ППК', ppkId, 'APPROVED', { status: 'ACTIVE', archived: archived, schedule: sch.created }); _endOp_(op);
@@ -434,8 +453,12 @@ function _v65BuildSchedule_(ppkId, from, to) {
   var now = new Date(), f = _v64Date_(from) || new Date(Math.max((_v64Date_(p.DateFrom) || now).getTime(), new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()));
   var t = _v64Date_(to) || new Date(f.getTime() + 31 * 86400000), pt = _v64Date_(p.DateTo); if (pt && pt < t) t = pt;
   f = new Date(f.getFullYear(), f.getMonth(), f.getDate()); t = new Date(t.getFullYear(), t.getMonth(), t.getDate());
-  var have = {}; _v65Objs_('SCH').forEach(function (s) { have[s.ControlPlanID + '|' + _v64Day_(_v64Date_(s.DueDate))] = 1; });
+  var have = {}; _v65Objs_('SCH').forEach(function (s) { var dd = _v64Date_(s.DueDate); have[s.ControlPlanID + '|' + (dd ? _v64Day_(dd) : 'EVENT')] = 1; });
   var rows = [];
+  // событийные мероприятия («при каждой приёмке», «по событию», «по сроку»): одна строка-правило без даты, исполнение —
+  // по факту события (журналы, автозаписи); не превращаются в ежедневные задачи и не теряются из графика
+  acts.forEach(function (a) { if (_v65Interval_(a.Frequency) || !String(a.Frequency || '').trim()) return; var k = a.ControlPlanID + '|EVENT'; if (have[k]) return; have[k] = 1;
+    rows.push(['SCH-' + Utilities.getUuid().slice(0, 8).toUpperCase(), ppkId, a.ControlPlanID, 'по событию: ' + String(a.Frequency).slice(0, 60), '', a.ResponsibleRole || '', 'EVENT_RULE', '', '', '', '']); });
   acts.forEach(function (a) { var iv = _v65Interval_(a.Frequency); if (!iv) return;
     for (var d = new Date(f); d <= t; d = new Date(d.getTime() + iv * 86400000)) { var k = a.ControlPlanID + '|' + _v64Day_(d); if (have[k]) continue; have[k] = 1;
       rows.push(['SCH-' + Utilities.getUuid().slice(0, 8).toUpperCase(), ppkId, a.ControlPlanID, iv === 1 ? 'день' : iv === 7 ? 'неделя' : iv >= 28 && iv <= 31 ? 'месяц' : iv + ' дн.', d, a.ResponsibleRole || '', 'PLANNED', '', '', '', '']); } });
@@ -461,6 +484,7 @@ function _v65ScheduleState_(ppkId, from, to) {
   var labs = _v65Rows_('Лаборатория_Исследования'), today = _v64Day_(new Date()), out = [];
   _v65Objs_('SCH').filter(function (s) { return String(s.PPKID) === String(ppkId); }).forEach(function (s) {
     var dd = _v64Date_(s.DueDate), day = dd ? _v64Day_(dd) : ''; if (from && day < from) return; if (to && day > to) return;
+    if (String(s.Status) === 'CANCELLED') return;
     var a = acts[s.ControlPlanID] || {}, st = String(s.Status), ev = s.FactID || '';
     if (st !== 'DONE' && a.JournalID && day <= today) { ev = /^LAB:/.test(a.JournalID) ? (labs.filter(function (l) { var sd = _v64Date_(l.SamplingDate || l['Дата отбора']); return (String(l.PlanID || l['ID плана']) === a.JournalID.slice(4)) && sd && _v64Day_(sd) <= day && _v64Day_(sd) > _v64Day_(new Date(dd.getTime() - (_v65Interval_(a.Frequency) || 1) * 86400000)); })[0] || {}).ResearchID || '' : _v65JournalHas_(a.JournalID, day); if (ev) st = 'DONE'; }
     if (st === 'PLANNED' && day < today) st = 'OVERDUE';
@@ -479,6 +503,8 @@ function v65CompleteScheduleItem(json, token) {
   try { var d = _v64Json_(json); if (!String(d.evidence || '').trim()) return _v65Fail_(op, 'VALIDATION', 'Укажите доказательство: номер записи журнала, акта или протокола');
     return _withLock_(function () { var s = _v65Objs_('SCH').filter(function (x) { return x.ScheduleID === d.scheduleId; })[0]; if (!s) return _v65Fail_(op, 'NOT_FOUND', 'Пункт графика не найден');
       if (String(s.Status) === 'DONE') return _v65Fail_(op, 'VALIDATION', 'Пункт уже выполнен');
+      if (String(s.Status) === 'EVENT_RULE') return _v65Fail_(op, 'VALIDATION', 'Событийное мероприятие исполняется записью события (приёмка, производство, журнал), а не отметкой в графике');
+      if (String(s.Status) === 'CANCELLED') return _v65Fail_(op, 'VALIDATION', 'Пункт отменён: относится к архивной версии ППК');
       var due = _v64Date_(s.DueDate); if (due && due > new Date()) return _v65Fail_(op, 'VALIDATION', 'Срок пункта ещё не наступил — выполнение не отмечается заранее');
       var w = _v65Who_(op); _v65SetCell_('SCH', s._row, 'Status', 'DONE'); _v65SetCell_('SCH', s._row, 'FactID', String(d.evidence)); _v65SetCell_('SCH', s._row, 'CompletedAt', new Date()); _v65SetCell_('SCH', s._row, 'CompletedBy', w.name);
       if (d.deviationId) _v65SetCell_('SCH', s._row, 'DeviationID', String(d.deviationId));
