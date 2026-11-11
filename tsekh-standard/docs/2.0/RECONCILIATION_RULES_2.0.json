@@ -1,0 +1,132 @@
+{
+  "version": "2.0.0",
+  "source": "app/TS2_Reconcile.gs",
+  "severities": [
+    "BLOCKER",
+    "CRITICAL",
+    "MAJOR",
+    "MINOR"
+  ],
+  "rules": [
+    {
+      "ruleId": "R-001",
+      "ruleCode": "TTK_MISSING_YIELD",
+      "domain": "ТТК",
+      "severity": "BLOCKER",
+      "name": "У ТТК нет выхода",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-002",
+      "ruleCode": "TTK_NO_COMPOSITION",
+      "domain": "ТТК",
+      "severity": "BLOCKER",
+      "name": "У ТТК нет состава",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-003",
+      "ruleCode": "TTK_NO_SHELF_SOURCE",
+      "domain": "ТТК",
+      "severity": "MAJOR",
+      "name": "Срок реализации не задан или указан без основания",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-004",
+      "ruleCode": "DUPLICATE_TTK",
+      "domain": "ТТК",
+      "severity": "MAJOR",
+      "name": "Дубликат ТТК (то же название или тот же состав)",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-005",
+      "ruleCode": "PRODUCT_UNIT_CONFLICT",
+      "domain": "Продукты и единицы",
+      "severity": "MAJOR",
+      "name": "Один продукт в несовместимых единицах",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-006",
+      "ruleCode": "EMPLOYEE_WITHOUT_MED_DOC",
+      "domain": "Сотрудники и роли",
+      "severity": "CRITICAL",
+      "name": "У сотрудника нет действующего медицинского допуска",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-007",
+      "ruleCode": "ROLE_WITHOUT_INSTRUCTION",
+      "domain": "Охрана труда",
+      "severity": "MINOR",
+      "name": "Должность без должностной инструкции",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-008",
+      "ruleCode": "CONTRACT_EXPIRING",
+      "domain": "Договоры",
+      "severity": "MAJOR",
+      "name": "Договор истекает в ближайшие 30 дней",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-009",
+      "ruleCode": "DOC_EXPIRED",
+      "domain": "Документы и сроки",
+      "severity": "CRITICAL",
+      "name": "Документ или договор истёк",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-010",
+      "ruleCode": "CCP_WITHOUT_JOURNAL",
+      "domain": "ХАССП",
+      "severity": "MAJOR",
+      "name": "ККТ не связана с журналом",
+      "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-011",
+      "ruleCode": "ORG_REQUISITES_MISSING",
+      "domain": "Организация",
+      "severity": "CRITICAL",
+      "name": "Не заполнены реквизиты организации",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-012",
+      "ruleCode": "DIRECTOR_MISSING",
+      "domain": "Сотрудники и роли",
+      "severity": "BLOCKER",
+      "name": "Не назначен директор",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-013",
+      "ruleCode": "HACCP_RESPONSIBLE_MISSING",
+      "domain": "ХАССП",
+      "severity": "BLOCKER",
+      "name": "Не назначен ответственный за ХАССП",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-014",
+      "ruleCode": "NORM_NOT_VERIFIED",
+      "domain": "Документы и сроки",
+      "severity": "MINOR",
+      "name": "Норматив не сверен с первоисточником",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-015",
+      "ruleCode": "SYSTEM_DOC_NOT_APPROVED",
+      "domain": "ППК",
+      "severity": "MAJOR",
+      "name": "Локальный документ ждёт утверждения предприятия",
+      "requiresHumanApproval": true
+    }
+  ]
+}

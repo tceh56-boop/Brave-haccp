@@ -1,0 +1,7 @@
+﻿sourceSheet,entityType,idPrefix,sourceKeyColumn,newIdFormat,legacySheetChanged
+Блюда,DISH,DISH,A (первая колонка),DISH-ГГГГ-000001,нет
+Сотрудники,EMPLOYEE,EMP,A (первая колонка),EMP-ГГГГ-000001,нет
+Поставщики,SUPPLIER,SUP,A (первая колонка),SUP-ГГГГ-000001,нет
+ЦС_Договоры,CONTRACT,CTR,A (первая колонка),CTR-ГГГГ-000001,нет
+Документы,DOCUMENT,DOCL,A (первая колонка),DOCL-ГГГГ-000001,нет
+Склад_Партии,BATCH,BATCHL,A (первая колонка),BATCHL-ГГГГ-000001,нет
