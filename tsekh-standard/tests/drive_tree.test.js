@@ -31,4 +31,7 @@ treeOn = false; const fb = ctx._tsTreeFolder_('BACKUPS', '', ['Бэкапы ЦЕ
 const src = fs.readdirSync(path.join(__dirname, '..', 'app')).filter(f => f.endsWith('.gs')).map(f => fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8')).join('\n');
 ['_blanksFolder_', '_invoicesFolder_', '_exportFolder_', '_journalsRootFolder_', '_mcV8ArchiveRoot_', '_jfDriveRoot_'].forEach(fn => {
   const i = src.indexOf('function ' + fn + '('); assert(i >= 0, fn); assert(/_tsTree(Ready|Folder)_/.test(src.slice(i, i + 700)), fn + ' использует дерево предприятия'); });
+// прежние имена папок (по ним идёт перенос) не должны быть заменены ребрендингом
+["'MON CHEF — Журналы'", "'Mon Chef — Пакеты проверки'", "'Mon Chef — Документы'", "'Документы на сырьё Mon Chef'", "'Бэкапы Mon Chef'", "'Выгрузки Mon Cher'", "'Журналы Mon Cher'", "'MON CHEF — Архив'"]
+  .forEach(n => assert(src.includes(n), 'прежнее имя папки для переноса: ' + n));
 console.log('OK: папки системы — в дереве предприятия, прежние перенесены без потерь');

@@ -729,9 +729,9 @@ function _jfApplyLayout_(sh, L) {
 function _jfFolder_(parent, name) { var it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
 function _jfDriveRoot_() {
   var p = PropertiesService.getScriptProperties(), id = p.getProperty('MC_JF_DRIVE_ROOT_ID');
-  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) { var t = _tsTreeFolder_('JOURNALS', '', [MC_JF_DRIVE_ROOT_, 'ЦЕХ Стандарт — Журналы']); p.setProperty('MC_JF_DRIVE_ROOT_ID', t.getId()); return t; }
-  if (id) { try { var f0 = DriveApp.getFolderById(id); if (f0.getName() === 'ЦЕХ Стандарт — Журналы') f0.setName(MC_JF_DRIVE_ROOT_); return f0; } catch (e) {} }
-  var f = _tsBrandFolder_(MC_JF_DRIVE_ROOT_, 'ЦЕХ Стандарт — Журналы');
+  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) { var t = _tsTreeFolder_('JOURNALS', '', [MC_JF_DRIVE_ROOT_, 'MON CHEF — Журналы']); p.setProperty('MC_JF_DRIVE_ROOT_ID', t.getId()); return t; } /* ts-legacy-name */
+  if (id) { try { var f0 = DriveApp.getFolderById(id); if (f0.getName() === 'MON CHEF — Журналы') f0.setName(MC_JF_DRIVE_ROOT_); return f0; } catch (e) {} } /* ts-legacy-name */
+  var f = _tsBrandFolder_(MC_JF_DRIVE_ROOT_, 'MON CHEF — Журналы'); /* ts-legacy-name */
   p.setProperty('MC_JF_DRIVE_ROOT_ID', f.getId());
   return f;
 }

@@ -12,7 +12,7 @@ APP, BRAND = sys.argv[1], sys.argv[2]
 NAME = 'ЦЕХ Стандарт'
 
 # строки, где старое имя — это имя папки/файла на Диске с уже накопленными данными
-KEEP_LINE = re.compile(r"MC_JF_DRIVE_ROOT_\s*=|MC_V8_ARCHIVE_ROOT\s*=|getFoldersByName\(|createFolder\(|makeCopy\(|MC_PACKAGE_FOLDER\s*=|'BACKUP Mon Chef")
+KEEP_LINE = re.compile(r"ts-legacy-name|MC_JF_DRIVE_ROOT_\s*=|MC_V8_ARCHIVE_ROOT\s*=|getFoldersByName\(|createFolder\(|makeCopy\(|MC_PACKAGE_FOLDER\s*=|'BACKUP Mon Chef")
 
 COLORS = [
     ('#6e1423', '#a87b22'), ('#4a0c17', '#1d150d'), ('#36080f', '#0b0b0b'), ('#8c2233', '#8f6a1c'),
