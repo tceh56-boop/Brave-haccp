@@ -334,7 +334,8 @@ VIEWS.tsNow = {
             body = '<div class="rdnote">' + esc(lim) + '</div><div class="bqf mvf"><div><label>' + (m.kind === 'FRYER' ? 'Состояние жира' : 'Значение, ' + esc(m.unit)) + '</label>' +
               (m.kind === 'FRYER' ? '<select id="ts2v_' + t.id + '"><option>годен</option><option>заменён</option><option>требует замены</option></select>' : '<input id="ts2v_' + t.id + '" type="number" step="0.1" inputmode="decimal" style="font-size:22px">') +
               '</div><div class="mvwide"><label>Комментарий (обязателен вне нормы)</label><input id="ts2c_' + t.id + '"></div></div><div class="mvbar"><button class="btn pri" data-mv="measure" data-a="' + t.id + '">Записать</button></div>';
-          } else body = '<div class="mvbar"><button class="btn pri" style="min-width:120px;font-size:18px" data-mv="yes" data-a="' + t.id + '">Да</button><button class="btn" style="min-width:120px;font-size:18px" data-mv="no" data-a="' + t.id + '">Нет</button></div>';
+          } else body = '<div class="mvbar"><button class="btn pri" style="min-width:120px;font-size:18px" data-mv="yes" data-a="' + t.id + '">Да</button><button class="btn" style="min-width:120px;font-size:18px" data-mv="no" data-a="' + t.id + '">Нет</button>' +
+            (t.catering ? '<button class="btn" data-mv="labels" data-a="' + esc(t.catering) + '">Ярлыки ёмкостей</button>' : '') + '</div>';
           return '<div class="card" style="margin-bottom:10px;padding:14px 18px">' + head + body + '</div>';
         }).join('') : vCard('Все задачи выполнены', '<p>Новых задач нет. Записи о выпуске, приёмке и вскрытии система делает сама.</p>');
         if (x.exceptions.length) h += vCard('Отклонения — нужно решение', vTable([{ k: 'createdAt', l: 'Когда' }, { k: 'value', l: 'Что случилось' }, { k: 'confirmedByEmployee', l: 'Кто' }], x.exceptions, function (r) { return vBtn('Устранено', 'resolve', r.autoRecordId); }));
@@ -350,6 +351,9 @@ VIEWS.tsNow = {
       var v = document.getElementById('ts2v_' + id).value, c = document.getElementById('ts2c_' + id).value;
       if (v === '') { vMsg('Введите значение', 'err'); return; }
       vDo(btn, 'ts2Measure', [TOKEN, id, v, c], function (d) { return d.result === 'FAIL' ? 'Вне нормы — записано отклонение' : 'Записано: ' + d.value + ' ' + d.unit; }, function () { VIEWS.tsNow.h.load(); });
+    },
+    labels: function (eventId, btn) {
+      vDo(btn, 'ts2CateringLabels', [TOKEN, eventId], function (d) { return 'Ярлыков: ' + d.count + (d.gaps.length ? '. Впишите от руки: ' + d.gaps.join('; ') : ''); }, function (d) { var w = window.open('', '_blank'); if (!w) { alert('Разрешите всплывающие окна для печати'); return; } w.document.write(d.html); w.document.close(); setTimeout(function () { try { w.print(); } catch (e) {} }, 300); });
     },
     resolve: function (id, btn) { var a = prompt('Корректирующее действие (что сделано):'); if (!a) return; vDo(btn, 'ts2ResolveException', [TOKEN, id, a], 'Отклонение закрыто', function () { VIEWS.tsNow.h.load(); }); }
   }

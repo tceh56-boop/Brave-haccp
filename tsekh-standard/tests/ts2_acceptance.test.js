@@ -51,7 +51,7 @@ legacy('ЦС_Нормативы', ['Код', 'Группа', 'Документ',
   ['N-3', 'СанПиН', 'Действует долго', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(2000)], ['N-4', 'СанПиН', 'Отменён', '', '', '', 'УТРАТИЛ СИЛУ', '', '', '', isoIn(-400)]]);
 legacy('Температурные_Объекты', ['ObjectID', 'Тип', 'Название', 'EquipmentID', 'Мин', 'Макс', 'Ед.', 'Статус', 'Установленная t°', 'Время проверок'], [['T-1', 'REFRIGERATOR', 'Холодильник 1', '', 2, 6, '°C', 'ACTIVE', 4, '09:00']]);
 const ctx = vm.createContext(G);
-['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs', 'TS_Sensors.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
+['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs', 'TS_Sensors.gs', 'TS2_Serving.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
 const C = ctx, J = s => { const r = JSON.parse(s); if (!r.success) throw new Error(r.error.message); return r.data; };
 const rows = n => C._ts2Rows_(n);
 let pass = 0; const t = (name, fn) => { fn(); pass++; console.log('  ✓ ' + name); };
@@ -232,5 +232,27 @@ t('2.1: датчик — ключ хешем, замер закрывает за
   post({ device: dev, token: key, value: 9.8 }); assert.strictEqual(ex(), 1, 'повторное отклонение в течение часа не дублирует уведомление');
   J(C.ts2SensorRevoke('t', dev)); assert.strictEqual(post({ device: dev, token: key, value: 4 }).ok, false, 'отключённый датчик не принимается');
   assert.strictEqual(JSON.parse(C.doPost({ postData: { contents: '{"hello":1}' } }).text).ok, false, 'прочие POST отклоняются');
+});
+t('СанПиН 4282-26 п. 32, 54, 55: раздача 3 ч, кейтеринг — раннее комплектование и ярлыки без выдуманного времени', () => {
+  const p2 = n => String(n).padStart(2, '0'), loc = d => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+  const start = new Date(Date.now() + 5 * 3600000), made = new Date(Date.now() - 3600000);
+  G.getEvents = () => JSON.stringify([{ id: 'E1', format: 'Банкет', date: loc(new Date()), time: '19:00', items: [{ name: 'Котлета куриная', qty: 20 }] },
+    { id: 'E2', format: 'Выездной фуршет', date: loc(start), time: p2(start.getHours()) + ':' + p2(start.getMinutes()), items: [{ name: 'Котлета куриная', qty: 30 }, { name: 'Жюльен', qty: 30 }] }]);
+  G._productionSheet_ = () => ({ getDataRange: () => ({ getValues: () => [['id', 'op', 'name', 'code', 'v', 'p', 'f', 'u', 'ws', 'e', 'st', 'fin', 'status'], ['P1', '', 'Котлета куриная', 'D-1', '', '', '', '', '', '', '', made, 'COMPLETED']] }) });
+  G.PROD_COL_ = { name: 2, status: 12, finish: 11, code: 3 };
+  const ok = JSON.stringify({ success: true, data: {} });
+  C._ts2OnGateCall_('issueV28Banquet', ['E1', '[]'], ok); C._ts2OnGateCall_('issueV28Banquet', ['E1', '[]'], ok);
+  const e1 = rows('JOURNAL_EXPECTATIONS').filter(e => e.objectId === 'E1' && e.eventRuleId === 'SERVING');
+  assert.strictEqual(e1.length, 1, 'одна задача на выдачу, повтор без дублей'); assert(/п\. 32/.test(e1[0].title));
+  assert(Math.abs(new Date(e1[0].dueAt) - (Date.now() + 3 * 3600000)) < 120000, 'срок — через 3 часа');
+  C._ts2OnGateCall_('issueV28Banquet', ['E2', '[]'], ok);
+  assert(rows('JOURNAL_EXPECTATIONS').some(e => e.objectId === 'E2' && /п\. 55/.test(e.title)), 'кейтеринг: 3 часа в изотермических ёмкостях');
+  assert(rows('AUTO_RECORDS').some(r => r.recordType === 'DEVIATION' && /п\. 54/.test(r.value)), 'комплектование раньше чем за 3 часа — отклонение');
+  assert(C._ts2NowTasks_().some(t => t.catering === 'E2'), 'на экране «Сейчас» — кнопка ярлыков');
+  const L = C._ts2CateringLabels_('E2', 'Шефова Т.');
+  assert.strictEqual(L.count, 2); assert(/Тест/.test(L.html) && /Шефова Т\./.test(L.html) && /п\. 55/.test(L.html));
+  const hh = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
+  assert(L.html.includes(hh(made)) && L.html.includes(hh(new Date(made.getTime() + 3 * 3600000))), 'изготовлено и окончание раздачи — из факта производства');
+  assert(L.gaps.some(g => /Жюльен/.test(g)) && /__________________/.test(L.html), 'нет факта производства — поле для ручной записи, время не выдумано');
 });
 console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

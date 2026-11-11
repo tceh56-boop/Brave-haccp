@@ -258,7 +258,10 @@ function _ts2OnGateCall_(name, args, res) {
       if (d.blocked) _ts2Exception_('DEFROST_FAIL', 'Размораживание партии ' + (d.batchId || df.batchId) + ': ' + (d.reasons || []).join('; '), String(d.batchId || df.batchId));
     }
     else if (name === 'mcDefrostMeasure') { if (d.result === 'DEVIATION') { var dm = _ts2Json_(a[0], {}); _ts2Exception_('DEFROST_FAIL', 'Размораживание партии ' + dm.batchId + ': t° в толще ' + dm.temperature + ' °C выше нормы — партия заблокирована до решения', String(dm.batchId)); } }
-    else if (name === 'issueV28Banquet') { _ts2Emit_('RELEASE_TO_HALL', { sourceType: 'BANQUET_ISSUE', sourceId: String(a[0]) + '|' + _ts2Iso_().slice(0, 13), title: 'банкет ' + a[0] }); }
+    else if (name === 'issueV28Banquet') {
+      _ts2Emit_('RELEASE_TO_HALL', { sourceType: 'BANQUET_ISSUE', sourceId: String(a[0]) + '|' + _ts2Iso_().slice(0, 13), title: 'банкет ' + a[0] });
+      if (typeof _ts2OnBanquetIssue_ === 'function') _ts2OnBanquetIssue_(String(a[0]), new Date());   // СанПиН 4282-26 п. 32, 54, 55
+    }
     else if (name === 'mcTakeDailySample') { _ts2Emit_('DAILY_SAMPLE_TAKEN', { sourceType: 'DAILY_SAMPLE', sourceId: String(d.id || d.sampleId || _ts2Json_(a[0], {}).batchId || ''), batchId: String(_ts2Json_(a[0], {}).batchId || '') }); }
     else if (name === 'saveChecklistExecution') { _ts2Emit_('SANITATION_CONFIRMED', { sourceType: 'CHECKLIST', sourceId: String(d.id || d.executionId || _ts2Iso_()) }); }
   } catch (e) { try { _log_('WARN', 'ЦЕХ 2.1 событие ' + name + ': ' + (e && e.message || e)); } catch (x) {} try { if (typeof _tsTechEvent_ === 'function') _tsTechEvent_('EVENT_HOOK', name, e && e.message || e); } catch (x) {} }
@@ -272,7 +275,7 @@ function _ts2NowTasks_() {
   list.sort(function (a, b) { return String(a.dueAt) < String(b.dueAt) ? -1 : 1; });
   return list.map(function (e) {
     var o = objs[e.objectId] || null, kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : (String(e.eventRuleId).indexOf('EVR-') === 0 ? 'CCP' : '');
-    return { id: e.expectationId, title: e.title, due: String(e.dueAt).slice(11, 16), overdue: String(e.dueAt) < _ts2Iso_(), mode: e.confirmationMode, role: e.responsibleRole,
+    return { id: e.expectationId, title: e.title, due: String(e.dueAt).slice(11, 16), catering: e.eventRuleId === 'SERVING' && /^Кейтеринг/.test(String(e.title)) ? String(e.objectId) : '', overdue: String(e.dueAt) < _ts2Iso_(), mode: e.confirmationMode, role: e.responsibleRole,
       measure: e.confirmationMode === 'MEASURE' ? { kind: kind || 'OTHER', unit: (TS2_MEASURE_TYPES_[kind] || TS2_MEASURE_TYPES_.OTHER)[1], min: kind === 'ROOM_HUMIDITY' ? '' : o ? o.minValue : '', max: kind === 'ROOM_HUMIDITY' ? '' : o ? o.maxValue : '', object: o ? o.name : '' } : null };
   });
 }
