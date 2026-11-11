@@ -37,7 +37,8 @@ var TS2_SYSTEM_DOCS_ = [
   ['TPL-022', 'Форма внутреннего расследования', 'ACT', 'PROVIDER_TEMPLATE', 'SYSTEM_APPROVED', false, ''],
   ['TPL-023', 'Реестр оборудования', 'OTHER', 'PROVIDER_TEMPLATE', 'ACTIVE_TEMPLATE', false, ''],
   ['TPL-024', 'Реестр договоров', 'OTHER', 'PROVIDER_TEMPLATE', 'ACTIVE_TEMPLATE', false, ''],
-  ['TPL-025', 'Реестр нормативов', 'NORM', 'PROVIDER_TEMPLATE', 'ACTIVE_TEMPLATE', false, '']
+  ['TPL-025', 'Реестр нормативов', 'NORM', 'PROVIDER_TEMPLATE', 'ACTIVE_TEMPLATE', false, ''],
+  ['TPL-026', 'Внутренний порядок организации кейтеринга (СанПиН 2.3/2.4.4282-26, п. 52–55)', 'INSTRUCTION', 'AUTO_GENERATED', 'AUTO_PREPARED', true, 'Директор']
 ];
 // Матрица ККТ (ТЗ 2.1 §7.4, §15). measurementMode: CONFIRMATION — только подтверждение; MEASURE_IF_REQUIRED — число вводится, если требует ППК;
 // SENSOR_OR_DERIVED_OR_PENDING — из датчика или подтверждённого замера, иначе ожидание замера; NONE — числа нет.
@@ -113,6 +114,21 @@ function _ts2InitializeReadyToWork_(mode, enterpriseType) {
   _ts2SyncLegacyObjects_();
   _ts2Audit_('READY_TO_WORK_INIT', 'ENTERPRISE', ent, undefined, { mode: mode, created: created, backupId: backupId }, 'пакет ' + TS2_SEED_VERSION);
   return { mode: mode, seedVersion: TS2_SEED_VERSION, created: created, backupId: backupId };
+}
+/** Документы, добавленные в пакет после включения режима (например, TPL-026), дописываются без повторной настройки. */
+function _ts2SeedSync_() {
+  if (!_ts2Prof_('mode', '')) return 0;
+  var have = {}; _ts2Rows_('SYSTEM_DOCUMENTS').forEach(function (d) { have[d.templateId] = true; });
+  var miss = TS2_SYSTEM_DOCS_.filter(function (t) { return !have[t[0]]; }); if (!miss.length) return 0;
+  var ent = _ts2Ent_(), now = _ts2Iso_();
+  miss.forEach(function (t) {
+    var id = _ts2Id_('SYSTEM_DOCUMENTS');
+    _ts2Insert_('SYSTEM_DOCUMENTS', { documentId: id, enterpriseId: ent, templateId: t[0], templateVersion: TS2_SEED_VERSION, documentType: t[2], title: t[1], approvalMode: t[3], status: t[4], requiresLocalApproval: t[5],
+      localApprovalStatus: t[5] ? 'REQUIRES_ENTERPRISE_APPROVAL' : 'NOT_REQUIRED', source: 'дополнение пакета ' + TS2_SEED_VERSION, fileId: '', validFrom: '', validTo: '', createdAt: now, updatedAt: now, approvedByEnterprise: '', approvedAt: '' });
+    if (t[5]) _ts2Insert_('APPROVAL_QUEUE', { approvalId: _ts2Id_('APPROVAL_QUEUE'), enterpriseId: ent, objectType: 'SYSTEM_DOCUMENT', objectId: id, title: t[1], reason: 'Новый документ пакета — подготовлен системой, утвердите от имени предприятия', preparedBySystem: true, requiredRole: t[6], status: 'PENDING', approvedBy: '', approvedAt: '', comment: '' });
+  });
+  _ts2Audit_('SEED_SYNC', 'ENTERPRISE', ent, undefined, { added: miss.map(function (t) { return t[0]; }) }, '');
+  return miss.length;
 }
 /** Холодильники и морозильники из существующего реестра температур → объекты замеров 2.1 (без изменения реестра). */
 function _ts2SyncLegacyObjects_() {
@@ -456,7 +472,7 @@ function ts2Wizard(token) { try { _requireAuth_(token); return _ok_(_ts2WizardSt
 function ts2WizardSave(token, step, data) { try { _requireAuth_(token, 'org_edit'); return _ok_(_ts2WizardSave_(Number(step), data, token)); } catch (e) { return _failFrom_(e); } }
 function ts2Readiness(token) { try { _requireAuth_(token); return _ok_(_ts2Readiness_()); } catch (e) { return _failFrom_(e); } }
 function ts2ApprovalQueue(token) {
-  try { _requireAuth_(token); _ts2EnsureSchema_(false); return _ok_({ queue: _ts2Rows_('APPROVAL_QUEUE').reverse(), documents: _ts2Rows_('SYSTEM_DOCUMENTS') }); } catch (e) { return _failFrom_(e); }
+  try { _requireAuth_(token); _ts2EnsureSchema_(false); try { _ts2SeedSync_(); } catch (x) {} return _ok_({ queue: _ts2Rows_('APPROVAL_QUEUE').reverse(), documents: _ts2Rows_('SYSTEM_DOCUMENTS') }); } catch (e) { return _failFrom_(e); }
 }
 function ts2ApproveQueueItem(token, id, approve, comment) { try { _requireAuth_(token); return _ok_(_ts2ApproveQueue_(id, approve === true || approve === 'true', comment)); } catch (e) { return _failFrom_(e); } }
 /** Протокол запуска: создаётся в очереди утверждения, подписывает директор (критерий перехода в эксплуатацию). */

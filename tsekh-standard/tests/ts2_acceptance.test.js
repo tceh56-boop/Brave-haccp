@@ -45,6 +45,8 @@ legacy('Блюда', ['Код', 'Название', 'Категория', 'Вы�
   ['D-4', 'Соус сливочный', 'Соусы', '', 1, 'Сливки довести до кипения.', '', '', 'Горячий цех', '']]);
 legacy('Состав', ['code', 'name', 'unit', 'qty', 'base', 'netto'], [['D-1', 'Филе куриное', 'г', 120, 0, 110], ['D-1', 'Сливки', 'мл', 20, 0, 20], ['D-2', 'Огурец', 'г', 100, 0, 90], ['D-4', 'Сливки', 'мл', 200, 0, 180]]);
 legacy('Сотрудники', ['last', 'first', 'middle', 'pos', 'role'], []);
+legacy('Оборудование_Реестр', ['EquipmentID', 'Наименование', 'Модель', 'Заводской №', 'Место', 'Ответственный', 'Измерительный (да/нет)', 'Диапазон', 'Точность', 'Дата поверки', 'Следующая поверка', 'Документ поверки', 'Статус'],
+  [['EQ-1', 'Термометр ртутный ТЛ-2', '', '', 'Склад', '', 'да', '', '', '', '', '', 'ACTIVE'], ['EQ-2', 'Термощуп электронный', 'TP101', '', 'Горячий цех', '', 'да', '', '', '', '', '', 'ACTIVE']]);
 const isoIn = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
 legacy('ЦС_Нормативы', ['Код', 'Группа', 'Документ', 'Название', 'Что требует', 'Где в системе', 'Статус', 'Проверил', 'Дата проверки', 'Ссылка', 'Действует до'], [
   ['N-1', 'СанПиН', 'СанПиН скоро истекает', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(60)], ['N-2', 'СанПиН', 'Приказ истёк', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(-3)],
@@ -61,9 +63,9 @@ t('схема: повторная установка не создаёт дуб�
   assert(a.sheetsCreated > 30 && b.sheetsCreated === 0);
   const ids = new Set([1, 2, 3].map(() => C._ts2Id_('APPROVAL_QUEUE'))); assert.strictEqual(ids.size, 3);
 });
-t('2.1: initializeReadyToWork идемпотентен (25 документов, 9 зон, правила событий)', () => {
+t('2.1: initializeReadyToWork идемпотентен (26 документов, 9 зон, правила событий)', () => {
   const r1 = C._ts2InitializeReadyToWork_('READY_TO_WORK', 'RESTAURANT'), r2 = C._ts2InitializeReadyToWork_('READY_TO_WORK', 'RESTAURANT');
-  assert.strictEqual(rows('SYSTEM_DOCUMENTS').length, 25); assert.strictEqual(rows('WORKSHOPS').length, 9);
+  assert.strictEqual(rows('SYSTEM_DOCUMENTS').length, 26); assert.strictEqual(rows('WORKSHOPS').length, 9);
   assert.strictEqual(rows('EVENT_RULES').length, C.TS2_EVENT_RULES_.length); assert.strictEqual(r2.created.documents, 0);
   assert(r1.backupId === '' || /BKP/.test(r1.backupId));
   assert.strictEqual(rows('MEASUREMENT_OBJECTS').filter(o => o.legacyObjectId === 'T-1').length, 1, 'холодильник из старого реестра');
@@ -156,6 +158,9 @@ t('2.0: сверка находит блокирующие проблемы и �
   const n1 = rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN').length; C._ts2RunReconciliation_();
   assert.strictEqual(rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN').length, n1);
   assert(rows('RECONCILIATION_ISSUES').some(i => i.severity === 'BLOCKER'));
+  const byRule = code => rows('RECONCILIATION_ISSUES').filter(i => i.ruleId === C.TS2_RULES_.find(r => r.ruleCode === code).ruleId).map(i => i.entityId);
+  assert.strictEqual(JSON.stringify(byRule('THERMOMETER_MERCURY')), '["EQ-1"]', 'ртутный термометр — критично, электронный — нет (п. 48)');
+  assert(byRule('STORE_CLIMATE_OBJECT_MISSING').length === 1, 'нет помещения для замера влажности склада (п. 35, 40)');
   const iss = code => rows('RECONCILIATION_ISSUES').filter(i => i.entityType === 'NORM' && i.ruleId === C.TS2_RULES_.find(r => r.ruleCode === code).ruleId).map(i => i.entityId);
   assert.strictEqual(JSON.stringify(iss('NORM_EXPIRING')), '["N-1"]', 'истекает в ближайшие 120 дней');
   assert.strictEqual(JSON.stringify(iss('NORM_EXPIRED')), '["N-2"]', 'истёк, но отмечен действующим; отменённый и долгосрочный — без проблем');
@@ -194,15 +199,16 @@ t('2.1: размораживание — запись с фактической 
   assert.strictEqual(rows('AUTO_RECORDS').find(x => x.batchId === 'B-8' && x.journalCode === 'J-DEFROST').result, 'FAIL');
   assert(rows('AUTO_RECORDS').some(x => x.recordType === 'DEVIATION' && /B-8/.test(x.value)));
 });
-t('2.1: 25 системных документов формируются из данных; без изменений — та же версия; изменение утверждённого → новая версия и повторное утверждение', () => {
+t('2.1: 26 системных документов формируются из данных; без изменений — та же версия; изменение утверждённого → новая версия и повторное утверждение', () => {
   session = { name: 'Сидорова', role: 'Ответственный за ХАССП' };
-  const all = rows('SYSTEM_DOCUMENTS'); assert.strictEqual(all.length, 25);
+  const all = rows('SYSTEM_DOCUMENTS'); assert.strictEqual(all.length, 26);
   all.forEach(d => { const r = C._ts2SdocGenerate_(d.documentId, false); assert(r.fileId && r.changed, d.templateId); });
   const txt = id => docText[rows('SYSTEM_DOCUMENTS').find(d => d.templateId === id).fileId].join('\n');
   assert(/Котлета куриная/.test(txt('TPL-005')) && /75/.test(txt('TPL-005')), 'реестр ККТ содержит ККТ из утверждённой ТТК');
   assert(/Холодильник 1/.test(txt('TPL-023')), 'реестр оборудования — из объектов замеров');
   assert(/НЕТ ДАННЫХ: директор/.test(txt('TPL-001')), 'нет директора — документ прямо говорит, где внести');
   assert(/показателей вносятся по протоколам/.test(txt('TPL-002')), 'ППК не выдумывает лабораторные показатели');
+  assert(/п\. 54/.test(txt('TPL-026')) && /изотермическ/.test(txt('TPL-026')), 'порядок кейтеринга — по п. 52–55');
   assert(/J-KKT-THERMAL/.test(txt('TPL-007')) && /Акт списания/.test(txt('TPL-019')) && /FEFO/.test(txt('TPL-010')));
   const d5 = rows('SYSTEM_DOCUMENTS').find(d => d.templateId === 'TPL-005');
   assert.strictEqual(C._ts2SdocGenerate_(d5.documentId, false).changed, false, 'без изменений данных — без новой версии');
@@ -254,5 +260,12 @@ t('СанПиН 4282-26 п. 32, 54, 55: раздача 3 ч, кейтеринг 
   const hh = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
   assert(L.html.includes(hh(made)) && L.html.includes(hh(new Date(made.getTime() + 3 * 3600000))), 'изготовлено и окончание раздачи — из факта производства');
   assert(L.gaps.some(g => /Жюльен/.test(g)) && /__________________/.test(L.html), 'нет факта производства — поле для ручной записи, время не выдумано');
+});
+t('документ, добавленный в пакет после настройки (TPL-026), дописывается в уже работающую систему один раз', () => {
+  const d = rows('SYSTEM_DOCUMENTS').find(x => x.templateId === 'TPL-026'); const sh = sheets['SYSTEM_DOCUMENTS'];
+  sh.data.splice(d._row - 1, 1); C._TS2_SH_ = {};
+  assert(!rows('SYSTEM_DOCUMENTS').some(x => x.templateId === 'TPL-026'));
+  assert.strictEqual(C._ts2SeedSync_(), 1); assert.strictEqual(C._ts2SeedSync_(), 0);
+  const n = rows('SYSTEM_DOCUMENTS').find(x => x.templateId === 'TPL-026'); assert(n && rows('APPROVAL_QUEUE').some(q => q.objectId === n.documentId && q.status === 'PENDING'), 'новый документ — на утверждение');
 });
 console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

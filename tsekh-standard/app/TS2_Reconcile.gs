@@ -42,7 +42,9 @@ var TS2_RULES_ = [
   { ruleId: 'R-014', ruleCode: 'NORM_NOT_VERIFIED', domain: 'Документы и сроки', severity: 'MINOR', name: 'Норматив не сверен с первоисточником', requiresHumanApproval: false },
   { ruleId: 'R-015', ruleCode: 'SYSTEM_DOC_NOT_APPROVED', domain: 'ППК', severity: 'MAJOR', name: 'Локальный документ ждёт утверждения предприятия', requiresHumanApproval: true },
   { ruleId: 'R-016', ruleCode: 'NORM_EXPIRING', domain: 'Документы и сроки', severity: 'MAJOR', name: 'Срок действия норматива заканчивается в ближайшие 120 дней', requiresHumanApproval: false },
-  { ruleId: 'R-017', ruleCode: 'NORM_EXPIRED', domain: 'Документы и сроки', severity: 'CRITICAL', name: 'Срок действия норматива истёк, а он отмечен как действующий', requiresHumanApproval: false }
+  { ruleId: 'R-017', ruleCode: 'NORM_EXPIRED', domain: 'Документы и сроки', severity: 'CRITICAL', name: 'Срок действия норматива истёк, а он отмечен как действующий', requiresHumanApproval: false },
+  { ruleId: 'R-018', ruleCode: 'THERMOMETER_MERCURY', domain: 'Оборудование', severity: 'CRITICAL', name: 'Ртутный термометр в реестре (СанПиН 2.3/2.4.4282-26, п. 48)', requiresHumanApproval: false },
+  { ruleId: 'R-019', ruleCode: 'STORE_CLIMATE_OBJECT_MISSING', domain: 'ХАССП', severity: 'MINOR', name: 'Нет объекта замера температуры и влажности склада (п. 35, 40)', requiresHumanApproval: false }
 ];
 function _ts2Rule_(code) { return TS2_RULES_.filter(function (r) { return r.ruleCode === code; })[0]; }
 
@@ -101,6 +103,12 @@ function _ts2Evaluate_() {
   _ts2Rows_('DOCUMENTS').forEach(function (d) { var v = String(d.validTo || '').slice(0, 10); if (v && v < today && d.status !== 'ARCHIVED' && d.status !== 'EXPIRED') add('DOC_EXPIRED', 'DOCUMENT', d.documentId, 'validTo', v, '≥ ' + today, 'Документ «' + d.title + '» истёк', 'Загрузить действующую версию', 'Директор'); });
   _ts2Rows_('HACCP_CONTROLS_V2').forEach(function (k) { if (String(k.isCcp) === 'true' && !k.journalCode) add('CCP_WITHOUT_JOURNAL', 'CCP', k.controlId, 'journalCode', '', 'код журнала', 'ККТ «' + k.name + '» не связана с журналом', 'Связать ККТ с журналом', 'Ответственный за ХАССП'); });
   try { var o = _mcOrg_(), c = _mcOrgCompleteness_(o); if (!c.complete) add('ORG_REQUISITES_MISSING', 'ORGANIZATION', 'ORG', 'Реквизиты', c.missing.join(', '), 'заполнены', 'Не заполнены реквизиты: ' + c.missing.join(', '), 'Настройки → Организация', 'Директор'); } catch (e) {}
+  _ts2Legacy_('Оборудование_Реестр').forEach(function (q) {
+    if (/ртут/i.test([q['Наименование'], q['Модель']].join(' ')) && !/INACTIVE|ARCHIVED|СПИСАН/i.test(String(q['Статус'] || '')))
+      add('THERMOMETER_MERCURY', 'EQUIPMENT', q['EquipmentID'], 'Наименование', q['Наименование'], 'не ртутный', 'Ртутный термометр «' + q['Наименование'] + '» запрещён (СанПиН 2.3/2.4.4282-26, п. 48)', 'Замените на электронный или спиртовой термометр и выведите ртутный из реестра', 'Ответственный за ХАССП');
+  });
+  if (_ts2Prof_('mode', '') && !_ts2Rows_('MEASUREMENT_OBJECTS', function (o) { return o.status === 'ACTIVE' && o.objectType === 'ROOM'; }).length)
+    add('STORE_CLIMATE_OBJECT_MISSING', 'MEASUREMENT_OBJECT', 'ROOM', 'objectType', '', 'ROOM', 'Нет объекта замера температуры и влажности склада: ежедневная регистрация обязательна (СанПиН 2.3/2.4.4282-26, п. 35, 40)', 'Настройка и готовность → шаг 4 → тип «Помещение» для каждого склада', 'Ответственный за ХАССП');
   _ts2Legacy_('ЦС_Нормативы').forEach(function (n) {
     var vt = n['Действует до'] instanceof Date ? Utilities.formatDate(n['Действует до'], _mcTz_(), 'yyyy-MM-dd') : String(n['Действует до'] || '').slice(0, 10);
     if (!vt || String(n['Статус']) !== 'ДЕЙСТВУЕТ') return;

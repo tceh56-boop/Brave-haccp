@@ -20,13 +20,15 @@ var MASTER_TEMPLATES_ = [
   ['TPL-015', 'Инструкция по обращению с отходами', 'INSTRUCTION', 'PROVIDER_TEMPLATE'], ['TPL-016', 'Инструкция по действиям при отклонении', 'INSTRUCTION', 'PROVIDER_TEMPLATE'], ['TPL-017', 'Должностные инструкции', 'INSTRUCTION', 'AUTO_GENERATED'],
   ['TPL-018', 'Инструкции по охране труда', 'INSTRUCTION', 'AUTO_GENERATED'], ['TPL-019', 'Акт списания', 'ACT', 'PROVIDER_TEMPLATE'], ['TPL-020', 'Акт несоответствия', 'ACT', 'PROVIDER_TEMPLATE'],
   ['TPL-021', 'Корректирующее действие', 'ACT', 'PROVIDER_TEMPLATE'], ['TPL-022', 'Внутреннее расследование', 'ACT', 'PROVIDER_TEMPLATE'], ['TPL-023', 'Реестр оборудования', 'OTHER', 'PROVIDER_TEMPLATE'],
-  ['TPL-024', 'Реестр договоров', 'OTHER', 'PROVIDER_TEMPLATE'], ['TPL-025', 'Реестр нормативов', 'NORM', 'PROVIDER_TEMPLATE']
+  ['TPL-024', 'Реестр договоров', 'OTHER', 'PROVIDER_TEMPLATE'], ['TPL-025', 'Реестр нормативов', 'NORM', 'PROVIDER_TEMPLATE'],
+  ['TPL-026', 'Внутренний порядок организации кейтеринга', 'INSTRUCTION', 'AUTO_GENERATED']
 ];
 var MASTER_RULES_ = [['R-001', 'TTK_MISSING_YIELD', 'ТТК', 'BLOCKER'], ['R-002', 'TTK_NO_COMPOSITION', 'ТТК', 'BLOCKER'], ['R-003', 'TTK_NO_SHELF_SOURCE', 'ТТК', 'MAJOR'], ['R-004', 'DUPLICATE_TTK', 'ТТК', 'MAJOR'],
   ['R-005', 'PRODUCT_UNIT_CONFLICT', 'Продукты', 'MAJOR'], ['R-006', 'EMPLOYEE_WITHOUT_MED_DOC', 'Персонал', 'CRITICAL'], ['R-007', 'ROLE_WITHOUT_INSTRUCTION', 'Охрана труда', 'MINOR'], ['R-008', 'CONTRACT_EXPIRING', 'Договоры', 'MAJOR'],
   ['R-009', 'DOC_EXPIRED', 'Документы', 'CRITICAL'], ['R-010', 'CCP_WITHOUT_JOURNAL', 'ХАССП', 'MAJOR'], ['R-011', 'ORG_REQUISITES_MISSING', 'Организация', 'CRITICAL'], ['R-012', 'DIRECTOR_MISSING', 'Персонал', 'BLOCKER'],
   ['R-013', 'HACCP_RESPONSIBLE_MISSING', 'ХАССП', 'BLOCKER'], ['R-014', 'NORM_NOT_VERIFIED', 'Нормативы', 'MINOR'], ['R-015', 'SYSTEM_DOC_NOT_APPROVED', 'Документы', 'MAJOR'],
-  ['R-016', 'NORM_EXPIRING', 'Нормативы', 'MAJOR'], ['R-017', 'NORM_EXPIRED', 'Нормативы', 'CRITICAL']];
+  ['R-016', 'NORM_EXPIRING', 'Нормативы', 'MAJOR'], ['R-017', 'NORM_EXPIRED', 'Нормативы', 'CRITICAL'],
+  ['R-018', 'THERMOMETER_MERCURY', 'Оборудование', 'CRITICAL'], ['R-019', 'STORE_CLIMATE_OBJECT_MISSING', 'ХАССП', 'MINOR']];
 var MASTER_EVENTS_ = [['EVR-RECEIVING-001', 'RECEIVING_CONFIRMED', 'INCOMING_CONTROL', 'J-RECEIVING', 'MEASURE_IF_REQUIRED'], ['EVR-BATCH-OPEN-001', 'BATCH_OPENED', 'BATCH_OPENING', 'J-MARKING', 'NONE'],
   ['EVR-RELEASE-THERMAL-001', 'PRODUCTION_RELEASE', 'HACCP_FACT', 'J-KKT-THERMAL', 'SENSOR_OR_DERIVED_OR_PENDING'], ['EVR-RELEASE-MARKING-001', 'PRODUCTION_RELEASE', 'MARKING', 'J-MARKING', 'NONE'],
   ['EVR-HALL-SAMPLE-001', 'RELEASE_TO_HALL', 'DAILY_SAMPLE', 'J-SAMPLES', 'CONFIRMATION'], ['EVR-SANITATION-001', 'SANITATION_CONFIRMED', 'SANITATION', 'J-SANITATION', 'CONFIRMATION'],

@@ -143,6 +143,22 @@
       "severity": "CRITICAL",
       "name": "Срок действия норматива истёк, а он отмечен как действующий",
       "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-018",
+      "ruleCode": "THERMOMETER_MERCURY",
+      "domain": "Оборудование",
+      "severity": "CRITICAL",
+      "name": "Ртутный термометр в реестре (СанПиН 2.3/2.4.4282-26, п. 48)",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-019",
+      "ruleCode": "STORE_CLIMATE_OBJECT_MISSING",
+      "domain": "ХАССП",
+      "severity": "MINOR",
+      "name": "Нет объекта замера температуры и влажности склада (п. 35, 40)",
+      "requiresHumanApproval": false
     }
   ]
 }
