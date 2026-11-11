@@ -7,6 +7,7 @@ node tests/ts2_acceptance.test.js
 node tests/license_flow.test.js
 node tests/gate_security.test.js
 node tests/security_patch_0_1.test.js
+node tests/norms_registry.test.js
 node tools/inventory_entry_points.js
 node tools/check_syntax.js app && node tools/check_syntax.js admin
 ```
@@ -40,6 +41,7 @@ node tools/check_syntax.js app && node tools/check_syntax.js admin
 | A-23 | Диагностика только с согласия, ключ не в таблице, без персональных данных, отзыв; статистика и ошибки без почты и номеров | 2.0 §12 | license_flow |
 | A-24 | Шлюз: аноним, служебные функции, подделка расписания, права роли, технический доступ, fail-closed тарифа и допуска, двойное нажатие | безопасность | gate_security |
 | A-25 | Инвентаризация входов: портал проверяет ключ, записывающие функции требуют право | безопасность | inventory_entry_points |
+| A-26 | Реестр нормативов: СанПиН 3590-20 и СП 3670-20 утратили силу, действуют СанПиН 4282-26, СП 4284-26, СП 4285-26; перенос в таблицы предприятий не затирает их собственные проверки | нормативы | norms_registry |
 
 ## Ручные (на реальном Google-аккаунте, перед запуском у клиента)
 | № | Проверка | Ожидаемый результат |
