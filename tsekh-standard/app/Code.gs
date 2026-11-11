@@ -1047,7 +1047,7 @@ function createSystemBackup(token) {
     var name = 'BACKUP ЦЕХ Стандарт ' + stamp;
     var folder;
     try {
-      folder = _tsBrandFolder_('Бэкапы ЦЕХ Стандарт', 'Бэкапы Mon Chef');
+      folder = _tsTreeFolder_('BACKUPS', '', ['Бэкапы ЦЕХ Стандарт', 'Бэкапы Mon Chef']);
     } catch (e) { folder = null; }
     var copy = folder ? src.makeCopy(name, folder) : src.makeCopy(name);
     // ТЗ §24: бэкап содержит все данные предприятия — публичным не делаем
@@ -2726,8 +2726,7 @@ function checkReadinessCriteria(token) {
     // 3. Данные не потеряны
     var backups = 0;
     try {
-      var it = DriveApp.getFoldersByName('Бэкапы ЦЕХ Стандарт');
-      if (it.hasNext()) { var f = it.next().getFiles(); while (f.hasNext()) { f.next(); backups++; } }
+      var f = _tsTreeFolder_('BACKUPS', '', ['Бэкапы ЦЕХ Стандарт', 'Бэкапы Mon Chef']).getFiles(); while (f.hasNext()) { f.next(); backups++; }
     } catch (e) {}
     crit(3, 'Существующие данные не потеряны',
       backups > 0 ? 'ДА' : 'ВНИМАНИЕ',
@@ -3880,8 +3879,8 @@ function _simpleParse_(text) {
 }
   
 function _exportFolder_() {
- var it = DriveApp.getFoldersByName('Выгрузки Mon Cher');
- return it.hasNext() ? it.next() : DriveApp.createFolder('Выгрузки Mon Cher');
+ if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) return _tsTreeFolder_('SYS_EXPORTS', '', ['Выгрузки ЦЕХ Стандарт', 'Выгрузки Mon Cher']);
+ return _tsBrandFolder_('Выгрузки ЦЕХ Стандарт', 'Выгрузки Mon Cher');
 }
 function _mkExport_(title, sheetsObj) {
  var ss = SpreadsheetApp.create(title);
@@ -3913,7 +3912,7 @@ function exportTTK() {
    var ss = _book_();
    var b = ss.getSheetByName('Блюда'), s = ss.getSheetByName('Состав');
    var obj = { 'Блюда': b ? b.getDataRange().getValues() : [], 'Состав': s ? s.getDataRange().getValues() : [] };
-   return _mkExport_('ТТК Mon Cher ' + Utilities.formatDate(new Date(), _mcTz_(), 'dd.MM.yyyy'), obj);
+   return _mkExport_('ТТК ЦЕХ Стандарт ' + Utilities.formatDate(new Date(), _mcTz_(), 'dd.MM.yyyy'), obj);
  } catch (e) { return 'err:' + e; }
 }
 
@@ -4486,6 +4485,9 @@ function _nextText_(cells, cols, after) { for (var i = 0; i < cols.length; i++) 
 function _clean_(s) { return (s || '').replace(/\&quot;/g, '"').replace(/&#10;/g, ' ').replace(/\&amp;/g, '&').replace(/\&lt;/g, '<').replace(/\&gt;/g, '>').replace(/\s+/g, ' ').trim(); }
   
 function _blanksFolder_() {
+ // дерево предприятия: у каждого клиента своя папка (номер BLANKS_FOLDER_ID — папка исходной установки; при установке
+ // нескольких клиентов с одного аккаунта бланки разных предприятий смешались бы)
+ if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) return _tsTreeFolder_('INBOX', 'Бланки заявок', ['Бланки заявок']);
  try { return DriveApp.getFolderById(BLANKS_FOLDER_ID); } catch (e) {}
  // фолбэк, если фиксированный ID когда-нибудь стал недействителен (папку удалили вручную)
  var it = DriveApp.getFoldersByName('Бланки заявок');
@@ -4514,6 +4516,7 @@ function saveBlankPhoto(dataUrl, label) {
 }
 
 function _invoicesFolder_() {
+ if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) return _tsTreeFolder_('PRODUCTS', 'Накладные', ['Накладные']);
  try { return DriveApp.getFolderById(INVOICES_FOLDER_ID); } catch (e) {}
  // фолбэк, если фиксированный ID когда-нибудь стал недействителен (папку удалили вручную)
  var it = DriveApp.getFoldersByName('Накладные');
@@ -8718,7 +8721,7 @@ function getLabelData(code, manufacturingDateISO, shelfLifeHours, responsible) {
       kbzhuPerPortion: kbzhu.perPortion || null,
       hasMissingNutrition: kbzhu.hasMissingData || false,
       responsible: responsible || '',
-      companyName: 'Mon Cher',
+      companyName: (function () { try { var o = _mcOrg_(); return o.shortName || o.objectName || o.name || ''; } catch (e) { return ''; } })(),   // название предприятия клиента
       labelSize: LABEL_SIZE_MM
     };
 
@@ -9400,7 +9403,7 @@ function installChecklistTriggers() {
  * Безопасно вызывать повторно — пропускает уже созданные листы/папки.
  */
 
-var JOURNALS_ROOT_FOLDER_NAME = 'Журналы Mon Cher';
+var JOURNALS_ROOT_FOLDER_NAME = 'Журналы ЦЕХ Стандарт';
 var ARCHIVE_FOLDER_NAME = 'Архив';
 
 // =====================================================================
@@ -9702,9 +9705,8 @@ function _employeesSheet_() {
 // =====================================================================
 
 function _journalsRootFolder_() {
-  var it = DriveApp.getFoldersByName(JOURNALS_ROOT_FOLDER_NAME);
-  if (it.hasNext()) return it.next();
-  return DriveApp.createFolder(JOURNALS_ROOT_FOLDER_NAME);
+  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) return _tsTreeFolder_('JOURNALS', 'Листы журналов', [JOURNALS_ROOT_FOLDER_NAME, 'Журналы Mon Cher']);
+  return _tsBrandFolder_(JOURNALS_ROOT_FOLDER_NAME, 'Журналы Mon Cher');
 }
 
 function _archiveFolder_() {
@@ -12856,6 +12858,7 @@ function _docsSheet_() {
 }
 function _docsFolder_() {
   var props = PropertiesService.getScriptProperties();
+  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) { var t = _tsTreeFolder_('ORG', 'Документы', ['ЦЕХ Стандарт — Документы', 'Mon Chef — Документы']); props.setProperty('DOCS_FOLDER_ID', t.getId()); return t; }
   var id = props.getProperty('DOCS_FOLDER_ID');
   if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
   var it = DriveApp.getFoldersByName('ЦЕХ Стандарт — Документы');

@@ -33,19 +33,16 @@ var MC_V8_ARCHIVE_LOCK_KEY = 'MC_V8_ARCHIVE_RUNNING';
 
 function _mcV8ArchiveRoot_() {
   var props = PropertiesService.getScriptProperties();
+  // дерево предприятия: «ENT-… — Название / 99_Архив» (прежние папки в корне Диска переносятся туда)
+  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) { var t = _tsTreeFolder_('ARCHIVE', '', [MC_V8_ARCHIVE_ROOT, MC_V8_ARCHIVE_ROOT_OLD_]); props.setProperty('MC_V8_ARCHIVE_ROOT_ID', t.getId()); return t; }
   var id = props.getProperty('MC_V8_ARCHIVE_ROOT_ID');
   if (id) {
     try { var f0 = DriveApp.getFolderById(id); if (f0.getName() === MC_V8_ARCHIVE_ROOT_OLD_) f0.setName(MC_V8_ARCHIVE_ROOT); return f0; } catch (e) {}
   }
-  var old = DriveApp.getFoldersByName(MC_V8_ARCHIVE_ROOT_OLD_);
-  if (old.hasNext()) { var fo = old.next(); fo.setName(MC_V8_ARCHIVE_ROOT); props.setProperty('MC_V8_ARCHIVE_ROOT_ID', fo.getId()); return fo; }
-  var it = DriveApp.getFoldersByName(MC_V8_ARCHIVE_ROOT);
-  var f = it.hasNext() ? it.next() : DriveApp.createFolder(MC_V8_ARCHIVE_ROOT);
+  var f = _tsBrandFolder_(MC_V8_ARCHIVE_ROOT, MC_V8_ARCHIVE_ROOT_OLD_);
   props.setProperty('MC_V8_ARCHIVE_ROOT_ID', f.getId());
   return f;
 }
-
-/** Папка на Диске по названию; уже созданная со старым названием (MonChef) переименовывается — содержимое не теряется. */
 function _tsBrandFolder_(name, oldName) {
   var it = DriveApp.getFoldersByName(name); if (it.hasNext()) return it.next();
   if (oldName) { var o = DriveApp.getFoldersByName(oldName); if (o.hasNext()) { var f = o.next(); f.setName(name); return f; } }

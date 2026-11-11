@@ -143,7 +143,7 @@ function _tsRunCommand_(cmd) {
   var p = _tsProps_();
   if (cmd === 'backup') {
     var src = DriveApp.getFileById(_book_().getId()), stamp = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd_HH-mm');
-    var it = DriveApp.getFoldersByName('Бэкапы ЦЕХ Стандарт'), folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы ЦЕХ Стандарт');
+    var folder = _tsTreeFolder_('BACKUPS', '', ['Бэкапы ЦЕХ Стандарт', 'Бэкапы Mon Chef']);
     var copy = src.makeCopy('BACKUP ЦЕХ Стандарт ' + stamp, folder);
     p.setProperty('TS_LAST_BACKUP', JSON.stringify({ at: Date.now(), fileId: copy.getId(), size: copy.getSize() }));
   }
