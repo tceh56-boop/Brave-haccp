@@ -301,7 +301,9 @@ function _ts2OnGateCall_(name, args, res) {
 function _ts2NowTasks_() {
   _ts2GenerateDay_();
   var day = _ts2Today_(), objs = {}; _ts2Rows_('MEASUREMENT_OBJECTS').forEach(function (o) { objs[o.objectId] = o; });
-  var list = _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return String(e.dueAt).slice(0, 10) <= day; });
+  // сегодня + ближайшие 6 часов: вечерняя смена видит задачи, срок которых наступает после полуночи (кейтеринг, охлаждение)
+  var horizon = _ts2Iso_(new Date(Date.now() + 6 * 3600000));
+  var list = _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return String(e.dueAt).slice(0, 10) <= day || String(e.dueAt).slice(0, 19) <= horizon; });
   list.sort(function (a, b) { return String(a.dueAt) < String(b.dueAt) ? -1 : 1; });
   // автоматический ввод: задачу закроет датчик, если он на связи и окно замера ещё не прошло — иначе замер делает повар
   var snsOk = {}, nowMs = Date.now();

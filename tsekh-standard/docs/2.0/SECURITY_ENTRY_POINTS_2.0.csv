@@ -1014,5 +1014,12 @@ tsOrderSend;TS_SupplierOrders.gs;интерфейс (сессия);да;procurem
 tsOrdersSendMany;TS_SupplierOrders.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
 tsSupplierCard;TS_SupplierOrders.gs;интерфейс (сессия);;procurement;сессия → право «procurement» → тариф
 tsSupportRevoke;TS_Support.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+ttkProcAnalyze;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit|haccp|ppk_edit;сессия → право «ttk_edit|haccp|ppk_edit» → тариф → допуск → блокировка → аудит
+ttkProcOverview;TS_TtkProcess.gs;интерфейс (сессия);;ttk_edit|ttk_approve|haccp|ppk_view|ppk_edit;сессия → право «ttk_edit|ttk_approve|haccp|ppk_view|ppk_edit» → тариф
+ttkProcOf;TS_TtkProcess.gs;интерфейс (сессия);;ttk_edit|ttk_approve|haccp|ppk_view|ppk_edit;сессия → право «ttk_edit|ttk_approve|haccp|ppk_view|ppk_edit» → тариф
+ttkProcReview;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit|ttk_approve|haccp_approve|ppk_edit;сессия → право «ttk_edit|ttk_approve|haccp_approve|ppk_edit» → тариф → допуск → блокировка → аудит
+ttkProcSetStatus;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+ttkProcAiSuggest;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit|haccp;сессия → право «ttk_edit|haccp» → тариф → допуск → блокировка → аудит
+ttkProcDictionarySave;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_approve|haccp_approve;сессия → право «ttk_approve|haccp_approve» → тариф → допуск → блокировка → аудит
 dedupeChecklistItems;zz_MonChef_Runtime.gs;служебная;;;только технический доступ или владелец проекта
 getAppUrl;zz_MonChef_Runtime.gs;публичная;;;адрес приложения
