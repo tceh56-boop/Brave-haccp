@@ -12858,7 +12858,7 @@ function _docsSheet_() {
 }
 function _docsFolder_() {
   var props = PropertiesService.getScriptProperties();
-  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) { var t = _tsTreeFolder_('ORG', 'Документы', ['ЦЕХ Стандарт — Документы', 'Mon Chef — Документы']); props.setProperty('DOCS_FOLDER_ID', t.getId()); return t; }
+  if (typeof _tsTreeReady_ === 'function' && _tsTreeReady_()) { var t = _tsTreeFolder_('ORG', 'Документы', ['ЦЕХ Стандарт — Документы', 'ЦЕХ Стандарт — Документы']); props.setProperty('DOCS_FOLDER_ID', t.getId()); return t; }
   var id = props.getProperty('DOCS_FOLDER_ID');
   if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
   var it = DriveApp.getFoldersByName('ЦЕХ Стандарт — Документы');

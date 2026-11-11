@@ -47,7 +47,7 @@ function _mcPackageFolder_() {
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty('MC_INSPECTION_PACKAGE_FOLDER_ID');
   if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
-  var f = _tsTreeFolder_('HACCP', 'Пакеты проверки', [MC_PACKAGE_FOLDER, 'Mon Chef — Пакеты проверки']);
+  var f = _tsTreeFolder_('HACCP', 'Пакеты проверки', [MC_PACKAGE_FOLDER, 'ЦЕХ Стандарт — Пакеты проверки']);
   props.setProperty('MC_INSPECTION_PACKAGE_FOLDER_ID', f.getId());
   return f;
 }
