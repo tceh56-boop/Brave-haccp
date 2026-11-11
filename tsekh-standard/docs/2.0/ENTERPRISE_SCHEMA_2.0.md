@@ -33,6 +33,7 @@
 | JOURNAL_EXPECTATIONS | 2.1 §11.5 | EXP-ГГГГ-000001 | expectationId, enterpriseId, journalCode, eventRuleId, objectType, objectId, productionId, batchId, dueAt, responsibleRole, status, confirmationMode, measurementRequired, completedAt, completedBy, factId, title, idempotencyKey |
 | APPROVAL_QUEUE | 2.1 §11.6 | APQ-ГГГГ-000001 | approvalId, enterpriseId, objectType, objectId, title, reason, preparedBySystem, requiredRole, status, approvedBy, approvedAt, comment |
 | MEASUREMENT_OBJECTS | 2.1 §6.3, §10 | OBJ-000001 | objectId, enterpriseId, objectType, name, workshopId, minValue, maxValue, unit, setpoint, checkTimes, legacyObjectId, status, notApplicableReason, lastReplacedAt, resourceHours, createdAt, createdBy |
+| SENSOR_DEVICES | 2.1 §7.3 (датчики) | SNS-000001 | deviceId, enterpriseId, objectId, name, tokenHash, status, createdAt, createdBy, lastSeenAt, lastValue, lastResult, lastStoredAt, revokedAt |
 | AUTOMATION_PROFILE | 2.1 §3, §12 | — | key, value, updatedAt, updatedBy |
 | TTK_SOURCE_FACTS | 2.2 §5.1 | TSF-ГГГГ-000001 | sourceFactId, enterpriseId, ttkId, ttkVersionId, fieldCode, rawValue, normalizedValue, unit, confidence, sourceFileId, sourcePage, sourceText, extractionMethod, status, requiresReview, createdAt |
 | DOCUMENT_GENERATION_JOBS | 2.2 §5.2 | GEN-ГГГГ-000001 | generationJobId, enterpriseId, ttkVersionId, generationType, profileId, status, startedAt, completedAt, requestedBy, backupId, createdDocumentCount, createdIssueCount, createdRuleCount, errorMessage, reportFileId, ttkId, summaryJson |

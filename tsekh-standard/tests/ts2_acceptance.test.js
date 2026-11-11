@@ -51,7 +51,7 @@ legacy('ЦС_Нормативы', ['Код', 'Группа', 'Документ',
   ['N-3', 'СанПиН', 'Действует долго', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(2000)], ['N-4', 'СанПиН', 'Отменён', '', '', '', 'УТРАТИЛ СИЛУ', '', '', '', isoIn(-400)]]);
 legacy('Температурные_Объекты', ['ObjectID', 'Тип', 'Название', 'EquipmentID', 'Мин', 'Макс', 'Ед.', 'Статус', 'Установленная t°', 'Время проверок'], [['T-1', 'REFRIGERATOR', 'Холодильник 1', '', 2, 6, '°C', 'ACTIVE', 4, '09:00']]);
 const ctx = vm.createContext(G);
-['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
+['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs', 'TS_Sensors.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
 const C = ctx, J = s => { const r = JSON.parse(s); if (!r.success) throw new Error(r.error.message); return r.data; };
 const rows = n => C._ts2Rows_(n);
 let pass = 0; const t = (name, fn) => { fn(); pass++; console.log('  ✓ ' + name); };
@@ -212,5 +212,25 @@ t('2.1: 25 системных документов формируются из �
   const r2 = C._ts2SdocGenerate_(d5.documentId, false); assert(r2.changed && r2.version === 2, 'данные изменились — версия 2');
   assert.strictEqual(C._ts2Find_('SYSTEM_DOCUMENTS', 'documentId', d5.documentId).status, 'REQUIRES_ENTERPRISE_APPROVAL', 'изменённый документ снова на утверждении');
   assert(rows('APPROVAL_QUEUE').some(x => x.objectId === d5.documentId && x.status === 'PENDING'));
+});
+t('2.1: датчик — ключ хешем, замер закрывает задачу, журнал не чаще 15 мин, отклонение уведомляет один раз, отключение', () => {
+  session = { name: 'Директорова', role: 'Директор' };
+  const obj = rows('MEASUREMENT_OBJECTS').find(o => o.legacyObjectId === 'T-1');
+  const reg = J(C.ts2SensorRegister('t', obj.objectId, 'Датчик холодильника')); const dev = reg.deviceId, key = reg.token;
+  assert(key.length >= 40 && !JSON.stringify(rows('SENSOR_DEVICES')).includes(key), 'ключ в таблице не хранится');
+  const nowIso = C._ts2Iso_(new Date());
+  C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-SNS', enterpriseId: 'E', journalCode: 'J-STORAGE-T', eventRuleId: 'SCHED-FRIDGE', objectType: 'FRIDGE', objectId: obj.objectId, dueAt: nowIso, status: 'OPEN', confirmationMode: 'MEASURE', title: 't', idempotencyKey: 'k-sns' });
+  const post = b => JSON.parse(C.doPost({ postData: { contents: JSON.stringify(b) } }).text);
+  assert.strictEqual(post({ device: dev, token: 'wrong', value: 4 }).ok, false, 'чужой ключ не принят');
+  assert.strictEqual(post({ device: dev, token: key, value: 999 }).ok, false, 'физически невозможное значение');
+  const r1 = post({ device: dev, token: key, value: 4.1 }); assert(r1.ok && r1.stored && r1.result === 'PASS' && r1.closed === 1, JSON.stringify(r1));
+  assert.strictEqual(C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-SNS').status, 'DONE', 'задача замера закрыта датчиком');
+  assert(rows('MANUAL_MEASUREMENTS').some(m => m.source === 'SENSOR' && Number(m.value) === 4.1));
+  assert.strictEqual(post({ device: dev, token: key, value: 4.3 }).stored, false, 'чаще 15 минут в журнал не пишется');
+  const ex = () => rows('AUTO_RECORDS').filter(x => x.recordType === 'DEVIATION' && /Датчик/.test(x.value)).length;
+  assert(post({ device: dev, token: key, value: 9.5 }).stored, 'отклонение пишется сразу'); assert.strictEqual(ex(), 1);
+  post({ device: dev, token: key, value: 9.8 }); assert.strictEqual(ex(), 1, 'повторное отклонение в течение часа не дублирует уведомление');
+  J(C.ts2SensorRevoke('t', dev)); assert.strictEqual(post({ device: dev, token: key, value: 4 }).ok, false, 'отключённый датчик не принимается');
+  assert.strictEqual(JSON.parse(C.doPost({ postData: { contents: '{"hello":1}' } }).text).ok, false, 'прочие POST отклоняются');
 });
 console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

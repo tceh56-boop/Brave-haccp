@@ -15,7 +15,7 @@ Object.assign(G, {
   _tsPlanGate_: (...a) => planGate(...a), _mcComplianceGate_: (...a) => compliance(...a)
 });
 const ok = n => function () { calls.push(n); return JSON.stringify({ success: true, data: n }); };
-['addJournalEntry', 'createDish', 'buildV25ProductionSchedule', 'uiMe', 'loginWithPin', 'getAuditDashboard', 'archiveMonChefMonthly', 'installAllTriggers', 'setupSystemFromEditor'].forEach(n => { G[n] = ok(n); });
+['addJournalEntry', 'createDish', 'buildV25ProductionSchedule', 'uiMe', 'loginWithPin', 'getAuditDashboard', 'archiveMonChefMonthly', 'installAllTriggers', 'setupSystemFromEditor', 'doPost'].forEach(n => { G[n] = ok(n); });
 const ctx = vm.createContext(G);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'app', 'zzz_MonChef_Gate.gs'), 'utf8'), ctx, { filename: 'zzz_MonChef_Gate.gs' });
 const J = s => JSON.parse(s), T = tok => ({ __mct: tok }), code = r => (J(r).error || {}).code;
@@ -34,4 +34,5 @@ t('fail-closed: проверка тарифа упала — отказ, а не
 t('fail-closed: проверка медицинского допуска упала — запись запрещена', () => { compliance = () => { throw new Error('сбой'); }; assert.strictEqual(code(ctx.addJournalEntry('{"a":4}', T('cook'))), 'COMPLIANCE_CHECK_UNAVAILABLE'); compliance = () => 'Нет медицинского допуска'; assert.strictEqual(code(ctx.addJournalEntry('{"a":5}', T('cook'))), 'MEDICAL_ADMISSION'); compliance = () => ''; assert.strictEqual(calls.length, 0); });
 t('двойное нажатие: тот же вызов того же сотрудника не выполняется второй раз', () => { const a = ctx.addJournalEntry('{"x":9}', T('cook')), b = ctx.addJournalEntry('{"x":9}', T('cook')); assert(J(a).success && J(b).success); assert.strictEqual(calls.length, 1); });
 t('публичные функции работают без входа, портал проверяющего пропускается к своей проверке ключа', () => { assert(J(ctx.loginWithPin()).success); assert(J(ctx.getAuditDashboard('raw')).success); });
+t('вход датчиков doPost не требует сессии (ключ устройства проверяет TS_Sensors)', () => { assert(J(ctx.doPost({ postData: { contents: '{}' } })).success); assert.strictEqual(calls.length, 1); });
 console.log('Шлюз: ' + pass + ' проверок безопасности пройдено');

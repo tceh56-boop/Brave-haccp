@@ -385,7 +385,9 @@ VIEWS.tsSetup = {
       if (n === 4) b = vCard('Шаг 4. Оборудование для замеров', '<div class="rdnote">Здесь — только то, что измеряется физически. Диапазон берите из инструкции оборудования или условий хранения: система не подставляет числа сама.</div>' +
         vForm([['otype', 'Тип', 'select', 'FRIDGE', [['FRIDGE', 'Холодильник'], ['FREEZER', 'Морозильник'], ['ROOM', 'Помещение (t° и влажность)'], ['FRYER', 'Фритюрница'], ['UV_LAMP', 'Бактерицидная лампа']]], ['oname', 'Название', 'text', '', 'Холодильник мясной №1'],
           ['omin', 'Мин.', 'number'], ['omax', 'Макс.', 'number'], ['oset', 'Уставка', 'number'], ['otimes', 'Время проверок', 'text', '09:00,18:00']]) + '<div class="mvbar"><button class="btn pri" data-mv="save4">Добавить</button></div>' +
-        vTable([{ k: 'name', l: 'Объект' }, { k: 'objectType', l: 'Тип' }, { k: 'minValue', l: 'Мин.' }, { k: 'maxValue', l: 'Макс.' }, { k: 'checkTimes', l: 'Проверки' }, { k: 'status', l: 'Статус' }], s.objects, null, 'Объектов пока нет'));
+        vTable([{ k: 'name', l: 'Объект' }, { k: 'objectType', l: 'Тип' }, { k: 'minValue', l: 'Мин.' }, { k: 'maxValue', l: 'Макс.' }, { k: 'checkTimes', l: 'Проверки' }, { k: 'status', l: 'Статус' }], s.objects,
+          function (o) { return ['FRIDGE', 'FREEZER', 'ROOM'].indexOf(o.objectType) >= 0 && o.objectId ? vBtn('Подключить датчик', 'snsAdd', o.objectId) : ''; }, 'Объектов пока нет') +
+        '<div id="ts2sns"></div>');
       if (n === 5) b = vCard('Шаг 5. Сотрудники', '<p>В системе сотрудников: <b>' + s.employees + '</b>. Добавить: Фамилия Имя;Роль;ПИН — по одному в строке.</p>' + vForm([['emps', 'Сотрудники', 'textarea', '', 'Иванова Анна;Повар горячего цеха;1234', 6]]) +
         '<div class="mvbar"><button class="btn pri" data-mv="save5">Добавить сотрудников</button><button class="btn" onclick="openSec(\'staff\')">Открыть раздел «Персонал»</button></div>');
       if (n === 6) b = vCard('Шаг 6. ТТК', '<p>В системе ТТК: <b>' + s.dishes + '</b>.</p>' + vForm([['ttk', 'Как начать', 'select', 'OWN', [['OWN', 'Загружу свои ТТК (файлы — в «Данные и сверка»)'], ['LIBRARY', 'Возьму из базы отработанных ТТК (Pro Max)'], ['LATER', 'Позже']]]]) +
@@ -397,7 +399,23 @@ VIEWS.tsSetup = {
       if (docs.length) b += vCard('Системные документы · ' + docs.length, '<div class="rdnote">Документ формируется из данных предприятия при первом открытии. Изменили данные (сотрудники, оборудование, ТТК) — нажмите «Обновить»: появится новая версия, утверждённый документ вернётся на утверждение.</div>' +
         vTable([{ k: 'templateId', l: 'Код' }, { k: 'title', l: 'Документ' }, { k: 'status', l: 'Статус' }, { k: 'approvedByEnterprise', l: 'Утвердил' }], docs, function (d) { return vBtn('Открыть', 'sdoc', d.documentId) + (d.fileId ? vBtn('Обновить', 'sdocr', d.documentId) : ''); }));
       vBody(h + b);
+      if (n === 4) VIEWS.tsSetup.h.snsLoad();
     },
+    snsLoad: function () {
+      vCall('ts2Sensors', [TOKEN]).then(function (r) { var e = vErr(r), box = document.getElementById('ts2sns'); if (e || !box) return; var d = vData(r);
+        box.innerHTML = vCard('Датчики · ' + d.devices.length, '<div class="rdnote">Показания датчика закрывают задачи замера в «Сейчас» и пишутся в журнал (не чаще раза в 15 минут и каждое отклонение). Если датчик молчит — замер делает повар.</div>' +
+          vTable([{ k: 'deviceId', l: 'Датчик' }, { k: 'object', l: 'Объект' }, { k: 'status', l: 'Статус' }, { l: 'Последнее показание', f: function (x) { return x.lastValue === '' || x.lastValue === undefined ? '—' : x.lastValue + ' °C, ' + (x.silentMin === null ? '' : x.silentMin + ' мин назад'); } }],
+            d.devices, function (x) { return x.status === 'ACTIVE' ? vBtn('Отключить', 'snsOff', x.deviceId) : ''; }, 'Датчики не подключены')); });
+    },
+    snsAdd: function (id, btn) {
+      vDo(btn, 'ts2SensorRegister', [TOKEN, id, ''], 'Датчик подключён — сохраните ключ, он показывается один раз', function (d) {
+        var mdl = document.getElementById('mdl'), box = document.getElementById('mdlBox'); mdl.classList.remove('dish'); mdl.classList.add('on');
+        box.innerHTML = '<button class="x" onclick="closeMdl()">×</button><h2>Датчик ' + esc(d.deviceId) + '</h2><p>Настройте устройство или шлюз (Home Assistant, ESP, облако датчика) отправлять <b>POST</b> на адрес:</p><pre style="white-space:pre-wrap;word-break:break-all">' + esc(d.url) + '</pre>' +
+          '<p>Тело запроса (JSON), значение — температура в °C; для помещения можно добавить <code>"humidity": 55</code>:</p><pre style="white-space:pre-wrap;word-break:break-all">' + esc(JSON.stringify(d.example)) + '</pre>' +
+          '<div class="err" style="border-radius:10px">Ключ показывается один раз. Если он потерян — отключите датчик и подключите заново.</div>';
+        VIEWS.tsSetup.h.snsLoad(); });
+    },
+    snsOff: function (id, btn) { if (!confirm('Отключить датчик? Его ключ перестанет работать.')) return; vDo(btn, 'ts2SensorRevoke', [TOKEN, id], 'Датчик отключён', function () { VIEWS.tsSetup.h.snsLoad(); }); },
     save: function (step, data, btn, next) { vDo(btn, 'ts2WizardSave', [TOKEN, step, data], 'Сохранено', function (d) { if (step === 5 && d && d.errors && d.errors.length) vMsg('Не добавлены: ' + d.errors.join('; '), 'err'); if (next) TS2S.step = next; VIEWS.tsSetup.h.load(); }); },
     save1: function (a, btn) { this.save(1, { org: { name: vV('name'), inn: vV('inn'), actualAddress: vV('actualAddress'), responsibleName: vV('responsibleName') }, timezone: vV('tz') }, btn, 2); },
     save2: function (a, btn) { this.save(2, { type: vV('type'), mode: vV('mode') }, btn, 3); },

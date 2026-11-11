@@ -39,6 +39,8 @@ var MC_GATE_ENTRY_ = ["doGet"];
 // ЦЕХ Стандарт: функции модулей TS_*.gs (подписка, охрана труда, договоры, AI, база ТТК) — в списки шлюза.
 // Записывающим функциям шлюз сам заводит операцию, аудит и общую блокировку.
 (function () {
+  // вход датчиков (TS_Sensors.gs): проверяет ключ устройства сам, сессии ЦЕХ Стандарт у датчика нет
+  if (MC_GATE_ENTRY_.indexOf('doPost') < 0) MC_GATE_ENTRY_.push('doPost');
   if (typeof TS_GATE_ === 'undefined') return;
   TS_GATE_.forEach(function (f) {
     if (MC_GATE_CLIENT_.indexOf(f.n) < 0) MC_GATE_CLIENT_.push(f.n);

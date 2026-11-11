@@ -21,6 +21,7 @@ const problems = [], rows = fns.map(x => {
   else if (kind === 'служебная') guard = L.TRIGGER.has(x.n) ? 'технический доступ, владелец или расписание (triggerUid сверяется)' : 'только технический доступ или владелец проекта';
   else if (kind === 'портал проверяющего') { const b = body(x.file, x.n); const ok = /_requireAuditAccess_\(\s*rawToken/.test(b.slice(0, 400)); guard = ok ? 'ключ проверяющего (_requireAuditAccess_) в начале функции' : REVIEWED[x.n] || 'НЕТ проверки ключа'; if (!ok && !REVIEWED[x.n]) problems.push(x.n + ': портал без проверки ключа'); }
   else if (kind === 'публичная') guard = { loginWithPin: 'вход по ПИН: блокировки устройства, техвхода и системы', destroySession: 'удаляет только свою сессию', uiMe: 'без сессии — пустой ответ', getAppUrl: 'адрес приложения', getJournalRegistry: 'справочник названий журналов, без данных' }[x.n] || 'ПРОВЕРИТЬ';
+  else if (x.n === 'doPost') guard = 'только показания датчиков: ключ устройства (хранится хешем), не чаще 30 запросов в минуту; остальные POST отклоняются';
   else guard = 'маршруты: ?verify (страница проверки документа по QR), ?diag (ключ поддержки, выданный с согласия), страница интерфейса — данные только через шлюз';
   if (kind === 'интерфейс (сессия)' && L.MUT.has(x.n) && (needOf(x.n) === '*' || !needOf(x.n)) && !ts.find(g => g.n === x.n) && !REVIEWED[x.n]) problems.push(x.n + ': записывающая функция без права роли');
   if (REVIEWED[x.n] && kind === 'интерфейс (сессия)') guard += '; ' + REVIEWED[x.n];
