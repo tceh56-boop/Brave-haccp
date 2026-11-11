@@ -90,7 +90,7 @@ const ts = Date.now(), sig = require('crypto').createHmac('sha256', secret).upda
 const api = p => JSON.parse(A.doPost({ parameter: {}, postData: { contents: JSON.stringify(p) } }).text);
 assert(api({ action: 'support.request', key: licenseKey, ts, sig, subject: 'Не печатается этикетка' }).ok, 'обращение клиента');
 assert(!api({ action: 'support.request', key: licenseKey, ts, sig, subject: 'повтор' }).ok, 'повтор подписи отклонён');
-assert(A.readAll('MASTER_DOCUMENT_TEMPLATES').length === 25 && A.readAll('MASTER_RULES').length === 15, 'эталоны 2.0 заполнены при установке');
+assert(A.readAll('MASTER_DOCUMENT_TEMPLATES').length === 25 && A.readAll('MASTER_RULES').length === 17, 'эталоны 2.0 заполнены при установке');
 assert.strictEqual(A.adminSeedMasters(T).data.added, 0, 'повторно — без дублей');
 const sr = A.adminSupportSessionRequest(T, orgId, 'Проверить настройки печати', 30); assert(sr.ok);
 const seen = chk({ nonce: 's'.repeat(20) }); assert.strictEqual(seen.license.supportRequests.length, 1, 'клиент видит запрос доступа');

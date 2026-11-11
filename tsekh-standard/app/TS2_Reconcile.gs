@@ -40,7 +40,9 @@ var TS2_RULES_ = [
   { ruleId: 'R-012', ruleCode: 'DIRECTOR_MISSING', domain: 'Сотрудники и роли', severity: 'BLOCKER', name: 'Не назначен директор', requiresHumanApproval: false },
   { ruleId: 'R-013', ruleCode: 'HACCP_RESPONSIBLE_MISSING', domain: 'ХАССП', severity: 'BLOCKER', name: 'Не назначен ответственный за ХАССП', requiresHumanApproval: false },
   { ruleId: 'R-014', ruleCode: 'NORM_NOT_VERIFIED', domain: 'Документы и сроки', severity: 'MINOR', name: 'Норматив не сверен с первоисточником', requiresHumanApproval: false },
-  { ruleId: 'R-015', ruleCode: 'SYSTEM_DOC_NOT_APPROVED', domain: 'ППК', severity: 'MAJOR', name: 'Локальный документ ждёт утверждения предприятия', requiresHumanApproval: true }
+  { ruleId: 'R-015', ruleCode: 'SYSTEM_DOC_NOT_APPROVED', domain: 'ППК', severity: 'MAJOR', name: 'Локальный документ ждёт утверждения предприятия', requiresHumanApproval: true },
+  { ruleId: 'R-016', ruleCode: 'NORM_EXPIRING', domain: 'Документы и сроки', severity: 'MAJOR', name: 'Срок действия норматива заканчивается в ближайшие 120 дней', requiresHumanApproval: false },
+  { ruleId: 'R-017', ruleCode: 'NORM_EXPIRED', domain: 'Документы и сроки', severity: 'CRITICAL', name: 'Срок действия норматива истёк, а он отмечен как действующий', requiresHumanApproval: false }
 ];
 function _ts2Rule_(code) { return TS2_RULES_.filter(function (r) { return r.ruleCode === code; })[0]; }
 
@@ -99,6 +101,12 @@ function _ts2Evaluate_() {
   _ts2Rows_('DOCUMENTS').forEach(function (d) { var v = String(d.validTo || '').slice(0, 10); if (v && v < today && d.status !== 'ARCHIVED' && d.status !== 'EXPIRED') add('DOC_EXPIRED', 'DOCUMENT', d.documentId, 'validTo', v, '≥ ' + today, 'Документ «' + d.title + '» истёк', 'Загрузить действующую версию', 'Директор'); });
   _ts2Rows_('HACCP_CONTROLS_V2').forEach(function (k) { if (String(k.isCcp) === 'true' && !k.journalCode) add('CCP_WITHOUT_JOURNAL', 'CCP', k.controlId, 'journalCode', '', 'код журнала', 'ККТ «' + k.name + '» не связана с журналом', 'Связать ККТ с журналом', 'Ответственный за ХАССП'); });
   try { var o = _mcOrg_(), c = _mcOrgCompleteness_(o); if (!c.complete) add('ORG_REQUISITES_MISSING', 'ORGANIZATION', 'ORG', 'Реквизиты', c.missing.join(', '), 'заполнены', 'Не заполнены реквизиты: ' + c.missing.join(', '), 'Настройки → Организация', 'Директор'); } catch (e) {}
+  _ts2Legacy_('ЦС_Нормативы').forEach(function (n) {
+    var vt = n['Действует до'] instanceof Date ? Utilities.formatDate(n['Действует до'], _mcTz_(), 'yyyy-MM-dd') : String(n['Действует до'] || '').slice(0, 10);
+    if (!vt || String(n['Статус']) !== 'ДЕЙСТВУЕТ') return;
+    if (vt <= today) add('NORM_EXPIRED', 'NORM', n['Код'], 'Действует до', vt, '> ' + today, n['Документ'] + ': срок действия истёк ' + vt, 'Найдите документ, который его заменил, внесите в реестр и отметьте старый «УТРАТИЛ СИЛУ»', 'Ответственный за ХАССП');
+    else if (vt <= _tsIsoPlusMonths_(today, 4)) add('NORM_EXPIRING', 'NORM', n['Код'], 'Действует до', vt, '', n['Документ'] + ': действует до ' + vt, 'Заранее проверьте, утверждён ли документ на замену', 'Ответственный за ХАССП');
+  });
   _ts2Legacy_('ЦС_Нормативы').forEach(function (n) { if (String(n['Статус']) === 'ПРОВЕРИТЬ') add('NORM_NOT_VERIFIED', 'NORM', n['Код'], 'Статус', 'ПРОВЕРИТЬ', 'ДЕЙСТВУЕТ', n['Документ'] + ': не сверен с первоисточником', 'Сверить и отметить «Действует»', 'Ответственный за ХАССП'); });
   _ts2Rows_('SYSTEM_DOCUMENTS').forEach(function (d) { if (String(d.requiresLocalApproval) === 'true' && d.localApprovalStatus !== 'APPROVED') add('SYSTEM_DOC_NOT_APPROVED', 'SYSTEM_DOCUMENT', d.documentId, 'localApprovalStatus', d.localApprovalStatus, 'APPROVED', '«' + d.title + '» подготовлен системой и ждёт утверждения предприятия', 'Открыть очередь утверждения и подтвердить', 'Директор'); });
   return out;

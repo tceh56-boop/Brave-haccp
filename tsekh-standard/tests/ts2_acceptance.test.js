@@ -30,7 +30,7 @@ G.SpreadsheetApp.ProtectionType = { SHEET: 'SHEET' };
 G.Utilities.newBlob = () => ({}); G.Utilities.formatDate = (d, tz, f) => { const x = new Date(d), p = n => String(n).padStart(2, '0');
   return f.replace('yyyy', x.getFullYear()).replace('MM', p(x.getMonth() + 1)).replace('dd', p(x.getDate())).replace("'T'", 'T').replace('HH', p(x.getHours())).replace('mm', p(x.getMinutes())).replace('ss', p(x.getSeconds())); };
 let session = null; const recorded = [];
-Object.assign(G, { _book_: () => book, _mcTz_: () => 'Europe/Moscow', _withLock_: f => f(), _log_: () => {}, mcGateSession_: () => session,
+Object.assign(G, { _tsIsoPlusMonths_: (iso, m) => { const d = new Date(iso + 'T12:00:00'); d.setMonth(d.getMonth() + m); return d.toISOString().slice(0, 10); }, _book_: () => book, _mcTz_: () => 'Europe/Moscow', _withLock_: f => f(), _log_: () => {}, mcGateSession_: () => session,
   _ok_: d => JSON.stringify({ success: true, data: d }), _fail_: (c, m) => JSON.stringify({ success: false, error: { code: c, message: m } }),
   _failFrom_: e => JSON.stringify({ success: false, error: { message: String(e.message || e) } }), _requireAuth_: () => session || {},
   _mcRbHas_: (s, p) => s.role === 'Ответственный за ХАССП' || s.role === 'Директор', getRolePermissions: () => ({ journals: true, haccp: true }),
@@ -45,6 +45,10 @@ legacy('Блюда', ['Код', 'Название', 'Категория', 'Вы�
   ['D-4', 'Соус сливочный', 'Соусы', '', 1, 'Сливки довести до кипения.', '', '', 'Горячий цех', '']]);
 legacy('Состав', ['code', 'name', 'unit', 'qty', 'base', 'netto'], [['D-1', 'Филе куриное', 'г', 120, 0, 110], ['D-1', 'Сливки', 'мл', 20, 0, 20], ['D-2', 'Огурец', 'г', 100, 0, 90], ['D-4', 'Сливки', 'мл', 200, 0, 180]]);
 legacy('Сотрудники', ['last', 'first', 'middle', 'pos', 'role'], []);
+const isoIn = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+legacy('ЦС_Нормативы', ['Код', 'Группа', 'Документ', 'Название', 'Что требует', 'Где в системе', 'Статус', 'Проверил', 'Дата проверки', 'Ссылка', 'Действует до'], [
+  ['N-1', 'СанПиН', 'СанПиН скоро истекает', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(60)], ['N-2', 'СанПиН', 'Приказ истёк', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(-3)],
+  ['N-3', 'СанПиН', 'Действует долго', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(2000)], ['N-4', 'СанПиН', 'Отменён', '', '', '', 'УТРАТИЛ СИЛУ', '', '', '', isoIn(-400)]]);
 legacy('Температурные_Объекты', ['ObjectID', 'Тип', 'Название', 'EquipmentID', 'Мин', 'Макс', 'Ед.', 'Статус', 'Установленная t°', 'Время проверок'], [['T-1', 'REFRIGERATOR', 'Холодильник 1', '', 2, 6, '°C', 'ACTIVE', 4, '09:00']]);
 const ctx = vm.createContext(G);
 ['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
@@ -152,6 +156,9 @@ t('2.0: сверка находит блокирующие проблемы и �
   const n1 = rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN').length; C._ts2RunReconciliation_();
   assert.strictEqual(rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN').length, n1);
   assert(rows('RECONCILIATION_ISSUES').some(i => i.severity === 'BLOCKER'));
+  const iss = code => rows('RECONCILIATION_ISSUES').filter(i => i.entityType === 'NORM' && i.ruleId === C.TS2_RULES_.find(r => r.ruleCode === code).ruleId).map(i => i.entityId);
+  assert.strictEqual(JSON.stringify(iss('NORM_EXPIRING')), '["N-1"]', 'истекает в ближайшие 120 дней');
+  assert.strictEqual(JSON.stringify(iss('NORM_EXPIRED')), '["N-2"]', 'истёк, но отмечен действующим; отменённый и долгосрочный — без проблем');
 });
 t('2.0: BLOCKER → предложение → согласование → backup → применение → аудит → откат', () => {
   session = { name: 'Иванов', role: 'Директор', dev: false };

@@ -14,13 +14,14 @@ const R = ctx.TS_LS_NORMS_, by = c => R.find(r => r[0] === c);
 assert.strictEqual(by('SN-01')[6], 'УТРАТИЛ СИЛУ', 'СанПиН 3590-20 утратил силу с 01.09.2026');
 assert.strictEqual(by('SN-06')[2], 'СанПиН 2.3/2.4.4282-26'); assert.strictEqual(by('SN-06')[6], 'ДЕЙСТВУЕТ');
 assert.strictEqual(by('UT-03')[6], 'УТРАТИЛ СИЛУ'); assert.strictEqual(by('UT-06')[2], 'СП 2.2.4285-26'); assert.strictEqual(by('SN-07')[2], 'СП 2.1.4284-26');
-assert(!R.some(r => r[6] === 'ПРОВЕРИТЬ'), 'все сверены'); assert(/01\.03\.2027/.test(by('SN-02')[4]) && /01\.04\.2027/.test(by('MO-01')[4]), 'ограниченный срок действия указан');
+assert(!R.some(r => r[6] === 'ПРОВЕРИТЬ'), 'все сверены');
+assert.strictEqual(by('SN-02')[8], '2027-03-01'); assert.strictEqual(by('SN-06')[8], '2032-09-01'); assert.strictEqual(by('MO-01')[8], '2027-04-01'); assert(/01\.03\.2027/.test(by('SN-02')[4]) && /01\.04\.2027/.test(by('MO-01')[4]), 'ограниченный срок действия указан');
 const src = fs.readdirSync(path.join(__dirname, '..', 'app')).filter(f => /^TS/.test(f)).map(f => fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8')).join('\n');
 const act = src.split('\n').filter(l => /3590-20/.test(l) && !/УТРАТИЛ СИЛУ|заменил|заменён|3590_20\.pdf|SN-05/.test(l));
 assert.strictEqual(act.length, 0, 'СанПиН 3590-20 не упоминается как действующий: ' + act.join('\n'));
 // 2. предприятие, развёрнутое до сверки: SN-01 само отметило «ДЕЙСТВУЕТ», TR-01 проверило само, остальное «ПРОВЕРИТЬ»
-const head = ctx.TS_LS_SHEETS_.norms.head, old = R.filter(r => !['SN-06', 'SN-07', 'UT-06'].includes(r[0]));
-sheets['ЦС_Нормативы'] = sheet(); sheets['ЦС_Нормативы'].data.push(head.slice());
+const head = ctx.TS_LS_SHEETS_.norms.head, oldHead = head.slice(0, 10), old = R.filter(r => !['SN-06', 'SN-07', 'UT-06'].includes(r[0]));
+sheets['ЦС_Нормативы'] = sheet(); sheets['ЦС_Нормативы'].data.push(oldHead.slice());   // таблица старого формата — без «Действует до»
 old.forEach(r => sheets['ЦС_Нормативы'].data.push([r[0], r[1], r[2], r[3], 'старый текст', r[5], r[0] === 'SN-01' ? 'ДЕЙСТВУЕТ' : r[0] === 'TR-01' ? 'ДЕЙСТВУЕТ' : r[0] === 'SN-05' ? 'УТРАТИЛ СИЛУ' : 'ПРОВЕРИТЬ', r[0] === 'TR-01' ? 'Иванова (ответственный)' : '', r[0] === 'TR-01' ? '2026-10-01' : '', '']));
 G.PropertiesService.getScriptProperties().setProperty('TS_LS_SEEDED', '1');
 const res = ctx._tsLsNormsMigrate_(), rows = () => { const d = sheets['ЦС_Нормативы'].data; return d.slice(1).map(r => Object.fromEntries(head.map((h, i) => [h, r[i]]))); }, row = c => rows().find(r => r['Код'] === c);
@@ -30,5 +31,7 @@ assert.strictEqual(row('TR-01')['Проверил'], 'Иванова (ответ
 assert(rows().every(r => r['Статус'] !== 'ПРОВЕРИТЬ'));
 assert(/drive\.google\.com/.test(row('TR-01')['Ссылка']), 'пустая ссылка заполнена');
 assert(audits.some(a => a[0] === 'NORMS_REGISTRY_UPDATE'), 'изменения в аудите');
+assert.strictEqual(sheets['ЦС_Нормативы'].data[0][10], 'Действует до', 'новая колонка дописана в старую таблицу');
+assert.strictEqual(row('SN-02')['Действует до'], '2027-03-01', 'срок действия перенесён');
 assert.strictEqual(ctx._tsLsNormsMigrate_().changed, 0, 'повторный запуск ничего не меняет');
 console.log('OK: реестр нормативов — ' + R.length + ' документов, перенос в таблицу предприятия: ' + res.changed + ' изменений');

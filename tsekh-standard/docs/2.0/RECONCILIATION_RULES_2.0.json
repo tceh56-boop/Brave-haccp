@@ -127,6 +127,22 @@
       "severity": "MAJOR",
       "name": "Локальный документ ждёт утверждения предприятия",
       "requiresHumanApproval": true
+    },
+    {
+      "ruleId": "R-016",
+      "ruleCode": "NORM_EXPIRING",
+      "domain": "Документы и сроки",
+      "severity": "MAJOR",
+      "name": "Срок действия норматива заканчивается в ближайшие 120 дней",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-017",
+      "ruleCode": "NORM_EXPIRED",
+      "domain": "Документы и сроки",
+      "severity": "CRITICAL",
+      "name": "Срок действия норматива истёк, а он отмечен как действующий",
+      "requiresHumanApproval": false
     }
   ]
 }
