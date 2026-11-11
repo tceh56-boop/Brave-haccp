@@ -237,14 +237,16 @@ function _ts2GenApply_(job) {
     if (a.types.indexOf('PPK') >= 0) {
       var prevPpk = _ts2Rows_('PPK_DOCUMENTS', function (d) { return d.status !== 'SUPERSEDED' && d.status !== 'REJECTED'; }).pop();
       var ppkId = _ts2Id_('PPK_DOCUMENTS'), ppkVer = prevPpk ? Number(prevPpk.version || 1) + 1 : 1, chg = prevPpk ? 'TTK_ADDENDUM' : 'INITIAL';
-      var ppkTitle = (chg === 'INITIAL' ? 'Программа производственного контроля' : 'Дополнение к ППК') + ' — ' + a.name + ' (версия ' + ppkVer + ')';
+      // Мастер-промт 4.0, этап 4: единственный генератор ППК — V65; здесь — приложение по ТТК к действующей ППК V65
+      var v65 = null; try { if (typeof _v65Objs_ === 'function') v65 = _v65Objs_('PPK').filter(function (x) { return String(x.Status) === 'ACTIVE'; }).pop() || null; } catch (e) {}
+      var ppkTitle = 'Приложение к ППК' + (v65 ? ' ' + v65.PPKID + ' (версия ' + v65.Version + ')' : '') + ': ТТК «' + a.name + '» (редакция ' + ppkVer + ')';
       var gp = _ts2GenDoc_('GEN_PPK', ppkTitle, [
-        { title: '1. Основание изменения', text: (chg === 'INITIAL' ? 'Первичная ППК' : 'Дополнение к версии ' + prevPpk.version + ' (' + prevPpk.ppkId + ')') + ': добавлена ТТК ' + a.code + ' «' + a.name + '».' },
+        { title: '1. Основание', text: 'Приложение к программе производственного контроля' + (v65 ? ' ' + v65.PPKID + ' «' + (v65.Name || '') + '»' : ' (действующая ППК ещё не введена — раздел «ППК»)') + (chg === 'INITIAL' ? '' : '; заменяет редакцию ' + prevPpk.version + ' (' + prevPpk.ppkId + ')') + ': ТТК ' + a.code + ' «' + a.name + '». Мероприятия по этой ТТК входят в ППК через анализ опасностей (ХАССП).' },
         { title: '2. Критические контрольные точки', head: ccpHead, rows: ccpRows },
         { title: '3. Опасные факторы', head: ['Операция', 'Тип', 'Опасность', 'Основание'], rows: hzRows },
         { title: '4. Журналы и периодичность', head: ['Журнал', 'Периодичность', 'Ответственный'], rows: kkt.map(function (c) { return [c.journalCode, c.frequency, c.responsibleRole]; }) }
       ], { version: ppkVer, job: job, ttk: a.ttkVersionId, base: prevPpk ? prevPpk.ppkId : '' });
-      _ts2Insert_('PPK_DOCUMENTS', { ppkId: ppkId, enterpriseId: ent, name: ppkTitle, version: ppkVer, baseVersionId: prevPpk ? prevPpk.ppkId : '', changeType: chg, changeReason: 'ТТК ' + a.ttkVersionId, status: 'REQUIRES_ENTERPRISE_APPROVAL', sourceTtkIds: a.code,
+      _ts2Insert_('PPK_DOCUMENTS', { ppkId: ppkId, enterpriseId: ent, name: ppkTitle, version: ppkVer, baseVersionId: prevPpk ? prevPpk.ppkId : '', changeType: chg, changeReason: 'ТТК ' + a.ttkVersionId + (v65 ? '; приложение к ППК ' + v65.PPKID : '; действующей ППК нет — приложение войдёт в ППК при её формировании (раздел «ППК»)'), status: 'REQUIRES_ENTERPRISE_APPROVAL', sourceTtkIds: a.code,
         sourceStoIds: res.sto || '', sourceHaccpProcessIds: Object.keys(pid).map(function (k) { return pid[k]; }).join(','), fileId: gp.fileId, approvedBy: '', approvedAt: '', validFrom: '', validTo: '', createdAt: now, generationJobId: job, pdfFileId: gp.pdfFileId, hash: gp.hash });
       ['ccp', 'hazards', 'journals'].forEach(function (fl) { link('PPK', ppkId, fl); }); if (res.sto) link('PPK', ppkId, 'process', 'STO', res.sto); res.ppk = ppkId; created++;
     }

@@ -151,3 +151,31 @@ function haccpHazardDecide(token, hazardId, significant, existingControl, eviden
     });
   } catch (e) { return _failFrom_(e); }
 }
+
+/* ------------------------------------------------------------------ этап 4: карта рисков → мероприятия ППК V65 */
+/** Мероприятия ППК по значимым опасностям, управляемым мерой предприятия (ОППУ/ППУ) без ККТ.
+ *  ККТ и мониторинг V30 V65 берёт сам — здесь они не повторяются. Нормативы не подставляются: только мера, журнал и операции ТТК. */
+function _hzlActivities_() {
+  var dict = {}; try { _ts2Rows_('TTK_PROCESS_DICTIONARY').forEach(function (d) { dict[d.code] = d; }); } catch (e) {}
+  var grp = {}, order = [];
+  _ts2Rows_('PPK_HACCP_RISK_MAP').forEach(function (r) {
+    if (r.status !== 'CONTROLLED' || r.significant !== 'да' || r.controlId) return;
+    var k = r.v30ProcessId + '|' + String(r.controlMeasure).trim().toLowerCase();
+    if (!grp[k]) { grp[k] = { r: r, hz: [] }; order.push(k); }
+    if (grp[k].hz.indexOf(r.hazard) < 0) grp[k].hz.push(r.hazard);
+  });
+  return order.map(function (k) {
+    var g = grp[k], r = g.r, d = dict[r.processCode] || {};
+    return { process: r.v30ProcessId, object: r.processName + ' (ТТК: ' + r.ttkCount + (r.ttkSample ? ' — ' + String(r.ttkSample).split(', ').slice(0, 3).join(', ') + (Number(r.ttkCount) > 3 ? '…' : '') : '') + ')',
+      parameter: 'Мера управления: ' + r.controlMeasure + ' (опасность: ' + g.hz.join('; ') + ')', normative: 'по ТТК и мере управления, утверждённой в анализе опасностей',
+      frequency: 'при каждой выработке', method: d.requiredParams ? 'контроль: ' + d.requiredParams : 'по мере управления', role: 'Повар', journal: r.journalId || '', evidence: 'FACT',
+      ca: 'при отклонении продукция не отпускается; регистрация отклонения и корректирующее действие' };
+  });
+}
+/** Абзац для раздела ППК «ХАССП и ККТ»: связь с ТТК. Пусто — если связь не строилась. */
+function _hzlSectionText_() {
+  var rows = _ts2Rows_('PPK_HACCP_RISK_MAP'); if (!rows.length) return '';
+  var ops = {}, sig = rows.filter(function (r) { return r.significant === 'да'; }); rows.forEach(function (r) { ops[r.processName] = 1; });
+  return '\nСвязь с технико-технологическими картами: операций ' + Object.keys(ops).length + ', опасностей ' + rows.length + ', значимых ' + sig.length + '.\n' +
+    sig.map(function (r) { return '— ' + r.processName + ': ' + r.hazard + ' → ' + (r.controlType ? r.controlType + ' ' : '') + (r.controlMeasure || 'мера не определена') + (r.journalId ? ' (журнал ' + r.journalId + ')' : ''); }).join('\n');
+}

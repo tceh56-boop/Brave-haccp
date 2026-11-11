@@ -20,7 +20,7 @@ Object.assign(G, { _book_: () => book, _mcTz_: () => 'Europe/Moscow', _withLock_
   _requireAuth_: () => session, _beginOp_: () => ({ id: 'OP', session }), _endOp_: () => {}, _audit_: () => {}, _mcSessionFullName_: s => s && s.name || '' });
 G.Utilities.formatDate = (d, tz, f) => { const x = new Date(d), p = v => String(v).padStart(2, '0'); return f.replace('yyyy', x.getFullYear()).replace('MM', p(x.getMonth() + 1)).replace('dd', p(x.getDate())).replace("'T'", 'T').replace('HH', p(x.getHours())).replace('mm', p(x.getMinutes())).replace('ss', p(x.getSeconds())); };
 const ctx = vm.createContext(G);
-['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Reconcile.gs', 'TS_TtkProcess.gs', 'MonChef_V36_TTK_MASTER.gs', 'MonChef_V37_TTK_PPK_BRIDGE.gs'].forEach(f => {
+['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Reconcile.gs', 'TS_TtkProcess.gs', 'MonChef_V36_TTK_MASTER.gs', 'MonChef_V37_TTK_PPK_BRIDGE.gs', 'TS_PpkLegacy.gs'].forEach(f => {
   const file = fs.readdirSync(app).find(x => x === f) || fs.readdirSync(app).find(x => x.startsWith(f.replace(/_[A-Z_]+\.gs$/, '')) && x.endsWith('.gs'));
   vm.runInContext(fs.readFileSync(path.join(app, file), 'utf8'), ctx, { filename: file });
 });
@@ -116,12 +116,10 @@ t('Сотни ТТК: 400 карт с вложенностью — пакетн�
   assert(Date.now() - t0 < 20000, 'время на модели');
   const ids = C._ts2Rows_('TTK_PROCESS_MAP').map(x => x.id); assert.strictEqual(new Set(ids).size, ids.length, 'ID уникальны');
 });
-t('V37 строит ППК по основному реестру (без импорта V36): ТТК, вложенные п/ф и операции из анализатора', () => {
-  reset([dish('B1', 'Бефстроганов', 'Обжарить 5 мин при 180 °C.'), dish('S1', 'Соус демиглас', 'Варить 8 часов. Охладить до +4 °C.')], [['B1', 'Соус демиглас п/ф', 'кг', 0.05, 0, 0.05]]);
-  C._ttkpAnalyze_(null);
-  const d = J(C.v37CreateFromTtk({ ttkIds: ['B1'] }, 'tok'));
-  assert.strictEqual(d.ttkCount, 2, 'блюдо + полуфабрикат'); assert(d.processCount >= 3, 'операции из TTK_PROCESS_MAP: ' + d.processCount);
-  const procs = sheets['ППК_Процессы_V37'].data.slice(1); assert(procs.every(p => p[10] === 'TTK_PROCESS_MAP'));
-  assert.strictEqual(sheets['ППК_Master_V37'].data[1][10], 'TTK_REGISTRY');
+t('V37 «ТТК → ППК» закрыт (этап 4): ППК строится только V65, прежний генератор не пишет параллельный документ', () => {
+  reset([dish('B1', 'Бефстроганов', 'Обжарить 5 мин при 180 °C.')], []);
+  const r = JSON.parse(C.v37CreateFromTtk({ ttkIds: ['B1'] }, 'tok'));
+  assert(!r.success && r.error.code === 'LEGACY_CLOSED' && /«ППК»/.test(r.error.message), JSON.stringify(r));
+  assert(!sheets['ППК_Master_V37'] || sheets['ППК_Master_V37'].data.length <= 1, 'документ V37 не создан');
 });
 console.log('ttk_process: ' + n + ' сценариев пройдено');

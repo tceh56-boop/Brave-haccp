@@ -151,6 +151,7 @@ t('2.2: ТТК без срока и предела — REQUIRES_SOURCE, числ
   const ap = C._ts2GenApply_(card.job.generationJobId);
   const ppk = ap.documents.ppk[0]; assert.strictEqual(ppk.changeType, 'TTK_ADDENDUM'); assert.strictEqual(Number(ppk.version), 2); assert(ppk.baseVersionId);
   assert.strictEqual(rows('PPK_DOCUMENTS').length, 2, 'прежняя версия не перезаписана');
+  assert(rows('PPK_DOCUMENTS').every(d => /^Приложение к ППК/.test(d.name)), 'по ТТК — приложение к ППК V65, а не отдельная ППК (этап 4.0-4)');
 });
 t('2.2: дубликат и пустая ТТК — блок и конфликт; утверждение заблокировано', () => {
   const card = C._ts2GenPreview_('D-3');

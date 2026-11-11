@@ -116,8 +116,8 @@ function _v65SectionText_(code, D, ppk, acts) {
       '\nFEFO, учёт вскрытия, пересчёт срока после вскрытия и дефроста — по утверждённым правилам; повторная заморозка запрещена.\n' + actsOf(/температур|хранен/i).map(actLine).join('\n');
     case 'PROCESS': return 'Технологические процессы (' + D.processes.length + '):\n' + _v65List_(D.processes, function (p) { return (p.Code || p.ProcessID) + ' — ' + p.Name + (p.Responsible ? '; ответственный: ' + p.Responsible : ''); }, '— процессы не описаны (ХАССП → процессы)') +
       '\nПроизводство — только по утверждённой ТТК; п/ф в ТТК указывается как отдельный ингредиент.';
-    case 'HACCP': return 'Опасности: ' + D.hazards.length + ', критические контрольные точки и ОПРП: ' + D.ccp.length + '.\n' + _v65List_(D.ccp, function (c) { return (c.Type || 'ККТ') + ' «' + c.ControlPoint + '»: предел ' + (c.CriticalLimit ? c.CriticalLimit + ' ' + (c.LimitUnit || '') : '— не задан') +
-      '; мониторинг: ' + (c.MonitoringMethod || '—') + ', ' + (c.Frequency || 'периодичность не задана') + '; ответственный: ' + (c.Responsible || '—') + '; корректирующее действие: ' + (c.CorrectiveAction || '—'); }, '— ККТ не определены (ХАССП → точки контроля)');
+    case 'HACCP': return 'Опасности: ' + D.hazards.filter(function (h) { return String(h.Status) !== 'ARCHIVED'; }).length + ', критические контрольные точки и ОПРП: ' + D.ccp.length + '.\n' + _v65List_(D.ccp, function (c) { return (c.Type || 'ККТ') + ' «' + c.ControlPoint + '»: предел ' + (c.CriticalLimit ? c.CriticalLimit + ' ' + (c.LimitUnit || '') : '— не задан') +
+      '; мониторинг: ' + (c.MonitoringMethod || '—') + ', ' + (c.Frequency || 'периодичность не задана') + '; ответственный: ' + (c.Responsible || '—') + '; корректирующее действие: ' + (c.CorrectiveAction || '—'); }, '— ККТ не определены (ХАССП → точки контроля)') + (typeof _hzlSectionText_ === 'function' ? (function () { try { return _hzlSectionText_(); } catch (e) { return ''; } })() : '');
     case 'FINISHED': return 'Бракераж готовой продукции — каждая партия (журнал ' + (_v65J_(/бракераж.*готов/i) || 'бракеража') + '); суточная проба — от каждой партии блюда; допуск к выдаче — только при пройденном бракераже, пробе и закрытых ККТ.';
     case 'LAB': return 'План лабораторных исследований (' + D.lab.length + '):\n' + _v65List_(D.lab, function (l) { return (l.ObjectName || l['Объект контроля']) + ' — ' + (l.Indicator || l['Вид исследования']) + '; норматив: ' + (l.Normative || l['Норматив'] || '—') +
       '; метод: ' + (l.Method || '— не указан') + '; периодичность: ' + ((l.FrequencyDays || l['Периодичность, дней']) ? 'раз в ' + (l.FrequencyDays || l['Периодичность, дней']) + ' дн.' : '— не задана') + '; лаборатория: ' + (l.Laboratory || l['Лаборатория'] || '—'); }, '— план не составлен (Лаборатория → план)');
@@ -152,6 +152,8 @@ function _v65AutoActivities_(ppkId, D, ppk) {
   });
   D.mon.forEach(function (m) { if (D.ccp.some(function (c) { return String(c.ControlID) === String(m.ControlID); })) return;
     add({ object: m.Object, parameter: m.Parameter, normative: (m.TargetMin !== '' || m.TargetMax !== '') ? (m.TargetMin + '…' + m.TargetMax + ' ' + (m.Unit || '')) : '', frequency: m.Frequency, role: m.Responsible, journal: m.JournalID, evidence: 'FACT' }); });
+  // Мастер-промт 4.0, этап 4: значимые опасности операций ТТК под мерой предприятия (без ККТ) — карта рисков
+  if (typeof _hzlActivities_ === 'function') { try { _hzlActivities_().forEach(add); } catch (e) {} }
   D.ctl.forEach(function (c) {
     add({ object: c.Object || c.Name, parameter: c.Question || c.Name, normative: (c.Min !== '' || c.Max !== '') && (c.Min || c.Max) ? (c.Min + '…' + c.Max + ' ' + (c.Unit || '')) : '',
       frequency: c.ScheduleType === 'в_заданное_время' ? 'ежедневно в ' + c.Parameter : (c.ScheduleType || ''), role: c.Responsible, journal: c.JournalID, evidence: 'FACT', ca: c.Notes || '' });
@@ -282,6 +284,8 @@ function v65Generate(ppkId, token) {
     return _withLock_(function () {
       var p = _v65Get_(ppkId); if (!p) return _v65Fail_(op, 'NOT_FOUND', 'ППК не найдена');
       if (!_v65Editable_(p)) return _v65Fail_(op, 'VALIDATION', 'Формировать можно черновик или версию на проверке (сейчас «' + (MC_V65_ST_RU[p.Status] || p.Status) + '»)');
+      // этап 4: перед формированием связь ТТК → ХАССП пересчитывается (ППК отражает действующие ТТК)
+      if (typeof _hzlSync_ === 'function') { try { _hzlSync_(); } catch (e) { _log_('WARN', 'связь ТТК → ХАССП: ' + e.message); } }
       var D = _v65Data_(), w = _v65Who_(op);
       // мероприятия: автоматические заменяются, добавленные вручную остаются
       var ash = _v65Sh_('ACT'), av = ash.getDataRange().getValues(), keep = [av[0]];

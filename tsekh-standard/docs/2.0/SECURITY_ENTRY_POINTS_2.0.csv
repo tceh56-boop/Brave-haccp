@@ -992,6 +992,8 @@ tsLsSaveRecord;TS_LaborSafety.gs;интерфейс (сессия);да;personne
 tsLsVerifyNorm;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp_approve;сессия → право «personnel|haccp_approve» → тариф → допуск → блокировка → аудит
 tsLsCreateAct;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp|documents;сессия → право «personnel|haccp|documents» → тариф → допуск → блокировка → аудит
 tsLsGetAct;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ppkLegacyState;TS_PpkLegacy.gs;интерфейс (сессия);;haccp|haccp_view|haccp_approve|ppk_view|ppk_edit;сессия → право «haccp|haccp_view|haccp_approve|ppk_view|ppk_edit» → тариф
+ppkLegacyImport;TS_PpkLegacy.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
 tsAiAsk;TS_ProMax.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
 tsAiHistory;TS_ProMax.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsTtkLibrary;TS_ProMax.gs;интерфейс (сессия);;catalog|ttk_edit;сессия → право «catalog|ttk_edit» → тариф

@@ -2766,57 +2766,29 @@ VIEWS.ttkmaster = {
   }
 };
 
-/* ---------- ТТК → ППК (V37) ---------- */
-VIEWS.ttkppk = {
-  fns: { build: 'v37CreateFromTtk' },
-  title: 'ТТК → ППК', sub: 'Система развернёт зависимости п/ф выбранных ТТК и создаст черновик документа ППК.',
-  open: function () { this.h.load(); },
-  h: {
-    load: function () {
-      vLoading();
-      vCall('v37GetDashboard', []).then(function (r) {
-        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
-        var d = vData(r) || {};
-        vBody(vKpis([['Документов', d.documentCount], ['Процессов', d.processCount], ['Контролей', d.controlCount], ['Пробелов', d.openGapCount, d.openGapCount ? 'gold' : '']]) +
-          vCard('Создать черновик ППК', vForm([['ids', 'Коды ТТК через запятую', 'text', '', 'BL-0248, BL-0172']]) + '<div class="mvbar">' + vBtn('Создать черновик', 'build', '', true) + '</div>') +
-          vCard('Документы', vTable([{ l: 'Документ', f: function (x) { return Array.isArray(x) ? x[0] : x.documentId || ''; } }, { l: 'Название', f: function (x) { return Array.isArray(x) ? x[2] || x[1] : x.name || ''; } }, { l: 'Статус', f: function (x) { return Array.isArray(x) ? x[4] || '' : x.status || ''; } }], d.documents || [])));
-      });
-    },
-    build: function (a, btn) { var ids = vV('ids').split(',').map(function (x) { return x.trim(); }).filter(Boolean); if (!ids.length) { vMsg('Укажите коды ТТК', 'err'); return; } vDo(btn, 'v37CreateFromTtk', [{ ttkIds: ids }], function (d) { return 'Черновик ППК создан' + (d && d.documentId ? ': ' + d.documentId : ''); }, function () { VIEWS.ttkppk.h.load(); }); }
-  }
-};
-
-/* ---------- Конструктор ППК / план ХАССП (V35) ---------- */
-VIEWS.ppkbuilder = {
-  fns: { draft: 'v35CreateDraft', org: 'v35SetOrganization', approve: 'v35Approve', proc: 'v35AddProcess', haz: 'v35AddHazard', ctl: 'v35AddControl' },
-  title: 'Конструктор ППК', sub: 'Проект ППК и плана ХАССП собирается только из введённого. Нормативные пределы не придумываются. Реквизиты организации попадают в шапку журналов после утверждения директором.',
-  acts: [['Создать проект ППК', 'draft', '', true]],
-  open: function () { this.h.load(); },
-  h: {
-    load: function () {
-      vLoading();
-      vCall('v35GetDashboard', []).then(function (r) {
-        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
-        var d = vData(r) || {}, docs = d.documents || [], col = function (i) { return function (x) { return Array.isArray(x) ? x[i] : ''; }; };
-        var first = docs.length ? (Array.isArray(docs[docs.length - 1]) ? docs[docs.length - 1][0] : docs[docs.length - 1].documentId) : '';
-        var h = vCard('Документы ППК', vTable([{ l: 'Документ', f: col(0) }, { l: 'Название', f: col(2) }, { l: 'Версия', f: col(3) }, { l: 'Статус', t: 'status', f: col(4) }, { l: 'Утвердил', f: col(8) }], docs, null, 'Проекта ППК ещё нет — нажмите «Создать проект ППК»'));
-        h += vCard('Организация (шапка журналов)', vForm([['odoc', 'Документ ППК', 'text', first], ['oname', 'Название организации *', 'text', '', 'ООО «…»'], ['oinn', 'ИНН', 'text'], ['oaddr', 'Адрес', 'text']]) +
-          '<div class="mvbar">' + vBtn('Сохранить реквизиты', 'org', '', true) + (ACC && (ACC.dev || canDo('haccp_approve')) ? vBtn('Утвердить ППК (директор)', 'approve') : '') + '</div>');
-        h += vCard('Процесс', vForm([['pname', 'Процесс *', 'text', '', 'например: охлаждение'], ['seq', 'Порядок', 'number'], ['area', 'Зона', 'text'], ['equip', 'Оборудование', 'text']]) + '<div class="mvbar">' + vBtn('Добавить процесс', 'proc') + '</div>' +
-          vTable([{ l: 'Процесс', f: col(1) }, { l: 'ID', f: col(0) }], d.processes || [], null, 'Процессов нет'));
-        h += vCard('Опасность', vForm([['pid', 'Процесс (ID) *', 'text'], ['ht', 'Тип', 'select', 'Биологическая', ['Биологическая', 'Химическая', 'Физическая', 'Аллерген']], ['hd', 'Описание опасности *', 'textarea']]) + '<div class="mvbar">' + vBtn('Добавить опасность', 'haz') + '</div>');
-        h += vCard('ККТ / OPRP / контрольная точка', vForm([['cpid', 'Процесс (ID) *', 'text'], ['ct', 'Тип', 'select', 'CCP', ['CCP', 'OPRP', 'Контрольная точка']], ['cm', 'Мера контроля *', 'text'], ['cl', 'Критический предел', 'text'], ['mm', 'Метод мониторинга', 'text'], ['ca', 'Корректирующее действие', 'text']]) + '<div class="mvbar">' + vBtn('Добавить контроль', 'ctl') + '</div>');
-        vBody(h);
-      });
-    },
-    draft: function (a, btn) { vDo(btn, 'v35CreateDraft', [JSON.stringify({ name: 'ППК и план ХАССП' })], function (d) { return 'Проект создан: ' + (d && d.documentId); }, function () { VIEWS.ppkbuilder.h.load(); }); },
-    org: function (a, btn) { if (!vV('odoc') || !vV('oname')) { vMsg('Укажите документ ППК и название организации', 'err'); return; } vDo(btn, 'v35SetOrganization', [JSON.stringify({ documentId: vV('odoc'), name: vV('oname'), inn: vV('oinn'), address: vV('oaddr') })], 'Реквизиты сохранены', function () { VIEWS.ppkbuilder.h.load(); }); },
-    approve: function (a, btn) { if (!vV('odoc')) { vMsg('Укажите документ ППК', 'err'); return; } if (!confirm('Утвердить ППК ' + vV('odoc') + '?')) return; vDo(btn, 'v35Approve', [vV('odoc')], 'ППК утверждён', function () { VIEWS.ppkbuilder.h.load(); }); },
-    proc: function (a, btn) { vDo(btn, 'v35AddProcess', [JSON.stringify({ name: vV('pname'), sequence: vV('seq'), area: vV('area'), equipment: vV('equip') })], function (d) { return 'Процесс добавлен' + (d && d.processId ? ': ' + d.processId : ''); }, function () { VIEWS.ppkbuilder.h.load(); }); },
-    haz: function (a, btn) { vDo(btn, 'v35AddHazard', [JSON.stringify({ processId: vV('pid'), hazardType: vV('ht'), description: vV('hd') })], 'Опасность добавлена', function () { VIEWS.ppkbuilder.h.load(); }); },
-    ctl: function (a, btn) { vDo(btn, 'v35AddControl', [JSON.stringify({ processId: vV('cpid'), type: vV('ct'), controlMeasure: vV('cm'), criticalLimit: vV('cl'), monitoringMethod: vV('mm'), correctiveAction: vV('ca') })], 'Контроль добавлен', function () { VIEWS.ppkbuilder.h.load(); }); }
-  }
-};
+/* ---------- ТТК → ППК (V37) и Конструктор ППК (V35): заменены (Мастер-промт 4.0, этап 4) ---------- */
+function mcPpkLegacyView(title, sub) {
+  return { fns: { imp: 'ppkLegacyImport' }, title: title, sub: sub,
+    open: function () { this.h.load(); },
+    h: {
+      load: function () {
+        vLoading();
+        vCall('ppkLegacyState', [TOKEN]).then(function (r) {
+          var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+          var d = vData(r) || {}, a = d.v35 || {}, b = d.v37 || {};
+          vBody('<div class="ttnote" style="margin-bottom:14px;border-radius:12px">Раздел заменён. Программа производственного контроля формируется в разделе «ППК» — это единственный генератор ППК. Процессы, опасности и ККТ ведутся в «ХАССП», связь с ТТК — в «Процессы ТТК».</div>' +
+            '<div class="mvbar" style="margin:0 0 12px"><button class="btn pri" onclick="openView(\'ppk\')">Открыть «ППК»</button><button class="btn" onclick="openView(\'tsTtkProc\')">Процессы ТТК</button><button class="btn" onclick="openView(\'compliance\')">ХАССП: процессы и ККТ</button></div>' +
+            vKpis([['Конструктор ППК: процессов', a.processes || 0], ['опасностей', a.hazards || 0], ['мер (ККТ/ОППУ)', a.controls || 0], ['ТТК → ППК: мер', b.controls || 0], ['Перенесено в ХАССП', d.importedToV30 || 0, 'gold']]) +
+            vCard('Перенести данные в ХАССП', '<div class="rdnote">Процессы, опасности и меры из прежних разделов копируются в ХАССП. Повторный перенос ничего не дублирует, прежние данные не удаляются. Опасности без явного решения «значима» переносятся как предложения — решение принимает ответственный за ХАССП. Меры, которые не удалось отнести к процессу, попадут в процесс «требуется привязка».</div>' +
+              '<div class="mvbar">' + vBtn('Перенести в ХАССП', 'imp', '', true) + '</div>'));
+        }, function (e) { vMsg(String(e), 'err'); });
+      },
+      imp: function (a, btn) { if (!confirm('Перенести процессы, опасности и меры прежних разделов в ХАССП?')) return;
+        vDo(btn, 'ppkLegacyImport', [TOKEN], function (d) { return 'Перенесено: процессов ' + d.processes + ', опасностей ' + d.hazards + ', мер ' + d.controls + (d.needBinding ? ' (требуют привязки: ' + d.needBinding + ')' : ''); }, function () { VIEWS.ppkbuilder.h.load(); }); }
+    } };
+}
+VIEWS.ttkppk = mcPpkLegacyView('ТТК → ППК', 'Раздел заменён: ППК по ТТК строится автоматически через «Процессы ТТК» и анализ опасностей');
+VIEWS.ppkbuilder = mcPpkLegacyView('Конструктор ППК', 'Раздел заменён: ППК формируется в разделе «ППК»');
 
 /* ---------- ХАССП: процессы, опасности, ККТ, мониторинг и верификация (V30) ---------- */
 // раньше план мониторинга ККТ заводил только технический доступ — экрана не было; теперь — здесь, у ответственного за ХАССП

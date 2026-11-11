@@ -15,6 +15,8 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
         issues: [{ ttkId: 'T2', code: 'NO_COOLING_STAGE', message: 'После тепловой обработки продукт хранится, но этап охлаждения не описан' }], issuesTotal: 1, dictionary: [], dictVersion: 'x' } }),
       haccpLinkMap: () => JSON.stringify({ success: true, data: { counts: { NEEDS_DECISION: 1 }, gaps: ['значимая опасность «x»: нет ККТ/ОППУ и доказательства'], rows: [{ processName: 'Жарка', ttkCount: 2, hazard: 'Выживание патогенов', controlMeasure: '', journalId: 'J-KKT-THERMAL', status: 'NEEDS_DECISION', v30HazardId: 'HZ-1', controlType: '' }] } }),
       haccpHazardDecide: () => JSON.stringify({ success: true, data: { needDecision: 0 } }), haccpLinkSync: () => JSON.stringify({ success: true, data: { processesAdded: 1, hazardsProposed: 2, needDecision: 2 } }),
+      ppkLegacyState: () => JSON.stringify({ success: true, data: { v35: { processes: 2, hazards: 3, controls: 1 }, v37: { controls: 2 }, importedToV30: 0 } }),
+      ppkLegacyImport: () => JSON.stringify({ success: true, data: { processes: 2, hazards: 3, controls: 3, needBinding: 1 } }),
       ttkProcAnalyze: () => JSON.stringify({ success: true, data: { analyzed: 3, added: ['a'], removed: [], openIssues: 1 } }), ttkProcReview: () => JSON.stringify({ success: true, data: { status: 'CONFIRMED' } }),
       ttkProcAiSuggest: () => JSON.stringify({ success: true, data: { suggested: 'FRY', note: 'Предложение не утверждено' } }),
       ts2SensorCalibrate: () => JSON.stringify({ success: true, data: { result: 'OK', offsetAfter: 0.3, difference: 0.3 } }), ts2ObjectInputMode: () => JSON.stringify({ success: true, data: { inputMode: 'SENSOR' } }),
@@ -42,6 +44,10 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
   await p.click('button[data-mv="hzYes"][data-a="HZ-1"]'); await p.waitForTimeout(500); assert(/haccpHazardDecide:\["x","HZ-1","да","ОППУ термощуп","журнал"\]/.test(await calls()), 'решение «значима» с мерой и доказательством');
   await p.click('button[data-mv="hzSync"]'); await p.waitForTimeout(400); assert(/haccpLinkSync/.test(await calls()), 'связать с ТТК');
   await p.click('button[data-mv="run"]'); await p.waitForTimeout(300); assert(/ttkProcAnalyze:\["x",""\]/.test(await calls()), 'анализ всех ТТК');
+  await p.evaluate(() => { window.confirm = () => true; openView('ppkbuilder'); }); await p.waitForTimeout(400);
+  txt = await p.textContent('#vbody'); assert(/Раздел заменён/.test(txt) && /единственный генератор ППК/.test(txt), 'конструктор ППК закрыт: ' + txt.slice(0, 150));
+  await p.click('button[data-mv="imp"]'); await p.waitForTimeout(400); assert(/ppkLegacyImport:\["x"\]/.test(await calls()), 'перенос в ХАССП');
+  await p.evaluate(() => openView('ttkppk')); await p.waitForTimeout(400); assert(/Раздел заменён/.test(await p.textContent('#vbody')), 'ТТК → ППК закрыт');
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
-  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП');
+  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП, прежние разделы ППК');
 })().catch(e => { console.error(e); process.exit(1); });
