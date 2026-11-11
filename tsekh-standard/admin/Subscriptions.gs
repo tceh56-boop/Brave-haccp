@@ -104,4 +104,5 @@ function dailyJob() {
     }
   });
   snapshotAnalytics_();
+  try { normsCheck_(); } catch (e) { logError('normsCheck', e.message, ''); }   // сроки нормативов: уведомления администраторам
 }

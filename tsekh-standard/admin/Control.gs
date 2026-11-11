@@ -191,15 +191,16 @@ function apiControl_(p) {
     return { ok: true, status: allow ? 'GRANTED' : 'DENIED', expiresAt: allow ? exp.getTime() : 0 };
   }
   if (p.action === 'usage.report') {
-    var m = p.metrics || {}, clean = {}; ['sheets', 'rows', 'ttk', 'staff', 'autoRecords', 'expectationsOpen', 'exceptionsOpen', 'readiness', 'schemaVersion', 'mode'].forEach(function (k) { if (m[k] !== undefined) clean[k] = typeof m[k] === 'number' ? m[k] : String(m[k]).slice(0, 40); });
+    var m = p.metrics || {}, clean = {}; ['sheets', 'rows', 'ttk', 'staff', 'autoRecords', 'expectationsOpen', 'exceptionsOpen', 'readiness', 'schemaVersion', 'mode', 'normsVersion', 'normsExpired'].forEach(function (k) { if (m[k] !== undefined) clean[k] = typeof m[k] === 'number' ? m[k] : String(m[k]).slice(0, 40); });
     withLock(function () {
       insert('AGGREGATED_USAGE', { usageId: newId('USG'), enterpriseId: ent, orgId: org['ID'], date: isoDay(), metricsJson: JSON.stringify(clean), version: String(p.version || '') });
-      var ap = findBy('ENTERPRISE_AUTOMATION_PROFILES', 'enterpriseId', ent), row = { enterpriseId: ent, orgId: org['ID'], mode: clean.mode || '', seedVersion: m.seedVersion || '', enterpriseType: m.enterpriseType || '', readiness: clean.readiness || '', updatedAt: new Date() };
+      var ap = findBy('ENTERPRISE_AUTOMATION_PROFILES', 'enterpriseId', ent), row = { enterpriseId: ent, orgId: org['ID'], mode: clean.mode || '', seedVersion: m.seedVersion || '', enterpriseType: m.enterpriseType || '', readiness: clean.readiness || '', updatedAt: new Date(), normsVersion: clean.normsVersion || '', normsExpired: clean.normsExpired === undefined ? '' : clean.normsExpired };
       if (ap) update('ENTERPRISE_AUTOMATION_PROFILES', ent, row); else insert('ENTERPRISE_AUTOMATION_PROFILES', row);
     });
     return { ok: true };
   }
   if (p.action === 'tech.event') { withLock(function () { insert('TECH_EVENTS', { eventId: newId('TEV'), enterpriseId: ent, orgId: org['ID'], level: String(p.level || 'ERROR').slice(0, 10), code: String(p.code || '').slice(0, 60), message: String(p.message || '').slice(0, 500), version: String(p.version || ''), at: new Date() }); }); return { ok: true }; }
+  if (p.action === 'norms.registry') return normsForClient_(String(p.have || ''));
   if (p.action === 'reconciliation.template') return { ok: true, rules: readAll('MASTER_RULES').filter(function (r) { return r.status === 'PUBLISHED'; }), profiles: readAll('IMPORT_PROFILES'), reconciliation: readAll('RECONCILIATION_PROFILES') };
   if (p.action === 'seed.package') {
     var pk = readAll('MASTER_SEED_PACKAGES').filter(function (x) { return x.status === 'PUBLISHED'; }).sort(function (a, b) { return verCmp_(a.version, b.version); }).pop();

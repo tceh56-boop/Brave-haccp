@@ -216,7 +216,7 @@ function changePwd() {
 var SECTIONS = [
   ['dashboard', 'Дашборд', '◆', 'dashboard'], ['clients', 'Клиенты', '◉', 'clients.view'], ['subs', 'Подписки', '↻', 'subs.view'], ['payments', 'Платежи', '₽', 'payments.view'],
   ['licenses', 'Лицензии', '⚿', 'licenses.view'], ['updates', 'Обновления', '⇪', 'dashboard'], ['notify', 'Уведомления', '✉', 'notify.send'], ['logs', 'Логи', '☰', 'logs.view'],
-  ['ent', 'Предприятия 2.0', '▣', 'clients.view'], ['releases', 'Релизы', '⇡', 'dashboard'], ['support', 'Поддержка', '☏', 'support'], ['datareq', 'Запросы по данным', '⚖', 'data_requests'], ['masters', 'Эталоны', '❖', 'dashboard'],
+  ['norms', 'Нормативы', '§', 'clients.view'], ['ent', 'Предприятия 2.0', '▣', 'clients.view'], ['releases', 'Релизы', '⇡', 'dashboard'], ['support', 'Поддержка', '☏', 'support'], ['datareq', 'Запросы по данным', '⚖', 'data_requests'], ['masters', 'Эталоны', '❖', 'dashboard'],
   ['backups', 'Резервные копии', '⛁', 'backups.view'], ['ttk', 'База ТТК', '❏', 'ttk.view'], ['analytics', 'Аналитика', '▲', 'analytics'], ['settings', 'Настройки', '⚙', 'settings.view'], ['users', 'Администраторы', '☺', 'users']
 ];
 function startApp() {
@@ -584,6 +584,58 @@ function relSave(b) { busy(b, call('adminReleaseCreate', TOKEN, { version: val('
 function relProm(id, stt) { if (!confirm(stt === 'STABLE' ? 'Перевести релиз в стабильный канал?' : 'Отозвать релиз?')) return; call('adminReleasePromote', TOKEN, id, stt).then(function () { toast('Готово'); V.releases(); }, errT); }
 function relJobs(id, b) { busy(b, call('adminUpdateJobsCreate', TOKEN, id, [])).then(function (r) { toast('Заданий: ' + r.created + ' — клиентам отправлена команда резервной копии'); V.releases(); }, errT); }
 function relRun(id, b) { busy(b, call('adminUpdateJobsRun', TOKEN, id, false)).then(function (r) { mdl('<h2>Результат</h2>' + table([{ k: 'org', l: 'Клиент' }, { l: 'Итог', f: function (x) { return x.ok ? chip('обновлён', 'gr') : chip(x.error || 'ошибка', 'r'); } }], r, null, 'Нет клиентов с подтверждённой копией')); V.releases(); }, errT); }
+
+/* ---------- реестр нормативов: отсчёт в реальном времени и уведомления ---------- */
+var NM = { q: '', f: 'ALL', d: null };
+// отсчёт до окончания: дни; меньше 2 суток — часы, минуты, секунды (обновляется каждую секунду)
+function cdText(to) {
+  if (!to) return ['бессрочно', ''];
+  var end = new Date(to + 'T00:00:00'), ms = end.getTime() - Date.now(), day = 864e5;
+  if (ms <= 0) { var ago = Math.floor(-ms / day); return [ago ? 'истёк ' + ago + ' дн. назад' : 'истёк сегодня', 'r']; }
+  if (ms < 2 * day) { var h = Math.floor(ms / 36e5), m = Math.floor(ms % 36e5 / 6e4), sec = Math.floor(ms % 6e4 / 1e3), p = function (n) { return ('0' + n).slice(-2); }; return ['осталось ' + h + ':' + p(m) + ':' + p(sec), 'r']; }
+  var d = Math.ceil(ms / day); return ['осталось ' + d + ' дн.', d <= 30 ? 'r' : d <= 180 ? 'a' : 'g'];
+}
+function cd(to) { var t = cdText(to); return '<span class="chip ' + t[1] + ' cd" data-to="' + esc(to || '') + '">' + esc(t[0]) + '</span>'; }
+setInterval(function () { [].forEach.call(document.querySelectorAll('.cd[data-to]'), function (e) { var t = cdText(e.getAttribute('data-to')); if (e.textContent !== t[0]) e.textContent = t[0]; e.className = 'chip ' + t[1] + ' cd'; }); }, 1000);
+var NST = { 'ДЕЙСТВУЕТ': 'g', 'УТРАТИЛ СИЛУ': 'r', 'ПРОВЕРИТЬ': 'a' };
+V.norms = function () {
+  head('Нормативы', 'Единый реестр для всех клиентов: срок действия с отсчётом, уведомления, замена отменённых документов', can('releases') ? '<button class="btn pri" onclick="normForm()">+ Документ</button>' : '');
+  call('adminNorms', TOKEN).then(function (d) { NM.d = d; normsDraw(); }, errT);
+};
+function normsDraw() {
+  var d = NM.d, act = d.norms.filter(function (n) { return n.status === 'ДЕЙСТВУЕТ'; }), soon = act.filter(function (n) { return n.daysLeft !== null && n.daysLeft <= 180; }).sort(function (a, b) { return a.daysLeft - b.daysLeft; });
+  var behind = d.clients.filter(function (c) { return !c.upToDate; });
+  var h = kpis([['Документов', d.norms.length], ['Действуют', act.length, 'gr'], ['Истекают за 180 дн.', soon.length, soon.length ? 'g' : ''], ['Срок истёк', act.filter(function (n) { return n.daysLeft !== null && n.daysLeft <= 0; }).length, 'r'],
+    ['Утратили силу', d.norms.filter(function (n) { return n.status === 'УТРАТИЛ СИЛУ'; }).length], ['На проверке', d.norms.filter(function (n) { return n.status === 'ПРОВЕРИТЬ'; }).length, 'g'], ['Клиентов с прежней версией', behind.length, behind.length ? 'g' : 'gr']]);
+  if (d.alerts.length) h += card('Уведомления · ' + d.alerts.length, table([{ l: 'Когда', f: function (a) { return dt(a.at); } }, { l: 'Что', f: function (a) { return chip(a.kind === 'NORM_REPEALED' ? 'утратил силу' : a.kind === 'NORM_EXPIRED' ? 'срок истёк' : 'истекает', a.kind === 'NORM_EXPIRING' ? 'a' : 'r'); } }, { k: 'text', l: 'Текст' }],
+    d.alerts, function (a) { return (can('releases') ? '<button class="btn sm pri" onclick="normForm(\'' + esc(a.objectId) + '\')">Обновить документ</button> ' : '') + '<button class="btn sm" onclick="alertClose(\'' + a.alertId + '\')">Прочитано</button>'; }), '<span class="note">письма: ' + esc(d.alertTo || 'не настроено') + (can('settings') ? ' · <a href="#" onclick="normMail();return false">изменить</a>' : '') + '</span>');
+  if (soon.length) h += card('Ближайшие сроки', table([{ k: 'code', l: 'Код' }, { l: 'Документ', f: function (n) { return '<b>' + esc(n.document) + '</b><div class="note">' + esc(n.title) + '</div>'; } }, { l: 'Действует до', f: function (n) { return esc(n.validTo.split('-').reverse().join('.')); } }, { l: 'Отсчёт', f: function (n) { return cd(n.validTo); } }],
+    soon, function (n) { return can('releases') ? '<button class="btn sm" onclick="normForm(\'' + esc(n.code) + '\')">Замена / продление</button>' : ''; }));
+  var q = NM.q.toLowerCase(), rows = d.norms.filter(function (n) { return (NM.f === 'ALL' || n.status === NM.f) && (!q || [n.code, n.document, n.title, n.group].join(' ').toLowerCase().indexOf(q) >= 0); });
+  h += card('Реестр · версия ' + (d.version || '—'), '<div class="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><input id="nmQ" placeholder="Поиск: код, документ, группа" value="' + esc(NM.q) + '" oninput="NM.q=this.value;normsDraw();var e=document.getElementById(\'nmQ\');e.focus();e.setSelectionRange(e.value.length,e.value.length)" style="flex:1;min-width:200px">' +
+    '<select onchange="NM.f=this.value;normsDraw()">' + [['ALL', 'все'], ['ДЕЙСТВУЕТ', 'действуют'], ['УТРАТИЛ СИЛУ', 'утратили силу'], ['ПРОВЕРИТЬ', 'на проверке']].map(function (o) { return '<option value="' + o[0] + '"' + (NM.f === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+    table([{ k: 'code', l: 'Код' }, { k: 'group', l: 'Группа' }, { l: 'Документ', f: function (n) { return '<b>' + esc(n.document) + '</b><div class="note">' + esc(n.title) + '</div>' + (n.replacedBy ? '<div class="note">заменён: ' + esc(n.replacedBy) + '</div>' : ''); } },
+      { l: 'Статус', f: function (n) { return chip(n.status.toLowerCase(), NST[n.status]); } }, { l: 'Действует до', f: function (n) { return n.validTo ? esc(n.validTo.split('-').reverse().join('.')) : '—'; } },
+      { l: 'Отсчёт', f: function (n) { return n.status === 'ДЕЙСТВУЕТ' ? cd(n.validTo) : ''; } }, { l: 'Изменён', f: function (n) { return '<span class="note">' + esc(dt(n.changedAt)) + '<br>' + esc(n.changedBy) + '</span>'; } }],
+      rows, function (n) { return (can('releases') ? '<button class="btn sm" onclick="normForm(\'' + esc(n.code) + '\')">Изменить</button> ' : '') + (/^https?:/.test(n.link) ? '<a class="btn sm" target="_blank" href="' + esc(n.link) + '">Источник</a>' : ''); }, 'Ничего не найдено'));
+  h += card('Клиенты: версия реестра', table([{ k: 'name', l: 'Клиент' }, { l: 'Версия у клиента', f: function (c) { return esc(c.normsVersion || '—'); } }, { l: 'Состояние', f: function (c) { return c.upToDate ? chip('актуальна', 'g') : chip('получит при проверке лицензии', 'a'); } },
+    { l: 'Истёкших документов у клиента', f: function (c) { return c.normsExpired === null ? '—' : c.normsExpired ? chip(c.normsExpired, 'r') : '0'; } }, { l: 'Отчёт', f: function (c) { return dt(c.updatedAt); } }], d.clients, null, 'Клиенты ещё не присылали статистику') +
+    '<div class="note">Системы клиентов забирают реестр раз в сутки после проверки лицензии; в разделе «Охрана труда и нормативы» у клиента есть кнопка «Обновить реестр».</div>');
+  C(h);
+}
+function normForm(code) {
+  var n = code ? (NM.d.norms.filter(function (x) { return x.code === code; })[0] || { code: code }) : { status: 'ДЕЙСТВУЕТ' };
+  var groups = {}; NM.d.norms.forEach(function (x) { groups[x.group] = 1; });
+  mdl('<h2>' + (n.document ? esc(n.document) : 'Новый документ') + '</h2><div class="form">' + field('nCode', 'Код (две буквы и номер)', 'text', n.code || '') + field('nGroup', 'Группа', 'select', n.group || 'Прочее', Object.keys(groups).concat(groups['Прочее'] ? [] : ['Прочее'])) +
+    field('nDoc', 'Документ (вид, дата, номер)', 'text', n.document || '', null, true) + field('nTitle', 'Название', 'text', n.title || '', null, true) + field('nStatus', 'Статус', 'select', n.status, NM.d.statuses) + field('nTo', 'Действует до (пусто — бессрочно)', 'date', n.validTo || '') +
+    field('nRepl', 'Чем заменён (для «утратил силу»)', 'text', n.replacedBy || '', null, true) + field('nReq', 'Что требует', 'textarea', n.requires || '') + field('nWhere', 'Где в системе', 'text', n.whereInSystem || '', null, true) + field('nLink', 'Ссылка на первоисточник', 'text', n.link || '', null, true) +
+    '</div><div class="note">После сохранения версия реестра меняется — системы клиентов получат изменение при ближайшей проверке лицензии (раз в сутки). Отменённый документ у клиента станет «УТРАТИЛ СИЛУ».</div><div style="margin-top:12px"><button class="btn pri" id="nSave">Сохранить</button></div>');
+  if (code) document.getElementById('nCode').readOnly = true;
+  document.getElementById('nSave').onclick = function () { busy(this, call('adminNormSave', TOKEN, { code: val('nCode'), group: val('nGroup'), document: val('nDoc'), title: val('nTitle'), status: val('nStatus'), validTo: val('nTo'), replacedBy: val('nRepl'), requires: val('nReq'), whereInSystem: val('nWhere'), link: val('nLink') }))
+    .then(function (r) { closeMdl(); toast('Сохранено: ' + r.code + ' — ' + r.what + '. Новая версия реестра для клиентов.'); V.norms(); }); };
+}
+function alertClose(id) { call('adminAlertClose', TOKEN, id).then(function () { V.norms(); }, errT); }
+function normMail() { var e = prompt('Кому писать о сроках нормативов (через запятую; пусто — администраторам):', NM.d.alertTo || ''); if (e === null) return; call('adminNormsAlertEmail', TOKEN, e).then(function (r) { toast('Письма: ' + (r.to || 'не настроено')); V.norms(); }, errT); }
 
 V.support = function () {
   head('Поддержка', 'Обращения клиентов, доступ только с согласия предприятия, технические события', '<button class="btn pri" onclick="supForm()">Запросить доступ</button>');

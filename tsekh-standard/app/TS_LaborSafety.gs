@@ -284,33 +284,71 @@ function _tsLsSeed_() {
  *  • новые документы добавляются;
  *  • статус «ПРОВЕРИТЬ» меняется на сверенный поставщиком; отметки самого предприятия («ДЕЙСТВУЕТ» с его проверяющим) не трогаются;
  *  • пустые ссылки заполняются. Каждое изменение — в аудит. */
+/** Встроенный реестр выпуска (TS_LS_NORMS_). После него свежий реестр админ-панели применяется заново. */
 function _tsLsNormsMigrate_() {
   var p = PropertiesService.getScriptProperties();
   if (p.getProperty('TS_LS_NORMS_VER') === TS_LS_NORMS_VER_) return { changed: 0 };
+  var r = _tsLsNormsApply_(TS_LS_NORMS_, TS_LS_NORMS_VER_, 'TS_LS_NORMS_VER', TS_LS_NORMS_CHECKED_BY_, TS_LS_NORMS_DATE_, false);
+  p.deleteProperty('TS_LS_REMOTE_VER');
+  return r;
+}
+/**
+ * Применить реестр поставщика к таблице предприятия.
+ *   • новый документ — дописывается;
+ *   • «УТРАТИЛ СИЛУ» у поставщика — ставится всегда (даже если предприятие отметило «Действует»);
+ *   • «ПРОВЕРИТЬ» у предприятия при «ДЕЙСТВУЕТ» у поставщика — «ДЕЙСТВУЕТ» с отметкой поставщика;
+ *   • реестр админ-панели (remote): строки, которые последним проверял поставщик, следуют поставщику полностью
+ *     (статус, текст, срок); строки, проверенные предприятием, сохраняют его статус; срок «Действует до» — от поставщика;
+ *   • встроенный реестр: пустой срок заполняется, свой срок предприятия не трогается.
+ */
+function _tsLsNormsApply_(list, ver, propKey, who, day, remote) {
+  var p = PropertiesService.getScriptProperties();
   return _withLock_(function () {
-    if (p.getProperty('TS_LS_NORMS_VER') === TS_LS_NORMS_VER_) return { changed: 0 };
+    if (p.getProperty(propKey) === ver) return { changed: 0 };
     var sh = _tsLsSheet_('norms'), head = TS_LS_SHEETS_.norms.head, v = sh.getDataRange().getValues(), col = {}; head.forEach(function (h, i) { col[h] = i; });
     // новые колонки реестра (например, «Действует до») дописываются справа
     head.forEach(function (h, i) { if (String((v[0] || [])[i] || '') !== h && (v[0] || []).indexOf(h) < 0) { sh.getRange(1, i + 1).setValue(h); v[0][i] = h; v.forEach(function (row, k) { if (k && row[i] === undefined) row[i] = ''; }); } });
     var byCode = {}; for (var i = 1; i < v.length; i++) byCode[String(v[i][0])] = i;
-    var changed = [], add = [];
-    TS_LS_NORMS_.forEach(function (r) {
+    var changed = [], add = [], d10 = function (x) { return x instanceof Date ? Utilities.formatDate(x, _mcTz_(), 'yyyy-MM-dd') : String(x || '').slice(0, 10); };
+    list.forEach(function (r) {
       var i = byCode[r[0]];
-      if (i === undefined) { add.push([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[6] !== 'ПРОВЕРИТЬ' ? TS_LS_NORMS_CHECKED_BY_ : '', r[6] !== 'ПРОВЕРИТЬ' ? TS_LS_NORMS_DATE_ : '', r[7] || '', r[8] || '']); changed.push(r[0] + ': добавлен'); return; }
-      var row = v[i], st = String(row[col['Статус']]), patch = {};
-      if (r[6] === 'УТРАТИЛ СИЛУ' && st !== 'УТРАТИЛ СИЛУ') { patch['Статус'] = 'УТРАТИЛ СИЛУ'; patch['Что требует'] = r[4]; patch['Где в системе'] = r[5]; patch['Проверил'] = TS_LS_NORMS_CHECKED_BY_; patch['Дата проверки'] = TS_LS_NORMS_DATE_; }
-      else if (st === 'ПРОВЕРИТЬ' && r[6] === 'ДЕЙСТВУЕТ') { patch['Статус'] = 'ДЕЙСТВУЕТ'; patch['Проверил'] = TS_LS_NORMS_CHECKED_BY_; patch['Дата проверки'] = TS_LS_NORMS_DATE_; patch['Что требует'] = r[4]; }
+      if (i === undefined) { add.push([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[6] !== 'ПРОВЕРИТЬ' ? who : '', r[6] !== 'ПРОВЕРИТЬ' ? day : '', r[7] || '', r[8] || '']); changed.push(r[0] + ': добавлен'); return; }
+      var row = v[i], st = String(row[col['Статус']]), patch = {}, byProvider = String(row[col['Проверил']] || '') === who || String(row[col['Проверил']] || '').indexOf('Поставщик ЦЕХ Стандарт') === 0;
+      if (r[6] === 'УТРАТИЛ СИЛУ' && st !== 'УТРАТИЛ СИЛУ') { patch['Статус'] = 'УТРАТИЛ СИЛУ'; patch['Что требует'] = r[4]; patch['Где в системе'] = r[5]; patch['Проверил'] = who; patch['Дата проверки'] = day; }
+      else if (st === 'ПРОВЕРИТЬ' && r[6] === 'ДЕЙСТВУЕТ') { patch['Статус'] = 'ДЕЙСТВУЕТ'; patch['Проверил'] = who; patch['Дата проверки'] = day; patch['Что требует'] = r[4]; patch['Где в системе'] = r[5]; }
+      else if (remote && byProvider && st !== r[6]) { patch['Статус'] = r[6]; patch['Проверил'] = r[6] === 'ПРОВЕРИТЬ' ? '' : who; patch['Дата проверки'] = r[6] === 'ПРОВЕРИТЬ' ? '' : day; }
+      if (remote && byProvider && String(row[col['Что требует']] || '') !== String(r[4] || '') && !patch['Что требует']) patch['Что требует'] = r[4];
       if (!String(row[col['Ссылка']] || '').trim() && r[7]) patch['Ссылка'] = r[7];
-      if (r[8] && !String(row[col['Действует до']] || '').trim()) patch['Действует до'] = r[8];
+      var vt = d10(row[col['Действует до']]);
+      if (r[8] && (remote ? vt !== d10(r[8]) : !vt)) patch['Действует до'] = r[8];
       var keys = Object.keys(patch); if (!keys.length) return;
       keys.forEach(function (k) { sh.getRange(i + 1, col[k] + 1).setValue(patch[k]); });
-      changed.push(r[0] + ': ' + (patch['Статус'] ? st + ' → ' + patch['Статус'] : Object.keys(patch).join(', ')));
+      changed.push(r[0] + ': ' + (patch['Статус'] ? st + ' → ' + patch['Статус'] : keys.join(', ')));
     });
     if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, head.length).setValues(add);
-    p.setProperty('TS_LS_NORMS_VER', TS_LS_NORMS_VER_);
-    try { if (typeof _ts2Audit_ === 'function' && changed.length) _ts2Audit_('NORMS_REGISTRY_UPDATE', 'NORM_REGISTRY', TS_LS_NORMS_VER_, undefined, { changes: changed }, 'реестр нормативов сверен поставщиком ' + TS_LS_NORMS_DATE_); } catch (e) {}
+    p.setProperty(propKey, ver);
+    try { if (typeof _ts2Audit_ === 'function' && changed.length) _ts2Audit_('NORMS_REGISTRY_UPDATE', 'NORM_REGISTRY', ver, undefined, { changes: changed, source: remote ? 'админ-панель' : 'выпуск' }, 'реестр нормативов обновлён поставщиком ' + day); } catch (e) {}
     return { changed: changed.length, details: changed };
   });
+}
+/** Свежий реестр из админ-панели (после проверки лицензии раз в сутки и по кнопке «Обновить реестр»). */
+function _tsLsNormsRemote_(force) {
+  var p = PropertiesService.getScriptProperties(), have = p.getProperty('TS_LS_REMOTE_VER') || '';
+  if (!force) { var last = Number(p.getProperty('TS_LS_REMOTE_AT') || 0); if (Date.now() - last < 6 * 3600000) return { skipped: 'проверено недавно' }; }
+  if (!p.getProperty('TS_LS_SEEDED')) return { skipped: 'реестр ещё не создан' };
+  _tsLsNormsMigrate_();
+  var j = _tsControlCall_({ action: 'norms.registry', have: have });
+  p.setProperty('TS_LS_REMOTE_AT', String(Date.now()));
+  if (!j.version || j.version === have || !Array.isArray(j.norms)) return { version: have, changed: 0 };
+  var list = j.norms.filter(function (n) { return n && n.code && ['ДЕЙСТВУЕТ', 'УТРАТИЛ СИЛУ', 'ПРОВЕРИТЬ'].indexOf(n.status) >= 0; }).map(function (n) {
+    var req = String(n.requires || '') + (n.replacedBy && n.status === 'УТРАТИЛ СИЛУ' && String(n.requires || '').indexOf(n.replacedBy) < 0 ? ' Заменён: ' + n.replacedBy : '');
+    return [String(n.code), String(n.group || ''), String(n.document || ''), String(n.title || ''), req, String(n.whereInSystem || ''), n.status, String(n.link || ''), String(n.validTo || '').slice(0, 10)]; });
+  var day = String(j.version).slice(0, 10);
+  var r = _tsLsNormsApply_(list, String(j.version), 'TS_LS_REMOTE_VER', TS_LS_NORMS_CHECKED_BY_, /^\d{4}-\d\d-\d\d$/.test(day) ? day : Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd'), true);
+  r.version = j.version; return r;
+}
+function tsLsNormsSync(token) {
+  try { _requireAuth_(token, 'personnel'); return _ok_(_tsLsNormsRemote_(true)); } catch (e) { return _failFrom_(e); }
 }
 function _tsLsRows_(k) {
   var sh = _tsLsSheet_(k), v = sh.getDataRange().getValues(), h = v[0], out = [];

@@ -50,7 +50,10 @@ var SHEETS = {
   WEBHOOK_EVENTS: ['rawEventHash', 'provider', 'receivedAt', 'result', 'invoice', 'externalId'],
   DATA_REQUESTS: ['requestId', 'enterpriseId', 'orgId', 'requestType', 'status', 'requestedAt', 'requestedBy', 'completedAt', 'resultFileId', 'comment'],
   CONSENTS: ['consentId', 'enterpriseId', 'orgId', 'consentType', 'objectId', 'grantedBy', 'grantedAt', 'expiresAt', 'revokedAt', 'evidence'],
-  ENTERPRISE_AUTOMATION_PROFILES: ['enterpriseId', 'orgId', 'mode', 'seedVersion', 'enterpriseType', 'readiness', 'updatedAt']
+  ENTERPRISE_AUTOMATION_PROFILES: ['enterpriseId', 'orgId', 'mode', 'seedVersion', 'enterpriseType', 'readiness', 'updatedAt', 'normsVersion', 'normsExpired'],
+  // реестр нормативов поставщика (Norms.gs) и уведомления администраторам
+  MASTER_NORMS: ['code', 'group', 'document', 'title', 'requires', 'whereInSystem', 'status', 'link', 'validTo', 'replacedBy', 'changedAt', 'changedBy', 'note'],
+  ADMIN_ALERTS: ['alertId', 'at', 'kind', 'objectId', 'text', 'status', 'closedAt', 'closedBy', 'dedupKey']
 };
 var LICENSE_GRACE_DAYS = 3;     // льготный период после окончания подписки: работа сохраняется, клиент видит предупреждение
 var NONCE_TTL_SEC = 21600;      // одноразовый nonce проверки лицензии хранится 6 часов (повтор отклоняется)

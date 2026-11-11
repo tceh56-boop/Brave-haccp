@@ -4845,6 +4845,16 @@ function pwReqXls(btn) {
 
 </script>
 <script id="tsClient">
+/* отсчёт до окончания срока документа: дни; меньше 2 суток — часы:минуты:секунды, обновляется каждую секунду */
+function tsCdText(to) {
+  if (!to) return ['бессрочно', ''];
+  var ms = new Date(to + 'T00:00:00').getTime() - Date.now(), day = 864e5, p = function (n) { return ('0' + n).slice(-2); };
+  if (ms <= 0) { var ago = Math.floor(-ms / day); return [ago ? 'истёк ' + ago + ' дн. назад' : 'истёк сегодня', 'r']; }
+  if (ms < 2 * day) return ['осталось ' + Math.floor(ms / 36e5) + ':' + p(Math.floor(ms % 36e5 / 6e4)) + ':' + p(Math.floor(ms % 6e4 / 1e3)), 'r'];
+  var d = Math.ceil(ms / day); return ['осталось ' + d + ' дн.', d <= 30 ? 'r' : d <= 180 ? 'a' : 'g'];
+}
+function tsCd(to) { var t = tsCdText(to); return '<span class="chip ' + t[1] + ' tscd" data-to="' + esc(to || '') + '">' + esc(t[0]) + '</span>'; }
+setInterval(function () { [].forEach.call(document.querySelectorAll('.tscd[data-to]'), function (e) { var t = tsCdText(e.getAttribute('data-to')); if (e.textContent !== t[0]) e.textContent = t[0]; e.className = 'chip ' + t[1] + ' tscd'; }); }, 1000);
 /* ==========================================================================
    ЦЕХ Стандарт — экраны модулей подписки, охраны труда, договоров, AI и базы ТТК.
    Встраивается в конец Console.html (tools/inject_ts_console.py). Опирается на
@@ -4981,10 +4991,15 @@ VIEWS.tsLabor = {
       var body = '';
       if (t === 'norms') {
         var groups = {}; d.norms.forEach(function (n) { (groups[n['Группа']] = groups[n['Группа']] || []).push(n); });
-        body = '<div class="rdnote">Статус «ПРОВЕРИТЬ» — редакцию документа нужно сверить с первоисточником (КонсультантПлюс, Гарант, pravo.gov.ru) и отметить «Действует». Система нормы не выдумывает.</div>' +
+        var soon = d.norms.filter(function (n) { var to = String(n['Действует до'] || '').slice(0, 10); return n['Статус'] === 'ДЕЙСТВУЕТ' && to && new Date(to + 'T00:00:00') - Date.now() < 180 * 864e5; })
+          .sort(function (a, b) { return String(a['Действует до']) < String(b['Действует до']) ? -1 : 1; });
+        body = '<div class="mvbar" style="margin:0 0 10px">' + vBtn('Обновить реестр', 'normsSync') + '</div>' +
+          (soon.length ? vCard('Ближайшие сроки нормативов · ' + soon.length, vTable([{ k: 'Документ', l: 'Документ' }, { k: 'Название', l: 'Название' }, { l: 'Действует до', f: function (x) { return String(x['Действует до']).slice(0, 10).split('-').reverse().join('.'); } },
+            { l: 'Отсчёт', html: true, f: function (x) { return tsCd(String(x['Действует до']).slice(0, 10)); } }], soon)) : '') +
+          '<div class="rdnote">Реестр ведёт поставщик ЦЕХ Стандарт: отменённый документ, новый срок или новый документ приходят сюда сами (раз в сутки или по кнопке «Обновить реестр»). Ваши собственные отметки о проверке сохраняются.</div><div class="rdnote">Статус «ПРОВЕРИТЬ» — редакцию документа нужно сверить с первоисточником (КонсультантПлюс, Гарант, pravo.gov.ru) и отметить «Действует». Система нормы не выдумывает.</div>' +
           Object.keys(groups).map(function (g) {
             return vCard(g + ' · ' + groups[g].length, vTable([{ k: 'Документ', l: 'Документ' }, { k: 'Название', l: 'Название' }, { k: 'Что требует', l: 'Что требует' }, { k: 'Где в системе', l: 'Где в системе' },
-              { l: 'Статус', html: true, f: function (x) { return vChip(x['Статус'], x['Статус'] === 'ДЕЙСТВУЕТ' ? 'g' : x['Статус'] === 'УТРАТИЛ СИЛУ' ? 'r' : 'a') + (x['Проверил'] ? '<div class="rdnote">' + esc(x['Проверил']) + ', ' + esc(x['Дата проверки']) + '</div>' : '') + (x['Действует до'] ? '<div class="rdnote">действует до ' + esc(String(x['Действует до']).slice(0, 10)) + '</div>' : '') + (/^https?:/.test(String(x['Ссылка'] || '')) ? '<div><a target="_blank" href="' + esc(x['Ссылка']) + '">первоисточник</a></div>' : ''); } }],
+              { l: 'Статус', html: true, f: function (x) { return vChip(x['Статус'], x['Статус'] === 'ДЕЙСТВУЕТ' ? 'g' : x['Статус'] === 'УТРАТИЛ СИЛУ' ? 'r' : 'a') + (x['Проверил'] ? '<div class="rdnote">' + esc(x['Проверил']) + ', ' + esc(x['Дата проверки']) + '</div>' : '') + (x['Действует до'] ? '<div class="rdnote">действует до ' + esc(String(x['Действует до']).slice(0, 10).split('-').reverse().join('.')) + '</div>' + (x['Статус'] === 'ДЕЙСТВУЕТ' ? tsCd(String(x['Действует до']).slice(0, 10)) : '') : '') + (/^https?:/.test(String(x['Ссылка'] || '')) ? '<div><a target="_blank" href="' + esc(x['Ссылка']) + '">первоисточник</a></div>' : ''); } }],
               groups[g], function (x) { return x['Статус'] !== 'ДЕЙСТВУЕТ' ? vBtn('Действует', 'verify', x['Код']) : ''; }));
           }).join('');
       } else if (t === 'ot' || t === 'jobs') {
@@ -5032,6 +5047,7 @@ VIEWS.tsLabor = {
       heads.forEach(function (k) { rec[k] = vV(k); });
       vDo(btn, 'tsLsSaveRecord', [TOKEN, kind, rec], 'Записано', function () { VIEWS.tsLabor.h.load(); });
     },
+    normsSync: function (a, btn) { vDo(btn, 'tsLsNormsSync', [TOKEN], function (r) { return r.skipped ? 'Реестр: ' + r.skipped : r.changed ? 'Реестр обновлён: изменений ' + r.changed : 'Реестр актуален'; }, function () { VIEWS.tsLabor.h.load(); }); },
     verify: function (code, btn) { vDo(btn, 'tsLsVerifyNorm', [TOKEN, code, 'ДЕЙСТВУЕТ', ''], 'Отмечено: действует', function () { VIEWS.tsLabor.h.load(); }); },
     doc: function (arg) {
       var p = arg.split('|');

@@ -973,6 +973,7 @@ ts2SystemDoc;TS2_SystemDocs.gs;интерфейс (сессия);да;*;сесс
 tsContractsList;TS_Contracts.gs;интерфейс (сессия);;documents_view|documents;сессия → право «documents_view|documents» → тариф
 tsContractSave;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
 tsContractUpload;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
+tsLsNormsSync;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp_approve;сессия → право «personnel|haccp_approve» → тариф → допуск → блокировка → аудит
 tsLsGetAll;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsLsGetDoc;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsLsSaveDoc;TS_LaborSafety.gs;интерфейс (сессия);да;personnel;сессия → право «personnel» → тариф → допуск → блокировка → аудит

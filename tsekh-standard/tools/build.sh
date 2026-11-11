@@ -7,6 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 tools/rebrand_monchef.py app brand >/dev/null
 python3 tools/inject_ts_console.py app >/dev/null
+node tools/gen_norms_seed.js >/dev/null
 node tools/check_syntax.js app
 node tools/check_syntax.js admin
 node tests/license_flow.test.js

@@ -40,7 +40,9 @@
 | WEBHOOK_EVENTS | rawEventHash, provider, receivedAt, result, invoice, externalId |
 | DATA_REQUESTS | requestId, enterpriseId, orgId, requestType, status, requestedAt, requestedBy, completedAt, resultFileId, comment |
 | CONSENTS | consentId, enterpriseId, orgId, consentType, objectId, grantedBy, grantedAt, expiresAt, revokedAt, evidence |
-| ENTERPRISE_AUTOMATION_PROFILES | enterpriseId, orgId, mode, seedVersion, enterpriseType, readiness, updatedAt |
+| ENTERPRISE_AUTOMATION_PROFILES | enterpriseId, orgId, mode, seedVersion, enterpriseType, readiness, updatedAt, normsVersion, normsExpired |
+| MASTER_NORMS | code, group, document, title, requires, whereInSystem, status, link, validTo, replacedBy, changedAt, changedBy, note |
+| ADMIN_ALERTS | alertId, at, kind, objectId, text, status, closedAt, closedBy, dedupKey |
 
 ## Роли администраторов
 

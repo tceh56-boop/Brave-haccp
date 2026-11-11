@@ -27,7 +27,7 @@ function doPost(e) {
     if (p.action === 'license.check') out = licenseCheck_(p);
     else if (p.action === 'ttk.library') { var org = verifyClient_(p); out = org ? ttkLibraryForClient_(org) : { ok: false, error: 'Подпись запроса не принята' }; }
     else if (p.action === 'api.clients') out = apiClients_(p);
-    else if (['release.check', 'support.request', 'support.consent', 'usage.report', 'tech.event', 'reconciliation.template', 'seed.package'].indexOf(p.action) >= 0) out = apiControl_(p);
+    else if (['release.check', 'support.request', 'support.consent', 'usage.report', 'tech.event', 'reconciliation.template', 'seed.package', 'norms.registry'].indexOf(p.action) >= 0) out = apiControl_(p);
     else out = { ok: false, error: 'unknown action' };
   } catch (err) {
     logError('api', String(err && err.message || err), err && err.stack);

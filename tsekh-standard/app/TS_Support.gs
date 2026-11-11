@@ -28,6 +28,11 @@ function _tsUsageMetrics_() {
       m.enterpriseType = _ts2Prof_('enterpriseType', '');
     }
   } catch (e) {}
+  try {   // какая версия реестра нормативов у предприятия и сколько действующих документов с истёкшим сроком
+    var pp = _tsProps_(); m.normsVersion = pp.getProperty('TS_LS_REMOTE_VER') || pp.getProperty('TS_LS_NORMS_VER') || '';
+    if (typeof _tsLsRows_ === 'function' && pp.getProperty('TS_LS_SEEDED')) { var td = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd');
+      m.normsExpired = _tsLsRows_('norms').filter(function (n) { var vt = n['Действует до'] instanceof Date ? Utilities.formatDate(n['Действует до'], _mcTz_(), 'yyyy-MM-dd') : String(n['Действует до'] || '').slice(0, 10); return n['Статус'] === 'ДЕЙСТВУЕТ' && vt && vt <= td; }).length; }
+  } catch (e) {}
   return m;
 }
 /** После успешной проверки лицензии: раз в сутки статистика, очередь ошибок — сразу. Сбой связи не мешает работе. */
@@ -40,6 +45,8 @@ function _tsAfterCheck_() {
       p.setProperty('TS_TECH_QUEUE', JSON.stringify(q.slice(10)));
     }
   } catch (e) {}
+  // реестр нормативов из админ-панели: отменённые документы и новые сроки доходят до предприятия в течение суток
+  try { if (typeof _tsLsNormsRemote_ === 'function') _tsLsNormsRemote_(false); } catch (e) { try { _tsTechEvent_('NORMS_SYNC', '_tsLsNormsRemote_', e && e.message || e); } catch (x) {} }
   try {
     var last = Number(p.getProperty('TS_USAGE_SENT_AT') || 0);
     if (now - last > 20 * 3600000) { _tsControlCall_({ action: 'usage.report', metrics: _tsUsageMetrics_(), version: TS_VERSION }); p.setProperty('TS_USAGE_SENT_AT', String(now)); }
