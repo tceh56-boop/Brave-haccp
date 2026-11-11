@@ -929,6 +929,7 @@ mcWriteOffPreview;MonChef_WriteOff.gs;интерфейс (сессия);;stock;�
 mcWriteOffAct;MonChef_WriteOff.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
 mcPfIncomeData;MonChef_WriteOff.gs;интерфейс (сессия);;kanban|prod_manage|stock;сессия → право «kanban|prod_manage|stock» → тариф
 mcPfOpeningBalance;MonChef_WriteOff.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+ts2Archives;TS2_Archive.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 ts2Status;TS2_Core.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 ts2InstallSchema;TS2_Core.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
 ts2VerifyAudit;TS2_Core.gs;интерфейс (сессия);;audit_view|org_edit;сессия → право «audit_view|org_edit» → тариф

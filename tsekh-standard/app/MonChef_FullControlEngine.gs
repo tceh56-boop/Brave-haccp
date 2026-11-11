@@ -7,7 +7,7 @@
 var MC_FACTS_SHEET = 'Факты';
 var MC_DOC_REGISTRY_SHEET = 'DOCUMENT_REGISTRY';
 var MC_RULES_SHEET = 'Правила_Автоматизации';
-var MC_PACKAGE_FOLDER = 'Mon Chef — Пакеты проверки';
+var MC_PACKAGE_FOLDER = 'ЦЕХ Стандарт — Пакеты проверки';
 
 function _mcFullEnsureSheet_(name, headers) {
   var ss = _book_();
@@ -47,8 +47,7 @@ function _mcPackageFolder_() {
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty('MC_INSPECTION_PACKAGE_FOLDER_ID');
   if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
-  var it = DriveApp.getFoldersByName(MC_PACKAGE_FOLDER);
-  var f = it.hasNext() ? it.next() : DriveApp.createFolder(MC_PACKAGE_FOLDER);
+  var f = _tsBrandFolder_(MC_PACKAGE_FOLDER, 'Mon Chef — Пакеты проверки');
   props.setProperty('MC_INSPECTION_PACKAGE_FOLDER_ID', f.getId());
   return f;
 }

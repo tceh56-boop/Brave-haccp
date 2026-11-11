@@ -327,6 +327,7 @@ var TS_GATE_ = [
   { n: 'ts2ApprovalQueue', need: '*', f: 'journals' },
   { n: 'ts2SystemDoc', need: '*', mut: true, f: 'journals' },
   { n: 'ts2Sensors', need: '*', f: 'journals' },
+  { n: 'ts2Archives', need: '*' },
   { n: 'ts2CateringLabels', need: 'banquets', mut: true },
   { n: 'ts2SensorRegister', need: 'org_edit', mut: true, f: 'journals' },
   { n: 'ts2SensorRevoke', need: 'org_edit', mut: true, f: 'journals' },

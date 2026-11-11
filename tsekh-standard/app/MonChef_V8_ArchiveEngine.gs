@@ -27,7 +27,7 @@
  * Подписи журналов остаются в отдельном контуре Mon Chef.
  * ========================================================================== */
 
-var MC_V8_ARCHIVE_ROOT = 'MON CHEF — Архив';
+var MC_V8_ARCHIVE_ROOT = 'ЦЕХ Стандарт — Архив', MC_V8_ARCHIVE_ROOT_OLD_ = 'MON CHEF — Архив';
 var MC_V8_ARCHIVE_MONTH_FORMAT = 'yyyy-MM-dd';
 var MC_V8_ARCHIVE_LOCK_KEY = 'MC_V8_ARCHIVE_RUNNING';
 
@@ -35,14 +35,23 @@ function _mcV8ArchiveRoot_() {
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty('MC_V8_ARCHIVE_ROOT_ID');
   if (id) {
-    try { return DriveApp.getFolderById(id); } catch (e) {}
+    try { var f0 = DriveApp.getFolderById(id); if (f0.getName() === MC_V8_ARCHIVE_ROOT_OLD_) f0.setName(MC_V8_ARCHIVE_ROOT); return f0; } catch (e) {}
   }
+  var old = DriveApp.getFoldersByName(MC_V8_ARCHIVE_ROOT_OLD_);
+  if (old.hasNext()) { var fo = old.next(); fo.setName(MC_V8_ARCHIVE_ROOT); props.setProperty('MC_V8_ARCHIVE_ROOT_ID', fo.getId()); return fo; }
   var it = DriveApp.getFoldersByName(MC_V8_ARCHIVE_ROOT);
   var f = it.hasNext() ? it.next() : DriveApp.createFolder(MC_V8_ARCHIVE_ROOT);
   props.setProperty('MC_V8_ARCHIVE_ROOT_ID', f.getId());
   return f;
 }
 
+/** Папка на Диске по названию; уже созданная со старым названием (MonChef) переименовывается — содержимое не теряется. */
+function _tsBrandFolder_(name, oldName) {
+  var it = DriveApp.getFoldersByName(name); if (it.hasNext()) return it.next();
+  if (oldName) { var o = DriveApp.getFoldersByName(oldName); if (o.hasNext()) { var f = o.next(); f.setName(name); return f; } }
+  return DriveApp.createFolder(name);
+}
+function ss0HasTs2_() { try { return !!_book_().getSheetByName('AUTO_RECORDS'); } catch (e) { return false; } }
 function _mcV8ArchiveMonthLabel_(date) {
   var names = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   return names[date.getMonth()] + ' ' + date.getFullYear() + ' г';
@@ -366,6 +375,15 @@ function archiveMonChefMonthly() {
       } catch (e) { results.warnings.push({ type: 'REGISTER', sheet: cfg[0], error: String(e) }); }
     });
 
+    // ЦЕХ Стандарт 2.x: журналы событий месяца — в архивную таблицу; месяц до него вырезается из рабочей таблицы (TS2_Archive.gs)
+    try {
+      if (typeof _ts2MonthlyStep_ === 'function' && ss0HasTs2_()) {
+        results.events2x = _ts2MonthlyStep_(year, month, _mcV8ArchiveSubFolder_(monthFolder, '08 HACCP и контроль'));
+        if (results.events2x.archiveError) { incomplete = true; results.warnings.push({ type: 'EVENTS_2X', error: results.events2x.archiveError }); }
+        if (results.events2x.rotateError) results.warnings.push({ type: 'EVENTS_2X_ROTATE', error: results.events2x.rotateError });
+      }
+    } catch (e2x) { incomplete = true; results.warnings.push({ type: 'EVENTS_2X', error: String(e2x) }); }
+
     // Отдельный понятный пакет приёмки: только реальные приходы + партии,
     // полученные в этом месяце.
     try {
@@ -413,7 +431,9 @@ function archiveMonChefMonthly() {
       'Подписанных PDF скопировано: ' + results.signatures.length,
       'Предупреждений: ' + results.warnings.length,
       '',
-      'Исходные рабочие документы сохранены. Архивные копии предназначены для истории и проверки.'
+      'Журналы событий 2.x: ' + (results.events2x && results.events2x.archive ? 'архив ' + results.events2x.archive.url : 'нет') + (results.events2x && results.events2x.rotate && results.events2x.rotate.removed ? '; из рабочей таблицы вынесен предыдущий месяц: ' + JSON.stringify(results.events2x.rotate.removed) : ''),
+      '',
+      'Журналы форм J01–J53 и реестры остаются и в рабочей таблице. Журналы событий 2.x хранятся в рабочей таблице два месяца, дальше — только в архиве.'
     ].join('\n');
     manifestFolder.createFile(Utilities.newBlob(summary, 'text/plain', 'README — ' + _mcV8ArchiveMonthLabel_(new Date(year, month, 1)) + '.txt'));
 

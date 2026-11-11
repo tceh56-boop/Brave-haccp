@@ -14,6 +14,7 @@ function sheet(name) {
       // поиск на стороне Таблиц: ячейки не передаются в скрипт и в счётчик чтения не входят
       createTextFinder(text) { const f = { matchEntireCell() { return f; }, matchCase() { return f; }, findAll() { const out = []; for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) { const v = (s.data[r - 1 + i] || [])[c - 1 + j]; if (v !== undefined && String(v) === String(text)) out.push({ getRow: () => r + i }); } return out; } }; return f; },
       getValue() { return ((s.data[r - 1] || [])[c - 1]) ?? ''; }, setValue(v) { s.data[r - 1] = s.data[r - 1] || []; s.data[r - 1][c - 1] = v; return this; },
+      clearContent() { if (r - 1 + nr >= s.data.length) s.data.length = r - 1; else for (let i = 0; i < nr; i++) s.data[r - 1 + i] = []; return this; },
       setFontWeight() { return this; }, setBackground() { return this; }, setFontColor() { return this; }, setNumberFormat() { return this; } }; } };
   return s;
 }
@@ -55,7 +56,7 @@ legacy('ЦС_Нормативы', ['Код', 'Группа', 'Документ',
   ['N-3', 'СанПиН', 'Действует долго', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(2000)], ['N-4', 'СанПиН', 'Отменён', '', '', '', 'УТРАТИЛ СИЛУ', '', '', '', isoIn(-400)]]);
 legacy('Температурные_Объекты', ['ObjectID', 'Тип', 'Название', 'EquipmentID', 'Мин', 'Макс', 'Ед.', 'Статус', 'Установленная t°', 'Время проверок'], [['T-1', 'REFRIGERATOR', 'Холодильник 1', '', 2, 6, '°C', 'ACTIVE', 4, '09:00']]);
 const ctx = vm.createContext(G);
-['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs', 'TS_Sensors.gs', 'TS2_Serving.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
+['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs', 'TS_Sensors.gs', 'TS2_Serving.gs', 'TS2_Archive.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
 const C = ctx, J = s => { const r = JSON.parse(s); if (!r.success) throw new Error(r.error.message); return r.data; };
 const rows = n => C._ts2Rows_(n);
 let pass = 0; const t = (name, fn) => { fn(); pass++; console.log('  ✓ ' + name); };
@@ -302,5 +303,38 @@ t('пропущенные задачи: не выполненные 2 суток
   assert(rows('AUTO_RECORDS').some(r => r.recordType === 'DEVIATION' && /Пропущено задач/.test(r.value)));
   assert.strictEqual(C._ts2ExpireMissed_(today), 0, 'в тот же день повторно не выполняется');
   assert(!C._ts2NowTasks_().some(t => t.id === 'EXP-MISS'), 'в «Сейчас» пропущенной задачи нет');
+});
+t('архив месяца и вырезание: сверка с архивом, резервная копия, открытое остаётся, испорченный архив — отказ, цепочка аудита не рвётся', () => {
+  const books = {}; let nb = 0;
+  G.SpreadsheetApp.create = name => { const id = 'ARC' + (++nb), tabs = [], b = { getId: () => id, getName: () => name, getSheets: () => tabs, getSheetByName: n => tabs.find(x => x.__n === n) || null,
+    insertSheet: n => { const x = sheet(n); x.__n = n; x.setName = v => { x.__n = v; }; x.getSheetId = () => 1; tabs.push(x); return x; } }; b.insertSheet('Лист1'); books[id] = b; return b; };
+  G.SpreadsheetApp.openById = id => books[id];
+  const p2 = n => String(n).padStart(2, '0'), d = new Date(), prev = new Date(d.getFullYear(), d.getMonth() - 1, 15, 12), pIso = C._ts2Iso_(prev), y = prev.getFullYear(), m = prev.getMonth();
+  const add = (name, o) => { const sh = sheets[name], h = sh.data[0]; sh.data.push(h.map(k => o[k] === undefined ? '' : o[k])); };
+  add('AUTO_RECORDS', { autoRecordId: 'ARC-P1', eventType: 'PRODUCTION_RELEASE', recordType: 'PRODUCTION_JOURNAL', result: 'PASS', status: 'ACTIVE', createdAt: pIso, idempotencyKey: 'p1' });
+  add('AUTO_RECORDS', { autoRecordId: 'ARC-P2', eventType: 'EXCEPTION', recordType: 'DEVIATION', result: 'FAIL', status: 'OPEN', createdAt: pIso, idempotencyKey: 'p2' });
+  add('AUTO_RECORDS', { autoRecordId: 'ARC-P3', eventType: 'PRODUCTION_RELEASE', recordType: 'HACCP_FACT', result: 'PENDING_CONFIRMATION', status: 'ACTIVE', createdAt: pIso, idempotencyKey: 'p3' });
+  add('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-P1', status: 'DONE', dueAt: pIso, title: 'x', idempotencyKey: 'pe1' });
+  add('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-P2', status: 'OPEN', dueAt: pIso, title: 'x', idempotencyKey: 'pe2' });
+  add('MANUAL_MEASUREMENTS', { measurementId: 'MSR-P1', value: 4, recordedAt: pIso });
+  C._TS2_SH_ = {}; const before = rows('AUTO_RECORDS').length, cur = rows('AUTO_RECORDS').filter(r => String(r.createdAt).slice(0, 7) !== C._ts2MonthKey_(y, m)).length;
+  const info = C._ts2ArchiveMonth_(y, m, null); assert.strictEqual(info.sheets.AUTO_RECORDS.rows, 3); assert.strictEqual(info.sheets.JOURNAL_EXPECTATIONS.rows, 2);
+  assert.strictEqual(C._ts2ArchiveMonth_(y, m, null).fileId, info.fileId, 'повторный запуск — тот же архив');
+  assert(/ЦЕХ Стандарт — журналы событий/.test(books[info.fileId].getName()), 'архив подписан месяцем: ' + books[info.fileId].getName());
+  // испорченный архив — вырезание отменяется
+  const tab = books[info.fileId].getSheetByName('Замеры'), keep = tab.data[1].slice(); tab.data[1][5] = 999;
+  assert.throws(() => C._ts2RotateMonth_(y, m), /не совпадает/); tab.data[1] = keep;
+  const r = C._ts2RotateMonth_(y, m); C._TS2_SH_ = {};
+  assert.strictEqual(r.removed.AUTO_RECORDS, 1, 'вырезана закрытая автозапись'); assert(C._ts2Find_('AUTO_RECORDS', 'autoRecordId', 'ARC-P2') && C._ts2Find_('AUTO_RECORDS', 'autoRecordId', 'ARC-P3'), 'открытое отклонение и «ждёт подтверждения» остались');
+  assert(!C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-P1') && C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-P2'), 'закрытая задача вырезана, открытая осталась');
+  assert.strictEqual(rows('AUTO_RECORDS').length, before - 1); assert.strictEqual(rows('AUTO_RECORDS').filter(x => String(x.createdAt).slice(0, 7) !== C._ts2MonthKey_(y, m)).length, cur, 'другие месяцы не тронуты');
+  assert(rows('BACKUP_CATALOG').some(b => b.backupType === 'PRE_ROTATION') && rows('BACKUP_CATALOG').some(b => b.backupType === 'MONTH_ARCHIVE'));
+  assert(/уже вырезано/.test(C._ts2RotateMonth_(y, m).skipped));
+  // вырезание журнала аудита (текущий месяц целиком) — проверка цепочки продолжается от якоря
+  const ck = new Date(), info2 = C._ts2ArchiveMonth_(ck.getFullYear(), ck.getMonth(), null), auditBefore = rows('AUDIT_CHAIN').length;
+  C._ts2RotateMonth_(ck.getFullYear(), ck.getMonth()); C._TS2_SH_ = {};
+  assert(rows('AUDIT_CHAIN').length < auditBefore, 'журнал аудита вынесен в архив');
+  C._ts2Audit_('TEST_AFTER_ROTATION', 'TEST', '1', undefined, {}, '');
+  const v = C._ts2VerifyAudit_(); assert(v.records >= 1 && v.broken.length === 0, 'цепочка после вырезания не рвётся: ' + JSON.stringify(v));
 });
 console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

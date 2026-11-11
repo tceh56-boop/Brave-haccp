@@ -63,7 +63,7 @@ function _sdIncomingReasons_(b) {
 function _sdFile_(dataUrl, name) {
   var m = String(dataUrl || '').match(/^data:([^;]+);base64,(.*)$/); if (!m) return null;
   var bytes = Utilities.base64Decode(m[2]), hash = _bkHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes));
-  var folder = null; try { var it = DriveApp.getFoldersByName('Документы на сырьё Mon Chef'); folder = it.hasNext() ? it.next() : DriveApp.createFolder('Документы на сырьё Mon Chef'); } catch (e) {}
+  var folder = null; try { folder = _tsBrandFolder_('Документы на сырьё ЦЕХ Стандарт', 'Документы на сырьё Mon Chef'); } catch (e) {}
   var blob = Utilities.newBlob(bytes, m[1], name), f = folder ? folder.createFile(blob) : DriveApp.createFile(blob);
   return { fileId: f.getId(), hash: hash };
 }

@@ -161,7 +161,8 @@ function _ts2Audit_(action, entityType, entityId, before, after, reason, result,
 }
 /** Проверка цепочки аудита: каждая запись ссылается на хеш предыдущей и сама не изменена. */
 function _ts2VerifyAudit_() {
-  var rows = _ts2Rows_('AUDIT_CHAIN'), prev = '', bad = [];
+  // после вырезания старых месяцев цепочка начинается с якоря; её продолжение до якоря — в архивах месяцев (TS2_Archive.gs)
+  var rows = _ts2Rows_('AUDIT_CHAIN'), prev = PropertiesService.getScriptProperties().getProperty('TS2_AUDIT_ANCHOR') || '', bad = [];
   rows.forEach(function (r) {
     var h = _ts2Sha_(prev + '|' + TS2_ENTERPRISE_SCHEMA_.AUDIT_CHAIN.head.slice(0, 17).map(function (k) { return k === 'prevHash' ? prev : String(r[k]); }).join('|'));
     if (String(r.prevHash) !== prev || String(r.hash) !== h) bad.push(r.auditId);

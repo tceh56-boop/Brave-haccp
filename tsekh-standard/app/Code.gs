@@ -1047,8 +1047,7 @@ function createSystemBackup(token) {
     var name = 'BACKUP ЦЕХ Стандарт ' + stamp;
     var folder;
     try {
-      var it = DriveApp.getFoldersByName('Бэкапы ЦЕХ Стандарт');
-      folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы ЦЕХ Стандарт');
+      folder = _tsBrandFolder_('Бэкапы ЦЕХ Стандарт', 'Бэкапы Mon Chef');
     } catch (e) { folder = null; }
     var copy = folder ? src.makeCopy(name, folder) : src.makeCopy(name);
     // ТЗ §24: бэкап содержит все данные предприятия — публичным не делаем

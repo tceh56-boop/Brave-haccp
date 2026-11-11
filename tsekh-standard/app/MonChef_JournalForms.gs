@@ -671,7 +671,7 @@ function mcJournalForm(json, token) {
  *  • в последний день месяца — архив «ЦЕХ Стандарт — Архив / Сентябрь 2026 г / 01 Журналы» (Google-таблица + PDF);
  *  • рабочие записи в таблице ЦЕХ Стандарт не удаляются никогда; срок хранения архива — 3 года (в манифесте).
  * ===================================================================================== */
-var MC_JF_DRIVE_ROOT_ = 'MON CHEF — Журналы', MC_JF_RETAIN_YEARS_ = 3;
+var MC_JF_DRIVE_ROOT_ = 'ЦЕХ Стандарт — Журналы', MC_JF_RETAIN_YEARS_ = 3;
 var MC_JF_MONTHS_CAP_ = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
 /** План листа: значения, объединения и стили — по бланку (строки 1–2 шапка, 4 назначение, 6 название, 8 колонки, с 9 записи). */
@@ -729,8 +729,8 @@ function _jfApplyLayout_(sh, L) {
 function _jfFolder_(parent, name) { var it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
 function _jfDriveRoot_() {
   var p = PropertiesService.getScriptProperties(), id = p.getProperty('MC_JF_DRIVE_ROOT_ID');
-  if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
-  var it = DriveApp.getFoldersByName(MC_JF_DRIVE_ROOT_), f = it.hasNext() ? it.next() : DriveApp.createFolder(MC_JF_DRIVE_ROOT_);
+  if (id) { try { var f0 = DriveApp.getFolderById(id); if (f0.getName() === 'MON CHEF — Журналы') f0.setName(MC_JF_DRIVE_ROOT_); return f0; } catch (e) {} }
+  var f = _tsBrandFolder_(MC_JF_DRIVE_ROOT_, 'MON CHEF — Журналы');
   p.setProperty('MC_JF_DRIVE_ROOT_ID', f.getId());
   return f;
 }
