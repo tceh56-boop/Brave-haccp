@@ -73,10 +73,11 @@ const BA = bootstrapFor(CA, LA, 'Кафе А'), BB = bootstrapFor(CB, LB, 'Ка�
 let RA, RB;
 
 /* ------------------------------------------------------------------ клиентское ядро (от имени поставщика, конфигурация от CONTROL) */
-function clientFor(orgId) {
+function clientFor(orgId, asUser) {   // asUser — Google-аккаунт, от имени которого выполняется код (USER_ACCESSING); по умолчанию поставщик
   const org = ctl.findBy('Organizations', 'ID', orgId);
   const core = ctl.injectTenantConfigSource_({ name: 'TS2_Core', type: 'SERVER_JS', source: fs.readFileSync(path.join(root, 'app', 'TS2_Core.gs'), 'utf8') }, org).source;
-  const G = make(PROVIDER); G.DriveApp = driveFor(PROVIDER); G.SpreadsheetApp = sheetsAppFor(PROVIDER);
+  const who = asUser || PROVIDER, G = make(who); G.DriveApp = driveFor(who); G.SpreadsheetApp = sheetsAppFor(who);
+  G.Session.getActiveUser = () => ({ getEmail: () => who }); G.Session.getEffectiveUser = () => ({ getEmail: () => who });
   G.Utilities.formatDate = (d, tz, f) => new Date(d).toISOString().slice(0, 10);
   const c = vm.createContext(G);
   Object.assign(G, { _book_: () => book(c._tsTenantSpreadsheetId_()), _mcTz_: () => 'Europe/Moscow', _withLock_: f => f(), _log_: () => {}, mcGateSession_: () => null,
@@ -91,6 +92,8 @@ const inTree = (id, rootId) => ancestors(id).includes(rootId) || id === rootId;
 
 t('bootstrap: каждый клиент создаёт папку и таблицу на своём Диске, поставщик — только редактор; CONTROL подтверждает владельца (подпись v2)', () => {
   RA = BA.tsTenantBootstrapStart(); RB = BB.tsTenantBootstrapStart();
+  // А и Б — прежняя модель (код от имени поставщика); новая модель P1-2 — предприятие В ниже
+  ctl.update('Organizations', OA, { 'Execution Model': 'USER_DEPLOYING' }); ctl.update('Organizations', OB, { 'Execution Model': 'USER_DEPLOYING' });
   assert.strictEqual(items[RA.rootFolderId].owner, CA); assert.strictEqual(items[RB.rootFolderId].owner, CB);
   assert.strictEqual(items[RA.spreadsheetId].parents[0], RA.rootFolderId); assert(items[RA.rootFolderId].editors.includes(PROVIDER));
   const oa = ctl.findBy('Organizations', 'ID', OA), ob = ctl.findBy('Organizations', 'ID', OB);
@@ -185,6 +188,65 @@ t('клиент отозвал доступ поставщика: операци
   THROWS(() => c._ts2Folder_('ROOT'), /TENANT_STORAGE_UNAVAILABLE/);
   assert.strictEqual(providerLoose(), 0, 'запасная папка у поставщика не создана');
   assert(B._ts2Folder_('INBOX'), 'Б работает'); assert.strictEqual(items[RA.spreadsheetId].owner, CA, 'таблица А у клиента А');
+});
+
+/* ------------------------------------------------------------------ P1-2: проект у поставщика, выполнение от имени клиента */
+const CC = 'owner-c@cafe-c.example'; let LC, RC, OC, apiCalls = [];
+t('P1-2 CONTROL: отдельный проект поставщика без привязки к таблице; служебное развёртывание (без входа) и рабочее USER_ACCESSING', () => {
+  LC = lic('Кафе В'); OC = LC.id; RC = bootstrapFor(CC, LC, 'Кафе В').tsTenantBootstrapStart();
+  ctl.update('Organizations', OC, { 'Allowed Google Accounts': 'chef@cafe-c.example, ' + CC });
+  GA.PropertiesService.getScriptProperties().setProperty('MASTER_SCRIPT_ID', 'MASTER');
+  const master = { files: [{ name: 'appsscript', type: 'JSON', source: fs.readFileSync(path.join(root, 'app', 'appsscript.json'), 'utf8') },
+    { name: 'TS2_Core', type: 'SERVER_JS', source: fs.readFileSync(path.join(root, 'app', 'TS2_Core.gs'), 'utf8') }, { name: 'Code', type: 'SERVER_JS', source: "var SHEET_ID        = 'OLD';" }] };
+  let v = 0, dn = 0; const content = {};
+  ctl.scriptApi_ = (m, p, b) => { apiCalls.push({ m, p, b: JSON.parse(JSON.stringify(b || null)) });
+    if (m === 'post' && p === '') return { scriptId: 'SCRIPT-C' }; if (m === 'get') return master; if (m === 'put' && /content$/.test(p)) { content.last = b; return {}; }
+    if (m === 'post' && /versions$/.test(p)) return { versionNumber: ++v }; if (m === 'post' && /deployments$/.test(p)) { dn++; return { deploymentId: 'DEP' + dn, entryPoints: [{ entryPointType: 'WEB_APP', webApp: { url: 'https://script.google.com/macros/s/DEP' + dn + '/exec' } }] }; }
+    return {}; };
+  const res = ctl.adminProvision(T, OC); assert(res.ok, JSON.stringify(res));
+  const create = apiCalls.find(c => c.m === 'post' && c.p === ''); assert(create && !('parentId' in create.b), 'проект не привязан к таблице клиента');
+  const puts = apiCalls.filter(c => c.m === 'put' && /content$/.test(c.p)).map(c => c.b.files);
+  const man = f => JSON.parse(f.find(x => x.name === 'appsscript').source).webapp, cfg = f => JSON.parse(/var TS_TENANT_CONFIG_ = (\{.*?\});/.exec(f.find(x => x.name === 'TS2_Core').source)[1]);
+  assert.deepStrictEqual(man(puts[0]), { executeAs: 'USER_DEPLOYING', access: 'ANYONE_ANONYMOUS' }, 'служебное — без входа');
+  assert.deepStrictEqual(man(puts[1]), { executeAs: 'USER_ACCESSING', access: 'ANYONE' }, 'рабочее — от имени открывшего, только вошедшие');
+  const c1 = cfg(puts[1]); assert(c1.execution === 'USER_ACCESSING' && c1.ownerEmail === CC && c1.allowedEmails.includes('chef@cafe-c.example') && c1.serviceUrl === 'https://script.google.com/macros/s/DEP1/exec', JSON.stringify(c1));
+  const oc = ctl.findBy('Organizations', 'ID', OC); assert(oc['App URL'] === 'https://script.google.com/macros/s/DEP2/exec' && oc['Service URL'] === 'https://script.google.com/macros/s/DEP1/exec' && oc['Script ID'] === 'SCRIPT-C');
+  // обновление релизом: новые версии, те же развёртывания, клиентские данные не трогаются
+  apiCalls = []; const up = ctl.updateOneOrg_(oc, master, '2.3.0');
+  assert(!apiCalls.some(c => c.m === 'post' && /deployments$/.test(c.p)), 'новых развёртываний нет'); assert.strictEqual(apiCalls.filter(c => c.m === 'put' && /deployments\/DEP[12]$/.test(c.p)).length, 2);
+  assert(!apiCalls.some(c => /spreadsheets|drive/i.test(c.p)), 'API Диска и таблиц при обновлении не вызываются'); assert.strictEqual(up.execution, 'USER_ACCESSING');
+});
+let C3;
+t('P1-2 клиент: код выполняется от имени владельца предприятия — все папки и файлы принадлежат клиенту, квота поставщика не расходуется', () => {
+  const before = ownedBy(PROVIDER);
+  C3 = clientFor(OC, CC); assert(C3._tsExecAccessing_() && C3._tsIdentityAllowed_() && !C3._tsIdentityAllowed_('stranger@x.example'));
+  C3._ts2EnsureSchema_(true); const tree = C3._ts2EnsureDriveTree_();
+  const doc = C3._ts2Folder_('GEN_PPK').createFile({ name: 'ППК.pdf' }), arc = C3._ts2Folder_('ARCHIVE').createFile({ name: 'Архив ноябрь' }), bk = C3._ts2Folder_('SYS_BACKUPS').createFile({ name: 'backup' });
+  C3._ts2Insert_('FILES', { fileId: 'F1', enterpriseId: C3._ts2Ent_(), googleFileId: C3._ts2Folder_('INBOX').createFile({ name: 'накладная.pdf' }).getId() });
+  C3._ts2Insert_('BACKUP_CATALOG', { backupId: 'B1', enterpriseId: C3._ts2Ent_(), backupType: 'MANUAL', fileId: bk.getId() });
+  const inC = Object.values(items).filter(x => ancestors(x.id).includes(RC.rootFolderId));
+  assert(tree.length > 20 && inC.length > 25 && inC.every(x => x.owner === CC), 'всё в дереве В принадлежит клиенту В: ' + JSON.stringify(inC.filter(x => x.owner !== CC).map(x => x.name)));
+  assert.strictEqual(ownedBy(PROVIDER), before, 'ни одного нового объекта у поставщика');
+  [doc, arc, bk].forEach(f => assert.strictEqual(items[f.getId()].owner, CC));
+  assert.strictEqual(C3._tsPublicUrl_(), 'https://script.google.com/macros/s/DEP1/exec', 'датчики и QR — на служебный адрес');
+});
+t('P1-2 проверка владельцев: у В — PASS; у А (дерево создано от имени поставщика) в режиме USER_ACCESSING — FAIL с примерами', () => {
+  const r = C3._ts4TenantIntegrity_(), own = r.checks.find(x => x.check === 'OWNERSHIP');
+  assert(own.status === 'PASS' && own.detail.checked > 25 && own.detail.foreign === 0, JSON.stringify(own));
+  items[RA.rootFolderId].editors.push(PROVIDER);   // вернуть доступ после сценария отзыва
+  ctl.update('Organizations', OA, { 'Execution Model': 'USER_ACCESSING' }); const A2 = clientFor(OA, CA);
+  const own2 = A2._ts4TenantIntegrity_().checks.find(x => x.check === 'OWNERSHIP'); assert(own2.status === 'FAIL' && /provider@/.test(own2.detail), JSON.stringify(own2).slice(0, 300));
+});
+t('P1-2 изоляция при выполнении от имени клиента: аккаунт Б не проходит в систему В; файлы А недоступны коду В физически', () => {
+  const asB = clientFor(OC, CB); assert(!asB._tsIdentityAllowed_(), 'аккаунт Б не подключён к В');
+  THROWS(() => C3._tsTenantAssertFileWithin_(Object.values(items).find(x => x.name === 'накладная А.pdf').id, 'INBOX'), /TENANT_BOUNDARY/);
+  THROWS(() => driveFor(CC).getFileById(Object.values(items).find(x => x.name === 'накладная А.pdf').id), /permission/, 'у клиента В нет прав на Диск А');
+});
+t('P1-2 отзыв доступа поставщика не мешает клиенту В и не уничтожает его документы', () => {
+  items[RC.rootFolderId].editors = items[RC.rootFolderId].editors.filter(e => e !== PROVIDER);
+  const again = clientFor(OC, CC); assert(again._ts2Folder_('INBOX').createFile({ name: 'после отзыва' }), 'клиент работает от своего имени');
+  assert(Object.values(items).filter(x => ancestors(x.id).includes(RC.rootFolderId)).every(x => !x.trashed && x.owner === CC), 'документы на месте и у клиента');
+  THROWS(() => driveFor(PROVIDER).getFolderById(RC.rootFolderId), /permission/, 'поставщик доступа больше не имеет');
 });
 console.log('Изоляция двух предприятий (модель Google Диска): ' + n + ' сценариев пройдено');
 console.log('  ОГРАНИЧЕНИЕ: объектов в деревьях клиентов, владелец которых — аккаунт поставщика: ' + PROVIDER_OWNED_IN_CLIENT_TREES + ' (создаются клиентским кодом, работающим от имени поставщика)');

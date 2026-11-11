@@ -168,7 +168,7 @@ function ts2ObjectInputMode(token, objectId, mode) {
 function ts2Sensors(token) {
   try {
     _requireAuth_(token); _ts2EnsureSchema_(false);
-    var url = ''; try { url = ScriptApp.getService().getUrl(); } catch (e) {}
+    var url = ''; try { url = typeof _tsPublicUrl_ === 'function' ? _tsPublicUrl_() : ScriptApp.getService().getUrl(); } catch (e) {}
     var objs = {}, modes = {}; _ts2Rows_('MEASUREMENT_OBJECTS').forEach(function (o) { objs[o.objectId] = o.name; modes[o.objectId] = o.inputMode || 'MANUAL'; });
     return _ok_({ url: url, devices: _ts2Rows_('SENSOR_DEVICES').map(function (d) { var age = d.lastSeenAt ? (Date.now() - new Date(d.lastSeenAt).getTime()) / 60000 : null;
       var st = _tsSnsState_(d, new Date());
@@ -189,7 +189,7 @@ function ts2SensorRegister(token, objectId, name) {
       lastSeenAt: '', lastValue: '', lastResult: '', lastStoredAt: '', revokedAt: '' });
     _ts2Audit_('SENSOR_REGISTER', 'SENSOR', id, undefined, { objectId: objectId }, '');
     if (o.inputMode !== 'SENSOR') { _ts2Update_('MEASUREMENT_OBJECTS', 'objectId', objectId, { inputMode: 'SENSOR' }); _ts2Audit_('OBJECT_INPUT_MODE', 'MEASUREMENT_OBJECT', objectId, { inputMode: o.inputMode || 'MANUAL' }, { inputMode: 'SENSOR' }, 'подключён датчик'); }
-    var url = ''; try { url = ScriptApp.getService().getUrl(); } catch (e) {}
+    var url = ''; try { url = typeof _tsPublicUrl_ === 'function' ? _tsPublicUrl_() : ScriptApp.getService().getUrl(); } catch (e) {}
     return _ok_({ deviceId: id, token: key, url: url, example: { device: id, token: key, value: 4.2 } });
   } catch (e) { return _failFrom_(e); }
 }

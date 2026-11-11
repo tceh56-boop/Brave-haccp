@@ -99,12 +99,34 @@ function assertTenantResourceUnique_(orgId, fieldName, resourceId) {
 }
 
 
-/** Внедряет несекретную привязку клиентского проекта. Script Properties bootstrap-проекта не наследуются новым bound-проектом. */
-function injectTenantConfigSource_(file, org) {
+/**
+ * P1-2: модель полномочий клиента. USER_ACCESSING (по умолчанию для новых) — веб-приложение выполняется от имени
+ * открывшего его Google-аккаунта предприятия: файлы в «Моём диске» создаются с полномочиями клиента, квота поставщика
+ * не расходуется. USER_DEPLOYING — прежняя модель (от имени поставщика). Проект в обоих случаях — у поставщика.
+ */
+function tenantExecution_(org) { return String(org['Execution Model'] || 'USER_ACCESSING') === 'USER_DEPLOYING' ? 'USER_DEPLOYING' : 'USER_ACCESSING'; }
+function tenantAllowedEmails_(org) {
+  return String(org['Allowed Google Accounts'] || '').split(/[,;\s]+/).map(function (x) { return x.trim().toLowerCase(); })
+    .filter(function (x) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); });
+}
+/**
+ * Манифест варианта развёртывания: main — рабочий интерфейс (USER_ACCESSING: вход в Google, только аккаунты предприятия);
+ * service — датчики, QR проверки подписи, портал проверяющего (без входа в Google, от имени поставщика, без создания файлов).
+ */
+function tenantManifest_(src, org, variant) {
+  var m = {}; try { m = JSON.parse(String(src || '{}')); } catch (e) { throw new Error('MANIFEST_INVALID: appsscript.json не разбирается'); }
+  var accessing = tenantExecution_(org) === 'USER_ACCESSING';
+  m.webapp = accessing && variant !== 'service' ? { executeAs: 'USER_ACCESSING', access: 'ANYONE' } : { executeAs: 'USER_DEPLOYING', access: 'ANYONE_ANONYMOUS' };
+  return JSON.stringify(m, null, 2);
+}
+/** Внедряет несекретную привязку клиентского проекта. Script Properties bootstrap-проекта не наследуются новым проектом. */
+function injectTenantConfigSource_(file, org, variant) {
   var src = String(file.source || '');
+  if (/^appsscript$/.test(String(file.name)) && String(file.type || 'JSON') === 'JSON') return { name: file.name, type: file.type, source: tenantManifest_(src, org, variant || 'main') };
   if (/^Code(?:\.gs)?$/.test(String(file.name)) && org['Google Drive ID']) src = src.replace(/var\s+SHEET_ID\s*=\s*'[^']*'/, "var SHEET_ID        = '" + String(org['Google Drive ID']) + "'");
   if (/^TS2_Core(?:\.gs)?$/.test(String(file.name))) {
-    var cfg = { mode: '1', rootFolderId: String(org['Customer Drive Root ID'] || ''), spreadsheetId: String(org['Google Drive ID'] || ''), enterpriseId: String(enterpriseIdOf_(org) || ''), ownerEmail: String(org['Customer Drive Owner Email'] || '').toLowerCase() };
+    var cfg = { mode: '1', rootFolderId: String(org['Customer Drive Root ID'] || ''), spreadsheetId: String(org['Google Drive ID'] || ''), enterpriseId: String(enterpriseIdOf_(org) || ''), ownerEmail: String(org['Customer Drive Owner Email'] || '').toLowerCase(),
+      execution: tenantExecution_(org), allowedEmails: tenantAllowedEmails_(org), serviceUrl: String(org['Service URL'] || '') };
     if (!cfg.rootFolderId || !cfg.spreadsheetId || !cfg.enterpriseId || !cfg.ownerEmail) throw new Error('ONBOARDING_REQUIRED: для клиентского ядра не хватает rootFolderId, spreadsheetId, enterpriseId или ownerEmail');
     var next = src.replace(/var\s+TS_TENANT_CONFIG_\s*=\s*\{[^;]*\};/, 'var TS_TENANT_CONFIG_ = ' + JSON.stringify(cfg) + ';');
     if (next === src) throw new Error('TENANT_CONFIG_TEMPLATE_MISSING: в TS2_Core.gs отсутствует TS_TENANT_CONFIG_');
@@ -113,6 +135,32 @@ function injectTenantConfigSource_(file, org) {
     src = src.replace(/var\s+TS2_TENANT_ROOT_ID\s*=\s*'[^']*'/, "var TS2_TENANT_ROOT_ID = '" + cfg.rootFolderId + "'");
   }
   return { name: file.name, type: file.type, source: src };
+}
+function deployIdOf_(url) { return (/\/macros\/s\/([\w-]+)\/exec/.exec(String(url || '')) || [])[1] || ''; }
+function webAppUrlOf_(dep) { var e = ((dep && dep.entryPoints) || []).filter(function (x) { return x.entryPointType === 'WEB_APP'; })[0]; return (e && e.webApp && e.webApp.url) || ''; }
+/** Код + версия + развёртывание одного варианта (main | service). Новое развёртывание создаётся, существующее обновляется. */
+function deployVariant_(org, content, variant, desc, url) {
+  var sid = org['Script ID'];
+  scriptApi_('put', '/' + sid + '/content', { files: content.files.map(function (f) { return injectTenantConfigSource_(f, org, variant); }) });
+  var ver = scriptApi_('post', '/' + sid + '/versions', { description: desc + (variant === 'service' ? ' (служебное)' : '') }), dep = deployIdOf_(url);
+  if (dep) { scriptApi_('put', '/' + sid + '/deployments/' + dep, { deploymentConfig: { scriptId: sid, versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: desc } }); return { versionNumber: ver.versionNumber, url: url, deploymentId: dep }; }
+  var d = scriptApi_('post', '/' + sid + '/deployments', { versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: desc + (variant === 'service' ? ' — служебное' : '') });
+  return { versionNumber: ver.versionNumber, url: webAppUrlOf_(d), deploymentId: d.deploymentId || '', created: true };
+}
+/**
+ * Развернуть код предприятия. USER_ACCESSING: служебное развёртывание (датчики, QR, проверяющий) и рабочее;
+ * адрес служебного внедряется в конфигурацию рабочего. Клиентские данные и настройки (таблица, Диск,
+ * Script Properties проекта) не затрагиваются.
+ */
+function deployOrg_(orgId, content, desc) {
+  var o = findBy('Organizations', 'ID', orgId), out = { execution: tenantExecution_(o) };
+  if (out.execution === 'USER_ACCESSING') {
+    out.service = deployVariant_(o, content, 'service', desc, o['Service URL']);
+    if (out.service.url && out.service.url !== o['Service URL']) { withLock(function () { update('Organizations', orgId, { 'Service URL': out.service.url }); }); o = findBy('Organizations', 'ID', orgId); }
+  }
+  out.main = deployVariant_(o, content, 'main', desc, o['App URL']);
+  if (out.main.url && out.main.url !== o['App URL']) withLock(function () { update('Organizations', orgId, { 'App URL': out.main.url }); });
+  return out;
 }
 
 /** Пройти шаги подготовки; уже выполненные пропускаются. Повторный вызов продолжает с первого невыполненного шага. */
@@ -161,20 +209,18 @@ function provisionOrg_(s, orgId) {
     if (!master) throw new Error('не задано свойство MASTER_SCRIPT_ID (проект-эталон)');
     var sid = o['Script ID'];
     if (sid) assertTenantResourceUnique_(orgId, 'Script ID', sid);
-    if (!sid) { var pr = scriptApi_('post', '', { title: 'ЦЕХ Стандарт — ' + o['Название'], parentId: o['Google Drive ID'] }); sid = pr.scriptId; withLock(function () { update('Organizations', orgId, { 'Script ID': sid }); }); }
-    var content = scriptApi_('get', '/' + master + '/content');
-    var files = content.files.map(function (f) { return injectTenantConfigSource_(f, o); });
-    scriptApi_('put', '/' + sid + '/content', { files: files });
-    resource_(o, 'SCRIPT_PROJECT', sid, 'https://script.google.com/d/' + sid + '/edit', ''); return { scriptId: sid };
+    // P1-2: отдельный проект поставщика БЕЗ привязки к таблице клиента (parentId не задаётся): привязанный проект
+    // открывается редактором таблицы через «Расширения → Apps Script», а исходный код клиенту не передаётся.
+    if (!sid) { var pr = scriptApi_('post', '', { title: 'ЦЕХ Стандарт — ' + o['Название'] }); sid = pr.scriptId; withLock(function () { update('Organizations', orgId, { 'Script ID': sid }); }); }
+    resource_(o, 'SCRIPT_PROJECT', sid, 'https://script.google.com/d/' + sid + '/edit', 'отдельный проект поставщика; клиент — не редактор'); return { scriptId: sid, standalone: true };
   });
   if (!ok3) return out;
   var ok4 = run('DEPLOYMENT', function () {
-    if (o['App URL']) return { appUrl: o['App URL'], existing: true };
-    var sid = o['Script ID'], ver = scriptApi_('post', '/' + sid + '/versions', { description: 'ЦЕХ Стандарт — первая установка' });
-    var dep = scriptApi_('post', '/' + sid + '/deployments', { versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: 'ЦЕХ Стандарт' });
-    var url = ((dep.entryPoints || []).filter(function (e) { return e.entryPointType === 'WEB_APP'; })[0] || {}).webApp; url = url && url.url || '';
-    withLock(function () { update('Organizations', orgId, { 'App URL': url }); });
-    resource_(o, 'DEPLOYMENT', dep.deploymentId || '', url, 'версия ' + ver.versionNumber); return { deploymentId: dep.deploymentId, appUrl: url, note: 'Первый запуск авторизует владелец таблицы (окно разрешений Google).' };
+    if (o['App URL'] && (tenantExecution_(o) !== 'USER_ACCESSING' || o['Service URL'])) return { appUrl: o['App URL'], existing: true };
+    var d = deployOrg_(orgId, scriptApi_('get', '/' + master + '/content'), 'ЦЕХ Стандарт — первая установка');
+    resource_(o, 'DEPLOYMENT', d.main.deploymentId || '', d.main.url, d.execution + ', версия ' + d.main.versionNumber);
+    if (d.service) resource_(o, 'SERVICE_DEPLOYMENT', d.service.deploymentId || '', d.service.url, 'датчики, QR, проверяющий; без входа в Google');
+    return { execution: d.execution, appUrl: d.main.url, serviceUrl: d.service ? d.service.url : '', note: d.execution === 'USER_ACCESSING' ? 'Владелец предприятия открывает приложение под своим Google-аккаунтом, выдаёт разрешения и включает фоновые задачи («Настройка и готовность»).' : 'Первый запуск авторизует владелец таблицы (окно разрешений Google).' };
   });
   if (!ok4) return out;
   run('LICENSE', function () { return { masked: o['License Key'] || 'выпускается при создании клиента' }; });
@@ -198,12 +244,9 @@ function confirmUpdateBackups_(orgId, at) {
 }
 function updateOneOrg_(o, content, version) {
   if (!o['Customer Drive Root ID'] || !o['Google Drive ID']) throw new Error('ONBOARDING_REQUIRED: нельзя обновлять клиент без подтверждённого клиентского хранилища');
-  var files = content.files.map(function (f) { return injectTenantConfigSource_(f, o); });
-  scriptApi_('put', '/' + o['Script ID'] + '/content', { files: files });
-  var ver = scriptApi_('post', '/' + o['Script ID'] + '/versions', { description: 'ЦЕХ Стандарт ' + version });
-  var dep = (/\/macros\/s\/([\w-]+)\/exec/.exec(String(o['App URL'] || '')) || [])[1];
-  if (dep) scriptApi_('put', '/' + o['Script ID'] + '/deployments/' + dep, { deploymentConfig: { scriptId: o['Script ID'], versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: 'ЦЕХ Стандарт ' + version } });
-  return { versionNumber: ver.versionNumber, deployment: dep || '' };
+  // код и версии — только у поставщика; клиентская таблица, Диск и Script Properties проекта не затрагиваются
+  var d = deployOrg_(o['ID'], content, 'ЦЕХ Стандарт ' + version);
+  return { versionNumber: d.main.versionNumber, deployment: d.main.deploymentId || '', execution: d.execution, serviceVersion: d.service ? d.service.versionNumber : '' };
 }
 
 /* ------------------------------------------------------------------ поддержка и согласия */
@@ -278,6 +321,19 @@ function apiControl_(p) {
   return { ok: false, error: 'unknown action' };
 }
 
+/* ------------------------------------------------------------------ P1-2: режим выполнения и Google-аккаунты предприятия */
+/** Применяется при следующем развёртывании (обновление релизом или «Подготовить»): конфигурация внедряется в проект. */
+function adminTenantAccess(token, orgId, a) {
+  try {
+    var s = requireRole(token, 'provision'); a = a || {}; var o = findBy('Organizations', 'ID', orgId); if (!o) throw new Error('NOT_FOUND: клиент не найден');
+    var ex = a.execution === 'USER_DEPLOYING' ? 'USER_DEPLOYING' : 'USER_ACCESSING', list = String(a.accounts || '').split(/[,;\s]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+    var badAcc = list.filter(function (x) { return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); }); if (badAcc.length) throw new Error('VALIDATION: адрес указан с ошибкой: ' + badAcc.join(', '));
+    withLock(function () { update('Organizations', orgId, { 'Execution Model': ex, 'Allowed Google Accounts': list.join(', ') }); });
+    logEvent('CHANGE', s.email, orgId, 'Режим выполнения ' + ex + ', аккаунтов предприятия: ' + list.length + ' (применится при следующем развёртывании)');
+    return ok({ execution: ex, accounts: list, owner: o['Customer Drive Owner Email'] || '' });
+  } catch (e) { return fail(e); }
+}
+
 /* ------------------------------------------------------------------ экраны админ-панели */
 function adminControlOverview(token) {
   try {
@@ -286,7 +342,8 @@ function adminControlOverview(token) {
     return ok({ enterprises: orgs.map(function (o) {
       var steps = onb.filter(function (s) { return s.orgId === o['ID']; }), last = steps[steps.length - 1] || {}, ap = prof.filter(function (x) { return x.orgId === o['ID']; })[0] || {};
       return { orgId: o['ID'], enterpriseId: o['EnterpriseID'] || '', name: o['Название'], plan: o['Тариф'], status: o['Статус'], version: o['Версия'], channel: o['Канал обновлений'] || 'stable',
-        onboarding: stepDone_(o['ID'], 'DONE') ? 'DONE' : (last.stepCode ? last.stepCode + ': ' + last.status : 'NOT_STARTED'), mode: ap.mode || '', readiness: ap.readiness || '', licenseMasked: o['License Key'] };
+        onboarding: stepDone_(o['ID'], 'DONE') ? 'DONE' : (last.stepCode ? last.stepCode + ': ' + last.status : 'NOT_STARTED'), mode: ap.mode || '', readiness: ap.readiness || '', licenseMasked: o['License Key'],
+        execution: tenantExecution_(o), accounts: o['Allowed Google Accounts'] || '', owner: o['Customer Drive Owner Email'] || '', serviceUrl: o['Service URL'] || '' };
     }), steps: PROVISION_STEPS_ });
   } catch (e) { return fail(e); }
 }

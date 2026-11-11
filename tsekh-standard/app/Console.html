@@ -5268,6 +5268,7 @@ VIEWS.tsSetup = {
       if (n === 6) b = vCard('Шаг 6. ТТК', '<p>В системе ТТК: <b>' + s.dishes + '</b>.</p>' + vForm([['ttk', 'Как начать', 'select', 'OWN', [['OWN', 'Загружу свои ТТК (файлы — в «Данные и сверка»)'], ['LIBRARY', 'Возьму из базы отработанных ТТК (Pro Max)'], ['LATER', 'Позже']]]]) +
         '<div class="mvbar"><button class="btn pri" data-mv="save6">Сохранить</button><button class="btn" onclick="openView(\'tsData\')">Загрузить файлы</button><button class="btn" onclick="openView(\'tsGen\')">ТТК → ТУ/СТО/ППК</button></div>');
       if (n === 7) b = vCard('Шаг 7. Проверка готовности', '<div id="ts2ready"><div class="mvbar"><button class="btn pri" data-mv="ready">Проверить готовность</button></div></div>');
+      if (n === 7) b += '<div id="ts2exec"></div>';
       var q = (TS2S.q.queue || []).filter(function (x) { return x.status === 'PENDING'; });
       b += vCard('Ждут утверждения предприятием · ' + q.length, vTable([{ k: 'title', l: 'Документ' }, { k: 'reason', l: 'Почему' }, { k: 'requiredRole', l: 'Утверждает' }], q, function (r) { return (r.objectType === 'SYSTEM_DOCUMENT' ? vBtn('Открыть', 'sdoc', r.objectId) : '') + vBtn('Утвердить', 'approve', r.approvalId, true) + vBtn('Отклонить', 'reject', r.approvalId); }, 'Всё утверждено'));
       var docs = TS2S.q.documents || [];
@@ -5275,7 +5276,16 @@ VIEWS.tsSetup = {
         vTable([{ l: 'Код', html: true, f: function (d) { return '<span style="white-space:nowrap">' + esc(d.templateId) + '</span>'; } }, { k: 'title', l: 'Документ' }, { k: 'status', l: 'Статус' }, { k: 'approvedByEnterprise', l: 'Утвердил' }], docs, function (d) { return vBtn('Открыть', 'sdoc', d.documentId) + (d.fileId ? vBtn('Обновить', 'sdocr', d.documentId) : ''); }));
       vBody(h + b);
       if (n === 4) VIEWS.tsSetup.h.snsLoad();
+      if (n === 7) VIEWS.tsSetup.h.execLoad();
     },
+    execLoad: function () {
+      vCall('tsExecStatus', [TOKEN]).then(function (r) { var e = vErr(r), box = document.getElementById('ts2exec'); if (e || !box) return; var d = vData(r);
+        var mode = d.mode === 'USER_ACCESSING' ? 'от имени Google-аккаунта предприятия — документы и архивы принадлежат вам' : d.mode === 'USER_DEPLOYING' ? 'от имени технического аккаунта поставщика' : 'локальная установка';
+        box.innerHTML = vCard('Режим и фоновые задачи', '<div class="rdnote">Приложение работает ' + esc(mode) + '. Сейчас вы вошли как <b>' + esc(d.account || '—') + '</b>' + (d.ownerEmail ? ', владелец предприятия — <b>' + esc(d.ownerEmail) + '</b>' : '') + '.</div>' +
+          vTable([{ k: 'handler', l: 'Фоновая задача' }, { l: 'Состояние', html: true, f: function (x) { return x.installed ? vChip('включена', 'g') : vChip('не включена', 'r'); } }], d.background) +
+          (d.allInstalled ? '' : '<div class="rdnote">Фоновые задачи (расписание журналов, архив месяца, датчики, уведомления) работают от имени того, кто их включил. Включает владелец предприятия под своим Google-аккаунтом.</div><div class="mvbar">' + vBtn('Включить фоновые задачи', 'execOn', '', true) + '</div>')); });
+    },
+    execOn: function (a, btn) { vDo(btn, 'tsBackgroundEnable', [TOKEN], 'Фоновые задачи включены от имени вашего Google-аккаунта', function () { VIEWS.tsSetup.h.execLoad(); }); },
     snsLoad: function () {
       vCall('ts2Sensors', [TOKEN]).then(function (r) { var e = vErr(r), box = document.getElementById('ts2sns'); if (e || !box) return; var d = vData(r); TS2S.sns = d.devices;
         var wifi = function (x) { if (x.rssi === null || x.rssi === undefined) return '—'; var q = x.rssi >= -67 ? 'хороший' : x.rssi >= -80 ? 'слабый' : 'очень слабый'; return x.rssi + ' дБм, ' + q; };

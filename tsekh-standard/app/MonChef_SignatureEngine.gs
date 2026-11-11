@@ -140,7 +140,7 @@ function getJournalIntegrity(journalId, token) {
 function _mcEsc_(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function _mcFmtDt_(d) { try { return Utilities.formatDate(d instanceof Date ? d : new Date(d), _mcTz_(), 'dd.MM.yyyy HH:mm'); } catch (e) { return String(d || ''); } }
 function _mcFmtD_(d) { try { return d ? Utilities.formatDate(d instanceof Date ? d : new Date(d), _mcTz_(), 'dd.MM.yyyy') : ''; } catch (e) { return String(d || ''); } }
-function _mcSigVerifyUrl_(code) { var u = ''; try { u = ScriptApp.getService().getUrl() || ''; } catch (e) {} return u ? u + '?verify=' + encodeURIComponent(code) : ''; }
+function _mcSigVerifyUrl_(code) { var u = ''; try { u = (typeof _tsPublicUrl_ === 'function' ? _tsPublicUrl_() : ScriptApp.getService().getUrl()) || ''; } catch (e) {} return u ? u + '?verify=' + encodeURIComponent(code) : ''; }
 function _mcSignedFolder_() {
   var p = PropertiesService.getScriptProperties(), id = p.getProperty('MC_SIGNED_FOLDER_ID');
   if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }

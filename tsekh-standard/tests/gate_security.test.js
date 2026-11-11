@@ -35,4 +35,30 @@ t('fail-closed: проверка медицинского допуска упа�
 t('двойное нажатие: тот же вызов того же сотрудника не выполняется второй раз', () => { const a = ctx.addJournalEntry('{"x":9}', T('cook')), b = ctx.addJournalEntry('{"x":9}', T('cook')); assert(J(a).success && J(b).success); assert.strictEqual(calls.length, 1); });
 t('публичные функции работают без входа, портал проверяющего пропускается к своей проверке ключа', () => { assert(J(ctx.loginWithPin()).success); assert(J(ctx.getAuditDashboard('raw')).success); });
 t('вход датчиков doPost не требует сессии (ключ устройства проверяет TS_Sensors)', () => { assert(J(ctx.doPost({ postData: { contents: '{}' } })).success); assert.strictEqual(calls.length, 1); });
+// P1-2: веб-приложение выполняется от имени открывшего его Google-аккаунта (USER_ACCESSING)
+let accessing = false, accessingThrows = false; const allowedAcc = ['director@cafe-a.example', 'chef@cafe-a.example'];
+G._tsExecAccessing_ = () => { if (accessingThrows) throw new Error('сбой'); return accessing; };
+G._tsIdentity_ = () => activeEmail; G._tsIdentityAllowed_ = () => allowedAcc.includes(activeEmail);
+const asUser = (email, f) => { activeEmail = email; G.Session.getEffectiveUser = () => ({ getEmail: () => email }); try { return f(); } finally { activeEmail = ''; G.Session.getEffectiveUser = () => ({ getEmail: () => 'owner@example.com' }); } };
+t('USER_ACCESSING: «владелец» без сессии больше не доверенный — активный и эффективный пользователь совпадают у всех', () => {
+  accessing = true; try {
+    assert.strictEqual(code(asUser('director@cafe-a.example', () => ctx.installAllTriggers())), 'AUTH_REQUIRED', 'служебная функция без сессии');
+    assert.strictEqual(code(asUser('director@cafe-a.example', () => ctx.createDish('{}'))), 'AUTH_REQUIRED', 'функция интерфейса без сессии'); assert.strictEqual(calls.length, 0);
+  } finally { accessing = false; }
+});
+t('USER_ACCESSING: Google-аккаунт не из предприятия не проходит даже с действующей сессией ПИН', () => {
+  accessing = true; try { assert.strictEqual(code(asUser('stranger@other.example', () => ctx.createDish('{}', T('chef')))), 'IDENTITY_DENIED'); assert.strictEqual(calls.length, 0);
+    assert.strictEqual(code(asUser('', () => ctx.loginWithPin('1234'))), 'IDENTITY_DENIED', 'даже вход по ПИН — только аккаунтам предприятия');
+    assert(J(asUser('chef@cafe-a.example', () => ctx.createDish('{}', T('chef')))).success, 'аккаунт предприятия + сессия ПИН — работает');
+  } finally { accessing = false; }
+});
+t('USER_ACCESSING: расписание (настоящий triggerUid) работает, даже если getActiveUser() в триггере пуст; поддельный — нет', () => {
+  accessing = true; const pt = G.ScriptApp.getProjectTriggers; G.ScriptApp.getProjectTriggers = () => [{ getUniqueId: () => 'TRG-1' }];
+  try { assert(J(asUser('', () => ctx.archiveMonChefMonthly({ triggerUid: 'TRG-1' }))).success); assert.strictEqual(code(asUser('', () => ctx.archiveMonChefMonthly({ triggerUid: 'FAKE' }))), 'IDENTITY_DENIED'); }
+  finally { accessing = false; G.ScriptApp.getProjectTriggers = pt; }
+});
+t('USER_ACCESSING: сбой проверки аккаунта — отказ (fail-closed); вход датчиков (служебное развёртывание) не затронут', () => {
+  accessingThrows = true; try { assert.strictEqual(code(asUser('chef@cafe-a.example', () => ctx.createDish('{}', T('chef')))), 'IDENTITY_CHECK_UNAVAILABLE'); } finally { accessingThrows = false; }
+  accessing = true; try { assert(J(ctx.doPost({ postData: { contents: '{}' } })).success); } finally { accessing = false; }
+});
 console.log('Шлюз: ' + pass + ' проверок безопасности пройдено');

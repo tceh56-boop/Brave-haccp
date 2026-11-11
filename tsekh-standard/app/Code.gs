@@ -65,6 +65,13 @@ function doGet(e) {
   if (params.verify) return _mcVerifyPage_(params.verify);
   // диагностика для поддержки ЦЕХ Стандарт — только по ключу, выданному с согласия директора (TS_Support.gs)
   if (params.diag && typeof _tsDiagPage_ === 'function') return _tsDiagPage_(params.diag);
+  // P1-2: веб-приложение выполняется от имени открывшего его Google-аккаунта — пускаем только аккаунты предприятия
+  if (typeof _tsExecAccessing_ === 'function' && _tsExecAccessing_() && !_tsIdentityAllowed_()) {
+    var who = typeof _tsIdentity_ === 'function' ? _tsIdentity_() : '';
+    return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width,initial-scale=1"><div style="font:16px Arial;max-width:520px;margin:40px auto;padding:20px">' +
+      '<h2>ЦЕХ Стандарт: нет доступа</h2><p>Google-аккаунт <b>' + String(who || 'не определён').replace(/[<>&"]/g, '') + '</b> не подключён к этому предприятию.</p>' +
+      '<p>Войдите в Google под аккаунтом предприятия или попросите директора добавить ваш аккаунт.</p></div>').setTitle('ЦЕХ Стандарт — нет доступа');
+  }
   // Этап 10.7: страница открывается только при праве (карта MC_RB_MODULES_); иначе — «403 — нет доступа» и запись в аудит.
   // Без ключа в адресе (QR партии с телефона) страница загрузится, но каждый вызов сервера проверит шлюз.
   if (params.audit !== '1') {
@@ -15417,7 +15424,7 @@ function createAuditSession(inspectorName, authority, basis, objectId, ttlHours,
       return coreOk({
         sessionId: sessionId,
         token: rawToken,
-        auditUrl: ScriptApp.getService().getUrl() + '?audit=1&token=' + encodeURIComponent(rawToken),
+        auditUrl: (typeof _tsPublicUrl_ === 'function' ? _tsPublicUrl_() : ScriptApp.getService().getUrl()) + '?audit=1&token=' + encodeURIComponent(rawToken),
         inspectorName: inspectorName || '',
         authority: authority || '',
         basis: basis || '',

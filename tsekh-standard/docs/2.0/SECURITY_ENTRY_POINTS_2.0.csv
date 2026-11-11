@@ -974,6 +974,8 @@ ts4TenantIntegrityCheck;TS4_TenantIntegrity.gs;интерфейс (сессия)
 tsContractsList;TS_Contracts.gs;интерфейс (сессия);;documents_view|documents;сессия → право «documents_view|documents» → тариф
 tsContractSave;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
 tsContractUpload;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
+tsExecStatus;TS_Execution.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
+tsBackgroundEnable;TS_Execution.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
 tsLsNormsSync;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp_approve;сессия → право «personnel|haccp_approve» → тариф → допуск → блокировка → аудит
 tsLsGetAll;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsLsGetDoc;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф

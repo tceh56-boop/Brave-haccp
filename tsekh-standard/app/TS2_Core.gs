@@ -184,7 +184,7 @@ function _ts2VerifyAudit_() {
 // Injected by CONTROL during provisioning; points to the customer-owned Drive root.
 var TS2_TENANT_ROOT_ID = '';
 // Заполняется CONTROL при каждом provisioning/release; не содержит секретов.
-var TS_TENANT_CONFIG_ = { mode: '', rootFolderId: '', spreadsheetId: '', enterpriseId: '', ownerEmail: '' };
+var TS_TENANT_CONFIG_ = { mode: '', rootFolderId: '', spreadsheetId: '', enterpriseId: '', ownerEmail: '', execution: '', allowedEmails: [], serviceUrl: '' };
 var TS2_DRIVE_TREE_ = [
   ['ROOT', null, '{ENT} — {NAME}'], ['SYS', 'ROOT', '00_Система'], ['SYS_EXPORTS', 'SYS', 'exports'], ['SYS_IMPORT_REPORTS', 'SYS', 'import_reports'],
   ['SYS_RECON_REPORTS', 'SYS', 'reconciliation_reports'], ['SYS_BACKUPS', 'SYS', 'backups'], ['ORG', 'ROOT', '01_Организация'], ['TTK', 'ROOT', '02_ТТК_и_Меню'],
@@ -195,6 +195,23 @@ var TS2_DRIVE_TREE_ = [
   ['BLANKS', 'INBOX', 'Бланки заявок'], ['INVOICES', 'PRODUCTS', 'Накладные'], ['TTK_SOURCE', 'TTK', 'Исходные файлы'], ['TTK_BANQUET', 'TTK', 'Банкетные ТТК']
 ];
 function _ts2FolderOk_(id) { try { var f = DriveApp.getFolderById(id); return !f.isTrashed() ? f : null; } catch (e) { return null; } }
+/**
+ * P1-2 (решение владельца продукта): проект — у поставщика, веб-приложение выполняется от имени того, кто его открыл
+ * (USER_ACCESSING) — файлы в «Моём диске» создаются с полномочиями клиента. Доступ — только Google-аккаунтам,
+ * подключённым к предприятию (владелец + allowedEmails из CONTROL). Значения из браузера не учитываются.
+ */
+function _tsExecAccessing_() { return _tsTenantMode_() && String((TS_TENANT_CONFIG_ && TS_TENANT_CONFIG_.execution) || '') === 'USER_ACCESSING'; }
+function _tsIdentity_() { try { return String(Session.getActiveUser().getEmail() || '').trim().toLowerCase(); } catch (e) { return ''; } }
+function _tsIdentityAllowed_(email) {
+  var e = String(email === undefined ? _tsIdentity_() : email).trim().toLowerCase(), c = TS_TENANT_CONFIG_ || {};
+  if (!e) return false;
+  return e === String(c.ownerEmail || '').toLowerCase() || (c.allowedEmails || []).some(function (x) { return String(x).trim().toLowerCase() === e; });
+}
+/** Публичный адрес (датчики, QR проверки подписи, портал проверяющего): служебное развёртывание без входа в Google. */
+function _tsPublicUrl_() {
+  if (_tsExecAccessing_() && TS_TENANT_CONFIG_.serviceUrl) return String(TS_TENANT_CONFIG_.serviceUrl);
+  try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
 function _tsTenantMode_() { return String((TS_TENANT_CONFIG_ && TS_TENANT_CONFIG_.mode) || PropertiesService.getScriptProperties().getProperty('TS_TENANT_MODE') || '') === '1'; }
 function _tsTenantRootId_() {
   var p = PropertiesService.getScriptProperties();

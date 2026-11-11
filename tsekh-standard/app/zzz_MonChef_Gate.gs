@@ -57,6 +57,9 @@ var MC_GATE_RUNNING_SEC_ = 360;
 var _MC_GATE_DEPTH = 0, _MC_GATE_TOKEN = '', _MC_GATE_SESSION = null;
 
 function _mcGateOwnerContext_() {
+  // P1-2: при выполнении от имени открывшего (USER_ACCESSING) активный и эффективный пользователь совпадают при КАЖДОМ
+  // вызове из браузера — признак «владелец в редакторе» не работает. В этом режиме доверия без сессии нет.
+  try { if (typeof _tsExecAccessing_ === 'function' && _tsExecAccessing_()) return false; } catch (x) { return false; }
   try {
     var a = String(Session.getActiveUser().getEmail() || ''), e = String(Session.getEffectiveUser().getEmail() || '');
     return !!a && a === e;
@@ -97,6 +100,10 @@ function mcGateSession_() { return _MC_GATE_SESSION; }
       if (_MC_GATE_DEPTH > 0 || kind === 'entry') {                       // вложенный вызов или веб-запрос
         _MC_GATE_DEPTH++; try { return original.apply(this, arguments); } finally { _MC_GATE_DEPTH--; }
       }
+      // P1-2: Google-аккаунт вызывающего должен быть подключён к предприятию (до сессии, ролей и тарифа; fail-closed)
+      var acc = false; try { acc = typeof _tsExecAccessing_ === 'function' && _tsExecAccessing_(); } catch (x) { return _mcGateErr_('IDENTITY_CHECK_UNAVAILABLE', 'Проверка Google-аккаунта недоступна'); }
+      // запуск по расписанию узнаётся по triggerUid триггера проекта (getActiveUser() в триггере бывает пустым)
+      if (acc && !_tsIdentityAllowed_() && !(TRIG[name] && _mcGateTriggerCall_(arguments[0]))) return _mcGateErr_('IDENTITY_DENIED', 'Google-аккаунт не подключён к этому предприятию');
       var args = [].slice.call(arguments), tok = '', last = args.length ? args[args.length - 1] : null;
       if (last && typeof last === 'object' && !Array.isArray(last) && Object.prototype.hasOwnProperty.call(last, '__mct')) {
         args.pop(); tok = String(last.__mct || '');                           // служебный аргумент страницы

@@ -70,6 +70,24 @@ function _ts4TenantIntegrity_() {
     if (failures.length) throw new Error('резервные копии вне разрешённых папок: ' + failures.slice(0, 10).join(', '));
     return { checked: checked, total: rows.length, sampledLast: 200 };
   }, out);
+  // P1-2: фактический владелец объектов (не «файл создан», а «кому принадлежит»). USER_ACCESSING — все объекты
+  // в «Моём диске» должны принадлежать владельцу предприятия; USER_DEPLOYING — объекты поставщика ожидаемы (WARN).
+  (function () {
+    var owner = String(TS_TENANT_CONFIG_.ownerEmail || '').toLowerCase(), accessing = typeof _tsExecAccessing_ === 'function' && _tsExecAccessing_();
+    var ids = [], seen = {}, add = function (id, kind) { id = String(id || ''); if (id && !seen[id]) { seen[id] = 1; ids.push([id, kind]); } };
+    _ts2Rows_('DRIVE_REGISTRY').forEach(function (r) { add(r.googleId, 'folder'); });
+    _ts2Rows_('FILES').slice(0, 500).forEach(function (r) { add(r.googleFileId, 'file'); });
+    _ts2Rows_('BACKUP_CATALOG').slice(-200).forEach(function (r) { add(r.fileId, 'file'); });
+    var foreign = [], unknown = 0, checked = 0;
+    ids.forEach(function (x) {
+      var it = null; try { it = x[1] === 'folder' ? DriveApp.getFolderById(x[0]) : DriveApp.getFileById(x[0]); } catch (e) { return; }
+      var o = it.getOwner && it.getOwner(), e = o && o.getEmail ? String(o.getEmail()).toLowerCase() : '';
+      checked++; if (!e) { unknown++; return; } if (e !== owner) foreign.push(x[0] + ' (' + e + ')');
+    });
+    var detail = { checked: checked, foreign: foreign.length, ownerUnavailable: unknown, examples: foreign.slice(0, 5) };
+    out.push({ check: 'OWNERSHIP', status: !foreign.length ? (unknown ? 'WARN' : 'PASS') : accessing ? 'FAIL' : 'WARN',
+      detail: foreign.length ? (accessing ? 'объекты не принадлежат владельцу предприятия: ' : 'объекты принадлежат аккаунту поставщика (модель USER_DEPLOYING): ') + JSON.stringify(detail) : detail });
+  })();
   var fail = out.filter(function (x) { return x.status === 'FAIL'; }).length;
   return { mode: 'TENANT', enterpriseId: _ts2Ent_(), checkedAt: _ts2Iso_(), status: fail ? 'FAIL' : 'PASS', checks: out, summary: { passed: out.length - fail, failed: fail } };
 }

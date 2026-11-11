@@ -551,11 +551,13 @@ if (TOKEN) google.script.run.withSuccessHandler(function (r) { if (r && r.ok) { 
 V.ent = function () {
   head('Предприятия 2.0', 'Подготовка (папка, таблица, проект, развёртывание), канал обновлений, режим «Готов к работе»');
   call('adminControlOverview', TOKEN).then(function (d) {
+    d.enterprises.forEach(function (o) { ENT_ROWS[o.orgId] = o; });
     C(card('Предприятия · ' + d.enterprises.length, table([{ k: 'enterpriseId', l: 'EnterpriseID' }, { l: 'Организация', f: function (o) { return '<b>' + esc(o.name) + '</b>'; } }, { l: 'Тариф', f: function (o) { return esc(planName(o.plan)); } },
       { l: 'Подготовка', f: function (o) { return entOnb(o.onboarding); } }, { l: 'Режим', f: function (o) { return '<span style="white-space:nowrap">' + esc(ENT_MODE[o.mode] || o.mode || '—') + '</span>' + (o.readiness ? '<div class="note" style="white-space:nowrap">' + esc(String(o.readiness).replace(/^NOT_READY/, 'не готово').replace(/^READY/, 'готово')) + '</div>' : ''); } }, { k: 'version', l: 'Версия' }, { l: 'Канал', f: function (o) { return chip(o.channel === 'pilot' ? 'пилот' : 'стабильный', o.channel === 'pilot' ? 'g' : ''); } }, { l: 'Ключ', f: function (o) { return '<span style="white-space:nowrap">' + esc(o.licenseMasked || '') + '</span>'; } }],
       d.enterprises, function (o) {
         return (can('provision') ? '<button class="btn sm pri" onclick="entProv(\'' + o.orgId + '\',this)">Подготовить</button> ' : '') + '<button class="btn sm" onclick="entSteps(\'' + o.orgId + '\')">Шаги</button> ' +
-          (can('releases') ? '<button class="btn sm" onclick="entCh(\'' + o.orgId + '\',\'' + (o.channel === 'pilot' ? 'stable' : 'pilot') + '\')">' + (o.channel === 'pilot' ? 'В стабильный' : 'В пилот') + '</button>' : '');
+          (can('releases') ? '<button class="btn sm" onclick="entCh(\'' + o.orgId + '\',\'' + (o.channel === 'pilot' ? 'stable' : 'pilot') + '\')">' + (o.channel === 'pilot' ? 'В стабильный' : 'В пилот') + '</button>' : '') +
+          (can('provision') ? ' <button class="btn sm" onclick="entAcc(\'' + o.orgId + '\')">Доступ</button>' : '');
       })) + '<div class="note">Шаги: ' + d.steps.map(function (x) { return esc(x[1]); }).join(' → ') + '. Повторный запуск продолжает с первого невыполненного шага, ничего не создаёт второй раз. Для шагов с проектом скрипта нужны свойство MASTER_SCRIPT_ID и включённый Apps Script API у владельца админ-панели.</div>');
   }, errT);
 };
@@ -566,6 +568,15 @@ function entOnb(v) { v = String(v || ''); if (v === 'DONE') return st('DONE'); i
 function entProv(id, b) { busy(b, call('adminProvision', TOKEN, id)).then(function (r) { mdl('<h2>Подготовка предприятия</h2>' + table([{ l: 'Шаг', f: function (x) { return esc(ENT_STEP[x.step] || x.step); } }, { l: 'Результат', f: function (x) { return st(String(x.status).split(' ')[0]); } }, { l: 'Детали', f: function (x) { return esc(x.error || JSON.stringify(x.result || '')); } }], r)); V.ent(); }, errT); }
 function entSteps(id) { call('adminOnboarding', TOKEN, id).then(function (d) { mdl('<h2>Шаги подготовки</h2>' + table([{ l: 'Когда', f: function (x) { return dt(x.startedAt); } }, { l: 'Шаг', f: function (x) { return esc(ENT_STEP[x.stepCode] || x.stepCode); } }, { l: 'Статус', f: function (x) { return st(x.status); } }, { k: 'errorMessage', l: 'Ошибка' }], d.steps.slice().reverse()) +
   '<h3>Ресурсы</h3>' + table([{ k: 'resourceType', l: 'Тип' }, { l: 'Ссылка', f: function (r) { return r.url ? '<a target="_blank" href="' + esc(r.url) + '">открыть</a>' : esc(r.googleId); } }, { k: 'note', l: 'Примечание' }], d.resources)); }, errT); }
+var ENT_ROWS = {};
+function entAcc(id) {
+  var o = ENT_ROWS[id] || {};
+  mdl('<h2>Доступ и режим выполнения</h2><div class="note">Рабочее приложение выполняется от имени открывшего его Google-аккаунта (файлы принадлежат клиенту) — входят только аккаунты предприятия. Владелец: <b>' + esc(o.owner || 'не подтверждён') + '</b>. Применяется при следующем развёртывании.</div><div class="form">' +
+    field('aEx', 'Режим выполнения', 'select', o.execution || 'USER_ACCESSING', [['USER_ACCESSING', 'От имени клиента (USER_ACCESSING)'], ['USER_DEPLOYING', 'От имени поставщика (прежний)']]) +
+    field('aAcc', 'Google-аккаунты сотрудников (через запятую; владелец добавляется сам)', 'textarea', o.accounts || '') + '</div>' +
+    (o.serviceUrl ? '<div class="note">Служебный адрес (датчики, QR, проверяющий): ' + esc(o.serviceUrl) + '</div>' : '') + '<div style="margin-top:12px"><button class="btn pri" id="aSave">Сохранить</button></div>');
+  document.getElementById('aSave').onclick = function () { busy(this, call('adminTenantAccess', TOKEN, id, { execution: val('aEx'), accounts: val('aAcc') })).then(function () { closeMdl(); toast('Сохранено — применится при следующем развёртывании'); V.ent(); }); };
+}
 function entCh(id, ch) { call('adminSetChannel', TOKEN, id, ch).then(function () { toast('Канал изменён'); V.ent(); }, errT); }
 
 V.releases = function () {
