@@ -66,7 +66,7 @@ var TS2_SCHEDULES_ = [
   ['EXPIRY', 'Контроль сроков годности партий', 'J-EXPIRY', 'SHIFT', '11:00', 'CONFIRM', 'Су-шеф'], ['MED', 'Контроль медицинских допусков смены', 'J-MED', 'SHIFT', '09:00', 'CONFIRM', 'Ответственный за ХАССП'],
   ['LAB_PLAN', 'Лабораторный план (по графику ППК)', 'J-LAB', 'MONTHLY', '1 10:00', 'CONFIRM', 'Ответственный за ХАССП'], ['DOCS_EXPIRY', 'Договоры и документы с датой окончания', 'J-DOCS', 'WEEKLY', '1 10:00', 'CONFIRM', 'Директор']
 ];
-var TS2_MEASURE_TYPES_ = { FRIDGE: ['FRIDGE_TEMP', '°C'], FREEZER: ['FREEZER_TEMP', '°C'], ROOM: ['ROOM_TEMP', '°C'], ROOM_HUMIDITY: ['ROOM_HUMIDITY', '%'], FRYER: ['FRYER_OIL', ''], UV_LAMP: ['UV_LAMP_HOURS', 'ч'], OTHER: ['OTHER_PHYSICAL', ''] };
+var TS2_MEASURE_TYPES_ = { CCP: ['CCP_TEMP', '°C'], FRIDGE: ['FRIDGE_TEMP', '°C'], FREEZER: ['FREEZER_TEMP', '°C'], ROOM: ['ROOM_TEMP', '°C'], ROOM_HUMIDITY: ['ROOM_HUMIDITY', '%'], FRYER: ['FRYER_OIL', ''], UV_LAMP: ['UV_LAMP_HOURS', 'ч'], OTHER: ['OTHER_PHYSICAL', ''] };
 
 /* ------------------------------------------------------------------ профиль автоматизации */
 function _ts2Prof_(k, d) { var r = _ts2Find_('AUTOMATION_PROFILE', 'key', k); return r ? r.value : d; }
@@ -271,7 +271,7 @@ function _ts2NowTasks_() {
   var list = _ts2Rows_('JOURNAL_EXPECTATIONS', function (e) { return e.status === 'OPEN' && String(e.dueAt).slice(0, 10) <= day; });
   list.sort(function (a, b) { return String(a.dueAt) < String(b.dueAt) ? -1 : 1; });
   return list.map(function (e) {
-    var o = objs[e.objectId] || null, kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : '';
+    var o = objs[e.objectId] || null, kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : (String(e.eventRuleId).indexOf('EVR-') === 0 ? 'CCP' : '');
     return { id: e.expectationId, title: e.title, due: String(e.dueAt).slice(11, 16), overdue: String(e.dueAt) < _ts2Iso_(), mode: e.confirmationMode, role: e.responsibleRole,
       measure: e.confirmationMode === 'MEASURE' ? { kind: kind || 'OTHER', unit: (TS2_MEASURE_TYPES_[kind] || TS2_MEASURE_TYPES_.OTHER)[1], min: kind === 'ROOM_HUMIDITY' ? '' : o ? o.minValue : '', max: kind === 'ROOM_HUMIDITY' ? '' : o ? o.maxValue : '', object: o ? o.name : '' } : null };
   });
@@ -295,7 +295,7 @@ function _ts2Measure_(id, value, comment, token) {
   var e = _ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', id); if (!e) throw new Error('NOT_FOUND: задача не найдена');
   if (e.status !== 'OPEN') throw new Error('VALIDATION: задача уже закрыта');
   if (e.confirmationMode !== 'MEASURE') throw new Error('VALIDATION: эта задача подтверждается кнопкой «Да/Нет»');
-  var o = _ts2Find_('MEASUREMENT_OBJECTS', 'objectId', e.objectId), kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : (e.eventRuleId.indexOf('EVR-') === 0 ? 'OTHER' : '');
+  var o = _ts2Find_('MEASUREMENT_OBJECTS', 'objectId', e.objectId), kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : (String(e.eventRuleId).indexOf('EVR-') === 0 ? 'CCP' : '');
   if (!TS2_MEASURE_TYPES_[kind]) throw new Error('VALIDATION: ручной числовой ввод для этой операции не предусмотрен');
   var isFryer = kind === 'FRYER', v = isFryer ? String(value || '').trim() : _ts2Num_(value);
   if (!isFryer && v === null) throw new Error('VALIDATION: введите число');
@@ -355,7 +355,7 @@ function _ts2WizardSave_(step, data, token) {
     });
   } else if (step === 4) {
     var o = data.object || {};
-    if (!TS2_MEASURE_TYPES_[o.objectType] || o.objectType === 'ROOM_HUMIDITY' || o.objectType === 'OTHER') throw new Error('VALIDATION: тип объекта: холодильник, морозильник, помещение, фритюрница, бактерицидная лампа');
+    if (!TS2_MEASURE_TYPES_[o.objectType] || o.objectType === 'ROOM_HUMIDITY' || o.objectType === 'OTHER' || o.objectType === 'CCP') throw new Error('VALIDATION: тип объекта: холодильник, морозильник, помещение, фритюрница, бактерицидная лампа');
     if (!String(o.name || '').trim()) throw new Error('VALIDATION: укажите название объекта');
     if ((o.objectType === 'FRIDGE' || o.objectType === 'FREEZER' || o.objectType === 'ROOM') && o.minValue === '' && o.maxValue === '') throw new Error('VALIDATION: укажите допустимый диапазон по документу (инструкция оборудования, условия хранения)');
     var legacy = '';

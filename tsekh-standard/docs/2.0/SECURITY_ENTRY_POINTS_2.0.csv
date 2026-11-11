@@ -1,0 +1,994 @@
+﻿функция;файл;вид;запись;право;защита
+doGet;Code.gs;вход (doGet/doPost);;;маршруты: ?verify (страница проверки документа по QR), ?diag (ключ поддержки, выданный с согласия), страница интерфейса — данные только через шлюз
+coreOk;Code.gs;служебная;;;только технический доступ или владелец проекта
+coreErr;Code.gs;служебная;;;только технический доступ или владелец проекта
+migrateAllPinsToHash;Code.gs;служебная;;;только технический доступ или владелец проекта
+destroySession;Code.gs;публичная;;;удаляет только свою сессию
+checkPermission;Code.gs;служебная;;;только технический доступ или владелец проекта
+mcAuditVerify;Code.gs;интерфейс (сессия);;audit_view;сессия → право «audit_view» → тариф
+createSystemBackup;Code.gs;интерфейс (сессия);;archive;сессия → право «archive» → тариф
+validateMigrations;Code.gs;служебная;;;только технический доступ или владелец проекта
+runFullMigration;Code.gs;служебная;;;только технический доступ или владелец проекта
+getMigrationStatus;Code.gs;служебная;;;только технический доступ или владелец проекта
+runSafeTests;Code.gs;служебная;;;только технический доступ или владелец проекта
+runFullTests;Code.gs;служебная;;;только технический доступ или владелец проекта
+runConcurrencyChecks;Code.gs;служебная;;;только технический доступ или владелец проекта
+getDashboard;Code.gs;служебная;;;только технический доступ или владелец проекта
+reconcileStock;Code.gs;служебная;;;только технический доступ или владелец проекта
+rebuildStockFromLedger;Code.gs;служебная;;;только технический доступ или владелец проекта
+mergeDuplicateProducts;Code.gs;служебная;;;только технический доступ или владелец проекта
+getLedgerBalance;Code.gs;служебная;;;только технический доступ или владелец проекта
+checkReadinessCriteria;Code.gs;служебная;;;только технический доступ или владелец проекта
+getAuditLog;Code.gs;служебная;;;только технический доступ или владелец проекта
+norm;Code.gs;служебная;;;только технический доступ или владелец проекта
+photoMap;Code.gs;служебная;;;только технический доступ или владелец проекта
+getData;Code.gs;служебная;;;только технический доступ или владелец проекта
+saveDish;Code.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+getTTKVersions;Code.gs;служебная;;;только технический доступ или владелец проекта
+getTTKVersionSnapshot;Code.gs;служебная;;;только технический доступ или владелец проекта
+migrateTTKToVersions;Code.gs;служебная;;;только технический доступ или владелец проекта
+getPhoto;Code.gs;интерфейс (сессия);;catalog|banquets_view;сессия → право «catalog|banquets_view» → тариф
+recognizeProductLabel;Code.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+confirmLabelIncome;Code.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+scanBlank;Code.gs;интерфейс (сессия);;banquet_scan;сессия → право «banquet_scan» → тариф
+scanBlanksMulti;Code.gs;служебная;;;только технический доступ или владелец проекта
+exportToSheet;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+exportTTK;Code.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+getSecureFile;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+getEvents;Code.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+saveEvent;Code.gs;интерфейс (сессия);да;banquets;сессия → право «banquets» → тариф → допуск → блокировка → аудит
+deleteEvent;Code.gs;интерфейс (сессия);да;banquets;сессия → право «banquets» → тариф → допуск → блокировка → аудит
+syncTTK;Code.gs;интерфейс (сессия);;ttk_edit;сессия → право «ttk_edit» → тариф
+syncTTKScheduled;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getTTKTree;Code.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+installDailySync;Code.gs;служебная;;;только технический доступ или владелец проекта
+saveBlankPhoto;Code.gs;интерфейс (сессия);;banquet_scan;сессия → право «banquet_scan» → тариф
+saveInvoicePhoto;Code.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+getProductNames;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+getSemiProducts;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+setMinStockConfig;Code.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+previewMinStock;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+recalcMinStock;Code.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+setMinStockMode;Code.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+installMinStockTrigger;Code.gs;служебная;;;только технический доступ или владелец проекта
+autoRecalcMinStock;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getStockBalances;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+stockAddIncome;Code.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+stockAddSemiProduct;Code.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+stockWriteOff;Code.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+getStockOps;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+getPriceIncreaseLog;Code.gs;интерфейс (сессия);;costs;сессия → право «costs» → тариф
+getNotifications;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+runNotificationChecks;Code.gs;служебная;;;только технический доступ или владелец проекта
+getStockAvailability;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+consumeEventReservations;Code.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+migrateEventWriteOffsToReservations;Code.gs;служебная;;;только технический доступ или владелец проекта
+syncEventStock;Code.gs;служебная;;;только технический доступ или владелец проекта
+getCostSnapshot;Code.gs;служебная;;;только технический доступ или владелец проекта
+snapshotEventCost;Code.gs;служебная;;;только технический доступ или владелец проекта
+getDishCost;Code.gs;интерфейс (сессия);;costs;сессия → право «costs» → тариф
+getDishesCosts;Code.gs;интерфейс (сессия);;costs;сессия → право «costs» → тариф
+scanInvoice;Code.gs;интерфейс (сессия);;receiving;сессия → право «receiving» → тариф
+scanInvoicesMulti;Code.gs;служебная;;;только технический доступ или владелец проекта
+loginWithPin;Code.gs;публичная;;;вход по ПИН: блокировки устройства, техвхода и системы
+getRolePermissions;Code.gs;служебная;;;только технический доступ или владелец проекта
+getEmployeesFull;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+getEmployeeById;Code.gs;служебная;;;только технический доступ или владелец проекта
+createEmployee;Code.gs;интерфейс (сессия);да;personnel;сессия → право «personnel» → тариф → допуск → блокировка → аудит
+updateEmployee;Code.gs;интерфейс (сессия);да;personnel;сессия → право «personnel» → тариф → допуск → блокировка → аудит
+deleteEmployee;Code.gs;интерфейс (сессия);да;personnel;сессия → право «personnel» → тариф → допуск → блокировка → аудит
+getExpiringMedicalDocs;Code.gs;служебная;;;только технический доступ или владелец проекта
+ensureCreatorAccount;Code.gs;служебная;;;только технический доступ или владелец проекта
+setupAuth;Code.gs;служебная;;;только технический доступ или владелец проекта
+stockAddIncomeWithExpiry;Code.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+stockAddSemiProductWithExpiry;Code.gs;служебная;;;только технический доступ или владелец проекта
+getStockBatches;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+getExpiringBatches;Code.gs;служебная;;;только технический доступ или владелец проекта
+getStockExpirySummary;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+writeOffExpiredBatch;Code.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+getSupplierOrders;Code.gs;интерфейс (сессия);;procurement|receiving;сессия → право «procurement|receiving» → тариф
+getSupplierOrderById;Code.gs;служебная;;;только технический доступ или владелец проекта
+sendSupplierOrder;Code.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+confirmSupplierOrder;Code.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+cancelSupplierOrder;Code.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+receiveSupplierOrder;Code.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+previewReceiveFromInvoice;Code.gs;интерфейс (сессия);;receiving|invoices_view;сессия → право «receiving|invoices_view» → тариф
+deleteSupplierOrder;Code.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+setDishShelfLife;Code.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+getDishesShelfLife;Code.gs;служебная;;;только технический доступ или владелец проекта
+getPrintQueue;Code.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+markPrintSent;Code.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+confirmPrint;Code.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+reprintPrintJob;Code.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+getPrintJob;Code.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+getKanbanTasks;Code.gs;служебная;;;только технический доступ или владелец проекта
+getKanbanBoard;Code.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+rebuildKanbanForEvent;Code.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+deleteKanbanTask;Code.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+suggestProduction;Code.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+planProduction;Code.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+startProduction;Code.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+completeProduction;Code.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+cancelProduction;Code.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+getProductionOrders;Code.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+getNutritionData;Code.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+setNutritionItem;Code.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+updateNutritionData;Code.gs;служебная;;;только технический доступ или владелец проекта
+calculateKBZHU;Code.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+getDefaultShelfLife;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+getLabelData;Code.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+getLabelDataBatch;Code.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+getLabelHistory;Code.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+setupChecklists;Code.gs;служебная;;;только технический доступ или владелец проекта
+getChecklists;Code.gs;интерфейс (сессия);;checklists|sanitation;сессия → право «checklists|sanitation» → тариф
+createChecklist;Code.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+updateChecklist;Code.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+deleteChecklist;Code.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+addChecklistItem;Code.gs;служебная;;;только технический доступ или владелец проекта
+getChecklistExecutions;Code.gs;интерфейс (сессия);;checklists|sanitation;сессия → право «checklists|sanitation» → тариф
+getChecklistDailySummary;Code.gs;служебная;;;только технический доступ или владелец проекта
+autoCreateChecklistEntries;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installChecklistTriggers;Code.gs;служебная;;;только технический доступ или владелец проекта
+setupJournals;Code.gs;служебная;;;только технический доступ или владелец проекта
+installJournalTriggers;Code.gs;служебная;;;только технический доступ или владелец проекта
+getJournalsConfig;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+getEmployees;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+getJournalEntries;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+getJournalStats;Code.gs;служебная;;;только технический доступ или владелец проекта
+autoFillMorningJournals;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+autoFillEveningJournals;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+autoFillCloseShiftChecklist;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+autoGenerateWeeklyCleaning;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+autoGenerateGeneralCleaning;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+autoFillDailyJournals;Code.gs;служебная;;;только технический доступ или владелец проекта
+getBactericidalLampsStatus;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+archiveJournalsMonthly;Code.gs;служебная;;;только технический доступ или владелец проекта
+exportJournalToPdf;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+getBrakerageEntries;Code.gs;служебная;;;только технический доступ или владелец проекта
+getBrakerageStats;Code.gs;служебная;;;только технический доступ или владелец проекта
+addSaleEntriesBatch;Code.gs;служебная;;;только технический доступ или владелец проекта
+getSalesStats;Code.gs;служебная;;;только технический доступ или владелец проекта
+autoFillJournalsFromEvents;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+processEventJournalsManually;Code.gs;служебная;;;только технический доступ или владелец проекта
+getProcessedEvents;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+setupDisinfectantsCatalog;Code.gs;служебная;;;только технический доступ или владелец проекта
+getDisinfectants;Code.gs;интерфейс (сессия);;sanitation|checklists|haccp|haccp_view;сессия → право «sanitation|checklists|haccp|haccp_view» → тариф
+getDisinfectantNames;Code.gs;служебная;;;только технический доступ или владелец проекта
+getDisinfectantModes;Code.gs;служебная;;;только технический доступ или владелец проекта
+getWorkshopList;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+classifyAllDishesByWorkshop;Code.gs;служебная;;;только технический доступ или владелец проекта
+getDishesByWorkshop;Code.gs;служебная;;;только технический доступ или владелец проекта
+syncTTKWithProductDatabase;Code.gs;служебная;;;только технический доступ или владелец проекта
+getNutritionFromSync;Code.gs;служебная;;;только технический доступ или владелец проекта
+getIngredientStorageInfo;Code.gs;служебная;;;только технический доступ или владелец проекта
+suggestExpiryDate;Code.gs;служебная;;;только технический доступ или владелец проекта
+getBatchesForDisassembly;Code.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+getAllWasteNorms;Code.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+getWasteNorm;Code.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+getDisassemblyTemplates;Code.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+deleteDisassemblyTemplate;Code.gs;служебная;;;только технический доступ или владелец проекта
+createDisassemblyAct;Code.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+getDisassemblyActs;Code.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+getDisassemblyActDetail;Code.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+getBatchLineage;Code.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+scanInvoiceSmart;Code.gs;служебная;;;только технический доступ или владелец проекта
+createLabPlan;Code.gs;интерфейс (сессия);да;lab;сессия → право «lab» → тариф → допуск → блокировка → аудит
+getLabPlans;Code.gs;интерфейс (сессия);;lab|lab_view;сессия → право «lab|lab_view» → тариф
+createLabTest;Code.gs;интерфейс (сессия);да;lab;сессия → право «lab» → тариф → допуск → блокировка → аудит
+recordLabResult;Code.gs;интерфейс (сессия);да;lab;сессия → право «lab» → тариф → допуск → блокировка → аудит
+getLabTests;Code.gs;интерфейс (сессия);;lab|lab_view;сессия → право «lab|lab_view» → тариф
+getHaccpContour;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+createDish;Code.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+addTraining;Code.gs;интерфейс (сессия);да;personnel|haccp;сессия → право «personnel|haccp» → тариф → допуск → блокировка → аудит
+getTrainings;Code.gs;интерфейс (сессия);;personnel|medical_view|haccp_view;сессия → право «personnel|medical_view|haccp_view» → тариф
+uploadDocument;Code.gs;интерфейс (сессия);да;documents|haccp;сессия → право «documents|haccp» → тариф → допуск → блокировка → аудит
+createDocument;Code.gs;интерфейс (сессия);да;documents|haccp;сессия → право «documents|haccp» → тариф → допуск → блокировка → аудит
+getDocuments;Code.gs;интерфейс (сессия);;documents_view|haccp_view|audit_view;сессия → право «documents_view|haccp_view|audit_view» → тариф
+getDocumentFile;Code.gs;интерфейс (сессия);;documents_view|haccp_view|audit_view;сессия → право «documents_view|haccp_view|audit_view» → тариф
+createJournalTrigger;Code.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+getJournalTriggers;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+setJournalTriggerActive;Code.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+generateJournalPending;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getPendingChecks;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+answerJournalCheck;Code.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+recordCorrectiveAction;Code.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+resolveCriticalIncident;Code.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+checkPendingOverdue;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getJournalDeviations;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+installJournalCheckTriggers;Code.gs;служебная;;;только технический доступ или владелец проекта
+seedJournalTriggers;Code.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+getJournalsCoverage;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+getOperationTrace;Code.gs;служебная;;;только технический доступ или владелец проекта
+getRecoveryQueue;Code.gs;служебная;;;только технический доступ или владелец проекта
+setDishCCT;Code.gs;служебная;;;только технический доступ или владелец проекта
+getDishesCCT;Code.gs;служебная;;;только технический доступ или владелец проекта
+autoRotationJournal;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+autoHealthJournal;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+setDishVitamin;Code.gs;служебная;;;только технический доступ или владелец проекта
+autoLampSessions;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getMarkingLog;Code.gs;служебная;;;только технический доступ или владелец проекта
+autoLampRun;Code.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getLampsStatus;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+setLampRegimen;Code.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+getMarkingJournal;Code.gs;служебная;;;только технический доступ или владелец проекта
+getAutoJournalsStatus;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+installAutoJournalTriggers;Code.gs;служебная;;;только технический доступ или владелец проекта
+savePrepSteps;Code.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+savePhoto;Code.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+createSupplierOrder;Code.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+updateSupplierOrderItems;Code.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+updateKanbanTask;Code.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+addKanbanTask;Code.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+saveLabelPrint;Code.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+saveChecklistExecution;Code.gs;интерфейс (сессия);да;checklists;сессия → право «checklists» → тариф → допуск → блокировка → аудит
+addJournalEntry;Code.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+replaceBactericidalLamp;Code.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+addBactericidalLampReading;Code.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+addBrakerageEntry;Code.gs;интерфейс (сессия);да;brakerage;сессия → право «brakerage» → тариф → допуск → блокировка → аудит
+addSaleEntry;Code.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+addDisinfectant;Code.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+saveWasteNorm;Code.gs;интерфейс (сессия);да;stock|haccp;сессия → право «stock|haccp» → тариф → допуск → блокировка → аудит
+saveDisassemblyTemplate;Code.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+saveDisassemblyDraft;Code.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+markNotificationRead;Code.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+exportTTKBanquet;Code.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+submitTTKVersion;Code.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+approveTTKVersion;Code.gs;интерфейс (сессия);да;ttk_approve;сессия → право «ttk_approve» → тариф → допуск → блокировка → аудит
+rejectTTKVersion;Code.gs;интерфейс (сессия);да;ttk_approve;сессия → право «ttk_approve» → тариф → допуск → блокировка → аудит
+getTTKPendingApproval;Code.gs;интерфейс (сессия);;ttk_edit|ttk_approve;сессия → право «ttk_edit|ttk_approve» → тариф
+createJournalCorrection;Code.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+getJournalCorrections;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+decideJournalCorrection;Code.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+getJournalRowForCorrection;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+getJournalList;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+getJournalRegistry;Code.gs;публичная;;;справочник названий журналов, без данных
+validateJournalBeforeSigning;Code.gs;служебная;;;только технический доступ или владелец проекта
+signJournal;Code.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+verifyJournalSignature;Code.gs;служебная;;;только технический доступ или владелец проекта
+getJournalSignatures;Code.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+createAuditSession;Code.gs;интерфейс (сессия);да;audit_create;сессия → право «audit_create» → тариф → допуск → блокировка → аудит
+revokeAuditSession;Code.gs;интерфейс (сессия);да;audit_revoke;сессия → право «audit_revoke» → тариф → допуск → блокировка → аудит
+getAuditSession;Code.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditJournal;Code.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+verifyAuditJournal;Code.gs;портал проверяющего;;;ключ проверяющего (_requireAuditAccess_) в начале функции
+listAuditSessions;Code.gs;интерфейс (сессия);;audit_create|audit_view;сессия → право «audit_create|audit_view» → тариф
+setupProductionReleaseStack;Code.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+v55AuditMigration;Code.gs;служебная;;;только технический доступ или владелец проекта
+v55RunMigration;Code.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+v55GetMigrationStatus;Code.gs;служебная;;;только технический доступ или владелец проекта
+v56CreateProductionOrder;Code.gs;служебная;;;только технический доступ или владелец проекта
+v56CreateFromDeficit;Code.gs;служебная;;;только технический доступ или владелец проекта
+v56CompleteProductionOrder;Code.gs;служебная;;;только технический доступ или владелец проекта
+v57BuildWeeklyDispatcher;Code.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+v57GetDispatcher;Code.gs;служебная;;;только технический доступ или владелец проекта
+v58RunBanquetE2E;Code.gs;служебная;;;только технический доступ или владелец проекта
+v59BridgeOperationalFact;Code.gs;служебная;;;только технический доступ или владелец проекта
+v59ReconcileHACCP;Code.gs;служебная;;;только технический доступ или владелец проекта
+v60Authorize;Code.gs;служебная;;;только технический доступ или владелец проекта
+v60SecurityStatus;Code.gs;служебная;;;только технический доступ или владелец проекта
+v61RunStructuralTests;Code.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+v62CreatePilotPlan;Code.gs;интерфейс (сессия);да;system;сессия → право «system» → тариф → допуск → блокировка → аудит
+v63EvaluateRelease;Code.gs;интерфейс (сессия);да;brakerage;сессия → право «brakerage» → тариф → допуск → блокировка → аудит
+v63GetReleaseStatus;Code.gs;служебная;;;только технический доступ или владелец проекта
+mcGetDishAllergens;MonChef_Allergens.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+mcGetAllergenRegistry;MonChef_Allergens.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+mcSetProductAllergens;MonChef_Allergens.gs;интерфейс (сессия);да;ttk_approve|haccp;сессия → право «ttk_approve|haccp» → тариф → допуск → блокировка → аудит
+mcGetApplicationModules;MonChef_Application_Integration.gs;служебная;;;только технический доступ или владелец проекта
+mcGetApplicationSnapshot;MonChef_Application_Integration.gs;служебная;;;только технический доступ или владелец проекта
+mcGetModuleSnapshot;MonChef_Application_Integration.gs;служебная;;;только технический доступ или владелец проекта
+mcRunModuleAction;MonChef_Application_Integration.gs;служебная;;;только технический доступ или владелец проекта
+getAuditBatches;MonChef_AuditEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditDeviations;MonChef_AuditEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditTemperatures;MonChef_AuditEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditStaff;MonChef_AuditEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditEquipment;MonChef_AuditEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditDocumentFile;MonChef_AuditEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditAccessLog;MonChef_AuditEngine.gs;интерфейс (сессия);;audit_view;сессия → право «audit_view» → тариф
+createAuditSessionEx;MonChef_AuditEngine.gs;интерфейс (сессия);да;audit_create;сессия → право «audit_create» → тариф → допуск → блокировка → аудит
+getAuditBatch;MonChef_AuditEngine.gs;портал проверяющего;;;ключ проверяющего (_requireAuditAccess_) в начале функции
+verifyAuditDocument;MonChef_AuditEngine.gs;портал проверяющего;;;передаёт ключ в verifyInspectionDocument, который проверяет его (_requireAuditAccess_)
+logAuditAccess;MonChef_AuditEngine.gs;служебная;;;только технический доступ или владелец проекта
+mcCreateBackup;MonChef_Backup.gs;интерфейс (сессия);да;archive;сессия → право «archive» → тариф → допуск → блокировка → аудит
+mcRestoreDrill;MonChef_Backup.gs;интерфейс (сессия);;archive;сессия → право «archive» → тариф
+mcRestoreSheet;MonChef_Backup.gs;интерфейс (сессия);да;system;сессия → право «system» → тариф → допуск → блокировка → аудит
+mcGetBackups;MonChef_Backup.gs;интерфейс (сессия);;archive;сессия → право «archive» → тариф
+uiDishList;MonChef_BanquetUI.gs;интерфейс (сессия);;catalog|banquets;сессия → право «catalog|banquets» → тариф
+uiBanquetScan;MonChef_BanquetUI.gs;интерфейс (сессия);да;banquet_scan;сессия → право «banquet_scan» → тариф → допуск → блокировка → аудит
+uiBanquetAliasSave;MonChef_BanquetUI.gs;интерфейс (сессия);да;banquets;сессия → право «banquets» → тариф → допуск → блокировка → аудит
+uiYandexCheck;MonChef_BanquetUI.gs;интерфейс (сессия);;banquet_scan;сессия → право «banquet_scan» → тариф
+uiBanquetSaveBlank;MonChef_BanquetUI.gs;интерфейс (сессия);;banquet_scan;сессия → право «banquet_scan» → тариф
+uiBanquetDetail;MonChef_BanquetUI.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+mcGetBatchControl;MonChef_BatchControl.gs;интерфейс (сессия);;receiving|haccp_view|stock_view;сессия → право «receiving|haccp_view|stock_view» → тариф
+mcRecordIncomingControl;MonChef_BatchControl.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+mcSendBatchToRecheck;MonChef_BatchControl.gs;интерфейс (сессия);да;receiving|haccp;сессия → право «receiving|haccp» → тариф → допуск → блокировка → аудит
+mcRejectBatch;MonChef_BatchControl.gs;интерфейс (сессия);да;receiving|haccp;сессия → право «receiving|haccp» → тариф → допуск → блокировка → аудит
+mcGetBatchesForBrakerage;MonChef_BatchControl.gs;интерфейс (сессия);;brakerage|receiving;сессия → право «brakerage|receiving» → тариф
+mcGetBatchRelease;MonChef_BatchControl.gs;служебная;;;только технический доступ или владелец проекта
+mcSetIncomingControlMode;MonChef_BatchControl.gs;служебная;;;только технический доступ или владелец проекта
+calculatePostOpeningExpiry;MonChef_BatchLifecycle.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+getBatchCard;MonChef_BatchLifecycle.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+getBatchTimeline;MonChef_BatchLifecycle.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+getBatchAuditLog;MonChef_BatchLifecycle.gs;интерфейс (сессия);;audit_view;сессия → право «audit_view» → тариф
+getReverseBatchTraceability;MonChef_BatchLifecycle.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+splitBatch;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+moveBatch;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+openBatchContainer;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+setPostOpeningExpiry;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+useBatch;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+wasteBatch;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+returnBatch;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+correctBatchOperation;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+printBatchLabel;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+printOpeningLabel;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+mcGetStorageSetup;MonChef_BatchLifecycle.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+mcSaveStorageLocation;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;stock|haccp;сессия → право «stock|haccp» → тариф → допуск → блокировка → аудит
+mcSeedStorageLocations;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;stock|haccp;сессия → право «stock|haccp» → тариф → допуск → блокировка → аудит
+mcSaveProductStorage;MonChef_BatchLifecycle.gs;интерфейс (сессия);да;stock|haccp;сессия → право «stock|haccp» → тариф → допуск → блокировка → аудит
+mcBatchExpiryWatchSystem;MonChef_BatchLifecycle.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcBatchExpiryBoard;MonChef_BatchLifecycle.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+mcGetMyAdmission;MonChef_Compliance.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+mcGetEquipment;MonChef_Compliance.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+mcSaveEquipment;MonChef_Compliance.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcApproveDisinfectantRegime;MonChef_Compliance.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcTakeDailySample;MonChef_DailySamples.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+mcDestroyDailySample;MonChef_DailySamples.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+mcGetDailySamples;MonChef_DailySamples.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+mcDishPhotoScan;MonChef_DishPhotos.gs;интерфейс (сессия);;ttk_edit;сессия → право «ttk_edit» → тариф
+mcDishPhotoLink;MonChef_DishPhotos.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+mcDishPhotoUnlink;MonChef_DishPhotos.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+mcDishPhotoThumbs;MonChef_DishPhotos.gs;интерфейс (сессия);;ttk_edit;сессия → право «ttk_edit» → тариф
+registerDocument;MonChef_DocumentRegistry.gs;интерфейс (сессия);да;documents|haccp;сессия → право «documents|haccp» → тариф → допуск → блокировка → аудит
+updateDocumentVersion;MonChef_DocumentRegistry.gs;интерфейс (сессия);да;documents|haccp;сессия → право «documents|haccp» → тариф → допуск → блокировка → аудит
+getDocument;MonChef_DocumentRegistry.gs;интерфейс (сессия);;documents_view|haccp_view|audit_view;сессия → право «documents_view|haccp_view|audit_view» → тариф
+getDocumentHistory;MonChef_DocumentRegistry.gs;интерфейс (сессия);;documents_view|haccp_view|audit_view;сессия → право «documents_view|haccp_view|audit_view» → тариф
+verifyDocument;MonChef_DocumentRegistry.gs;интерфейс (сессия);;documents_view|haccp_view|audit_view;сессия → право «documents_view|haccp_view|audit_view» → тариф
+archiveDocument;MonChef_DocumentRegistry.gs;интерфейс (сессия);да;documents|haccp;сессия → право «documents|haccp» → тариф → допуск → блокировка → аудит
+mcEnvSaveWaterSource;MonChef_Environment.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcEnvSaveWaterPlan;MonChef_Environment.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcEnvRecordWaterControl;MonChef_Environment.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+mcEnvWasteAccumulate;MonChef_Environment.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+mcEnvWasteRemove;MonChef_Environment.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+mcEnvSavePestPlan;MonChef_Environment.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcEnvRecordPestEvent;MonChef_Environment.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+mcEnvGet;MonChef_Environment.gs;интерфейс (сессия);;sanitation|lab_view;сессия → право «sanitation|lab_view» → тариф
+createFact;MonChef_FullControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+getFacts;MonChef_FullControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+syncDocumentRegistry;MonChef_FullControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+getInspectionDocuments;MonChef_FullControlEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditDocument;MonChef_FullControlEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+verifyInspectionDocument;MonChef_FullControlEngine.gs;портал проверяющего;да;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditHaccp;MonChef_FullControlEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditTraceability;MonChef_FullControlEngine.gs;портал проверяющего;;;ключ проверяющего (_requireAuditAccess_) в начале функции
+getInspectionReadiness;MonChef_FullControlEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditDashboard;MonChef_FullControlEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+createInspectionPackage;MonChef_FullControlEngine.gs;интерфейс (сессия);да;audit_create;сессия → право «audit_create» → тариф → допуск → блокировка → аудит
+getAuditInspectionPackage;MonChef_FullControlEngine.gs;портал проверяющего;;;ключ проверяющего (_requireAuditAccess_) в начале функции
+evaluateFactRules;MonChef_FullControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+mcNotifyTick;MonChef_HaccpToday.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcNotifySettings;MonChef_HaccpToday.gs;интерфейс (сессия);;haccp_view|audit_view;сессия → право «haccp_view|audit_view» → тариф
+mcNotifySettingsSave;MonChef_HaccpToday.gs;интерфейс (сессия);да;haccp|haccp_approve;сессия → право «haccp|haccp_approve» → тариф → допуск → блокировка → аудит
+mcHaccpToday;MonChef_HaccpToday.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+mcProtectEvidenceSheets;MonChef_Integrity.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+mcOnEditAudit;MonChef_Integrity.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcInstallEditAudit;MonChef_Integrity.gs;служебная;;;только технический доступ или владелец проекта
+mcSwitchWatchSystem;MonChef_Integrity.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcSanitaryDaySave;MonChef_JournalForms.gs;интерфейс (сессия);да;sanitation|checklists;сессия → право «sanitation|checklists» → тариф → допуск → блокировка → аудит
+mcDisinfectantNeedSave;MonChef_JournalForms.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+mcPpeIssueSave;MonChef_JournalForms.gs;интерфейс (сессия);да;personnel|haccp;сессия → право «personnel|haccp» → тариф → допуск → блокировка → аудит
+mcJournalForms;MonChef_JournalForms.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+mcJournalForm;MonChef_JournalForms.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+mcJournalsToDrive;MonChef_JournalForms.gs;интерфейс (сессия);да;audit_view;сессия → право «audit_view» → тариф → допуск → блокировка → аудит
+refreshJournalsOnDrive;MonChef_JournalForms.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcJournalNotApplicable;MonChef_JournalForms.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+autoVerificationSample;MonChef_JournalForms.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcVerificationResult;MonChef_JournalForms.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcVerificationSampleNow;MonChef_JournalForms.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcShiftClosingTick;MonChef_JournalForms.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcChecklistRunData;MonChef_LegacyBack.gs;интерфейс (сессия);;checklists|sanitation|haccp_view;сессия → право «checklists|sanitation|haccp_view» → тариф
+mcChecklistHistory;MonChef_LegacyBack.gs;интерфейс (сессия);;checklists|sanitation|haccp_view;сессия → право «checklists|sanitation|haccp_view» → тариф
+mcDsLegacyStatus;MonChef_LegacyBack.gs;интерфейс (сессия);;sanitation|haccp|haccp_view;сессия → право «sanitation|haccp|haccp_view» → тариф
+mcDsMigrateLegacy;MonChef_LegacyBack.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+mcDsAdd;MonChef_LegacyBack.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+mcStockOpsData;MonChef_LegacyBack.gs;интерфейс (сессия);;stock|stock_view|costs;сессия → право «stock|stock_view|costs» → тариф
+mcOrderUpdateItems;MonChef_LegacyBack.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+mcOrderDelete;MonChef_LegacyBack.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+mcProcTemplateSave;MonChef_LegacyBack.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+mcProcDraftSave;MonChef_LegacyBack.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+mcProcDraftList;MonChef_LegacyBack.gs;интерфейс (сессия);;batch_use;сессия → право «batch_use» → тариф
+mcProcDraftDelete;MonChef_LegacyBack.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+mcTaskData;MonChef_LegacyBack.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+mcTaskCreate;MonChef_LegacyBack.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+mcTaskStart;MonChef_LegacyBack.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+mcTaskComplete;MonChef_LegacyBack.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+mcTaskSyncProduction;MonChef_LegacyBack.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+mcDeficitTasks;MonChef_LegacyBack.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+mcLabelData;MonChef_LegacyBack.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+mcLabelMake;MonChef_LegacyBack.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+mcLabelPrinted;MonChef_LegacyBack.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+mcSuggestPlace;MonChef_LegacyBack.gs;интерфейс (сессия);;stock|haccp|kanban|journals;сессия → право «stock|haccp|kanban|journals» → тариф
+mcSaleData;MonChef_LegacyBack.gs;интерфейс (сессия);;banquets|journals;сессия → право «banquets|journals» → тариф
+mcSaleAdd;MonChef_LegacyBack.gs;интерфейс (сессия);да;banquets|journals;сессия → право «banquets|journals» → тариф → допуск → блокировка → аудит
+mcKanbanEvents;MonChef_LegacyBack.gs;интерфейс (сессия);;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф
+mcKanbanRebuild;MonChef_LegacyBack.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+mcLoadCalibrate;MonChef_LoadCalibrate.gs;служебная;;;только технический доступ или владелец проекта
+mcGetSuppliers;MonChef_MasterData.gs;интерфейс (сессия);;procurement|receiving|invoices_view|documents_view;сессия → право «procurement|receiving|invoices_view|documents_view» → тариф
+mcSaveSupplier;MonChef_MasterData.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+mcMigrateSuppliers;MonChef_MasterData.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+setupMedBooks;MonChef_MedBooks.gs;служебная;;;только технический доступ или владелец проекта
+getMedBooks;MonChef_MedBooks.gs;служебная;;;только технический доступ или владелец проекта
+saveMedBook;MonChef_MedBooks.gs;интерфейс (сессия);да;medical;сессия → право «medical» → тариф → допуск → блокировка → аудит
+archiveMedBook;MonChef_MedBooks.gs;интерфейс (сессия);да;medical;сессия → право «medical» → тариф → допуск → блокировка → аудит
+mcMedBookAllowed;MonChef_MedBooks.gs;служебная;;;только технический доступ или владелец проекта
+medBooksDailyCheck;MonChef_MedBooks.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcVsdFetch;MonChef_Mercury.gs;интерфейс (сессия);да;mercury|vsd_cancel;сессия → право «mercury|vsd_cancel» → тариф → допуск → блокировка → аудит
+mcVsdPreview;MonChef_Mercury.gs;интерфейс (сессия);;mercury|vsd_cancel;сессия → право «mercury|vsd_cancel» → тариф
+mcVsdLink;MonChef_Mercury.gs;интерфейс (сессия);да;mercury|vsd_cancel;сессия → право «mercury|vsd_cancel» → тариф → допуск → блокировка → аудит
+mcVsdCheck;MonChef_Mercury.gs;интерфейс (сессия);да;mercury|vsd_cancel;сессия → право «mercury|vsd_cancel» → тариф → допуск → блокировка → аудит
+mcVsdCancel;MonChef_Mercury.gs;интерфейс (сессия);да;vsd_cancel;сессия → право «vsd_cancel» → тариф → допуск → блокировка → аудит
+acceptAndCancelVSD;MonChef_Mercury.gs;интерфейс (сессия);да;vsd_cancel;сессия → право «vsd_cancel» → тариф → допуск → блокировка → аудит
+mcVsdSync;MonChef_Mercury.gs;интерфейс (сессия);да;mercury|vsd_cancel;сессия → право «mercury|vsd_cancel» → тариф → допуск → блокировка → аудит
+mcMercurySyncPendingSystem;MonChef_Mercury.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcVsdReject;MonChef_Mercury.gs;интерфейс (сессия);да;vsd_cancel;сессия → право «vsd_cancel» → тариф → допуск → блокировка → аудит
+mcMercuryMapSupplier;MonChef_Mercury.gs;интерфейс (сессия);да;mercury|vsd_cancel;сессия → право «mercury|vsd_cancel» → тариф → допуск → блокировка → аудит
+mcMercuryGetConfig;MonChef_Mercury.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+mcMercurySaveConfig;MonChef_Mercury.gs;интерфейс (сессия);да;system;сессия → право «system» → тариф → допуск → блокировка → аудит
+mcMercuryTestConnection;MonChef_Mercury.gs;интерфейс (сессия);да;system;сессия → право «system» → тариф → допуск → блокировка → аудит
+mcGetVsdList;MonChef_Mercury.gs;интерфейс (сессия);;mercury|vsd_cancel|vsd_view;сессия → право «mercury|vsd_cancel|vsd_view» → тариф
+mcGetVsdCard;MonChef_Mercury.gs;интерфейс (сессия);;mercury|vsd_cancel|vsd_view;сессия → право «mercury|vsd_cancel|vsd_view» → тариф
+mcGetVsdAudit;MonChef_Mercury.gs;интерфейс (сессия);;mercury|vsd_cancel|vsd_view;сессия → право «mercury|vsd_cancel|vsd_view» → тариф
+mcRunFullMigration;MonChef_Migration.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+mcReplayOffline;MonChef_Offline.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит; принимает только функции из MC_OFFLINE_FNS_ и вызывает их снова через шлюз с сессией сотрудника (право, тариф, допуск проверяются для каждой записи)
+mcOrgGet;MonChef_OrgSettings.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+mcOrgSave;MonChef_OrgSettings.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+mcOrgSetLogo;MonChef_OrgSettings.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+mcOrgRemoveLogo;MonChef_OrgSettings.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+mcOrgHeaderPreview;MonChef_OrgSettings.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+mcProcessPreview;MonChef_Processing.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+mcProcessBatch;MonChef_Processing.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+mcDefrostStart;MonChef_Processing.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+mcDefrostMeasure;MonChef_Processing.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+mcDefrostFinish;MonChef_Processing.gs;интерфейс (сессия);да;batch_use;сессия → право «batch_use» → тариф → допуск → блокировка → аудит
+mcSetProcessedExpiry;MonChef_Processing.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcSaveProcessingProfile;MonChef_Processing.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcSaveProcessingSettings;MonChef_Processing.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcGetProcessing;MonChef_Processing.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+mcProcessingSources;MonChef_Processing.gs;интерфейс (сессия);;batch_use|haccp|stock;сессия → право «batch_use|haccp|stock» → тариф
+mcProcessingPlan;MonChef_Processing.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+mcPublishDefrostTasks;MonChef_Processing.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+mcProcessingWatchSystem;MonChef_Processing.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+uiProductionBoard;MonChef_ProdWeekUI.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+uiWeekBoard;MonChef_ProdWeekUI.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+uiPfTtk;MonChef_ProdWeekUI.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+mcFixDoubledCards;MonChef_ProdWeekUI.gs;интерфейс (сессия);да;ttk_approve;сессия → право «ttk_approve» → тариф → допуск → блокировка → аудит
+uiKanbanTasks;MonChef_ProdWeekUI.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+mcGetTtkCcp;MonChef_ProductionCcp.gs;интерфейс (сессия);;journals|haccp_view|catalog;сессия → право «journals|haccp_view|catalog» → тариф
+mcSetTtkCcp;MonChef_ProductionCcp.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcGetProductionCcp;MonChef_ProductionCcp.gs;интерфейс (сессия);;journals|haccp_view|catalog;сессия → право «journals|haccp_view|catalog» → тариф
+mcRecordProductionCcp;MonChef_ProductionCcp.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+mcRbSetDevPin;MonChef_Rbac.gs;интерфейс (сессия);да;system;сессия → право «system» → тариф → допуск → блокировка → аудит
+mcGetAccessAdmin;MonChef_Rbac.gs;интерфейс (сессия);;grants|personnel;сессия → право «grants|personnel» → тариф
+mcGrantPermission;MonChef_Rbac.gs;интерфейс (сессия);да;grants;сессия → право «grants» → тариф → допуск → блокировка → аудит
+mcRevokeGrant;MonChef_Rbac.gs;интерфейс (сессия);да;grants;сессия → право «grants» → тариф → допуск → блокировка → аудит
+mcRbMigrateRoles;MonChef_Rbac.gs;интерфейс (сессия);да;system;сессия → право «system» → тариф → допуск → блокировка → аудит
+mcRunInspectionReadiness;MonChef_Readiness.gs;интерфейс (сессия);;haccp_view|audit_view|audit_create;сессия → право «haccp_view|audit_view|audit_create» → тариф
+mcReceiptCorrectionCreate;MonChef_ReceiptCorrection.gs;интерфейс (сессия);да;doc_correct|doc_edit;сессия → право «doc_correct|doc_edit» → тариф → допуск → блокировка → аудит
+mcReceiptCorrectionDecide;MonChef_ReceiptCorrection.gs;интерфейс (сессия);да;doc_edit;сессия → право «doc_edit» → тариф → допуск → блокировка → аудит
+mcGetReceiptCorrections;MonChef_ReceiptCorrection.gs;интерфейс (сессия);;invoices_view|stock|doc_correct|doc_edit;сессия → право «invoices_view|stock|doc_correct|doc_edit» → тариф
+stockReceiveSuggest;MonChef_Receiving.gs;интерфейс (сессия);;receiving|invoices_view;сессия → право «receiving|invoices_view» → тариф
+stockReceiveScanInvoice;MonChef_Receiving.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+stockReceiveScanLabel;MonChef_Receiving.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+stockReceivePhoto;MonChef_Receiving.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+scanProductLabel;MonChef_Receiving.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+stockReceiveSave;MonChef_Receiving.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+createBatchFromReceiving;MonChef_Receiving.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+stockReceiveRecent;MonChef_Receiving.gs;интерфейс (сессия);;receiving|invoices_view;сессия → право «receiving|invoices_view» → тариф
+stockReceiveLabelsPrinted;MonChef_Receiving.gs;интерфейс (сессия);да;receiving;сессия → право «receiving» → тариф → допуск → блокировка → аудит
+evaluateFact;MonChef_RuleEngine.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+evaluateCCP;MonChef_RuleEngine.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+createDeviationFromFact;MonChef_RuleEngine.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+createCorrectiveAction;MonChef_RuleEngine.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+blockObject;MonChef_RuleEngine.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+unblockObject;MonChef_RuleEngine.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+notifyResponsible;MonChef_RuleEngine.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+installAllTriggers;MonChef_Scheduler.gs;служебная;;;только технический доступ или владелец проекта
+monChefFrequentTick;MonChef_Scheduler.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+monChefHourlyTick;MonChef_Scheduler.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getSchedulerStatus;MonChef_Scheduler.gs;служебная;;;только технический доступ или владелец проекта
+mcCleanupScriptProperties;MonChef_Scheduler.gs;служебная;;;только технический доступ или владелец проекта
+prepareJournalForSigning;MonChef_SignatureEngine.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+revokeJournalSignature;MonChef_SignatureEngine.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
+getJournalSignature;MonChef_SignatureEngine.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+getJournalIntegrity;MonChef_SignatureEngine.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+createSignedJournalPdf;MonChef_SignatureEngine.gs;интерфейс (сессия);да;haccp|prod_manage;сессия → право «haccp|prod_manage» → тариф → допуск → блокировка → аудит
+mcSaveSupplyDocument;MonChef_SupplyDocs.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
+mcVerifySupplyDocument;MonChef_SupplyDocs.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
+mcSetVetControlled;MonChef_SupplyDocs.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcSaveVetDocument;MonChef_SupplyDocs.gs;интерфейс (сессия);да;vsd_cancel;сессия → право «vsd_cancel» → тариф → допуск → блокировка → аудит
+mcAddMarkingCodes;MonChef_SupplyDocs.gs;интерфейс (сессия);да;receiving|documents;сессия → право «receiving|documents» → тариф → допуск → блокировка → аудит
+mcWithdrawMarking;MonChef_SupplyDocs.gs;интерфейс (сессия);да;receiving|documents;сессия → право «receiving|documents» → тариф → допуск → блокировка → аудит
+mcGetSupplyDocs;MonChef_SupplyDocs.gs;интерфейс (сессия);;documents_view|invoices_view|mercury|vsd_view;сессия → право «documents_view|invoices_view|mercury|vsd_view» → тариф
+mcSaveTempObject;MonChef_Temperature.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcRecordTemperature;MonChef_Temperature.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+mcTemperatureRecheck;MonChef_Temperature.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+mcTemperatureDecision;MonChef_Temperature.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+mcGetTemperatures;MonChef_Temperature.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+getBatchTraceability;MonChef_Traceability.gs;интерфейс (сессия);;stock_view|haccp_view|audit_view;сессия → право «stock_view|haccp_view|audit_view» → тариф
+getReverseTraceability;MonChef_Traceability.gs;интерфейс (сессия);;stock_view|haccp_view|audit_view;сессия → право «stock_view|haccp_view|audit_view» → тариф
+getProductionChain;MonChef_Traceability.gs;интерфейс (сессия);;stock_view|haccp_view|audit_view;сессия → право «stock_view|haccp_view|audit_view» → тариф
+getRawMaterialTraceability;MonChef_Traceability.gs;интерфейс (сессия);;stock_view|haccp_view|audit_view;сессия → право «stock_view|haccp_view|audit_view» → тариф
+getDishTraceability;MonChef_Traceability.gs;интерфейс (сессия);;stock_view|haccp_view|audit_view;сессия → право «stock_view|haccp_view|audit_view» → тариф
+mcTtkArchive;MonChef_TtkHistory.gs;интерфейс (сессия);да;ttk_approve;сессия → право «ttk_approve» → тариф → допуск → блокировка → аудит
+mcTtkHistory;MonChef_TtkHistory.gs;интерфейс (сессия);;ttk_history;сессия → право «ttk_history» → тариф
+mcTtkCompare;MonChef_TtkHistory.gs;интерфейс (сессия);;ttk_history;сессия → право «ttk_history» → тариф
+mcTtkRestoreVersion;MonChef_TtkHistory.gs;интерфейс (сессия);да;ttk_approve;сессия → право «ttk_approve» → тариф → допуск → блокировка → аудит
+mcMigrateTtkProductIds;MonChef_TtkIds.gs;интерфейс (сессия);да;ttk_approve;сессия → право «ttk_approve» → тариф → допуск → блокировка → аудит
+uiData;MonChef_UI.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+uiMe;MonChef_UI.gs;публичная;;;без сессии — пустой ответ
+uiDishDetail;MonChef_UI.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+scanInvoiceV10;MonChef_V10_OCR_Engine.gs;служебная;;;только технический доступ или владелец проекта
+scanProductReceiptV10;MonChef_V10_OCR_Engine.gs;служебная;;;только технический доступ или владелец проекта
+scanInvoiceV11;MonChef_V11_OCR_Intelligence.gs;служебная;;;только технический доступ или владелец проекта
+scanProductReceiptV11;MonChef_V11_OCR_Intelligence.gs;служебная;;;только технический доступ или владелец проекта
+rememberOcrAlias;MonChef_V11_OCR_Intelligence.gs;служебная;;;только технический доступ или владелец проекта
+getOcrAliasSuggestions;MonChef_V11_OCR_Intelligence.gs;служебная;;;только технический доступ или владелец проекта
+scanInvoiceV12;MonChef_V12_OCR_Autopilot.gs;служебная;;;только технический доступ или владелец проекта
+scanProductReceiptV12;MonChef_V12_OCR_Autopilot.gs;служебная;;;только технический доступ или владелец проекта
+getOcrAutopilotStats;MonChef_V12_OCR_Autopilot.gs;служебная;;;только технический доступ или владелец проекта
+rememberOcrAliasV12;MonChef_V12_OCR_Autopilot.gs;служебная;;;только технический доступ или владелец проекта
+scanInvoiceV13;MonChef_V13_FiscalQrEngine.gs;служебная;;;только технический доступ или владелец проекта
+previewReceiveFromInvoiceV13;MonChef_V13_FiscalQrEngine.gs;служебная;;;только технический доступ или владелец проекта
+getFiscalQrStats;MonChef_V13_FiscalQrEngine.gs;служебная;;;только технический доступ или владелец проекта
+getWeeklyOperationalPlan;MonChef_V14_WeeklyPlanning.gs;служебная;;;только технический доступ или владелец проекта
+rebuildWeeklyOperationalPlan;MonChef_V14_WeeklyPlanning.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefWeeklyPlanningCycle;MonChef_V14_WeeklyPlanning.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefWeeklyPlanningCycleSystem;MonChef_V14_WeeklyPlanning.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installMonChefWeeklyPlanningTrigger;MonChef_V14_WeeklyPlanning.gs;служебная;;;только технический доступ или владелец проекта
+setupMonChefHaccpAutomation;MonChef_V15_HaccpControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+getHaccpControlDashboard;MonChef_V15_HaccpControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefHaccpControlCycle;MonChef_V15_HaccpControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefHaccpControlCycleSystem;MonChef_V15_HaccpControlEngine.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+addHaccpControl;MonChef_V15_HaccpControlEngine.gs;служебная;;;только технический доступ или владелец проекта
+seedMonChefHaccpEquipment;MonChef_V16_HaccpControlCenter.gs;служебная;;;только технический доступ или владелец проекта
+getHaccpEquipment;MonChef_V16_HaccpControlCenter.gs;служебная;;;только технический доступ или владелец проекта
+upsertHaccpEquipment;MonChef_V16_HaccpControlCenter.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefHaccpControlCenterCycle;MonChef_V16_HaccpControlCenter.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefHaccpControlCenterCycleSystem;MonChef_V16_HaccpControlCenter.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+getHaccpControlCenter;MonChef_V16_HaccpControlCenter.gs;служебная;;;только технический доступ или владелец проекта
+completeHaccpEquipmentTask;MonChef_V16_HaccpControlCenter.gs;служебная;;;только технический доступ или владелец проекта
+installMonChefHaccpControlCenterTrigger;MonChef_V16_HaccpControlCenter.gs;служебная;;;только технический доступ или владелец проекта
+seedMonChefProductionHaccpRules;MonChef_V17_ProductionHaccpBridge.gs;служебная;;;только технический доступ или владелец проекта
+upsertProductionHaccpRule;MonChef_V17_ProductionHaccpBridge.gs;служебная;;;только технический доступ или владелец проекта
+getProductionHaccpRules;MonChef_V17_ProductionHaccpBridge.gs;служебная;;;только технический доступ или владелец проекта
+getProductionHaccpDashboard;MonChef_V17_ProductionHaccpBridge.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefProductionHaccpBridgeCycle;MonChef_V17_ProductionHaccpBridge.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefProductionHaccpBridgeCycleSystem;MonChef_V17_ProductionHaccpBridge.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installMonChefProductionHaccpBridgeTrigger;MonChef_V17_ProductionHaccpBridge.gs;служебная;;;только технический доступ или владелец проекта
+getMyOperationalTasks;MonChef_V18_MyTasks.gs;служебная;;;только технический доступ или владелец проекта
+completeMyOperationalTask;MonChef_V18_MyTasks.gs;интерфейс (сессия);да;kanban|journals|checklists;сессия → право «kanban|journals|checklists» → тариф → допуск → блокировка → аудит
+runMonChefMyTasksCycle;MonChef_V18_MyTasks.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefMyTasksCycleSystem;MonChef_V18_MyTasks.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installMonChefMyTasksTrigger;MonChef_V18_MyTasks.gs;служебная;;;только технический доступ или владелец проекта
+getMyShiftDashboard;MonChef_V19_ShiftEngine.gs;интерфейс (сессия);;kanban|journals|checklists;сессия → право «kanban|journals|checklists» → тариф
+getChefShiftDashboard;MonChef_V19_ShiftEngine.gs;служебная;;;только технический доступ или владелец проекта
+startMyShift;MonChef_V19_ShiftEngine.gs;служебная;;;только технический доступ или владелец проекта
+endMyShift;MonChef_V19_ShiftEngine.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefShiftCycle;MonChef_V19_ShiftEngine.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefShiftCycleSystem;MonChef_V19_ShiftEngine.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installMonChefShiftTrigger;MonChef_V19_ShiftEngine.gs;служебная;;;только технический доступ или владелец проекта
+getWeeklyDispatcher;MonChef_V20_WeeklyDispatcher.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+createWeeklyDispatcherPlan;MonChef_V20_WeeklyDispatcher.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+publishWeeklyDispatcherPlan;MonChef_V20_WeeklyDispatcher.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+getWeeklyPurchasePlan;MonChef_V20_WeeklyDispatcher.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefWeeklyDispatcherCycle;MonChef_V20_WeeklyDispatcher.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefWeeklyDispatcherCycleSystem;MonChef_V20_WeeklyDispatcher.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installMonChefWeeklyDispatcherTrigger;MonChef_V20_WeeklyDispatcher.gs;служебная;;;только технический доступ или владелец проекта
+createWeeklyPurchaseRequests;MonChef_V21_ProcurementReceiving.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+getWeeklyPurchaseRequests;MonChef_V21_ProcurementReceiving.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+createSupplierOrdersFromWeeklyPlan;MonChef_V21_ProcurementReceiving.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+startPurchaseReceiving;MonChef_V21_ProcurementReceiving.gs;служебная;;;только технический доступ или владелец проекта
+addPurchaseReceivingLabel;MonChef_V21_ProcurementReceiving.gs;служебная;;;только технический доступ или владелец проекта
+getPurchaseReceiving;MonChef_V21_ProcurementReceiving.gs;служебная;;;только технический доступ или владелец проекта
+finalizePurchaseReceiving;MonChef_V21_ProcurementReceiving.gs;служебная;;;только технический доступ или владелец проекта
+getWeeklyPurchaseAfterReceiving;MonChef_V21_ProcurementReceiving.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefProcurementCycle;MonChef_V21_ProcurementReceiving.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefProcurementCycleSystem;MonChef_V21_ProcurementReceiving.gs;служебная;;;только технический доступ или владелец проекта
+initMonChefV22Storage;MonChef_V22_StorageFEFOLabels.gs;служебная;;;только технический доступ или владелец проекта
+importMonChefV22ProductCatalog;MonChef_V22_StorageFEFOLabels.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+getMonChefV22Product;MonChef_V22_StorageFEFOLabels.gs;служебная;;;только технический доступ или владелец проекта
+suggestBatchStorage;MonChef_V22_StorageFEFOLabels.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+assignBatchStorage;MonChef_V22_StorageFEFOLabels.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+getFEFOBatches;MonChef_V22_StorageFEFOLabels.gs;служебная;;;только технический доступ или владелец проекта
+reserveFEFO;MonChef_V22_StorageFEFOLabels.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+createBatchLabel;MonChef_V22_StorageFEFOLabels.gs;интерфейс (сессия);да;labels;сессия → право «labels» → тариф → допуск → блокировка → аудит
+markBatchLabelPrinted;MonChef_V22_StorageFEFOLabels.gs;служебная;;;только технический доступ или владелец проекта
+getBatchLabelData;MonChef_V22_StorageFEFOLabels.gs;интерфейс (сессия);;labels;сессия → право «labels» → тариф
+getStorageDashboardV22;MonChef_V22_StorageFEFOLabels.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+createProductionPickPlan;MonChef_V23_ProductionPick.gs;служебная;;;только технический доступ или владелец проекта
+getProductionPickPlan;MonChef_V23_ProductionPick.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+confirmProductionPick;MonChef_V23_ProductionPick.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+scanProductionPick;MonChef_V23_ProductionPick.gs;служебная;;;только технический доступ или владелец проекта
+cancelProductionPick;MonChef_V23_ProductionPick.gs;служебная;;;только технический доступ или владелец проекта
+getTTKProductionTree;MonChef_V24_TTKProductionEngine.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+buildWeeklyTTKDependencyPlan;MonChef_V24_TTKProductionEngine.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+publishWeeklyTTKDependencyPlan;MonChef_V24_TTKProductionEngine.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+getWeeklyTTKDependencyPlan;MonChef_V24_TTKProductionEngine.gs;служебная;;;только технический доступ или владелец проекта
+buildV25ProductionSchedule;MonChef_V25_ProductionScheduler.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+publishV25ProductionSchedule;MonChef_V25_ProductionScheduler.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+getV25Schedule;MonChef_V25_ProductionScheduler.gs;служебная;;;только технический доступ или владелец проекта
+seedV25TTKTimes;MonChef_V25_ProductionScheduler.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+buildV26Dispatch;MonChef_V26_DispatchBridge.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+publishV26Dispatch;MonChef_V26_DispatchBridge.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+reserveV26Ready;MonChef_V26_DispatchBridge.gs;интерфейс (сессия);;prod_manage;сессия → право «prod_manage» → тариф
+createV26PurchaseRequests;MonChef_V26_DispatchBridge.gs;интерфейс (сессия);да;procurement;сессия → право «procurement» → тариф → допуск → блокировка → аудит
+getV26PurchaseRequests;MonChef_V26_DispatchBridge.gs;служебная;;;только технический доступ или владелец проекта
+getV26Dispatch;MonChef_V26_DispatchBridge.gs;служебная;;;только технический доступ или владелец проекта
+getV27ProductionBoard;MonChef_V27_ProductionRelease.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+startV27Production;MonChef_V27_ProductionRelease.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+completeV27Production;MonChef_V27_ProductionRelease.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+getV27ExecutionHistory;MonChef_V27_ProductionRelease.gs;служебная;;;только технический доступ или владелец проекта
+getV28BanquetFulfillment;MonChef_V28_BanquetFulfillment.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+issueV28Banquet;MonChef_V28_BanquetFulfillment.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+getV28BanquetIssueHistory;MonChef_V28_BanquetFulfillment.gs;служебная;;;только технический доступ или владелец проекта
+getV28BanquetDashboard;MonChef_V28_BanquetFulfillment.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+getV29BanquetClosure;MonChef_V29_BanquetClosure.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+closeV29Banquet;MonChef_V29_BanquetClosure.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+getV29BanquetDashboard;MonChef_V29_BanquetClosure.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+setupV30Compliance;MonChef_V30_ComplianceHaccpCore.gs;служебная;;;только технический доступ или владелец проекта
+v30SaveProcess;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v30SaveHazard;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v30SaveControl;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v30SaveMonitoring;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v30SaveVerification;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v30SavePpk;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v30SaveSanitation;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v30SavePersonCompliance;MonChef_V30_ComplianceHaccpCore.gs;служебная;;;только технический доступ или владелец проекта
+v30GetMasterData;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v30GetReadiness;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v30BuildAuditSnapshot;MonChef_V30_ComplianceHaccpCore.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+setupV31HaccpBridge;MonChef_V31_HaccpFactBridge.gs;служебная;;;только технический доступ или владелец проекта
+v31CreateMonitoringTask;MonChef_V31_HaccpFactBridge.gs;служебная;;;только технический доступ или владелец проекта
+v31GetOpenTasks;MonChef_V31_HaccpFactBridge.gs;интерфейс (сессия);;journals|haccp_view|audit_view;сессия → право «journals|haccp_view|audit_view» → тариф
+v31RecordHaccpFact;MonChef_V31_HaccpFactBridge.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+v31GetFacts;MonChef_V31_HaccpFactBridge.gs;служебная;;;только технический доступ или владелец проекта
+v31BuildControlReadiness;MonChef_V31_HaccpFactBridge.gs;служебная;;;только технический доступ или владелец проекта
+setupV32EventBridge;MonChef_V32_EVENT_HACCP_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v32SaveTrigger;MonChef_V32_EVENT_HACCP_BRIDGE.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v32GetTriggers;MonChef_V32_EVENT_HACCP_BRIDGE.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v32EmitOperationalEvent;MonChef_V32_EVENT_HACCP_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v32GetEventQueue;MonChef_V32_EVENT_HACCP_BRIDGE.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v32SeedCommonEventTypes;MonChef_V32_EVENT_HACCP_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+setupV33NormativeEngine;MonChef_V33_NORMATIVE_COMPLIANCE_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v33GetNormativeMatrix;MonChef_V33_NORMATIVE_COMPLIANCE_ENGINE.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v33RecordComplianceCheck;MonChef_V33_NORMATIVE_COMPLIANCE_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v33BuildReadiness;MonChef_V33_NORMATIVE_COMPLIANCE_ENGINE.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v33GetCurrentNormativeInfo;MonChef_V33_NORMATIVE_COMPLIANCE_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+setupV34ComplianceRules;MonChef_V34_COMPLIANCE_RULES_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v34GetRules;MonChef_V34_COMPLIANCE_RULES_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v34CreateComplianceTask;MonChef_V34_COMPLIANCE_RULES_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v34RecordEvidence;MonChef_V34_COMPLIANCE_RULES_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v34BuildCoverage;MonChef_V34_COMPLIANCE_RULES_ENGINE.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v34EvaluateEvent;MonChef_V34_COMPLIANCE_RULES_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+setupV35Ppk;MonChef_V35_PPK_HACCP_BUILDER.gs;служебная;;;только технический доступ или владелец проекта
+v35CreateDraft;MonChef_V35_PPK_HACCP_BUILDER.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v35AddProcess;MonChef_V35_PPK_HACCP_BUILDER.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v35AddHazard;MonChef_V35_PPK_HACCP_BUILDER.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v35AddControl;MonChef_V35_PPK_HACCP_BUILDER.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v35ValidateDocument;MonChef_V35_PPK_HACCP_BUILDER.gs;служебная;;;только технический доступ или владелец проекта
+v35Approve;MonChef_V35_PPK_HACCP_BUILDER.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
+v35GetDashboard;MonChef_V35_PPK_HACCP_BUILDER.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v35SetOrganization;MonChef_V35_PPK_HACCP_BUILDER.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+setupV36TtkMaster;MonChef_V36_TTK_MASTER.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+v36ImportDriveFolder;MonChef_V36_TTK_MASTER.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+v36BuildRecipeLinks;MonChef_V36_TTK_MASTER.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
+v36GetDashboard;MonChef_V36_TTK_MASTER.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+setupV37TtkPpk;MonChef_V37_TTK_PPK_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v37CreateFromTtk;MonChef_V37_TTK_PPK_BRIDGE.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v37GetDocument;MonChef_V37_TTK_PPK_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v37AddControl;MonChef_V37_TTK_PPK_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v37Validate;MonChef_V37_TTK_PPK_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v37Approve;MonChef_V37_TTK_PPK_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v37GetDashboard;MonChef_V37_TTK_PPK_BRIDGE.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+setupV38ShelfLife;MonChef_V38_SHELF_LIFE_RULES.gs;служебная;;;только технический доступ или владелец проекта
+v38ResolveRule;MonChef_V38_SHELF_LIFE_RULES.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+v38AddRule;MonChef_V38_SHELF_LIFE_RULES.gs;служебная;;;только технический доступ или владелец проекта
+v38Calculate;MonChef_V38_SHELF_LIFE_RULES.gs;служебная;;;только технический доступ или владелец проекта
+v38BuildGaps;MonChef_V38_SHELF_LIFE_RULES.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v38GetDashboard;MonChef_V38_SHELF_LIFE_RULES.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+setupV39ShelfLifeScheduler;MonChef_V39_SHELF_LIFE_SCHEDULER.gs;служебная;;;только технический доступ или владелец проекта
+v39BuildWindow;MonChef_V39_SHELF_LIFE_SCHEDULER.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v39CheckProductionAt;MonChef_V39_SHELF_LIFE_SCHEDULER.gs;служебная;;;только технический доступ или владелец проекта
+v39BuildBanquetWindows;MonChef_V39_SHELF_LIFE_SCHEDULER.gs;служебная;;;только технический доступ или владелец проекта
+v39GetDashboard;MonChef_V39_SHELF_LIFE_SCHEDULER.gs;служебная;;;только технический доступ или владелец проекта
+setupV40ProductShelfLife;MonChef_V40_PRODUCT_SHELF_LIFE.gs;служебная;;;только технический доступ или владелец проекта
+v40SeedFromBundle;MonChef_V40_PRODUCT_SHELF_LIFE.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v40BuildTtkProductMap;MonChef_V40_PRODUCT_SHELF_LIFE.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v40GetProduct;MonChef_V40_PRODUCT_SHELF_LIFE.gs;служебная;;;только технический доступ или владелец проекта
+v40GetDashboard;MonChef_V40_PRODUCT_SHELF_LIFE.gs;интерфейс (сессия);;haccp_view;сессия → право «haccp_view» → тариф
+setupV41Disinfectants;MonChef_V41_DISINFECTANTS.gs;служебная;;;только технический доступ или владелец проекта
+v41ImportDisinfectantsCsv;MonChef_V41_DISINFECTANTS.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+v41ApproveDisinfectant;MonChef_V41_DISINFECTANTS.gs;интерфейс (сессия);да;haccp;сессия → право «haccp» → тариф → допуск → блокировка → аудит
+v41CreateSolution;MonChef_V41_DISINFECTANTS.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+v41RecordControl;MonChef_V41_DISINFECTANTS.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+v41GetDashboard;MonChef_V41_DISINFECTANTS.gs;служебная;;;только технический доступ или владелец проекта
+uiDisinfectantRegistry;MonChef_V41_DISINFECTANTS.gs;интерфейс (сессия);;sanitation|checklists|haccp|haccp_view;сессия → право «sanitation|checklists|haccp|haccp_view» → тариф
+setupV42Sanitation;MonChef_V42_SANITATION_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v42SeedAreas;MonChef_V42_SANITATION_ENGINE.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+v42CreatePlan;MonChef_V42_SANITATION_ENGINE.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+v42CompletePlan;MonChef_V42_SANITATION_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v42RecordControl;MonChef_V42_SANITATION_ENGINE.gs;интерфейс (сессия);да;checklists;сессия → право «checklists» → тариф → допуск → блокировка → аудит
+v42ConsumeSolution;MonChef_V42_SANITATION_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v42AddStock;MonChef_V42_SANITATION_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v42BuildAlerts;MonChef_V42_SANITATION_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v42GetDashboard;MonChef_V42_SANITATION_ENGINE.gs;интерфейс (сессия);;checklists|sanitation;сессия → право «checklists|sanitation» → тариф
+setupV43SanitationChecklist;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+v43BuildChecklistLinks;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+v43GenerateTasks;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);да;sanitation;сессия → право «sanitation» → тариф → допуск → блокировка → аудит
+v43GetMyTasks;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;checklists|sanitation;сессия → право «checklists|sanitation» → тариф
+v43StartTask;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v43CompleteChecklistItem;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);да;checklists;сессия → право «checklists» → тариф → допуск → блокировка → аудит
+v43BuildOverdueAlerts;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v43AutomationTick;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+v43InstallAutomation;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+v43GetDashboard;MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs;интерфейс (сессия);;checklists|sanitation;сессия → право «checklists|sanitation» → тариф
+setupV44TaskCenter;MonChef_V44_TASK_CENTER.gs;служебная;;;только технический доступ или владелец проекта
+v44CreateTask;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+v44SyncProductionTasks;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+v44SyncBanquetProduction;MonChef_V44_TASK_CENTER.gs;служебная;;;только технический доступ или владелец проекта
+v44GetTasks;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+v44StartTask;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+v44CompleteTask;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+v44BuildAlerts;MonChef_V44_TASK_CENTER.gs;служебная;;;только технический доступ или владелец проекта
+v44GetDashboard;MonChef_V44_TASK_CENTER.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+setupV45ProductionBridge;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v45BindProductionTask;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+v45AutoBindProductionTasks;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+v45GetProductionStatus;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v45StartProductionTask;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+v45CompleteProductionTask;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;интерфейс (сессия);да;kanban|prod_manage;сессия → право «kanban|prod_manage» → тариф → допуск → блокировка → аудит
+v45RefreshProductionTaskStatuses;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+v45GetDashboard;MonChef_V45_PRODUCTION_TASK_BRIDGE.gs;интерфейс (сессия);;kanban|plan|prod_manage;сессия → право «kanban|plan|prod_manage» → тариф
+setupV46BanquetAllocation;MonChef_V46_BANQUET_ALLOCATION.gs;служебная;;;только технический доступ или владелец проекта
+v46CreateAllocation;MonChef_V46_BANQUET_ALLOCATION.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+v46SeedFromProduction;MonChef_V46_BANQUET_ALLOCATION.gs;интерфейс (сессия);;prod_manage;сессия → право «prod_manage» → тариф
+v46ReserveAllocation;MonChef_V46_BANQUET_ALLOCATION.gs;служебная;;;только технический доступ или владелец проекта
+v46IssueAllocation;MonChef_V46_BANQUET_ALLOCATION.gs;интерфейс (сессия);да;prod_manage;сессия → право «prod_manage» → тариф → допуск → блокировка → аудит
+v46GetProductionAllocations;MonChef_V46_BANQUET_ALLOCATION.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+v46GetBanquetAllocations;MonChef_V46_BANQUET_ALLOCATION.gs;служебная;;;только технический доступ или владелец проекта
+v46GetDashboard;MonChef_V46_BANQUET_ALLOCATION.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+setupV47Dispatcher;MonChef_V47_DISPATCHER.gs;служебная;;;только технический доступ или владелец проекта
+v47RefreshDispatcher;MonChef_V47_DISPATCHER.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+v47BuildSnapshot;MonChef_V47_DISPATCHER.gs;служебная;;;только технический доступ или владелец проекта
+v47PublishSnapshot;MonChef_V47_DISPATCHER.gs;служебная;;;только технический доступ или владелец проекта
+v47GetDashboard;MonChef_V47_DISPATCHER.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+v47GetBanquetView;MonChef_V47_DISPATCHER.gs;интерфейс (сессия);;banquets_view|prod_manage;сессия → право «banquets_view|prod_manage» → тариф
+setupV48DeficitEngine;MonChef_V48_DEFICIT_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v48AnalyzeDeficits;MonChef_V48_DEFICIT_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v48CreateCorrectiveTasks;MonChef_V48_DEFICIT_ENGINE.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+v48ResolveClosedDeficits;MonChef_V48_DEFICIT_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v48AutomationTick;MonChef_V48_DEFICIT_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v48GetDashboard;MonChef_V48_DEFICIT_ENGINE.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+setupV49InventoryRevision;MonChef_V49_INVENTORY_REVISION.gs;служебная;;;только технический доступ или владелец проекта
+v49CreateRevision;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+v49GetRevisionCandidates;MonChef_V49_INVENTORY_REVISION.gs;служебная;;;только технический доступ или владелец проекта
+v49AddRevisionLine;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+v49SeedRevisionFromStock;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+v49PostRevisionLine;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+v49CountRevisionLine;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+v49CompleteRevision;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+v49GetDashboard;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+v49GetOpenLines;MonChef_V49_INVENTORY_REVISION.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+migrateExistingJournalsToFacts;MonChef_V4_Integration.gs;служебная;;;только технический доступ или владелец проекта
+getJournalSigningStatus;MonChef_V4_Integration.gs;служебная;;;только технический доступ или владелец проекта
+getJournalIntegrityReport;MonChef_V4_Integration.gs;служебная;;;только технический доступ или владелец проекта
+getV4SystemHealth;MonChef_V4_Integration.gs;служебная;;;только технический доступ или владелец проекта
+setupV50SurplusEngine;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50AnalyzeSurplus;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50PublishAnalysis;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50ReserveRecommendation;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50ReleaseReserve;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50ApproveRecommendation;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50GetDashboard;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50GetRecommendations;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+v50AutomationTick;MonChef_V50_SURPLUS_UTILIZATION.gs;служебная;;;только технический доступ или владелец проекта
+setupV51DeficitSurplusBridge;MonChef_V51_DEFICIT_SURPLUS_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v51FindCoverage;MonChef_V51_DEFICIT_SURPLUS_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v51CoverDeficit;MonChef_V51_DEFICIT_SURPLUS_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v51BuildDispatchPlan;MonChef_V51_DEFICIT_SURPLUS_BRIDGE.gs;служебная;;;только технический доступ или владелец проекта
+v51AutomationTick;MonChef_V51_DEFICIT_SURPLUS_BRIDGE.gs;интерфейс (сессия);;system;сессия → право «system» → тариф
+v51GetDashboard;MonChef_V51_DEFICIT_SURPLUS_BRIDGE.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+setupV52TtkDeficitRecalc;MonChef_V52_TTK_DEFICIT_RECALC.gs;служебная;;;только технический доступ или владелец проекта
+v52RecalculateDeficits;MonChef_V52_TTK_DEFICIT_RECALC.gs;интерфейс (сессия);;plan|prod_manage;сессия → право «plan|prod_manage» → тариф
+v52PublishPlans;MonChef_V52_TTK_DEFICIT_RECALC.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+v52ApprovePlan;MonChef_V52_TTK_DEFICIT_RECALC.gs;интерфейс (сессия);да;plan_edit;сессия → право «plan_edit» → тариф → допуск → блокировка → аудит
+v52GetDashboard;MonChef_V52_TTK_DEFICIT_RECALC.gs;служебная;;;только технический доступ или владелец проекта
+setupV53ProductUnits;MonChef_V53_PRODUCT_UNITS.gs;служебная;;;только технический доступ или владелец проекта
+v53RebuildProductIds;MonChef_V53_PRODUCT_UNITS.gs;интерфейс (сессия);да;ttk_approve|stock;сессия → право «ttk_approve|stock» → тариф → допуск → блокировка → аудит
+v53BuildMappings;MonChef_V53_PRODUCT_UNITS.gs;интерфейс (сессия);да;ttk_approve|stock;сессия → право «ttk_approve|stock» → тариф → допуск → блокировка → аудит
+v53SetManualMapping;MonChef_V53_PRODUCT_UNITS.gs;служебная;;;только технический доступ или владелец проекта
+v53ConvertQty;MonChef_V53_PRODUCT_UNITS.gs;служебная;;;только технический доступ или владелец проекта
+v53NormalizeRequirement;MonChef_V53_PRODUCT_UNITS.gs;служебная;;;только технический доступ или владелец проекта
+v53GetDashboard;MonChef_V53_PRODUCT_UNITS.gs;интерфейс (сессия);;catalog;сессия → право «catalog» → тариф
+setupV54ResourceStockEngine;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v54MigrateBatchResourceIds;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v54GetBatchResource;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+stockEngineConsumeSpecificBatch;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+stockEngineAdjustBatch;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v54CreateReservation;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v54ReleaseReservation;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v54GetFreeBatch;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v54GetDashboard;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;служебная;;;только технический доступ или владелец проекта
+v54Readiness;MonChef_V54_RESOURCE_STOCK_ENGINE.gs;интерфейс (сессия);;stock_view|receiving|haccp_view;сессия → право «stock_view|receiving|haccp_view» → тариф
+getForwardTrace;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+getReverseTrace;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+getTraceGraph;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+getTraceabilityReport;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+releaseObjectBlock;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+evaluateFactRulesV5;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+getRuleEvents;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+getBlocks;MonChef_V5_TraceabilityEngine.gs;служебная;;;только технический доступ или владелец проекта
+getAuditCanonicalTrace;MonChef_V5_TraceabilityEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+getAuditRuleState;MonChef_V5_TraceabilityEngine.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+v64RebuildLedger;MonChef_V64_EconomyFlow.gs;интерфейс (сессия);да;finance_view;сессия → право «finance_view» → тариф → допуск → блокировка → аудит
+v64GetBatchEconomics;MonChef_V64_EconomyFlow.gs;интерфейс (сессия);;finance_view;сессия → право «finance_view» → тариф
+v64GetProductionEconomics;MonChef_V64_EconomyFlow.gs;интерфейс (сессия);;finance_view;сессия → право «finance_view» → тариф
+v64GetProductFlow;MonChef_V64_EconomyFlow.gs;интерфейс (сессия);;finance_view;сессия → право «finance_view» → тариф
+v64GetDashboard;MonChef_V64_EconomyFlow.gs;интерфейс (сессия);;finance_view;сессия → право «finance_view» → тариф
+setupV64Economy;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_view;сессия → право «finance_view» → тариф → допуск → блокировка → аудит
+v64GetFinanceSettings;MonChef_V64_Finance.gs;интерфейс (сессия);;finance_view;сессия → право «finance_view» → тариф
+v64SaveMenuPrice;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit;сессия → право «finance_edit» → тариф → допуск → блокировка → аудит
+v64SavePackagingNorm;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit;сессия → право «finance_edit» → тариф → допуск → блокировка → аудит
+v64SaveLaborRate;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit;сессия → право «finance_edit» → тариф → допуск → блокировка → аудит
+v64SaveExpense;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit;сессия → право «finance_edit» → тариф → допуск → блокировка → аудит
+v64SaveAllocationRule;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit;сессия → право «finance_edit» → тариф → допуск → блокировка → аудит
+v64ApproveAllocationRule;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_close;сессия → право «finance_close» → тариф → допуск → блокировка → аудит
+v64SaveFinOperation;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit;сессия → право «finance_edit» → тариф → допуск → блокировка → аудит
+v64CancelRecord;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit;сессия → право «finance_edit» → тариф → допуск → блокировка → аудит
+v64ClosePeriod;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_close;сессия → право «finance_close» → тариф → допуск → блокировка → аудит
+v64CreateCorrection;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_edit|finance_close;сессия → право «finance_edit|finance_close» → тариф → допуск → блокировка → аудит
+v64ConfirmCorrection;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_close;сессия → право «finance_close» → тариф → допуск → блокировка → аудит
+v64AllocateExpenses;MonChef_V64_Finance.gs;интерфейс (сессия);;finance_view;сессия → право «finance_view» → тариф
+v64GetDishEconomics;MonChef_V64_Finance.gs;интерфейс (сессия);;finance_view;сессия → право «finance_view» → тариф
+v64SnapshotTtk;MonChef_V64_Finance.gs;интерфейс (сессия);да;finance_view;сессия → право «finance_view» → тариф → допуск → блокировка → аудит
+setupV65Ppk;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_view|ppk_edit;сессия → право «ppk_view|ppk_edit» → тариф → допуск → блокировка → аудит
+v65CreatePpk;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_edit;сессия → право «ppk_edit» → тариф → допуск → блокировка → аудит
+v65Generate;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_edit;сессия → право «ppk_edit» → тариф → допуск → блокировка → аудит
+v65SaveSection;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_edit;сессия → право «ppk_edit» → тариф → допуск → блокировка → аудит
+v65SaveActivity;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_edit;сессия → право «ppk_edit» → тариф → допуск → блокировка → аудит
+v65Check;MonChef_V65_PPK.gs;интерфейс (сессия);;ppk_view|ppk_edit|ppk_approve;сессия → право «ppk_view|ppk_edit|ppk_approve» → тариф
+v65Submit;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_edit;сессия → право «ppk_edit» → тариф → допуск → блокировка → аудит
+v65PpkPdf;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_view|ppk_edit|ppk_approve;сессия → право «ppk_view|ppk_edit|ppk_approve» → тариф → допуск → блокировка → аудит
+v65Approve;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_approve;сессия → право «ppk_approve» → тариф → допуск → блокировка → аудит
+v65Return;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_approve;сессия → право «ppk_approve» → тариф → допуск → блокировка → аудит
+v65Activate;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_approve;сессия → право «ppk_approve» → тариф → допуск → блокировка → аудит
+v65Archive;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_approve;сессия → право «ppk_approve» → тариф → допуск → блокировка → аудит
+v65BuildSchedule;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_edit|ppk_approve;сессия → право «ppk_edit|ppk_approve» → тариф → допуск → блокировка → аудит
+v65GetSchedule;MonChef_V65_PPK.gs;интерфейс (сессия);;ppk_view|ppk_edit|ppk_approve|journals;сессия → право «ppk_view|ppk_edit|ppk_approve|journals» → тариф
+v65CompleteScheduleItem;MonChef_V65_PPK.gs;интерфейс (сессия);да;ppk_edit|journals|haccp;сессия → право «ppk_edit|journals|haccp» → тариф → допуск → блокировка → аудит
+v65GetPpkList;MonChef_V65_PPK.gs;интерфейс (сессия);;ppk_view|ppk_edit|ppk_approve;сессия → право «ppk_view|ppk_edit|ppk_approve» → тариф
+v65GetPpk;MonChef_V65_PPK.gs;интерфейс (сессия);;ppk_view|ppk_edit|ppk_approve;сессия → право «ppk_view|ppk_edit|ppk_approve» → тариф
+setupV66Tu;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_view|tu_edit;сессия → право «tu_view|tu_edit» → тариф → допуск → блокировка → аудит
+v66CreateTu;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_edit;сессия → право «tu_edit» → тариф → допуск → блокировка → аудит
+v66SaveVersion;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_edit;сессия → право «tu_edit» → тариф → допуск → блокировка → аудит
+v66SaveLine;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_edit;сессия → право «tu_edit» → тариф → допуск → блокировка → аудит
+v66Advance;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_edit|tu_approve|lab_approve;сессия → право «tu_edit|tu_approve|lab_approve» → тариф → допуск → блокировка → аудит
+v66Return;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_edit|tu_approve|lab_approve;сессия → право «tu_edit|tu_approve|lab_approve» → тариф → допуск → блокировка → аудит
+v66Revise;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_edit;сессия → право «tu_edit» → тариф → допуск → блокировка → аудит
+v66Archive;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_approve;сессия → право «tu_approve» → тариф → допуск → блокировка → аудит
+v66TuPdf;MonChef_V66_TU.gs;интерфейс (сессия);да;tu_view|tu_edit|tu_approve;сессия → право «tu_view|tu_edit|tu_approve» → тариф → допуск → блокировка → аудит
+v66GetTuList;MonChef_V66_TU.gs;интерфейс (сессия);;tu_view|tu_edit|tu_approve|lab_view;сессия → право «tu_view|tu_edit|tu_approve|lab_view» → тариф
+v66GetTu;MonChef_V66_TU.gs;интерфейс (сессия);;tu_view|tu_edit|tu_approve|lab_view;сессия → право «tu_view|tu_edit|tu_approve|lab_view» → тариф
+setupV67Lab;MonChef_V67_Lab.gs;интерфейс (сессия);да;lab|lab_view|lab_edit;сессия → право «lab|lab_view|lab_edit» → тариф → допуск → блокировка → аудит
+v67SaveLabPlan;MonChef_V67_Lab.gs;интерфейс (сессия);да;lab_edit|lab;сессия → право «lab_edit|lab» → тариф → допуск → блокировка → аудит
+v67TakeSample;MonChef_V67_Lab.gs;интерфейс (сессия);да;lab_edit|lab;сессия → право «lab_edit|lab» → тариф → допуск → блокировка → аудит
+v67TransferSample;MonChef_V67_Lab.gs;интерфейс (сессия);да;lab_edit|lab;сессия → право «lab_edit|lab» → тариф → допуск → блокировка → аудит
+v67CorrectSample;MonChef_V67_Lab.gs;интерфейс (сессия);да;lab_approve;сессия → право «lab_approve» → тариф → допуск → блокировка → аудит
+v67UploadProtocol;MonChef_V67_Lab.gs;интерфейс (сессия);да;lab_upload|lab;сессия → право «lab_upload|lab» → тариф → допуск → блокировка → аудит
+v67Decide;MonChef_V67_Lab.gs;интерфейс (сессия);да;lab_approve;сессия → право «lab_approve» → тариф → допуск → блокировка → аудит
+v67GetChain;MonChef_V67_Lab.gs;интерфейс (сессия);;lab_view|lab|lab_edit|lab_approve|tu_view|ppk_view|audit_view;сессия → право «lab_view|lab|lab_edit|lab_approve|tu_view|ppk_view|audit_view» → тариф
+v67GetLabDashboard;MonChef_V67_Lab.gs;интерфейс (сессия);;lab_view|lab|lab_edit|lab_upload|lab_approve;сессия → право «lab_view|lab|lab_edit|lab_upload|lab_approve» → тариф
+v68ListReports;MonChef_V68_Reports.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+v68RunReport;MonChef_V68_Reports.gs;интерфейс (сессия);;reports|finance_view|ppk_view|ppk_edit|ppk_approve|tu_view|tu_edit|tu_approve|lab|lab_view|lab_edit|lab_upload|lab_approve|audit_view|haccp_view;сессия → право «reports|finance_view|ppk_view|ppk_edit|ppk_approve|tu_view|tu_edit|tu_approve|lab|lab_view|lab_edit|lab_upload|lab_approve|audit_view|haccp_view» → тариф
+v68ReportPdf;MonChef_V68_Reports.gs;интерфейс (сессия);да;reports|finance_view|ppk_view|ppk_edit|ppk_approve|tu_view|tu_edit|tu_approve|lab|lab_view|lab_edit|lab_upload|lab_approve|audit_view|haccp_view;сессия → право «reports|finance_view|ppk_view|ppk_edit|ppk_approve|tu_view|tu_edit|tu_approve|lab|lab_view|lab_edit|lab_upload|lab_approve|audit_view|haccp_view» → тариф → допуск → блокировка → аудит
+runMonChefControlCycle;MonChef_V6_Automation.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefControlCycleSystem;MonChef_V6_Automation.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installMonChefControlTrigger;MonChef_V6_Automation.gs;служебная;;;только технический доступ или владелец проекта
+removeMonChefControlTrigger;MonChef_V6_Automation.gs;служебная;;;только технический доступ или владелец проекта
+setupV70NormBase;MonChef_V70_NormBase.gs;интерфейс (сессия);да;haccp|haccp_view|system;сессия → право «haccp|haccp_view|system» → тариф → допуск → блокировка → аудит
+v70SetFolder;MonChef_V70_NormBase.gs;интерфейс (сессия);да;haccp|system;сессия → право «haccp|system» → тариф → допуск → блокировка → аудит
+v70Sync;MonChef_V70_NormBase.gs;интерфейс (сессия);да;haccp|system;сессия → право «haccp|system» → тариф → допуск → блокировка → аудит
+v70DecideNorm;MonChef_V70_NormBase.gs;интерфейс (сессия);да;haccp|haccp_approve;сессия → право «haccp|haccp_approve» → тариф → допуск → блокировка → аудит
+v70ClassifyFile;MonChef_V70_NormBase.gs;интерфейс (сессия);да;haccp|system;сессия → право «haccp|system» → тариф → допуск → блокировка → аудит
+v70GetBase;MonChef_V70_NormBase.gs;интерфейс (сессия);;haccp|haccp_view|haccp_approve|ppk_view|lab_view|audit_view|system;сессия → право «haccp|haccp_view|haccp_approve|ppk_view|lab_view|audit_view|system» → тариф
+v70SuggestIncoming;MonChef_V70_NormBase.gs;интерфейс (сессия);;receiving|stock|haccp|haccp_view;сессия → право «receiving|stock|haccp|haccp_view» → тариф
+mcSaleStockPreview;MonChef_V71_SaleStock.gs;интерфейс (сессия);;banquets|journals;сессия → право «banquets|journals» → тариф
+syncMonChefProductionTrace;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+getProductionTrace;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+getBatchFullTrace;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefProductionControlCycle;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+getMonChefOperationalDashboard;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+getJournalSigningCoverageV7;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+getV7ControlEvents;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefFullControlCycle;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+runMonChefFullControlCycleSystem;MonChef_V7_ProductionControl.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+installMonChefFullControlTrigger;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+removeMonChefFullControlTrigger;MonChef_V7_ProductionControl.gs;служебная;;;только технический доступ или владелец проекта
+getAuditOperationalState;MonChef_V7_ProductionControl.gs;портал проверяющего;;audit_create|audit_view|haccp_view;ключ проверяющего (_requireAuditAccess_) в начале функции
+archiveMonChefMonthly;MonChef_V8_ArchiveEngine.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+archiveMonChefMonthForTest;MonChef_V8_ArchiveEngine.gs;служебная;;;только технический доступ или владелец проекта
+installMonChefArchiveTrigger;MonChef_V8_ArchiveEngine.gs;служебная;;;только технический доступ или владелец проекта
+getMonChefArchiveStatus;MonChef_V8_ArchiveEngine.gs;служебная;;;только технический доступ или владелец проекта
+mcV9EnsureDocumentIntakeSheets;MonChef_V9_DocumentIntake.gs;служебная;;;только технический доступ или владелец проекта
+mcV9DocumentProfile;MonChef_V9_DocumentIntake.gs;служебная;;;только технический доступ или владелец проекта
+mcV9ClassifyDocumentType;MonChef_V9_DocumentIntake.gs;служебная;;;только технический доступ или владелец проекта
+mcV9ValidateDocumentCapture;MonChef_V9_DocumentIntake.gs;служебная;;;только технический доступ или владелец проекта
+mcV9DocumentWorkflow;MonChef_V9_DocumentIntake.gs;служебная;;;только технический доступ или владелец проекта
+mcGetVsdUnpaid;MonChef_VsdTasks.gs;интерфейс (сессия);;mercury|vsd_cancel|vsd_view;сессия → право «mercury|vsd_cancel|vsd_view» → тариф
+mcVsdOverdueWatchSystem;MonChef_VsdTasks.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+mcWriteOffData;MonChef_WriteOff.gs;интерфейс (сессия);;stock|costs;сессия → право «stock|costs» → тариф
+mcWriteOffPreview;MonChef_WriteOff.gs;интерфейс (сессия);;stock;сессия → право «stock» → тариф
+mcWriteOffAct;MonChef_WriteOff.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+mcPfIncomeData;MonChef_WriteOff.gs;интерфейс (сессия);;kanban|prod_manage|stock;сессия → право «kanban|prod_manage|stock» → тариф
+mcPfOpeningBalance;MonChef_WriteOff.gs;интерфейс (сессия);да;stock;сессия → право «stock» → тариф → допуск → блокировка → аудит
+ts2Status;TS2_Core.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ts2InstallSchema;TS2_Core.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+ts2VerifyAudit;TS2_Core.gs;интерфейс (сессия);;audit_view|org_edit;сессия → право «audit_view|org_edit» → тариф
+ts2Backups;TS2_Core.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
+ts2CreateBackup;TS2_Core.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+ts2Upload;TS2_Documents.gs;интерфейс (сессия);да;documents|ttk_edit;сессия → право «documents|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2ProcessImport;TS2_Documents.gs;интерфейс (сессия);да;documents|ttk_edit;сессия → право «documents|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2Imports;TS2_Documents.gs;интерфейс (сессия);;documents_view|documents|ttk_edit;сессия → право «documents_view|documents|ttk_edit» → тариф
+ts2ReviewImportItem;TS2_Documents.gs;интерфейс (сессия);да;documents|ttk_edit;сессия → право «documents|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2ApplyImport;TS2_Documents.gs;интерфейс (сессия);да;documents|ttk_edit;сессия → право «documents|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2Documents;TS2_Documents.gs;интерфейс (сессия);;documents_view|documents;сессия → право «documents_view|documents» → тариф
+ts2GenPreview;TS2_Generate.gs;интерфейс (сессия);да;ppk_edit|ttk_edit;сессия → право «ppk_edit|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2GenCard;TS2_Generate.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ts2GenApply;TS2_Generate.gs;интерфейс (сессия);да;ppk_edit|ttk_edit;сессия → право «ppk_edit|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2GenApprove;TS2_Generate.gs;интерфейс (сессия);да;ppk_approve|haccp_approve;сессия → право «ppk_approve|haccp_approve» → тариф → допуск → блокировка → аудит
+ts2GenResolveIssue;TS2_Generate.gs;интерфейс (сессия);да;ppk_edit|haccp_approve;сессия → право «ppk_edit|haccp_approve» → тариф → допуск → блокировка → аудит
+ts2GenList;TS2_Generate.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ts2InitializeReadyToWork;TS2_Ready.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+initializeReadyToWork;TS2_Ready.gs;служебная;;;только технический доступ или владелец проекта
+ts2Now;TS2_Ready.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
+ts2Confirm;TS2_Ready.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+ts2Measure;TS2_Ready.gs;интерфейс (сессия);да;journals;сессия → право «journals» → тариф → допуск → блокировка → аудит
+ts2Exceptions;TS2_Ready.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ts2ResolveException;TS2_Ready.gs;интерфейс (сессия);да;haccp|haccp_approve;сессия → право «haccp|haccp_approve» → тариф → допуск → блокировка → аудит
+ts2Wizard;TS2_Ready.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ts2WizardSave;TS2_Ready.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+ts2Readiness;TS2_Ready.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
+ts2ApprovalQueue;TS2_Ready.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ts2ApproveQueueItem;TS2_Ready.gs;интерфейс (сессия);да;haccp_approve|org_edit|ppk_approve;сессия → право «haccp_approve|org_edit|ppk_approve» → тариф → допуск → блокировка → аудит
+ts2RequestLaunchProtocol;TS2_Ready.gs;интерфейс (сессия);да;org_edit|haccp_approve;сессия → право «org_edit|haccp_approve» → тариф → допуск → блокировка → аудит
+ts2RunReconciliation;TS2_Reconcile.gs;интерфейс (сессия);да;org_edit|haccp_approve|ttk_edit;сессия → право «org_edit|haccp_approve|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2Reconciliation;TS2_Reconcile.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+ts2ApproveProposal;TS2_Reconcile.gs;интерфейс (сессия);да;org_edit|haccp_approve|ttk_edit;сессия → право «org_edit|haccp_approve|ttk_edit» → тариф → допуск → блокировка → аудит
+ts2ApplyProposals;TS2_Reconcile.gs;интерфейс (сессия);да;org_edit|haccp_approve;сессия → право «org_edit|haccp_approve» → тариф → допуск → блокировка → аудит
+ts2RollbackProposal;TS2_Reconcile.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+ts2MigrationAnalyze;TS2_Reconcile.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
+ts2MigrationPreview;TS2_Reconcile.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
+ts2MigrationExecute;TS2_Reconcile.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+ts2SystemDoc;TS2_SystemDocs.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
+tsContractsList;TS_Contracts.gs;интерфейс (сессия);;documents_view|documents;сессия → право «documents_view|documents» → тариф
+tsContractSave;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
+tsContractUpload;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
+tsLsGetAll;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+tsLsGetDoc;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+tsLsSaveDoc;TS_LaborSafety.gs;интерфейс (сессия);да;personnel;сессия → право «personnel» → тариф → допуск → блокировка → аудит
+tsLsSaveRecord;TS_LaborSafety.gs;интерфейс (сессия);да;personnel;сессия → право «personnel» → тариф → допуск → блокировка → аудит
+tsLsVerifyNorm;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp_approve;сессия → право «personnel|haccp_approve» → тариф → допуск → блокировка → аудит
+tsLsCreateAct;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp|documents;сессия → право «personnel|haccp|documents» → тариф → допуск → блокировка → аудит
+tsLsGetAct;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+tsAiAsk;TS_ProMax.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
+tsAiHistory;TS_ProMax.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+tsTtkLibrary;TS_ProMax.gs;интерфейс (сессия);;catalog|ttk_edit;сессия → право «catalog|ttk_edit» → тариф
+tsTtkLibraryCard;TS_ProMax.gs;интерфейс (сессия);;catalog|ttk_edit;сессия → право «catalog|ttk_edit» → тариф
+tsGetPlanInfo;TS_Subscription.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+tsSupportRequest;TS_Subscription.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
+tsSupportConsent;TS_Subscription.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+tsActivateLicense;TS_Subscription.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+tsRefreshLicense;TS_Subscription.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
+tsLicenseDailyCheck;TS_Subscription.gs;служебная;;;только технический доступ или владелец проекта
+installTsTriggers;TS_Subscription.gs;служебная;;;только технический доступ или владелец проекта
+tsSupportRevoke;TS_Support.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+dedupeChecklistItems;zz_MonChef_Runtime.gs;служебная;;;только технический доступ или владелец проекта
+getAppUrl;zz_MonChef_Runtime.gs;публичная;;;адрес приложения

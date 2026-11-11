@@ -36,7 +36,39 @@ const fakeInit = () => {
     tsTtkLibrary: () => JSON.stringify({ success: true, data: { total: 3, categories: { 'Супы': 1, 'Горячие блюда': 2 }, sync: { synced: false }, items: [
       { id: 'T1', name: 'Борщ украинский', category: 'Супы', yield: 300, kcal: 112 }, { id: 'T2', name: 'Котлета по-киевски', category: 'Горячие блюда', yield: 150, kcal: 389 }, { id: 'T3', name: 'Бефстроганов', category: 'Горячие блюда', yield: 200, kcal: 276 }] } }),
     tsTtkLibraryCard: () => JSON.stringify({ success: true, data: { id: 'T1', name: 'Борщ украинский', category: 'Супы', yield: 300, protein: 4.1, fat: 5.3, carbs: 11.8, kcal: 112, source: 'ЦЕХ Стандарт',
-      ingredients: [{ name: 'Говядина', brutto: 80, netto: 59, unit: 'г' }, { name: 'Свёкла', brutto: 60, netto: 48, unit: 'г' }, { name: 'Капуста белокочанная', brutto: 50, netto: 40, unit: 'г' }], method: 'Свёклу тушат с томатом… Подают со сметаной.', storage: '+2…+6 °C', shelfLife: '24 ч' } })
+      ingredients: [{ name: 'Говядина', brutto: 80, netto: 59, unit: 'г' }, { name: 'Свёкла', brutto: 60, netto: 48, unit: 'г' }, { name: 'Капуста белокочанная', brutto: 50, netto: 40, unit: 'г' }], method: 'Свёклу тушат с томатом… Подают со сметаной.', storage: '+2…+6 °C', shelfLife: '24 ч' } }),
+    // ---- 2.x
+    ts2Now: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', tasks: [
+      { id: 'EXP-1', title: 'Холодильник: температура: Холодильник мясной №1', due: '09:00', overdue: true, mode: 'MEASURE', measure: { kind: 'FRIDGE', unit: '°C', min: 2, max: 6, object: 'Холодильник мясной №1' } },
+      { id: 'EXP-2', title: 'Открытие смены', due: '09:00', overdue: false, mode: 'CONFIRM' },
+      { id: 'EXP-3', title: 'Тепловая обработка: ККТ при выпуске — замер не получен автоматически: укажите значение — Котлета куриная', due: '12:40', overdue: false, mode: 'MEASURE', measure: { kind: 'CCP', unit: '°C', min: '', max: '', object: '' } },
+      { id: 'EXP-4', title: 'Санитарная обработка рабочих мест — Горячий цех', due: '15:00', overdue: false, mode: 'CONFIRM' }] } }),
+    ts2Exceptions: () => JSON.stringify({ success: true, data: { exceptions: [{ autoRecordId: 'ARC-1', createdAt: '2026-11-11T08:12:00Z', value: 'Морозильник №2: -12 °C (норма -25…-18) — дверь была открыта', confirmedByEmployee: 'Поварова Тест' }], overdue: [], autoToday: 14 } }),
+    ts2Wizard: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', enterpriseType: 'RESTAURANT', types: { RESTAURANT: 'Ресторан', CANTEEN: 'Столовая', CAFE: 'Кафе', CONFECTIONERY: 'Кондитерское производство', CATERING: 'Кейтеринг' },
+      org: { name: 'ООО «Тест»', inn: '7700000000', address: 'г. Москва, ул. Тестовая, 1', responsible: 'Хассапова Тест', complete: true }, timezone: 'Europe/Moscow', employees: 12, dishes: 148,
+      workshops: [['WS-1', 'Горячий цех', 'ACTIVE', ''], ['WS-2', 'Холодный цех', 'ACTIVE', ''], ['WS-3', 'Кондитерский цех', 'NOT_APPLICABLE', 'Десерты закупаем готовыми'], ['WS-4', 'Склад сырья', 'ACTIVE', ''], ['WS-5', 'Зона отгрузки и выдачи', 'ACTIVE', '']].map(w => ({ workshopId: w[0], name: w[1], status: w[2], notApplicableReason: w[3], zoneType: 'WORKSHOP' })),
+      objects: [{ name: 'Холодильник мясной №1', objectType: 'FRIDGE', minValue: 2, maxValue: 6, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Морозильник №2', objectType: 'FREEZER', minValue: -25, maxValue: -18, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Горячий цех', objectType: 'ROOM', minValue: 16, maxValue: 28, checkTimes: '10:00', status: 'ACTIVE' }],
+      summary: { created: 214, requiresDecision: 15, numericObjects: 3, blockers: 1 } } }),
+    ts2ApprovalQueue: () => JSON.stringify({ success: true, data: { queue: [
+      { approvalId: 'APQ-1', objectType: 'SYSTEM_DOCUMENT', objectId: 'SDOC-2', title: 'Программа производственного контроля', reason: 'Документ подготовлен системой — утвердите от имени предприятия', requiredRole: 'Директор', status: 'PENDING' },
+      { approvalId: 'APQ-2', objectType: 'SYSTEM_DOCUMENT', objectId: 'SDOC-9', title: 'Инструкция по приёмке сырья', reason: 'Подтвердите применимость типовой инструкции', requiredRole: 'Ответственный за ХАССП', status: 'PENDING' },
+      { approvalId: 'APQ-3', objectType: 'GENERATION_PACKAGE', objectId: 'GEN-1', title: 'ТУ/СТО/ППК по ТТК «Котлета куриная»', reason: 'Документы подготовлены системой из ТТК — утвердите одной кнопкой', requiredRole: 'Ответственный за ХАССП', status: 'PENDING' }],
+      documents: [['TPL-001', 'Положение о системе производственного контроля', 'ACTIVE', 'Директорова Тест (Директор)', 'F1'], ['TPL-002', 'Программа производственного контроля', 'REQUIRES_ENTERPRISE_APPROVAL', '', ''], ['TPL-005', 'Реестр ККТ', 'ACTIVE', 'Хассапова Тест (Ответственный за ХАССП)', 'F5'], ['TPL-007', 'Типовые журналы контроля', 'SYSTEM_APPROVED', '', '']]
+        .map(d => ({ documentId: 'SDOC-' + d[0].slice(4), templateId: d[0], title: d[1], status: d[2], approvedByEnterprise: d[3], fileId: d[4] })) } }),
+    ts2GenList: () => JSON.stringify({ success: true, data: { dishes: [{ code: 'D-1', name: 'Котлета куриная' }, { code: 'D-2', name: 'Салат овощной' }], jobs: [{ id: 'GEN-1', ttkId: 'D-1', name: 'Котлета куриная', status: 'APPLIED', types: 'TU+STO+PPK', issues: 1, at: '2026-11-11T09:00:00Z' }],
+      tu: [{ tuNumber: 'ТУ 000001-0001', title: 'Изменение ТУ «Горячие блюда» — Котлета куриная (версия 1)', version: 1, status: 'REQUIRES_ENTERPRISE_APPROVAL', fileId: 'X' }], sto: [], ppk: [] } }),
+    ts2GenPreview: () => JSON.stringify({ success: true, data: { job: { generationJobId: 'GEN-2', status: 'PREVIEW' }, existing: false, name: 'Котлета куриная', types: ['TU', 'STO', 'PPK'], tuSkipped: false,
+      counts: { facts: 9, auto: 8, review: 1, issues: 1, blocking: 1 }, canApply: true, canApprove: false,
+      controls: [{ name: 'ККТ: тепловая обработка — Котлета куриная', criticalLimit: 't° не ниже 75 °C', limitSource: 'ТТК D-1: «до температуры в толще не ниже 75 °C»', journalCode: 'J-KKT-THERMAL' }, { name: 'ККТ: охлаждение — Котлета куриная', criticalLimit: '', limitSource: 'REQUIRES_SOURCE', journalCode: 'J-COOLING' }],
+      hazards: [{ process: 'THERMAL', hazardType: 'B', description: 'Выживание патогенных микроорганизмов при недостаточной тепловой обработке' }, { process: 'MECHANICAL', hazardType: 'P', description: 'Металлические и иные посторонние примеси' }],
+      issues: [{ issueId: 'GI-1', severity: 'CONFLICT', message: 'CONFLICT_DUPLICATE_TTK: ТТК с тем же названием — D-3', suggestedAction: 'Архивируйте дубликат или переименуйте', status: 'OPEN' }],
+      facts: [{ fieldCode: 'limit.THERMAL', normalizedValue: '{"op":">=","value":75}', sourceText: 'Обжарить и запекать до температуры в толще не ниже 75 °C', confidence: 0.95, status: 'ACCEPTED' }, { fieldCode: 'yield', normalizedValue: '150', sourceText: 'Блюда!D2', confidence: 1, status: 'ACCEPTED' }, { fieldCode: 'shelfLifeHours', normalizedValue: '24', sourceText: 'Блюда, «Срок реализации (ч)»', confidence: 1, status: 'ACCEPTED' },
+        { fieldCode: 'storageConditions', normalizedValue: '{"min":2,"max":6}', sourceText: 'Хранить при t от +2 до +6 °C', confidence: 0.9, status: 'REVIEW' }] } }),
+    ts2Reconciliation: () => JSON.stringify({ success: true, data: { runs: [], rules: [], issues: [
+      { issueId: 'I1', severity: 'BLOCKER', entityType: 'Сотрудники и роли', message: 'Не назначен ответственный за ХАССП', suggestedAction: 'Назначьте роль в «Персонал»', entityId: '—', status: 'OPEN' },
+      { issueId: 'I2', severity: 'MAJOR', entityType: 'DISH', message: 'Срок реализации не задан или указан без основания', suggestedAction: 'Укажите срок и основание', entityId: 'D-12', status: 'OPEN' },
+      { issueId: 'I3', severity: 'CRITICAL', entityType: 'EMPLOYEE', message: 'У сотрудника нет действующего медицинского допуска', suggestedAction: 'Внесите медкнижку', entityId: 'Поварова Тест', status: 'OPEN' }],
+      proposals: [{ changeProposalId: 'CHG-1', operationType: 'UPDATE', entityId: 'D-7', reason: 'Выход = сумма нетто состава (420 г)', status: 'PROPOSED' }, { changeProposalId: 'CHG-2', operationType: 'ARCHIVE', entityId: 'D-3', reason: 'Дубликат D-1', status: 'APPLIED', rollbackAvailable: true }] } }),
   };
   function mk() { let ok = () => {}, fl = () => {}; const o = new Proxy({}, { get(t, k) {
     if (k === 'withSuccessHandler') return f => { ok = f; return o; }; if (k === 'withFailureHandler') return f => { fl = f; return o; }; if (k === 'withUserObject') return () => o;
@@ -79,7 +111,7 @@ const MARK = (boxes) => {
   // главное окно
   await p.evaluate(() => { localStorage.setItem('mc_token', 'x'); TOKEN = 'x'; start(null); });
   await p.waitForTimeout(600);
-  const view = async (id) => { await p.click(`button[data-ts="${id}"]`); await p.waitForTimeout(500); };
+  const view = async (id) => { await p.evaluate(() => { try { closeMdl(); } catch (e) {} }); await p.click(`button[data-ts="${id}"]`); await p.waitForTimeout(500); };
   await view('tsPlan');
   await shot('plan', ['#tsPlanBadge', '.kpis', '.pwdays', '#mvf_key', 'button[data-mv="activate"]'], { x: 0, y: 0, width: 1400, height: 900 });
   await view('tsLabor');
@@ -107,6 +139,23 @@ const MARK = (boxes) => {
   await p.click('button[data-mv="card"]'); await p.waitForTimeout(400);
   await shot('ttklib_card', ['.kb', '#tsLibAdd'], { x: 200, y: 0, width: 1200, height: 900 });
   }
+  if (lvl >= 2) {   // режим «Готов к работе» и генерация ППК — с Basic Pro
+  await view('tsNow');
+  await shot('now', ['.kpis', 'input[id="ts2v_EXP-1"]', 'button[data-mv="measure"][data-a="EXP-1"]', 'button[data-mv="yes"][data-a="EXP-2"]', 'button[data-mv="no"][data-a="EXP-2"]', 'button[data-mv="resolve"]'], null);
+  await view('tsSetup');
+  await p.click('button[data-mv="go"][data-a="2"]'); await p.waitForTimeout(300);
+  await shot('setup_mode', ['.kpis', '.tabs', '#mvf_type', '#mvf_mode', 'button[data-mv="save2"]'], { x: 0, y: 0, width: 1400, height: 900 });
+  await p.click('button[data-mv="go"][data-a="4"]'); await p.waitForTimeout(300);
+  await shot('setup_equipment', ['#mvf_otype', '#mvf_omin', '#mvf_omax', 'button[data-mv="save4"]'], null);
+  await p.click('button[data-mv="go"][data-a="7"]'); await p.waitForTimeout(300);
+  await shot('setup_queue', ['button[data-mv="sdoc"]', 'button[data-mv="approve"]', 'button[data-mv="sdocr"]'], null);
+  await view('tsGen');
+  await p.click('button[data-mv="preview"]'); await p.waitForTimeout(500);
+  await shot('gen_preview', ['.kpis', 'button[data-mv="resolve"]', 'button[data-mv="apply"]'], null);
+  }
+  await view('tsData');
+  await p.waitForTimeout(400);
+  await shot('data_recon', ['.kpis', 'button[data-mv="recon"]', 'button[data-mv="pok"]', 'button[data-mv="prb"]'], null);
   await b.close();
   console.log('снимки готовы:', fs.readdirSync(OUT).length);
 })().catch(e => { console.error(e); process.exit(1); });

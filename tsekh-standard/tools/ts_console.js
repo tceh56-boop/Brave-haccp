@@ -11,7 +11,7 @@ var TS_NAV = [
   ['tsTtkLib', 'База ТТК', 'ttk_library', '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/>'],
   ['tsAi', 'ЦЕХ AI', 'ai', '<rect x="5" y="7" width="14" height="11" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 15h5"/>'],
   ['tsNow', 'Сейчас (смена)', 'journals', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
-  ['tsSetup', 'Настройка и готовность', '', '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
+  ['tsSetup', 'Настройка и готовность', 'journals', '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
   ['tsGen', 'ТТК → ТУ / СТО / ППК', 'ppk', '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5M15 3v4h4"/>'],
   ['tsData', 'Данные и сверка', '', '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>'],
   ['tsPlan', 'Подписка', '', '<path d="M3 7h18v10H3z"/><path d="M3 10h18M7 14h4"/>']
@@ -335,7 +335,7 @@ VIEWS.tsNow = {
               (m.kind === 'FRYER' ? '<select id="ts2v_' + t.id + '"><option>годен</option><option>заменён</option><option>требует замены</option></select>' : '<input id="ts2v_' + t.id + '" type="number" step="0.1" inputmode="decimal" style="font-size:22px">') +
               '</div><div class="mvwide"><label>Комментарий (обязателен вне нормы)</label><input id="ts2c_' + t.id + '"></div></div><div class="mvbar"><button class="btn pri" data-mv="measure" data-a="' + t.id + '">Записать</button></div>';
           } else body = '<div class="mvbar"><button class="btn pri" style="min-width:120px;font-size:18px" data-mv="yes" data-a="' + t.id + '">Да</button><button class="btn" style="min-width:120px;font-size:18px" data-mv="no" data-a="' + t.id + '">Нет</button></div>';
-          return '<div class="card" style="margin-bottom:10px">' + head + body + '</div>';
+          return '<div class="card" style="margin-bottom:10px;padding:14px 18px">' + head + body + '</div>';
         }).join('') : vCard('Все задачи выполнены', '<p>Новых задач нет. Записи о выпуске, приёмке и вскрытии система делает сама.</p>');
         if (x.exceptions.length) h += vCard('Отклонения — нужно решение', vTable([{ k: 'createdAt', l: 'Когда' }, { k: 'value', l: 'Что случилось' }, { k: 'confirmedByEmployee', l: 'Кто' }], x.exceptions, function (r) { return vBtn('Устранено', 'resolve', r.autoRecordId); }));
         vBody(h);
@@ -429,6 +429,17 @@ VIEWS.tsSetup = {
 
 /* ---------- 2.2: ТТК → ТУ / СТО / ППК ---------- */
 var TS2G = { list: null, card: null };
+var TS2_OPS_RU = { DEFROST: 'Размораживание', WASH: 'Мойка, подготовка', MECHANICAL: 'Механическая обработка', MARINATE: 'Маринование', FRYING: 'Жарка', THERMAL: 'Тепловая обработка', COOLING: 'Охлаждение', REHEAT: 'Разогрев', ASSEMBLY: 'Порционирование, сборка', STORAGE: 'Хранение' };
+var TS2_HZ_RU = { B: 'биологическая', C: 'химическая', P: 'физическая', A: 'аллерген' };
+var TS2_FIELD_RU = { name: 'Название', category: 'Категория', workshop: 'Цех', yield: 'Выход', technology: 'Технология', shelfLifeHours: 'Срок реализации, ч', shelfLifeText: 'Срок в тексте технологии, ч', storageConditions: 'Условия хранения', allergens: 'Аллергены' };
+function ts2FieldRu(x) { var f = String(x.fieldCode || ''), p = f.split('.'); if (TS2_FIELD_RU[f]) return TS2_FIELD_RU[f];
+  if (p[0] === 'ingredient') return 'Состав, строка ' + p[1]; if (p[0] === 'operation') return 'Операция: ' + (TS2_OPS_RU[p[1]] || p[1]).toLowerCase();
+  if (p[0] === 'limit') return 'Предел ККТ: ' + (TS2_OPS_RU[p[1]] || p[1]).toLowerCase(); if (p[0] === 'limitTime') return 'Время ККТ: ' + (TS2_OPS_RU[p[1]] || p[1]).toLowerCase() + ', мин'; return f; }
+function ts2FactVal(x) { var v = String(x.normalizedValue || ''), o = null; if (/^[\[{]/.test(v)) { try { o = JSON.parse(v); } catch (e) {} }
+  if (!o) return TS2_OPS_RU[v] || v; if (Array.isArray(o)) return o.join(', '); if (o.min !== undefined) return 'от ' + o.min + ' до ' + o.max + ' °C';
+  if (o.op) return (o.op === '>=' ? 'не ниже ' : 'не выше ') + o.value + ' °C'; if (o.name) return o.name + ' — ' + o.qty + ' ' + (o.unit || '') + (o.netto ? ' (нетто ' + o.netto + ')' : ''); return v; }
+var TS2_ENT_RU = { DISH: 'ТТК', EMPLOYEE: 'Сотрудники', CONTRACT: 'Договоры', DOCUMENT: 'Документы', PRODUCT: 'Продукты', ORGANIZATION: 'Организация', ROLE: 'Роли', CCP: 'ХАССП', NORM: 'Нормативы', SYSTEM_DOCUMENT: 'Системные документы' };
+var TS2_OP_RU = { UPDATE: 'Исправить', ARCHIVE: 'В архив', CREATE: 'Создать', MERGE: 'Объединить', GENERATE_TEMPLATE: 'Создать по шаблону', LINK: 'Связать' };
 VIEWS.tsGen = {
   title: 'ТТК → ТУ / СТО / ППК', sub: 'Система готовит изменения документов из ТТК; у каждого значения — источник. Утверждает предприятие одной кнопкой',
   open: function () { this.h.load(); },
@@ -448,9 +459,9 @@ VIEWS.tsGen = {
       var h = vKpis([['ТТК', c.name], ['Статус', vRu(j.status)], ['Заполнено автоматически', c.counts.auto + ' из ' + c.counts.facts, 'green'], ['Требует решения', c.counts.issues, c.counts.blocking ? 'red' : 'gold']]);
       if (c.tuSkipped) h += '<div class="ttnote" style="margin-bottom:10px;border-radius:12px">ТУ создаются в тарифе Pro (лабораторные исследования). Подготовлены СТО и ППК.</div>';
       h += vCard('Процессы и ККТ', vTable([{ k: 'name', l: 'ККТ' }, { l: 'Критический предел', html: true, f: function (x) { return x.criticalLimit ? esc(x.criticalLimit) : vChip('нужен источник', 'r'); } }, { k: 'limitSource', l: 'Источник' }, { k: 'journalCode', l: 'Журнал' }], c.controls, null, 'ККТ не выявлены'));
-      h += vCard('Опасности', vTable([{ k: 'process', l: 'Операция' }, { k: 'hazardType', l: 'Тип' }, { k: 'description', l: 'Опасность' }], c.hazards));
-      h += vCard('Проблемы и конфликты', vTable([{ k: 'severity', l: 'Важность' }, { k: 'message', l: 'Что' }, { k: 'suggestedAction', l: 'Что сделать' }, { k: 'status', l: 'Статус' }], c.issues, function (i) { return i.status === 'OPEN' && i.severity !== 'BLOCKER' ? vBtn('Решено', 'resolve', i.issueId) : ''; }, 'Проблем нет'));
-      h += vCard('Факты из ТТК', vTable([{ k: 'fieldCode', l: 'Поле' }, { k: 'normalizedValue', l: 'Значение' }, { k: 'sourceText', l: 'Источник' }, { k: 'confidence', l: 'Уверенность', t: 'num' }, { k: 'status', l: 'Статус' }], c.facts));
+      h += vCard('Опасности', vTable([{ l: 'Операция', f: function (x) { return TS2_OPS_RU[x.process] || x.process; } }, { l: 'Тип', f: function (x) { return TS2_HZ_RU[x.hazardType] || x.hazardType; } }, { k: 'description', l: 'Опасность' }], c.hazards));
+      h += vCard('Проблемы и конфликты', vTable([{ k: 'severity', l: 'Важность' }, { l: 'Что', f: function (i) { return String(i.message || '').replace(/^[A-Z_]+:\s*/, ''); } }, { k: 'suggestedAction', l: 'Что сделать' }, { k: 'status', l: 'Статус' }], c.issues, function (i) { return i.status === 'OPEN' && i.severity !== 'BLOCKER' ? vBtn('Решено', 'resolve', i.issueId) : ''; }, 'Проблем нет'));
+      h += vCard('Факты из ТТК', vTable([{ l: 'Поле', f: ts2FieldRu }, { l: 'Значение', f: ts2FactVal }, { k: 'sourceText', l: 'Источник' }, { k: 'confidence', l: 'Уверенность', t: 'num' }, { k: 'status', l: 'Статус' }], c.facts));
       h += '<div class="mvbar">' + (c.canApply ? '<button class="btn pri" data-mv="apply" data-a="' + j.generationJobId + '">Создать документы (Google Doc + PDF)</button>' : '') +
         (j.status === 'APPLIED' ? '<button class="btn pri" data-mv="approve" data-a="' + j.generationJobId + '"' + (c.canApprove ? '' : ' disabled title="Сначала решите блокирующие проблемы и конфликты"') + '>Утвердить пакет</button>' : '') +
         '<button class="btn" data-mv="load">‹ К списку</button></div>';
@@ -475,10 +486,10 @@ VIEWS.tsData = {
       var box = function (h) { var b = document.getElementById('ts2d'); if (b) b.innerHTML = h; }, fail = function (r) { var e = vErr(r); if (e) { box('<div class="err">' + esc(e) + '</div>'); return true; } return false; };
       var t = TS2D.tab;
       if (t === 'recon') vCall('ts2Reconciliation', [TOKEN]).then(function (r) { if (fail(r)) return; var d = vData(r), open = d.issues.filter(function (i) { return i.status === 'OPEN'; });
-        box(vKpis([['Блокирующие', open.filter(function (i) { return i.severity === 'BLOCKER'; }).length, 'red'], ['Критичные', open.filter(function (i) { return i.severity === 'CRITICAL'; }).length, 'red'], ['Прочие', open.length], ['Предложений', d.proposals.filter(function (p) { return p.status === 'PROPOSED'; }).length, 'gold']]) +
+        box(vKpis([['Блокирующие', open.filter(function (i) { return i.severity === 'BLOCKER'; }).length, 'red'], ['Критичные', open.filter(function (i) { return i.severity === 'CRITICAL'; }).length, 'red'], ['Всего открыто', open.length], ['Предложений', d.proposals.filter(function (p) { return p.status === 'PROPOSED'; }).length, 'gold']]) +
           '<div class="mvbar"><button class="btn pri" data-mv="recon">Запустить сверку</button><button class="btn" data-mv="applyAll">Применить согласованные</button></div>' +
-          vCard('Проблемы', vTable([{ k: 'severity', l: 'Важность' }, { k: 'entityType', l: 'Область' }, { k: 'message', l: 'Что' }, { k: 'suggestedAction', l: 'Что сделать' }, { k: 'entityId', l: 'Объект' }], open, null, 'Проблем нет')) +
-          vCard('Предложения исправлений', vTable([{ k: 'operationType', l: 'Действие' }, { k: 'entityId', l: 'Объект' }, { k: 'reason', l: 'Почему' }, { k: 'status', l: 'Статус' }], d.proposals, function (p) {
+          vCard('Проблемы', vTable([{ k: 'severity', l: 'Важность' }, { l: 'Область', f: function (i) { return TS2_ENT_RU[i.entityType] || i.entityType; } }, { k: 'message', l: 'Что' }, { k: 'suggestedAction', l: 'Что сделать' }, { k: 'entityId', l: 'Объект' }], open, null, 'Проблем нет')) +
+          vCard('Предложения исправлений', vTable([{ l: 'Действие', f: function (p) { return TS2_OP_RU[p.operationType] || p.operationType; } }, { k: 'entityId', l: 'Объект' }, { k: 'reason', l: 'Почему' }, { k: 'status', l: 'Статус' }], d.proposals, function (p) {
             return p.status === 'PROPOSED' ? vBtn('Согласовать', 'pok', p.changeProposalId, true) + vBtn('Отклонить', 'pno', p.changeProposalId) : p.status === 'APPLIED' && String(p.rollbackAvailable) === 'true' ? vBtn('Откатить', 'prb', p.changeProposalId) : ''; }, 'Предложений нет'))); });
       if (t === 'import') vCall('ts2Imports', [TOKEN]).then(function (r) { if (fail(r)) return; var jobs = vData(r);
         box(vCard('Загрузить файлы', '<div class="rdnote">ТТК, договоры, акты, сертификаты — PDF, фото, Word, Excel. Дубликаты (по контрольной сумме) не загружаются второй раз. Распознанное попадает на проверку — в рабочие таблицы ничего не пишется без вашего подтверждения.</div>' +
