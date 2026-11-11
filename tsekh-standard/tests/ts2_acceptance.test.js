@@ -59,6 +59,7 @@ const ctx = vm.createContext(G);
 ['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs', 'TS_Sensors.gs', 'TS2_Serving.gs', 'TS2_Archive.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
 const C = ctx, J = s => { const r = JSON.parse(s); if (!r.success) throw new Error(r.error.message); return r.data; };
 const rows = n => C._ts2Rows_(n);
+const F = s => JSON.parse(s).success ? { ok: true } : { ok: false };
 let pass = 0; const t = (name, fn) => { fn(); pass++; console.log('  ✓ ' + name); };
 
 t('схема: повторная установка не создаёт дублей листов и ID уникальны', () => {
@@ -222,7 +223,7 @@ t('2.1: 26 системных документов формируются из �
   assert.strictEqual(C._ts2Find_('SYSTEM_DOCUMENTS', 'documentId', d5.documentId).status, 'REQUIRES_ENTERPRISE_APPROVAL', 'изменённый документ снова на утверждении');
   assert(rows('APPROVAL_QUEUE').some(x => x.objectId === d5.documentId && x.status === 'PENDING'));
 });
-t('2.1: датчик — ключ хешем, замер закрывает задачу, журнал не чаще 15 мин, отклонение уведомляет один раз, отключение', () => {
+t('2.1: датчик — ключ хешем, замер закрывает задачу, в журнал — время замера и отклонение, отклонение уведомляет один раз, отключение', () => {
   session = { name: 'Директорова', role: 'Директор' };
   const obj = rows('MEASUREMENT_OBJECTS').find(o => o.legacyObjectId === 'T-1');
   const reg = J(C.ts2SensorRegister('t', obj.objectId, 'Датчик холодильника')); const dev = reg.deviceId, key = reg.token;
@@ -235,12 +236,61 @@ t('2.1: датчик — ключ хешем, замер закрывает за
   const r1 = post({ device: dev, token: key, value: 4.1 }); assert(r1.ok && r1.stored && r1.result === 'PASS' && r1.closed === 1, JSON.stringify(r1));
   assert.strictEqual(C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-SNS').status, 'DONE', 'задача замера закрыта датчиком');
   assert(rows('MANUAL_MEASUREMENTS').some(m => m.source === 'SENSOR' && Number(m.value) === 4.1));
-  assert.strictEqual(post({ device: dev, token: key, value: 4.3 }).stored, false, 'чаще 15 минут в журнал не пишется');
+  assert.strictEqual(post({ device: dev, token: key, value: 4.3 }).stored, false, 'вне времени замера в журнал не пишется');
   const ex = () => rows('AUTO_RECORDS').filter(x => x.recordType === 'DEVIATION' && /Датчик/.test(x.value)).length;
   assert(post({ device: dev, token: key, value: 9.5 }).stored, 'отклонение пишется сразу'); assert.strictEqual(ex(), 1);
   post({ device: dev, token: key, value: 9.8 }); assert.strictEqual(ex(), 1, 'повторное отклонение в течение часа не дублирует уведомление');
   J(C.ts2SensorRevoke('t', dev)); assert.strictEqual(post({ device: dev, token: key, value: 4 }).ok, false, 'отключённый датчик не принимается');
   assert.strictEqual(JSON.parse(C.doPost({ postData: { contents: '{"hello":1}' } }).text).ok, false, 'прочие POST отклоняются');
+});
+t('датчик: поправка по сверке с поверенным термометром, замена модуля, уровень Wi-Fi, молчание больше часа, R-020/R-021', () => {
+  session = { name: 'Директорова', role: 'Директор' };
+  const obj = rows('MEASUREMENT_OBJECTS').find(o => o.legacyObjectId === 'T-1');
+  const reg = J(C.ts2SensorRegister('t', obj.objectId, 'Датчик 2')); const dev = reg.deviceId, key = reg.token;
+  const post = b => JSON.parse(C.doPost({ postData: { contents: JSON.stringify(b) } }).text);
+  assert.strictEqual(F(C.ts2SensorCalibrate('t', dev, 4, 'Testo 104')).ok, false, 'без свежего показания сверка не принимается');
+  assert(post({ device: dev, token: key, value: 3.6, rssi: -71 }).ok);
+  assert.strictEqual(F(C.ts2SensorCalibrate('t', dev, 4, '')).ok, false, 'без названия эталонного термометра — нельзя');
+  const c1 = J(C.ts2SensorCalibrate('t', dev, 4.0, 'Testo 104, зав. № 1')); assert(c1.result === 'OK' && c1.offsetAfter === 0.4 && c1.sensorRaw === 3.6, JSON.stringify(c1));
+  const task = (id, minutes) => C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: id, enterpriseId: 'E', journalCode: 'J-STORAGE-T', eventRuleId: 'SCHED-FRIDGE', objectType: 'FRIDGE', objectId: obj.objectId, dueAt: C._ts2Iso_(new Date(Date.now() + minutes * 60000)), status: 'OPEN', confirmationMode: 'MEASURE', title: 't', idempotencyKey: 'k-' + id });
+  assert.strictEqual(C._ts2Find_('MEASUREMENT_OBJECTS', 'objectId', obj.objectId).inputMode, 'SENSOR', 'подключение датчика включает автоматический ввод');
+  task('EXP-CAL', -5);
+  const pr = post({ device: dev, token: key, value: 3.6 }); assert(pr.stored && pr.closed === 1 && pr.input === 'SENSOR', 'время замера — запись датчика закрывает задачу: ' + JSON.stringify(pr));
+  const m = rows('MANUAL_MEASUREMENTS').filter(x => x.comment && String(x.comment).indexOf(dev) === 0).pop();
+  assert(Number(m.value) === 4 && /показание 3.6, поправка \+0.4/.test(m.comment), 'в журнал — с поправкой, сырое показание в комментарии: ' + m.value + ' ' + m.comment);
+  const sns = J(C.ts2Sensors('t')); const d = sns.devices.find(x => x.deviceId === dev);
+  assert(d.rssi === -71 && d.offset === 0.4 && d.calDueDays > 80 && !d.silent && sns.calibrations[0].deviceId === dev);
+  // повторная сверка: поправка считается от сырого показания, а не накапливается
+  const c2 = J(C.ts2SensorCalibrate('t', dev, 4.0, 'Testo 104, зав. № 1')); assert.strictEqual(c2.offsetAfter, 0.4, 'поправка не накапливается');
+  const exc = t => rows('AUTO_RECORDS').filter(x => x.recordType === 'DEVIATION' && x.sourceType === t).length;
+  const c3 = J(C.ts2SensorCalibrate('t', dev, 6.0, 'Testo 104, зав. № 1')); assert(c3.result === 'REPLACE' && c3.offsetAfter === 0.4, 'расхождение 2.4 °C — поправка не меняется');
+  assert.strictEqual(exc('SENSOR_CALIBRATION_FAIL'), 1, 'уведомление о замене модуля');
+  assert.strictEqual(rows('SENSOR_CALIBRATIONS').filter(x => x.deviceId === dev).length, 3, 'все сверки в журнале сверок');
+  // молчит больше часа: одно уведомление, повторный запуск не дублирует, показание снимает признак
+  C._ts2Update_('SENSOR_DEVICES', 'deviceId', dev, { lastSeenAt: C._ts2Iso_(new Date(Date.now() - 2 * 3600000)) });
+  assert.strictEqual(C.ts2SensorWatchSystem().notified, 1); assert.strictEqual(C.ts2SensorWatchSystem().notified, 0, 'без повторных уведомлений');
+  assert.strictEqual(exc('SENSOR_SILENT'), 1);
+  C._ts2Update_('SENSOR_DEVICES', 'deviceId', dev, { calibratedAt: C._ts2Iso_(new Date(Date.now() - 100 * 86400000)) });
+  C._ts2RunReconciliation_('ALL');
+  const open = rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN' && i.entityId === dev).map(i => i.ruleId);
+  assert(open.includes('R-020') && open.includes('R-021'), 'сверка видит молчащий датчик и просроченную сверку: ' + open);
+  assert(post({ device: dev, token: key, value: 3.7 }).ok); assert.strictEqual(C._ts2Find_('SENSOR_DEVICES', 'deviceId', dev).silentNotifiedAt, '', 'датчик снова на связи');
+  // время замеров одно для обоих вариантов: задача на 40 минут вперёд датчиком не закрывается и в журнал не пишется
+  task('EXP-LATER', 40); const pl = post({ device: dev, token: key, value: 3.7 }); assert(!pl.stored && !pl.closed, 'вне окна замера — только «последнее показание»');
+  assert(C._ts2NowTasks_().find(x => x.id === 'EXP-LATER').auto, '«Сейчас»: задачу заполнит датчик');
+  // ручной ввод: та же задача, датчик её не закрывает, повар видит её как обычную; отклонение всё равно пишется и уведомляет
+  J(C.ts2ObjectInputMode('t', obj.objectId, 'MANUAL'));
+  assert(!C._ts2NowTasks_().find(x => x.id === 'EXP-LATER').auto, 'ручной ввод — задача повара');
+  task('EXP-MAN', -3); const pm = post({ device: dev, token: key, value: 3.8 }); assert(!pm.stored && pm.input === 'MANUAL');
+  assert.strictEqual(C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-MAN').status, 'OPEN', 'ручной ввод: замер делает повар');
+  assert(post({ device: dev, token: key, value: 12 }).stored, 'отклонение пишется при ручном вводе');
+  assert.strictEqual(C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-MAN').status, 'OPEN', 'отклонение при ручном вводе задачу не закрывает');
+  assert.strictEqual(F(C.ts2ObjectInputMode('t', obj.objectId, 'AUTO')).ok, false);
+  J(C.ts2ObjectInputMode('t', obj.objectId, 'SENSOR'));
+  J(C.ts2SensorRevoke('t', dev));
+  assert.strictEqual(C._ts2Find_('MEASUREMENT_OBJECTS', 'objectId', obj.objectId).inputMode, 'MANUAL', 'датчик отключён — снова ручной ввод');
+  assert.strictEqual(F(C.ts2ObjectInputMode('t', obj.objectId, 'SENSOR')).ok, false, 'без датчика автоматический ввод не включить');
+  ['EXP-LATER', 'EXP-MAN'].forEach(id => C._ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', id, { status: 'DONE' }));
 });
 t('СанПиН 4282-26 п. 32, 54, 55: раздача 3 ч, кейтеринг — раннее комплектование и ярлыки без выдуманного времени', () => {
   const p2 = n => String(n).padStart(2, '0'), loc = d => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());

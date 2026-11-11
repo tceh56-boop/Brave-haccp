@@ -333,8 +333,9 @@ VIEWS.tsNow = {
         if (waiting) h += '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Нет связи: ' + waiting + ' отметок сохранено на устройстве и уйдёт на сервер, когда связь появится. В журнал они попадут с временем отметки.</div>';
         if (d.mode === 'PILOT') h += '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Пилотный режим: записи помечаются «ПИЛОТ» и не идут в официальные журналы до протокола запуска.</div>';
         h += d.tasks.length ? d.tasks.map(function (t) {
-          var head = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:16px">' + esc(t.title) + '</b>' + vChip(t.overdue ? 'просрочено ' + t.due : 'до ' + t.due, t.overdue ? 'r' : 'a') + '</div>';
+          var head = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:16px">' + esc(t.title) + '</b>' + (t.auto ? vChip('датчик · ' + t.due, 'g') : vChip(t.overdue ? 'просрочено ' + t.due : 'до ' + t.due, t.overdue ? 'r' : 'a')) + '</div>';
           var body;
+          if (t.auto) return '<div class="card" style="margin-bottom:10px;padding:14px 18px;opacity:.75">' + head + '<div class="rdnote">Автоматический ввод: запись сделает датчик в ' + esc(t.due) + '. Если датчик не пришлёт показание за 30 минут — задача вернётся вам.</div></div>';
           if (t.measure) {
             var m = t.measure, lim = m.min !== '' || m.max !== '' ? 'Норма: ' + (m.min !== '' ? 'от ' + m.min : '') + (m.max !== '' ? ' до ' + m.max : '') + ' ' + m.unit : '';
             body = '<div class="rdnote">' + esc(lim) + '</div><div class="bqf mvf"><div><label>' + (m.kind === 'FRYER' ? 'Состояние жира' : 'Значение, ' + esc(m.unit)) + '</label>' +
@@ -396,7 +397,7 @@ VIEWS.tsSetup = {
       if (n === 4) b = vCard('Шаг 4. Оборудование для замеров', '<div class="rdnote">Здесь — только то, что измеряется физически. Диапазон берите из инструкции оборудования или условий хранения: система не подставляет числа сама.</div>' +
         vForm([['otype', 'Тип', 'select', 'FRIDGE', [['FRIDGE', 'Холодильник'], ['FREEZER', 'Морозильник'], ['ROOM', 'Помещение (t° и влажность)'], ['FRYER', 'Фритюрница'], ['UV_LAMP', 'Бактерицидная лампа']]], ['oname', 'Название', 'text', '', 'Холодильник мясной №1'],
           ['omin', 'Мин.', 'number'], ['omax', 'Макс.', 'number'], ['oset', 'Уставка', 'number'], ['otimes', 'Время проверок', 'text', '09:00,18:00']]) + '<div class="mvbar"><button class="btn pri" data-mv="save4">Добавить</button></div>' +
-        vTable([{ k: 'name', l: 'Объект' }, { k: 'objectType', l: 'Тип' }, { k: 'minValue', l: 'Мин.' }, { k: 'maxValue', l: 'Макс.' }, { k: 'checkTimes', l: 'Проверки' }, { k: 'status', l: 'Статус' }], s.objects,
+        vTable([{ k: 'name', l: 'Объект' }, { k: 'objectType', l: 'Тип' }, { k: 'minValue', l: 'Мин.' }, { k: 'maxValue', l: 'Макс.' }, { k: 'checkTimes', l: 'Проверки' }, { l: 'Ввод', f: function (o) { return o.inputMode === 'SENSOR' ? 'датчик' : 'ручной'; } }, { k: 'status', l: 'Статус' }], s.objects,
           function (o) { return ['FRIDGE', 'FREEZER', 'ROOM'].indexOf(o.objectType) >= 0 && o.objectId ? vBtn('Подключить датчик', 'snsAdd', o.objectId) : ''; }, 'Объектов пока нет') +
         '<div id="ts2sns"></div>');
       if (n === 5) b = vCard('Шаг 5. Сотрудники', '<p>В системе сотрудников: <b>' + s.employees + '</b>. Добавить: Фамилия Имя;Роль;ПИН — по одному в строке.</p>' + vForm([['emps', 'Сотрудники', 'textarea', '', 'Иванова Анна;Повар горячего цеха;1234', 6]]) +
@@ -413,10 +414,33 @@ VIEWS.tsSetup = {
       if (n === 4) VIEWS.tsSetup.h.snsLoad();
     },
     snsLoad: function () {
-      vCall('ts2Sensors', [TOKEN]).then(function (r) { var e = vErr(r), box = document.getElementById('ts2sns'); if (e || !box) return; var d = vData(r);
-        box.innerHTML = vCard('Датчики · ' + d.devices.length, '<div class="rdnote">Показания датчика закрывают задачи замера в «Сейчас» и пишутся в журнал (не чаще раза в 15 минут и каждое отклонение). Если датчик молчит — замер делает повар.</div>' +
-          vTable([{ k: 'deviceId', l: 'Датчик' }, { k: 'object', l: 'Объект' }, { k: 'status', l: 'Статус' }, { l: 'Последнее показание', f: function (x) { return x.lastValue === '' || x.lastValue === undefined ? '—' : x.lastValue + ' °C, ' + (x.silentMin === null ? '' : x.silentMin + ' мин назад'); } }],
-            d.devices, function (x) { return x.status === 'ACTIVE' ? vBtn('Отключить', 'snsOff', x.deviceId) : ''; }, 'Датчики не подключены')); });
+      vCall('ts2Sensors', [TOKEN]).then(function (r) { var e = vErr(r), box = document.getElementById('ts2sns'); if (e || !box) return; var d = vData(r); TS2S.sns = d.devices;
+        var wifi = function (x) { if (x.rssi === null || x.rssi === undefined) return '—'; var q = x.rssi >= -67 ? 'хороший' : x.rssi >= -80 ? 'слабый' : 'очень слабый'; return x.rssi + ' дБм, ' + q; };
+        var cal = function (x) { var t = x.calibratedAt ? vRu(x.calibratedAt).slice(0, 10) + (x.offset ? ', поправка ' + (x.offset > 0 ? '+' : '') + x.offset + ' °C' : '') : 'не сверялся';
+          return x.status === 'ACTIVE' && x.calDueDays !== null && x.calDueDays <= 0 ? vChip(t + ' — пора сверить', 'r') : esc(t); };
+        box.innerHTML = vCard('Датчики · ' + d.devices.length, '<div class="rdnote">Время замеров одно для обоих вариантов — «Проверки» у объекта. <b>Ввод: датчик</b> — в это время показание датчика само записывается в журнал и закрывает задачу. <b>Ввод: ручной</b> — замер делает повар, датчик только следит за отклонениями. Отклонение пишется в журнал и уведомляет сразу при любом вводе. Если датчик молчит больше часа — придёт уведомление, замер делает повар. Раз в 3 месяца сверяйте датчик с поверенным термометром: положите термометр рядом с датчиком на 30 минут и нажмите «Сверить».</div>' +
+          vTable([{ k: 'deviceId', l: 'Датчик' }, { k: 'object', l: 'Объект' }, { k: 'status', l: 'Статус' },
+            { l: 'Последнее показание', html: true, f: function (x) { var t = x.lastValue === '' || x.lastValue === undefined ? '—' : esc(x.lastValue + ' °C, ' + (x.silentMin === null ? '' : x.silentMin + ' мин назад')); return x.silent ? vChip('молчит · ' + (x.silentMin === null ? '' : x.silentMin + ' мин'), 'r') : t; } },
+            { l: 'Ввод', html: true, f: function (x) { return x.status !== 'ACTIVE' ? '' : x.inputMode === 'SENSOR' ? vChip('автоматический', 'g') : vChip('ручной', 'a'); } },
+            { l: 'Wi-Fi', f: wifi }, { l: 'Сверка', html: true, f: cal }],
+            d.devices, function (x) { return x.status === 'ACTIVE' ? (x.inputMode === 'SENSOR' ? vBtn('Ввод: ручной', 'snsMan', x.objectId) : vBtn('Ввод: датчик', 'snsAuto', x.objectId)) + vBtn('Сверить', 'snsCal', x.deviceId) + vBtn('Отключить', 'snsOff', x.deviceId) : ''; }, 'Датчики не подключены') +
+          (d.calibrations && d.calibrations.length ? '<h4 style="margin:14px 0 6px">Сверки с поверенным термометром</h4>' + vTable([{ k: 'at', l: 'Когда' }, { k: 'deviceId', l: 'Датчик' }, { k: 'thermometer', l: 'Термометр' },
+            { l: 'Термометр / датчик', f: function (c) { return c.reference + ' / ' + c.raw + ' °C'; } }, { l: 'Разница', f: function (c) { return (c.difference > 0 ? '+' : '') + c.difference + ' °C'; } },
+            { l: 'Итог', html: true, f: function (c) { return c.result === 'OK' ? vChip('поправка ' + c.offset + ' °C', 'g') : vChip('заменить модуль', 'r'); } }, { k: 'by', l: 'Кто' }], d.calibrations) : '')); });
+    },
+    snsAuto: function (id, btn) { vDo(btn, 'ts2ObjectInputMode', [TOKEN, id, 'SENSOR'], 'Ввод автоматический: в часы проверок запись сделает датчик', function () { VIEWS.tsSetup.h.snsLoad(); }); },
+    snsMan: function (id, btn) { vDo(btn, 'ts2ObjectInputMode', [TOKEN, id, 'MANUAL'], 'Ввод ручной: в часы проверок замер делает повар', function () { VIEWS.tsSetup.h.snsLoad(); }); },
+    snsCal: function (id) {
+      var x = (TS2S.sns || []).filter(function (s) { return s.deviceId === id; })[0] || { deviceId: id };
+      var mdl = document.getElementById('mdl'), box = document.getElementById('mdlBox'); mdl.classList.remove('dish'); mdl.classList.add('on');
+      box.innerHTML = '<button class="x" onclick="closeMdl()">×</button><h2>Сверка датчика ' + esc(id) + '</h2>' +
+        '<p>Положите поверенный термометр рядом с датчиком на 30 минут. Затем впишите, что показывает термометр. Система сравнит его со свежим показанием датчика (не старше 15 минут)' + (x.lastValue !== undefined && x.lastValue !== '' ? ' — сейчас датчик показывает <b>' + esc(x.lastValue) + ' °C</b>' : '') + '.</p>' +
+        vForm([['calref', 'Показание поверенного термометра, °C', 'number', ''], ['calthm', 'Термометр (название или номер из реестра оборудования)', 'text', '', 'например, Testo 104, зав. № 123'], ['calcom', 'Комментарий', 'textarea', '', 'необязательно', 2]]) +
+        '<div class="rdnote">Разница до 1 °C станет поправкой: система будет прибавлять её к каждому показанию. Больше 1 °C — модуль нужно заменить.</div><div class="mvbar">' + vBtn('Сохранить сверку', 'snsCalSave', id, true) + '</div>';
+    },
+    snsCalSave: function (id, btn) {
+      vDo(btn, 'ts2SensorCalibrate', [TOKEN, id, vV('calref'), vV('calthm'), vV('calcom')], function (c) { return c.result === 'OK' ? 'Сверка сохранена: поправка ' + c.offsetAfter + ' °C' : 'Расхождение ' + c.difference + ' °C — замените модуль датчика'; },
+        function () { closeMdl(); VIEWS.tsSetup.h.snsLoad(); });
     },
     snsAdd: function (id, btn) {
       vDo(btn, 'ts2SensorRegister', [TOKEN, id, ''], 'Датчик подключён — сохраните ключ, он показывается один раз', function (d) {

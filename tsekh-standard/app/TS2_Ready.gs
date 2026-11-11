@@ -246,7 +246,7 @@ function _ts2Expect_(rule, subject, ctx, mode, title) {
 function _ts2Exception_(type, text, objectId) {
   var r = _ts2AutoRecord_({ eventType: 'EXCEPTION', sourceType: type, sourceId: objectId || '', recordType: 'DEVIATION', journalCode: 'J-DEVIATIONS', kktId: '', productionId: '', batchId: '', ttkId: '',
     result: 'FAIL', measurementMode: 'EVENT', value: text, unit: '', confidence: 1, status: 'OPEN', idempotencyKey: [_ts2Ent_(), type, objectId, _ts2Iso_()].join('|'), operationId: '', confirmedByEmployee: _ts2Actor_().name, confirmedAt: _ts2Iso_(), ruleVersion: '' });
-  try { var to = PropertiesService.getScriptProperties().getProperty('MC_NOTIFY_EMAIL'); if (to && /KKT|TEMP|CRITICAL|HUMIDITY/.test(type)) MailApp.sendEmail(to, 'ЦЕХ Стандарт: отклонение', text); } catch (e) {}
+  try { var to = PropertiesService.getScriptProperties().getProperty('MC_NOTIFY_EMAIL'); if (to && /KKT|TEMP|CRITICAL|HUMIDITY|SENSOR/.test(type)) MailApp.sendEmail(to, 'ЦЕХ Стандарт: отклонение', text); } catch (e) {}
   return r;
 }
 
@@ -303,9 +303,14 @@ function _ts2NowTasks_() {
   var day = _ts2Today_(), objs = {}; _ts2Rows_('MEASUREMENT_OBJECTS').forEach(function (o) { objs[o.objectId] = o; });
   var list = _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return String(e.dueAt).slice(0, 10) <= day; });
   list.sort(function (a, b) { return String(a.dueAt) < String(b.dueAt) ? -1 : 1; });
+  // автоматический ввод: задачу закроет датчик, если он на связи и окно замера ещё не прошло — иначе замер делает повар
+  var snsOk = {}, nowMs = Date.now();
+  try { if (typeof _tsSnsState_ === 'function' && _book_().getSheetByName('SENSOR_DEVICES')) _ts2Rows_('SENSOR_DEVICES', function (d) { return d.status === 'ACTIVE'; }).forEach(function (d) {
+    var st = _tsSnsState_(d, new Date()); if (!st.neverSeen && st.silentMin !== null && st.silentMin < TS_SNS_SILENT_MIN_) snsOk[d.objectId] = true; }); } catch (x) {}
+  var autoOf = function (e) { var o = objs[e.objectId]; return !!(o && o.inputMode === 'SENSOR' && snsOk[e.objectId] && e.confirmationMode === 'MEASURE' && new Date(e.dueAt).getTime() + TS_SNS_WIN_AFTER_MIN_ * 60000 > nowMs); };
   return list.map(function (e) {
     var o = objs[e.objectId] || null, kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : (String(e.eventRuleId).indexOf('EVR-') === 0 ? 'CCP' : '');
-    return { id: e.expectationId, title: e.title, due: String(e.dueAt).slice(11, 16), catering: e.eventRuleId === 'SERVING' && /^Кейтеринг/.test(String(e.title)) ? String(e.objectId) : '', overdue: String(e.dueAt) < _ts2Iso_(), mode: e.confirmationMode, role: e.responsibleRole,
+    return { id: e.expectationId, title: e.title, due: String(e.dueAt).slice(11, 16), auto: autoOf(e), catering: e.eventRuleId === 'SERVING' && /^Кейтеринг/.test(String(e.title)) ? String(e.objectId) : '', overdue: String(e.dueAt) < _ts2Iso_(), mode: e.confirmationMode, role: e.responsibleRole,
       measure: e.confirmationMode === 'MEASURE' ? { kind: kind || 'OTHER', unit: (TS2_MEASURE_TYPES_[kind] || TS2_MEASURE_TYPES_.OTHER)[1], min: kind === 'ROOM_HUMIDITY' ? '' : o ? o.minValue : '', max: kind === 'ROOM_HUMIDITY' ? '' : o ? o.maxValue : '', object: o ? o.name : '' } : null };
   });
 }
@@ -398,7 +403,7 @@ function _ts2WizardSave_(step, data, token) {
       legacy = lr && lr.data && (lr.data.id || lr.data.objectId) || '';
     }
     _ts2Insert_('MEASUREMENT_OBJECTS', { objectId: _ts2Id_('MEASUREMENT_OBJECTS'), enterpriseId: _ts2Ent_(), objectType: o.objectType, name: o.name, workshopId: o.workshopId || '', minValue: o.minValue === undefined ? '' : o.minValue,
-      maxValue: o.maxValue === undefined ? '' : o.maxValue, unit: (TS2_MEASURE_TYPES_[o.objectType] || [])[1] || '', setpoint: o.setpoint || '', checkTimes: o.checkTimes || '', legacyObjectId: legacy, status: 'ACTIVE', notApplicableReason: '',
+      maxValue: o.maxValue === undefined ? '' : o.maxValue, unit: (TS2_MEASURE_TYPES_[o.objectType] || [])[1] || '', setpoint: o.setpoint || '', checkTimes: o.checkTimes || '', legacyObjectId: legacy, status: 'ACTIVE', notApplicableReason: '', inputMode: 'MANUAL',
       lastReplacedAt: o.lastReplacedAt || '', resourceHours: o.resourceHours || '', createdAt: _ts2Iso_(), createdBy: _ts2Actor_().name });
   } else if (step === 5) {
     var made = 0, errs = [];

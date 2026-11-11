@@ -44,7 +44,9 @@ var TS2_RULES_ = [
   { ruleId: 'R-016', ruleCode: 'NORM_EXPIRING', domain: 'Документы и сроки', severity: 'MAJOR', name: 'Срок действия норматива заканчивается в ближайшие 120 дней', requiresHumanApproval: false },
   { ruleId: 'R-017', ruleCode: 'NORM_EXPIRED', domain: 'Документы и сроки', severity: 'CRITICAL', name: 'Срок действия норматива истёк, а он отмечен как действующий', requiresHumanApproval: false },
   { ruleId: 'R-018', ruleCode: 'THERMOMETER_MERCURY', domain: 'Оборудование', severity: 'CRITICAL', name: 'Ртутный термометр в реестре (СанПиН 2.3/2.4.4282-26, п. 48)', requiresHumanApproval: false },
-  { ruleId: 'R-019', ruleCode: 'STORE_CLIMATE_OBJECT_MISSING', domain: 'ХАССП', severity: 'MINOR', name: 'Нет объекта замера температуры и влажности склада (п. 35, 40)', requiresHumanApproval: false }
+  { ruleId: 'R-019', ruleCode: 'STORE_CLIMATE_OBJECT_MISSING', domain: 'ХАССП', severity: 'MINOR', name: 'Нет объекта замера температуры и влажности склада (п. 35, 40)', requiresHumanApproval: false },
+  { ruleId: 'R-020', ruleCode: 'SENSOR_SILENT', domain: 'ХАССП', severity: 'MAJOR', name: 'Датчик температуры не присылает показания больше часа', requiresHumanApproval: false },
+  { ruleId: 'R-021', ruleCode: 'SENSOR_CALIBRATION_DUE', domain: 'Оборудование', severity: 'MINOR', name: 'Датчик не сверялся с поверенным термометром больше 3 месяцев', requiresHumanApproval: false }
 ];
 function _ts2Rule_(code) { return TS2_RULES_.filter(function (r) { return r.ruleCode === code; })[0]; }
 
@@ -109,6 +111,11 @@ function _ts2Evaluate_() {
   });
   if (_ts2Prof_('mode', '') && !_ts2Rows_('MEASUREMENT_OBJECTS', function (o) { return o.status === 'ACTIVE' && o.objectType === 'ROOM'; }).length)
     add('STORE_CLIMATE_OBJECT_MISSING', 'MEASUREMENT_OBJECT', 'ROOM', 'objectType', '', 'ROOM', 'Нет объекта замера температуры и влажности склада: ежедневная регистрация обязательна (СанПиН 2.3/2.4.4282-26, п. 35, 40)', 'Настройка и готовность → шаг 4 → тип «Помещение» для каждого склада', 'Ответственный за ХАССП');
+  if (typeof _tsSnsState_ === 'function' && _book_().getSheetByName('SENSOR_DEVICES')) _ts2Rows_('SENSOR_DEVICES', function (d) { return d.status === 'ACTIVE'; }).forEach(function (d) {
+    var s = _tsSnsState_(d, new Date());
+    if (s.silentMin !== null && s.silentMin >= TS_SNS_SILENT_MIN_) add('SENSOR_SILENT', 'SENSOR', d.deviceId, 'lastSeenAt', d.lastSeenAt || 'нет показаний', '≤ ' + TS_SNS_SILENT_MIN_ + ' мин', 'Датчик «' + d.name + '» молчит ' + s.silentText, 'Проверьте питание платы и Wi-Fi; пока датчик молчит, замер делает повар', 'Ответственный за ХАССП');
+    if (s.calDueDays !== null && s.calDueDays <= 0) add('SENSOR_CALIBRATION_DUE', 'SENSOR', d.deviceId, 'calibratedAt', d.calibratedAt || 'не сверялся', 'раз в ' + TS_SNS_CAL_DAYS_ + ' дн.', 'Датчик «' + d.name + '»: пора сверить с поверенным термометром', 'Настройка и готовность → шаг 4 → Датчики → «Сверить»', 'Ответственный за ХАССП');
+  });
   _ts2Legacy_('ЦС_Нормативы').forEach(function (n) {
     var vt = n['Действует до'] instanceof Date ? Utilities.formatDate(n['Действует до'], _mcTz_(), 'yyyy-MM-dd') : String(n['Действует до'] || '').slice(0, 10);
     if (!vt || String(n['Статус']) !== 'ДЕЙСТВУЕТ') return;

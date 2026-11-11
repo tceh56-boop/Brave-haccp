@@ -159,6 +159,22 @@
       "severity": "MINOR",
       "name": "Нет объекта замера температуры и влажности склада (п. 35, 40)",
       "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-020",
+      "ruleCode": "SENSOR_SILENT",
+      "domain": "ХАССП",
+      "severity": "MAJOR",
+      "name": "Датчик температуры не присылает показания больше часа",
+      "requiresHumanApproval": false
+    },
+    {
+      "ruleId": "R-021",
+      "ruleCode": "SENSOR_CALIBRATION_DUE",
+      "domain": "Оборудование",
+      "severity": "MINOR",
+      "name": "Датчик не сверялся с поверенным термометром больше 3 месяцев",
+      "requiresHumanApproval": false
     }
   ]
 }

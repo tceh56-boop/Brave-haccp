@@ -25,6 +25,7 @@ var MC_SCHEDULE = [
   { fn: 'runMonChefHaccpControlCenterCycleSystem', everyMin: 15 },
   { fn: 'runMonChefHaccpControlCycleSystem', everyMin: 15 },
   { fn: 'runMonChefFullControlCycleSystem', everyMin: 30 },
+  { fn: 'ts2SensorWatchSystem', everyMin: 15 },   // датчик молчит больше часа — уведомление
   // ежечасно
   { fn: 'runMonChefControlCycleSystem', everyMin: 60 },
   { fn: 'mcSwitchWatchSystem', everyMin: 60 },

@@ -985,6 +985,9 @@ tsAiHistory;TS_ProMax.gs;интерфейс (сессия);;*;сессия → �
 tsTtkLibrary;TS_ProMax.gs;интерфейс (сессия);;catalog|ttk_edit;сессия → право «catalog|ttk_edit» → тариф
 tsTtkLibraryCard;TS_ProMax.gs;интерфейс (сессия);;catalog|ttk_edit;сессия → право «catalog|ttk_edit» → тариф
 doPost;TS_Sensors.gs;служебная;;;только технический доступ или владелец проекта
+ts2SensorWatchSystem;TS_Sensors.gs;служебная;;;технический доступ, владелец или расписание (triggerUid сверяется)
+ts2SensorCalibrate;TS_Sensors.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
+ts2ObjectInputMode;TS_Sensors.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
 ts2Sensors;TS_Sensors.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 ts2SensorRegister;TS_Sensors.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
 ts2SensorRevoke;TS_Sensors.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит

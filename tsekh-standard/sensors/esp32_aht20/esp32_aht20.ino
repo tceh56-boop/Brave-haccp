@@ -4,8 +4,8 @@
 // Arduino IDE: плата «ESP32 Dev Module», пакет esp32 от Espressif. Подробно — sensors/README.md.
 //
 // Что делает: раз в SEND_EVERY_SEC секунд снимает три замера, берёт медиану и отправляет в систему
-// POST {"device","token","value","humidity"}. Система сама пишет в журнал не чаще раза в 15 минут и каждое
-// отклонение. При отклонении (ответ result=FAIL) мигает светодиод на плате.
+// POST {"device","token","value","humidity","rssi"}. Система пишет в журнал показание во время проверок объекта
+// (если у объекта автоматический ввод) и каждое отклонение. При отклонении (ответ result=FAIL) мигает светодиод на плате.
 // Нет Wi-Fi или датчика — ничего не отправляется: задача замера в «Сейчас» остаётся повару.
 
 #include <WiFi.h>
@@ -96,6 +96,7 @@ String send(float t, float h) {
   http.addHeader("Content-Type", "application/json");
   String body = String("{\"device\":\"") + TS_DEVICE + "\",\"token\":\"" + TS_TOKEN + "\",\"value\":" + String(t, 1);
   if (SEND_HUMIDITY) body += ",\"humidity\":" + String(h, 0);
+  body += ",\"rssi\":" + String((int)WiFi.RSSI());   // уровень Wi-Fi: в системе видно, почему датчик пропадает
   body += "}";
   int code = http.POST(body);
   String resp = code > 0 ? http.getString() : "";

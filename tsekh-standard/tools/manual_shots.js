@@ -41,6 +41,7 @@ const fakeInit = () => {
     ts2Now: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', tasks: [
       { id: 'EXP-1', title: 'Холодильник: температура: Холодильник мясной №1', due: '09:00', overdue: true, mode: 'MEASURE', measure: { kind: 'FRIDGE', unit: '°C', min: 2, max: 6, object: 'Холодильник мясной №1' } },
       { id: 'EXP-2', title: 'Открытие смены', due: '09:00', overdue: false, mode: 'CONFIRM' },
+      { id: 'EXP-5', title: 'Морозильник: температура: Морозильник рыбный №2', due: '18:00', overdue: false, auto: true, mode: 'MEASURE', measure: { kind: 'FREEZER', unit: '°C', min: -25, max: -18, object: 'Морозильник рыбный №2' } },
       { id: 'EXP-3', title: 'Тепловая обработка: ККТ при выпуске — замер не получен автоматически: укажите значение — Котлета куриная', due: '12:40', overdue: false, mode: 'MEASURE', measure: { kind: 'CCP', unit: '°C', min: '', max: '', object: '' } },
       { id: 'EXP-4', title: 'Санитарная обработка рабочих мест — Горячий цех', due: '15:00', overdue: false, mode: 'CONFIRM' }] } }),
     ts2Exceptions: () => JSON.stringify({ success: true, data: { exceptions: [{ autoRecordId: 'ARC-1', createdAt: '2026-11-11T08:12:00Z', value: 'Морозильник №2: -12 °C (норма -25…-18) — дверь была открыта', confirmedByEmployee: 'Поварова Тест' }], overdue: [], autoToday: 14 } }),
@@ -49,7 +50,7 @@ const fakeInit = () => {
       workshops: [['WS-1', 'Горячий цех', 'ACTIVE', ''], ['WS-2', 'Холодный цех', 'ACTIVE', ''], ['WS-3', 'Кондитерский цех', 'NOT_APPLICABLE', 'Десерты закупаем готовыми'], ['WS-4', 'Склад сырья', 'ACTIVE', ''], ['WS-5', 'Зона отгрузки и выдачи', 'ACTIVE', '']].map(w => ({ workshopId: w[0], name: w[1], status: w[2], notApplicableReason: w[3], zoneType: 'WORKSHOP' })),
       objects: [{ objectId: 'OBJ-1', name: 'Холодильник мясной №1', objectType: 'FRIDGE', minValue: 2, maxValue: 6, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Морозильник №2', objectType: 'FREEZER', minValue: -25, maxValue: -18, checkTimes: '09:00,18:00', status: 'ACTIVE' }, { name: 'Горячий цех', objectType: 'ROOM', minValue: 16, maxValue: 28, checkTimes: '10:00', status: 'ACTIVE' }],
       summary: { created: 214, requiresDecision: 15, numericObjects: 3, blockers: 1 } } }),
-    ts2Sensors: () => JSON.stringify({ success: true, data: { url: 'https://script.google.com/macros/s/TEST/exec', devices: [{ deviceId: 'SNS-000001', object: 'Холодильник мясной №1', status: 'ACTIVE', lastValue: 4.2, silentMin: 3 }] } }),
+    ts2Sensors: () => JSON.stringify({ success: true, data: { url: 'https://script.google.com/macros/s/TEST/exec', devices: [{ deviceId: 'SNS-000001', object: 'Холодильник мясной №1', status: 'ACTIVE', inputMode: 'SENSOR', lastValue: 4.2, silentMin: 3, rssi: -62, offset: 0.3, calibratedAt: '2026-10-02T10:15:00.000Z', calDueDays: 52 }, { deviceId: 'SNS-000002', object: 'Склад сухих продуктов', status: 'ACTIVE', inputMode: 'MANUAL', lastValue: 18.4, silentMin: 74, silent: true, rssi: -83, offset: 0, calibratedAt: '', calDueDays: 60 }], calibrations: [{ at: '2026-10-02T10:15:00.000Z', deviceId: 'SNS-000001', thermometer: 'Testo 104, зав. № 41207', reference: 4.5, raw: 4.2, difference: 0.3, offset: 0.3, result: 'OK', by: 'Иванова А. С.' }] } }),
     ts2SensorRegister: () => JSON.stringify({ success: true, data: { deviceId: 'SNS-000002', token: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4', url: 'https://script.google.com/macros/s/TEST/exec', example: { device: 'SNS-000002', token: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4', value: 4.2 } } }),
     ts2ApprovalQueue: () => JSON.stringify({ success: true, data: { queue: [
       { approvalId: 'APQ-1', objectType: 'SYSTEM_DOCUMENT', objectId: 'SDOC-2', title: 'Программа производственного контроля', reason: 'Документ подготовлен системой — утвердите от имени предприятия', requiredRole: 'Директор', status: 'PENDING' },
@@ -150,6 +151,7 @@ const MARK = (boxes) => {
   await p.click('button[data-mv="go"][data-a="4"]'); await p.waitForTimeout(300);
   await p.waitForTimeout(300);
   await shot('setup_equipment', ['#mvf_otype', '#mvf_omin', '#mvf_omax', 'button[data-mv="save4"]', 'button[data-mv="snsAdd"]'], null);
+  await shot('setup_sensors', ['button[data-mv="snsMan"]', 'button[data-mv="snsAuto"]', 'button[data-mv="snsCal"]'], null);
   await p.click('button[data-mv="snsAdd"]'); await p.waitForTimeout(400);
   await shot('setup_sensor', ['#mdlBox pre'], null);
   await p.evaluate(() => closeMdl());

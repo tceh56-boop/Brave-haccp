@@ -9,7 +9,8 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
       workshops: [{ workshopId: 'WS-1', name: 'Горячий цех', status: 'ACTIVE', notApplicableReason: '' }], objects: [], summary: { created: 1, requiresDecision: 1, numericObjects: 0, blockers: 0 } };
     const D = { uiMe: () => ({ ok: true, name: 'Директор Тест', role: 'Директор', sections: ['home'], dev: false, modules: {} }), getAppUrl: () => '', uiData: () => ({ ok: true, kpis: [], tabs: [] }),
       tsGetPlanInfo: () => JSON.stringify({ success: true, data: { plan: 'pro', planName: 'Pro', status: 'ACTIVE', mode: 'full', features: { journals: true }, plans: [], featureNames: {}, lockedSections: {} } }),
-      ts2Wizard: () => JSON.stringify({ success: true, data: st }), ts2WizardSave: () => JSON.stringify({ success: true, data: st }), ts2Sensors: () => JSON.stringify({ success: true, data: { url: '', devices: [] } }),
+      ts2Wizard: () => JSON.stringify({ success: true, data: st }), ts2WizardSave: () => JSON.stringify({ success: true, data: st }), ts2Sensors: () => JSON.stringify({ success: true, data: { url: '', devices: [{ deviceId: 'SNS-1', object: 'Холодильник', objectId: 'OBJ-1', status: 'ACTIVE', inputMode: 'MANUAL', lastValue: 4.2, silentMin: 2, rssi: -60, offset: 0, calibratedAt: '', calDueDays: 90 }], calibrations: [] } }),
+      ts2SensorCalibrate: () => JSON.stringify({ success: true, data: { result: 'OK', offsetAfter: 0.3, difference: 0.3 } }), ts2ObjectInputMode: () => JSON.stringify({ success: true, data: { inputMode: 'SENSOR' } }),
       ts2ApprovalQueue: () => JSON.stringify({ success: true, data: { queue: [], documents: [{ documentId: 'SDOC-1', templateId: 'TPL-001', title: 'Положение', status: 'ACTIVE', fileId: 'F1' }] } }),
       ts2SystemDoc: () => JSON.stringify({ success: true, data: { url: 'https://docs.google.com/document/d/F1', changed: false, gaps: [] } }) };
     function mk(s) { s = s || {}; return new Proxy({}, { get(t, k) {
@@ -28,6 +29,11 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
   }
   await p.click('button[data-mv="sdoc"]'); await p.waitForTimeout(300); assert(/ts2SystemDoc:\["SDOC-1",false\]/.test(await calls()), '«Открыть» документ');
   await p.click('button[data-mv="sdocr"]'); await p.waitForTimeout(300); assert(/ts2SystemDoc:\["SDOC-1",true\]/.test(await calls()), '«Обновить» документ');
+  await p.click('button[data-mv="go"][data-a="4"]'); await p.waitForTimeout(400);
+  await p.click('button[data-mv="snsAuto"]'); await p.waitForTimeout(300); assert(/ts2ObjectInputMode:\["OBJ-1","SENSOR"\]/.test(await calls()), '«Ввод: датчик»');
+  await p.click('button[data-mv="snsCal"]'); await p.waitForTimeout(200);
+  await p.fill('#mvf_calref', '4.5'); await p.fill('#mvf_calthm', 'Testo 104');
+  await p.click('button[data-mv="snsCalSave"]'); await p.waitForTimeout(300); assert(/ts2SensorCalibrate:\["SNS-1","4.5"\]/.test(await calls()), '«Сверить» → сохранение сверки');
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
-  await b.close(); console.log('OK: кнопки мастера и системных документов вызывают сервер');
+  await b.close(); console.log('OK: кнопки мастера, системных документов, ввода и сверки датчика вызывают сервер');
 })().catch(e => { console.error(e); process.exit(1); });
