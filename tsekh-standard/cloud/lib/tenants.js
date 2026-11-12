@@ -79,10 +79,39 @@ function create({ slug, name, ownerEmail, timeZone, license }) {
   return results;
 }
 
+/**
+ * Новое предприятие из выгрузки Google (lib/importer): те же ID файлов, таблиц и свойства, затем триггеры.
+ * Если импорт не удался, каталог предприятия удаляется — можно исправить причину и запустить снова.
+ */
+function importFromGoogle({ slug, name, ownerEmail, timeZone, manifest, zips, xlsx, adminUrl, log }) {
+  if (!validSlug(slug)) throw new Error('Код предприятия: латинские буквы, цифры и дефис, 2–41 символ (например, kafe-ural)');
+  if (readCfg(slug)) throw new Error(`Предприятие «${slug}» уже есть`);
+  writeCfg({ slug, name: name || manifest.rootName || slug, ownerEmail: ownerEmail || manifest.owner || '', timeZone: timeZone || manifest.timeZone || process.env.TZ_DEFAULT || 'Asia/Yekaterinburg',
+    created: new Date().toISOString(), kind: 'tenant', importedFrom: 'google', importedAt: new Date().toISOString() });
+  const t = get(slug);
+  let report;
+  try {
+    report = t.execute(() => () => {
+      require('./gas/drive').makeDrive(t); // корень «Мой диск»
+      return require('./importer').importGoogle(t, { manifest, zips, xlsx, adminUrl, log });
+    });
+  } catch (e) {
+    try { t.store.db.close(); } catch (e2) { /* закрываем перед удалением */ }
+    cache.delete(slug);
+    fs.rmSync(path.join(DATA_DIR, slug), { recursive: true, force: true });
+    throw e;
+  }
+  report.triggers = [];
+  for (const fn of ['installAllTriggers', 'installTsTriggers']) {
+    try { t.execute(fn); report.triggers.push(fn + ': ок'); } catch (e) { report.triggers.push(fn + ': ' + e.message); }
+  }
+  return report;
+}
+
 function createAdmin({ ownerEmail }) {
   if (readCfg(ADMIN_SLUG)) return get(ADMIN_SLUG);
   writeCfg({ slug: ADMIN_SLUG, name: 'ЦЕХ Стандарт Admin', ownerEmail: ownerEmail || '', timeZone: 'Europe/Moscow', created: new Date().toISOString(), kind: 'admin' });
   return get(ADMIN_SLUG);
 }
 
-module.exports = { get, list, create, createAdmin, writeCfg, readCfg, DATA_DIR, APP_DIR, ADMIN_DIR, ADMIN_SLUG, validSlug };
+module.exports = { get, list, create, importFromGoogle, createAdmin, writeCfg, readCfg, DATA_DIR, APP_DIR, ADMIN_DIR, ADMIN_SLUG, validSlug };

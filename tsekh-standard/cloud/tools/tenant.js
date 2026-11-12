@@ -5,6 +5,8 @@
  *
  *   node tools/tenant.js create <код> --name "Кафе Урал" --email director@kafe.ru [--tz Asia/Yekaterinburg] [--pin 123456]
  *                              [--key TS-XXXX-XXXX-XXXX]   — ключ из админ-панели; секрет берётся из LICENSE_SECRET (не из командной строки)
+ *   node tools/tenant.js import <код> --manifest cloud-manifest.json --files папка.zip[,папка-2.zip] [--xlsx база.xlsx] [--name …] [--email …] [--pin 123456]
+ *                              — перенос предприятия из Google (опись делает tools/google-export.gs)
  *   node tools/tenant.js list
  *   node tools/tenant.js run <код> <функция> [аргументы JSON…]   — выполнить функцию проекта (как «Выполнить» в редакторе)
  *   node tools/tenant.js pin <код> <6 цифр>                       — первичный код технического доступа (patch 0.1)
@@ -34,6 +36,24 @@ function main() {
       r.triggers.forEach((x) => console.log('  ' + x));
       if (flags.pin) console.log('  ' + setPin(slug, flags.pin));
       else console.log('  Задайте код технического доступа: node tools/tenant.js pin ' + slug + ' <6 цифр>');
+      break;
+    }
+    case 'import': {
+      const fs = require('fs');
+      const [slug] = pos;
+      if (!flags.manifest) { console.error('Укажите --manifest cloud-manifest.json'); process.exit(1); }
+      const manifest = JSON.parse(fs.readFileSync(flags.manifest, 'utf8'));
+      const zips = String(flags.files || '').split(',').filter(Boolean).map((f) => fs.readFileSync(f));
+      const base = (process.env.APP_URL || 'http://localhost:8080').replace(/\/$/, '');
+      const r = tenants.importFromGoogle({ slug, name: flags.name, ownerEmail: flags.email, timeZone: flags.tz, manifest, zips, xlsx: flags.xlsx ? fs.readFileSync(flags.xlsx) : null,
+        adminUrl: flags['admin-url'] || '', log: (m) => console.log('  ' + m) });
+      console.log(`Предприятие перенесено: ${slug}`);
+      console.log(`  Ссылка для сотрудников: ${base}/t/${slug}/exec`);
+      console.log(`  Папок: ${r.folders}, файлов: ${r.files}, документов: ${r.docs}, таблиц: ${r.books}, свойств: ${r.props}, ссылок на Диск заменено: ${r.links}`);
+      if (r.missing.length) { console.log(`  Нет в архивах (${r.missing.length}) — докачайте и перенесите вручную:`); r.missing.slice(0, 50).forEach((m) => console.log('    ' + m)); if (r.missing.length > 50) console.log('    …'); }
+      r.triggers.forEach((x) => console.log('  ' + x));
+      if (flags.pin) console.log('  ' + setPin(slug, flags.pin));
+      console.log('  Опись содержит ключи: удалите cloud-manifest.json с сервера и с Диска.');
       break;
     }
     case 'list':

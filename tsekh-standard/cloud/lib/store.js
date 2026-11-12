@@ -107,6 +107,19 @@ class Store {
     this.insertSheet(id, 'Лист1', 0);
     return id;
   }
+  /** Заменить листы книги готовыми данными (конвертация Excel, импорт из Google): [{ name, rows }], даты — Date или {$d: мс}. */
+  replaceBookSheets(book, sheets) {
+    this.db.transaction(() => {
+      this.db.prepare('delete from sheets where book = ?').run(book);
+      this.db.prepare('delete from cells where book = ?').run(book);
+      const ins = this.db.prepare('insert into cells (book, sid, r, v) values (?, ?, ?, ?)');
+      sheets.forEach((s, i) => {
+        this.db.prepare('insert into sheets (book, sid, name, idx) values (?, ?, ?, ?)').run(book, i, s.name || 'Лист' + (i + 1), i);
+        s.rows.forEach((row, r) => { if (row && row.length) ins.run(book, i, r, encodeRow(row.map((v) => (v && v.$d !== undefined ? new Date(v.$d) : v)))); });
+      });
+    })();
+    for (const k of [...this.sheetData.keys()]) if (k.startsWith(book + '/')) this.sheetData.delete(k);
+  }
   renameBook(id, name) {
     this.db.prepare('update books set name = ? where id = ?').run(name, id);
     this.db.prepare('update files set name = ?, updated = ? where id = ?').run(name, Date.now(), id);

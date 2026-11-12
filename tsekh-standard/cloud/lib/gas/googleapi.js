@@ -79,15 +79,7 @@ function handle(url, req, tenant, urlfetch) {
       } else if (/spreadsheetml|macroenabled/.test(meta.mime) || /\.(xlsx|xlsm)$/.test(lname)) sheets = convert('xlsx', bytes).sheets;
       else return gErr(400, `Формат «${meta.name}» в облаке не конвертируется: сохраните файл как .xlsx`);
       const nid = store.createBook(name, undefined, parents);
-      const { encodeRow } = require('../store');
-      store.db.transaction(() => {
-        store.db.prepare('delete from sheets where book = ?').run(nid);
-        sheets.forEach((s, i) => {
-          store.db.prepare('insert into sheets (book, sid, name, idx) values (?, ?, ?, ?)').run(nid, i, s.name || 'Лист' + (i + 1), i);
-          s.rows.forEach((row, r) => { if (row.length) store.db.prepare('insert into cells (book, sid, r, v) values (?, ?, ?, ?)').run(nid, i, r, encodeRow(row.map((v) => (v && v.$d ? new Date(v.$d) : v)))); });
-        });
-      })();
-      for (const k of [...store.sheetData.keys()]) if (k.startsWith(nid + '/')) store.sheetData.delete(k);
+      store.replaceBookSheets(nid, sheets);
       return resp(200, { id: nid });
     }
     if (target === MIME_DOC) {
@@ -121,4 +113,4 @@ function handle(url, req, tenant, urlfetch) {
   return gErr(400, 'Запрос к Диску не поддерживается');
 }
 
-module.exports = { handle, htmlToBlocks };
+module.exports = { handle, htmlToBlocks, convert };
