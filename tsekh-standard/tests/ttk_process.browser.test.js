@@ -17,6 +17,14 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
       haccpHazardDecide: () => JSON.stringify({ success: true, data: { needDecision: 0 } }), haccpLinkSync: () => JSON.stringify({ success: true, data: { processesAdded: 1, hazardsProposed: 2, needDecision: 2 } }),
       ppkLegacyState: () => JSON.stringify({ success: true, data: { v35: { processes: 2, hazards: 3, controls: 1 }, v37: { controls: 2 }, importedToV30: 0 } }),
       ppkLegacyImport: () => JSON.stringify({ success: true, data: { processes: 2, hazards: 3, controls: 3, needBinding: 1 } }),
+      clgTemplates: () => JSON.stringify({ success: true, data: { ppk: { id: 'PPK-1', name: 'ППК 2026', version: 2 }, templates: [
+        { id: 'CLT-1', title: 'Смывы с рук: Лабораторное исследование: БГКП', items: ['Выполнено: Лабораторное исследование', 'Протокол лаборатории получен и приложен'], mode: 'TASK', coveredBy: '', frequency: 'раз в 30 дней', time: '10:00', role: 'Ответственный за ХАССП', journal: 'LAB:L1' },
+        { id: 'CLT-2', title: 'Вентиляция: Чистка фильтров', items: ['Выполнено: Чистка фильтров'], mode: 'NO_SCHEDULE', coveredBy: '', frequency: '', time: '10:00', role: 'Директор', journal: '' },
+        { id: 'CLT-3', title: 'Персонал: допуск', items: ['x'], mode: 'COVERED', coveredBy: 'Контроль медицинских допусков смены (экран «Сейчас»)', frequency: 'ежедневно', time: '10:00', role: 'Шеф-повар', journal: '' }] } }),
+      clgBuild: () => JSON.stringify({ success: true, data: { ppkId: 'PPK-1', TASK: 1, EVENT: 2, COVERED: 1, DATE: 1, NO_SCHEDULE: 1 } }),
+      ts2Exceptions: () => JSON.stringify({ success: true, data: { exceptions: [], autoCount: 0 } }),
+      ts2Now: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', tasks: [{ id: 'EXP-1', title: 'ППК: Смывы с рук: БГКП', due: '10:00', overdue: false, checklist: ['Выполнено: смывы взяты', 'Протокол лаборатории получен и приложен'], onFail: 'повторное исследование' }] } }),
+      ts2Confirm: () => JSON.stringify({ success: true, data: { result: 'FAIL' } }),
       ttkProcAnalyze: () => JSON.stringify({ success: true, data: { analyzed: 3, added: ['a'], removed: [], openIssues: 1 } }), ttkProcReview: () => JSON.stringify({ success: true, data: { status: 'CONFIRMED' } }),
       ttkProcAiSuggest: () => JSON.stringify({ success: true, data: { suggested: 'FRY', note: 'Предложение не утверждено' } }),
       ts2SensorCalibrate: () => JSON.stringify({ success: true, data: { result: 'OK', offsetAfter: 0.3, difference: 0.3 } }), ts2ObjectInputMode: () => JSON.stringify({ success: true, data: { inputMode: 'SENSOR' } }),
@@ -48,6 +56,13 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
   txt = await p.textContent('#vbody'); assert(/Раздел заменён/.test(txt) && /единственный генератор ППК/.test(txt), 'конструктор ППК закрыт: ' + txt.slice(0, 150));
   await p.click('button[data-mv="imp"]'); await p.waitForTimeout(400); assert(/ppkLegacyImport:\["x"\]/.test(await calls()), 'перенос в ХАССП');
   await p.evaluate(() => openView('ttkppk')); await p.waitForTimeout(400); assert(/Раздел заменён/.test(await p.textContent('#vbody')), 'ТТК → ППК закрыт');
+  await p.evaluate(() => openView('tsChecklists')); await p.waitForTimeout(400);
+  txt = await p.textContent('#vbody'); assert(/ППК 2026/.test(txt) && /Нет периодичности · 1/.test(txt) && /Протокол лаборатории/.test(txt) && /медицинских допусков/.test(txt), 'чек-листы ППК: ' + txt.slice(0, 200));
+  await p.click('button[data-mv="build"]'); await p.waitForTimeout(300); assert(/clgBuild:\["x"\]/.test(await calls()), 'обновить чек-листы');
+  await p.evaluate(() => { window.prompt = () => '2'; openView('tsNow'); }); await p.waitForTimeout(500);
+  txt = await p.textContent('#vbody'); assert(/Выполнено: смывы взяты/.test(txt) && /повторное исследование/.test(txt), 'чек-лист в задаче на экране «Сейчас»: ' + txt.slice(0, 300));
+  await p.click('button[data-mv="no"][data-a="EXP-1"]'); await p.waitForTimeout(400);
+  assert(/ts2Confirm:\["x","EXP-1",false,"Не выполнен пункт 2: Протокол лаборатории получен и приложен"/.test(await calls()), '«Нет» с номером пункта: ' + (await calls()).split('\n').filter(x => /ts2Confirm/.test(x)));
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
-  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП, прежние разделы ППК');
+  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП, прежние разделы ППК, чек-листы ППК');
 })().catch(e => { console.error(e); process.exit(1); });

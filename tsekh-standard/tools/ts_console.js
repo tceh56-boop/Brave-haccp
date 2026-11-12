@@ -23,6 +23,7 @@ var TS_NAV = [
   ['tsNow', 'Сейчас (смена)', 'journals', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
   ['tsSetup', 'Настройка и готовность', 'journals', '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
   ['tsTtkProc', 'Процессы ТТК', 'ppk', '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6h4l3 5M8.5 18h4l3-5"/>'],
+  ['tsChecklists', 'Чек-листы ППК', 'ppk', '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15l1.5 1.5L12 14M14 9h2M14 15h2"/>'],
   ['tsGen', 'ТТК → ТУ / СТО / ППК', 'ppk', '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5M15 3v4h4"/>'],
   ['tsData', 'Данные и сверка', '', '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>'],
   ['tsPlan', 'Подписка', '', '<path d="M3 7h18v10H3z"/><path d="M3 10h18M7 14h4"/>']
@@ -371,6 +372,32 @@ VIEWS.tsTtkProc = {
   }
 };
 
+/* ---------- Мастер-промт 4.0, этап 5: чек-листы из действующей ППК ---------- */
+var TS_CL_MODE = { TASK: ['Задача на экране «Сейчас»', 'g'], EVENT: ['По событию', 'a'], COVERED: ['Уже исполняется', 'g'], DATE: ['Контроль сроков', 'a'], NO_SCHEDULE: ['Нет периодичности', 'r'] };
+VIEWS.tsChecklists = {
+  title: 'Чек-листы ППК', sub: 'Как исполняется каждое мероприятие действующей программы производственного контроля',
+  open: function () { this.h.load(); },
+  h: {
+    load: function () {
+      vCall('clgTemplates', [TOKEN]).then(function (r) {
+        var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+        var d = vData(r), by = {}; d.templates.forEach(function (t) { (by[t.mode] = by[t.mode] || []).push(t); });
+        var h = d.ppk ? '<div class="rdnote" style="margin-bottom:10px">Действующая ППК: <b>' + esc(d.ppk.name || d.ppk.id) + '</b> (версия ' + esc(d.ppk.version) + ')</div>' : '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Действующей ППК нет — сформируйте и введите её в разделе «ППК». Чек-листы строятся из действующей ППК.</div>';
+        h += vKpis(['TASK', 'EVENT', 'COVERED', 'DATE', 'NO_SCHEDULE'].map(function (k) { return [TS_CL_MODE[k][0], (by[k] || []).length, k === 'NO_SCHEDULE' && (by[k] || []).length ? 'red' : '']; }));
+        h += '<div class="mvbar" style="margin:0 0 10px">' + vBtn('Обновить чек-листы', 'build') + '</div>';
+        h += '<div class="rdnote">Задачи по графику ППК появляются на экране «Сейчас» в день срока; «Да / Нет» там же отмечает пункт графика ППК. Мероприятия, которые уже исполняются другими разделами (замеры температур, санитария, допуск смены), не дублируются. Периодичность система не придумывает: мероприятие без неё — пробел ППК.</div>';
+        ['NO_SCHEDULE', 'TASK', 'EVENT', 'COVERED', 'DATE'].forEach(function (k) {
+          if (!(by[k] || []).length) return;
+          h += vCard(TS_CL_MODE[k][0] + ' · ' + by[k].length, vTable([{ k: 'title', l: 'Мероприятие' }, { l: 'Чек-лист', html: true, f: function (t) { return '<ol style="margin:0 0 0 16px;padding:0">' + t.items.map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + '</ol>'; } },
+            { l: 'Когда', f: function (t) { return (t.frequency || '—') + (k === 'TASK' ? ', ' + t.time : ''); } }, { k: 'role', l: 'Ответственный' }, { l: 'Кем исполняется', html: true, f: function (t) { return t.coveredBy ? esc(t.coveredBy) : vChip(TS_CL_MODE[t.mode][0], TS_CL_MODE[t.mode][1]); } }], by[k]));
+        });
+        vBody(h);
+      }, function (e) { vMsg(String(e), 'err'); });
+    },
+    build: function (a, btn) { vDo(btn, 'clgBuild', [TOKEN], function (r) { return r.ppkId ? 'Чек-листы обновлены: задач ' + r.TASK + ', по событию ' + r.EVENT + ', уже исполняется ' + r.COVERED + ', без периодичности ' + r.NO_SCHEDULE : 'Действующей ППК нет'; }, function () { VIEWS.tsChecklists.h.load(); }); }
+  }
+};
+
 /* ==========================================================================
    ЦЕХ Стандарт 2.1 — «Сейчас»: экран повара. Только «Да / Нет» и разрешённые физические замеры.
    ========================================================================== */
@@ -402,7 +429,9 @@ VIEWS.tsNow = {
             body = '<div class="rdnote">' + esc(lim) + '</div><div class="bqf mvf"><div><label>' + (m.kind === 'FRYER' ? 'Состояние жира' : 'Значение, ' + esc(m.unit)) + '</label>' +
               (m.kind === 'FRYER' ? '<select id="ts2v_' + t.id + '"><option>годен</option><option>заменён</option><option>требует замены</option></select>' : '<input id="ts2v_' + t.id + '" type="number" step="0.1" inputmode="decimal" style="font-size:22px">') +
               '</div><div class="mvwide"><label>Комментарий (обязателен вне нормы)</label><input id="ts2c_' + t.id + '"></div></div><div class="mvbar"><button class="btn pri" data-mv="measure" data-a="' + t.id + '">Записать</button></div>';
-          } else body = '<div class="mvbar"><button class="btn pri" style="min-width:120px;font-size:18px" data-mv="yes" data-a="' + t.id + '">Да</button><button class="btn" style="min-width:120px;font-size:18px" data-mv="no" data-a="' + t.id + '">Нет</button>' +
+          } else body = (t.checklist && t.checklist.length ? '<ol style="margin:8px 0 4px 18px;padding:0;font-size:14px;line-height:1.5">' + t.checklist.map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + '</ol>' +
+              '<div class="rdnote">«Да» — все пункты выполнены. «Нет» — укажите, какой пункт не выполнен.' + (t.onFail ? ' При несоответствии: ' + esc(t.onFail) : '') + '</div>' : '') +
+            '<div class="mvbar"><button class="btn pri" style="min-width:120px;font-size:18px" data-mv="yes" data-a="' + t.id + '">Да</button><button class="btn" style="min-width:120px;font-size:18px" data-mv="no" data-a="' + t.id + '">Нет</button>' +
             (t.catering ? '<button class="btn" data-mv="labels" data-a="' + esc(t.catering) + '">Ярлыки ёмкостей</button>' : '') + '</div>';
           return '<div class="card" style="margin-bottom:10px;padding:14px 18px">' + head + body + '</div>';
         }).join('') : vCard('Все задачи выполнены', '<p>Новых задач нет. Записи о выпуске, приёмке и вскрытии система делает сама.</p>');
@@ -413,7 +442,9 @@ VIEWS.tsNow = {
     after: function (id) { return function (d, r) { if (r && r.queued) TS2N.done[id] = true; VIEWS.tsNow.h.load(); }; },
     yes: function (id, btn) { vDo(btn, 'ts2Confirm', [TOKEN, id, true, '', ''], function (d, r) { return r && r.queued ? 'Нет связи — отметка сохранена на устройстве' : 'Подтверждено'; }, VIEWS.tsNow.h.after(id)); },
     no: function (id, btn) {
-      var r = prompt('Почему «Нет»? Например: не выполнено, оборудование неисправно, продукт не соответствует'); if (!r) return;
+      var tk = (TS2N.tasks || []).filter(function (x) { return x.id === id; })[0], cl = tk && tk.checklist && tk.checklist.length ? '\nПункты:\n' + tk.checklist.map(function (x, i) { return (i + 1) + '. ' + x; }).join('\n') : '';
+      var r = prompt('Почему «Нет»? Например: не выполнено, оборудование неисправно, продукт не соответствует' + (cl ? ' — или номер невыполненного пункта' + cl : '')); if (!r) return;
+      if (tk && tk.checklist && /^\s*\d+\s*$/.test(r) && tk.checklist[Number(r) - 1]) r = 'Не выполнен пункт ' + Number(r) + ': ' + tk.checklist[Number(r) - 1];
       vDo(btn, 'ts2Confirm', [TOKEN, id, false, r, ''], function (d, x) { return x && x.queued ? 'Нет связи — отметка сохранена на устройстве' : 'Записано отклонение — ответственный получит уведомление'; }, VIEWS.tsNow.h.after(id));
     },
     measure: function (id, btn) {

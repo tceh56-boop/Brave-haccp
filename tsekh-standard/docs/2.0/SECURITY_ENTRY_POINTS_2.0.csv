@@ -976,6 +976,8 @@ ts2MigrationExecute;TS2_Reconcile.gs;интерфейс (сессия);да;org_
 ts2CateringLabels;TS2_Serving.gs;интерфейс (сессия);да;banquets;сессия → право «banquets» → тариф → допуск → блокировка → аудит
 ts2SystemDoc;TS2_SystemDocs.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
 ts4TenantIntegrityCheck;TS4_TenantIntegrity.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
+clgBuild;TS_ChecklistGen.gs;интерфейс (сессия);да;ppk_edit|haccp|haccp_approve;сессия → право «ppk_edit|haccp|haccp_approve» → тариф → допуск → блокировка → аудит
+clgTemplates;TS_ChecklistGen.gs;интерфейс (сессия);;ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation;сессия → право «ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation» → тариф
 tsContractsList;TS_Contracts.gs;интерфейс (сессия);;documents_view|documents;сессия → право «documents_view|documents» → тариф
 tsContractSave;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит
 tsContractUpload;TS_Contracts.gs;интерфейс (сессия);да;documents;сессия → право «documents» → тариф → допуск → блокировка → аудит

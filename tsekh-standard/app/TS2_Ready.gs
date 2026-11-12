@@ -160,7 +160,9 @@ function _ts2GenerateDay_(day) {
       dueAt: day + 'T' + time + ':00', responsibleRole: s[6], status: 'OPEN', confirmationMode: /MEASURE/.test(s[5]) ? 'MEASURE' : 'CONFIRM', measurementRequired: /MEASURE/.test(s[5]),
       completedAt: '', completedBy: '', factId: '', title: title, idempotencyKey: key });
   };
+  var sup = typeof _clgSupersededSchedules_ === 'function' ? (function () { try { return _clgSupersededSchedules_(); } catch (e) { return {}; } })() : {};
   TS2_SCHEDULES_.forEach(function (s) {
+    if (sup[s[0]]) return;   // заменено конкретными мероприятиями действующей ППК (этап 4.0-5)
     var times = String(s[4]).split(',');
     if (s[3] === 'WEEKLY') { if (Number(s[4].split(' ')[0]) !== dow) return; times = [s[4].split(' ')[1]]; }
     if (s[3] === 'MONTHLY') { if (Number(s[4].split(' ')[0]) !== dom) return; times = [s[4].split(' ')[1]]; }
@@ -171,6 +173,8 @@ function _ts2GenerateDay_(day) {
       (String(o.checkTimes || '').trim() ? String(o.checkTimes).split(',') : times).forEach(function (t) { push(s, String(t).trim(), s[0] === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o.objectType, o.objectId, s[1] + ': ' + o.name); });
     });
   });
+  // задачи по графику действующей ППК с чек-листом (Мастер-промт 4.0, этап 5)
+  if (typeof _clgDay_ === 'function') { try { _clgDay_(day, keys).forEach(function (r) { r.expectationId = _ts2Id_('JOURNAL_EXPECTATIONS'); rows.push(r); }); } catch (e) { try { _log_('WARN', 'задачи ППК: ' + e.message); } catch (x) {} } }
   _ts2InsertMany_('JOURNAL_EXPECTATIONS', rows);
   return rows.length;
 }
@@ -181,7 +185,7 @@ function _ts2ExpireMissed_(day) {
   var p = PropertiesService.getScriptProperties(); if (p.getProperty('TS2_MISSED_DAY') === day) return 0;
   var lim = new Date(day + 'T00:00:00'); lim.setDate(lim.getDate() - 2); var limIso = _ts2Iso_(lim), n = 0, titles = [];
   _ts2FindAll_('JOURNAL_EXPECTATIONS', 'status', 'OPEN', function (e) { return String(e.dueAt) < limIso; }).forEach(function (e) {
-    _ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', e.expectationId, { status: 'MISSED', completedAt: _ts2Iso_(), completedBy: 'система: срок истёк' }); n++; if (titles.length < 5) titles.push(e.title + ' (' + String(e.dueAt).slice(0, 10) + ')');
+    _ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', e.expectationId, { status: 'MISSED', completedAt: _ts2Iso_(), completedBy: 'система: срок истёк' }); n++; if (typeof _clgOnClosed_ === 'function') _clgOnClosed_(e, 'MISSED', '', 'система: срок истёк'); if (titles.length < 5) titles.push(e.title + ' (' + String(e.dueAt).slice(0, 10) + ')');
   });
   if (n) _ts2Exception_('TASKS_MISSED', 'Пропущено задач: ' + n + '. ' + titles.join('; ') + (n > titles.length ? ' …' : ''), 'MISSED|' + day);
   p.setProperty('TS2_MISSED_DAY', day);
@@ -309,10 +313,11 @@ function _ts2NowTasks_() {
   var snsOk = {}, nowMs = Date.now();
   try { if (typeof _tsSnsState_ === 'function' && _book_().getSheetByName('SENSOR_DEVICES')) _ts2Rows_('SENSOR_DEVICES', function (d) { return d.status === 'ACTIVE'; }).forEach(function (d) {
     var st = _tsSnsState_(d, new Date()); if (!st.neverSeen && st.silentMin !== null && st.silentMin < TS_SNS_SILENT_MIN_) snsOk[d.objectId] = true; }); } catch (x) {}
+  var clg = {}; try { if (typeof _clgItemsByRule_ === 'function') clg = _clgItemsByRule_(); } catch (x) {}
   var autoOf = function (e) { var o = objs[e.objectId]; return !!(o && o.inputMode === 'SENSOR' && snsOk[e.objectId] && e.confirmationMode === 'MEASURE' && new Date(e.dueAt).getTime() + TS_SNS_WIN_AFTER_MIN_ * 60000 > nowMs); };
   return list.map(function (e) {
     var o = objs[e.objectId] || null, kind = e.objectType === 'ROOM_HUMIDITY' ? 'ROOM_HUMIDITY' : o ? o.objectType : (String(e.eventRuleId).indexOf('EVR-') === 0 ? 'CCP' : '');
-    return { id: e.expectationId, title: e.title, due: String(e.dueAt).slice(11, 16), auto: autoOf(e), catering: e.eventRuleId === 'SERVING' && /^Кейтеринг/.test(String(e.title)) ? String(e.objectId) : '', overdue: String(e.dueAt) < _ts2Iso_(), mode: e.confirmationMode, role: e.responsibleRole,
+    return { id: e.expectationId, title: e.title, checklist: clg[e.eventRuleId] ? clg[e.eventRuleId].items : undefined, onFail: clg[e.eventRuleId] ? clg[e.eventRuleId].ca : undefined, due: String(e.dueAt).slice(11, 16), auto: autoOf(e), catering: e.eventRuleId === 'SERVING' && /^Кейтеринг/.test(String(e.title)) ? String(e.objectId) : '', overdue: String(e.dueAt) < _ts2Iso_(), mode: e.confirmationMode, role: e.responsibleRole,
       measure: e.confirmationMode === 'MEASURE' ? { kind: kind || 'OTHER', unit: (TS2_MEASURE_TYPES_[kind] || TS2_MEASURE_TYPES_.OTHER)[1], min: kind === 'ROOM_HUMIDITY' ? '' : o ? o.minValue : '', max: kind === 'ROOM_HUMIDITY' ? '' : o ? o.maxValue : '', object: o ? o.name : '' } : null };
   });
 }
@@ -326,6 +331,7 @@ function _ts2Confirm_(id, yes, reason, comment) {
     result: yes ? 'CONFIRMED_BY_OPERATOR' : 'FAIL', measurementMode: 'OPERATOR_CONFIRMATION', value: yes ? '' : String(reason) + (comment ? ': ' + comment : ''), unit: '', confidence: 1, status: 'ACTIVE',
     idempotencyKey: [_ts2Ent_(), id, 'CONFIRM'].join('|'), operationId: '', confirmedByEmployee: a.name, confirmedAt: _ts2Iso_(), ruleVersion: e.eventRuleId });
   _ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', id, { status: yes ? 'DONE' : 'FAILED', completedAt: _ts2Iso_(), completedBy: a.name, factId: r.autoRecordId });
+  if (typeof _clgOnClosed_ === 'function') _clgOnClosed_(e, yes ? 'DONE' : 'FAILED', r.autoRecordId, a.name);
   if (!yes) _ts2Exception_('TASK_NO', e.title + ' — «Нет»: ' + reason + (comment ? ' (' + comment + ')' : ''), id);
   _ts2CloseAutoPending_(e);
   return { id: id, result: yes ? 'CONFIRMED_BY_OPERATOR' : 'FAIL', record: r.autoRecordId };

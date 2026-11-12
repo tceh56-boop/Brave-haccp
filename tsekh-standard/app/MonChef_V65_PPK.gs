@@ -430,6 +430,8 @@ function v65Activate(ppkId, token) {
       _v65SetCell_('PPK', p._row, 'Status', 'ACTIVE'); _v65Approval_(ppkId, 'Ввод в действие', 'ACTIVE', (archived.length ? 'в архив: ' + archived.join(', ') : '') + (cancelled ? '; отменено задач прежней версии: ' + cancelled : ''), op);
       PropertiesService.getScriptProperties().setProperty('MC_ORG_PPK', String(ppkId));
       var sch = _v65BuildSchedule_(ppkId, null, null);
+      // этап 5: чек-листы и способ исполнения мероприятий действующей ППК (задачи — на экране «Сейчас»)
+      if (typeof _clgBuild_ === 'function') { try { _clgBuild_(); } catch (e) { _log_('WARN', 'чек-листы ППК: ' + e.message); } }
       _audit_(op, 'V65_ACTIVATE', 'ППК', ppkId, 'APPROVED', { status: 'ACTIVE', archived: archived, schedule: sch.created }); _endOp_(op);
       return _ok_({ ppkId: ppkId, status: 'ACTIVE', archived: archived, scheduleCreated: sch.created }, op.id);
     });
@@ -511,6 +513,7 @@ function v65CompleteScheduleItem(json, token) {
       if (String(s.Status) === 'DONE') return _v65Fail_(op, 'VALIDATION', 'Пункт уже выполнен');
       if (String(s.Status) === 'EVENT_RULE') return _v65Fail_(op, 'VALIDATION', 'Событийное мероприятие исполняется записью события (приёмка, производство, журнал), а не отметкой в графике');
       if (String(s.Status) === 'CANCELLED') return _v65Fail_(op, 'VALIDATION', 'Пункт отменён: относится к архивной версии ППК');
+      if (typeof _clgTaskFor_ === 'function' && _clgTaskFor_(s.PPKID, s.ControlPlanID)) return _v65Fail_(op, 'VALIDATION', 'Мероприятие исполняется на экране «Сейчас» по чек-листу — отметка в графике ставится автоматически по факту выполнения');
       var due = _v64Date_(s.DueDate); if (due && due > new Date()) return _v65Fail_(op, 'VALIDATION', 'Срок пункта ещё не наступил — выполнение не отмечается заранее');
       var w = _v65Who_(op); _v65SetCell_('SCH', s._row, 'Status', 'DONE'); _v65SetCell_('SCH', s._row, 'FactID', String(d.evidence)); _v65SetCell_('SCH', s._row, 'CompletedAt', new Date()); _v65SetCell_('SCH', s._row, 'CompletedBy', w.name);
       if (d.deviationId) _v65SetCell_('SCH', s._row, 'DeviationID', String(d.deviationId));
