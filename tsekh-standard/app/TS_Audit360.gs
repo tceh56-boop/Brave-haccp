@@ -146,6 +146,27 @@ var A360_EV_ = [
   [/^DV/, 'Журналы_Отклонения', 'Нарушение (единый реестр)', 'tsViolations', 0],
   [/^RDY-/, 'Готовность_Проверки', 'Прогон контрольного листа', 'tsAudit360', 0]
 ];
+// подписи полей и значений для карточки записи (листы TS2 и V30/V65 ведутся с английскими заголовками)
+var A360_FIELD_RU_ = { issueId: 'ID замечания', id: 'ID', organizationId: 'Предприятие', locationId: 'Площадка', enterpriseId: 'Предприятие', ttkId: 'ТТК', ttkVersion: 'Версия ТТК', code: 'Код', message: 'Сообщение', status: 'Статус',
+  issueKey: 'Ключ', createdAt: 'Создано', resolvedAt: 'Решено', updatedAt: 'Изменено', processId: 'Операция (ID)', processCode: 'Операция', sourceStepId: 'Шаг', sourceText: 'Текст карты', operationSequence: 'Порядок',
+  parentTtkId: 'Из полуфабриката', confidence: 'Уверенность', detectionMethod: 'Как определено', reviewStatus: 'Проверка', reviewNote: 'Заметка', rowKey: 'Ключ строки', riskId: 'ID связи', processName: 'Операция',
+  v30ProcessId: 'Процесс ХАССП', hazardCode: 'Код опасности', hazardCategory: 'Вид опасности', hazard: 'Опасность', v30HazardId: 'Опасность (ID)', ttkCount: 'ТТК', ttkSample: 'Примеры ТТК', significant: 'Значима',
+  controlType: 'Вид контроля', controlId: 'ККТ (ID)', controlMeasure: 'Мера', evidence: 'Доказательство', journalId: 'Журнал', statusNote: 'Пояснение', templateId: 'ID чек-листа', ppkId: 'ППК', ppkVersion: 'Версия ППК',
+  controlPlanId: 'Мероприятие', title: 'Название', items: 'Пункты', journalCode: 'Журнал', responsibleRole: 'Ответственный', frequency: 'Периодичность', dueTime: 'Время', executionMode: 'Способ исполнения',
+  coveredBy: 'Кем исполняется', evidenceType: 'Вид доказательства', correctiveAction: 'Корректирующее действие', expectationId: 'ID задачи', eventRuleId: 'Правило', objectType: 'Вид объекта', objectId: 'Объект',
+  productionId: 'Выпуск', batchId: 'Партия', dueAt: 'Срок', confirmationMode: 'Как подтверждается', measurementRequired: 'Нужен замер', completedAt: 'Выполнено', completedBy: 'Кто выполнил', factId: 'Факт',
+  idempotencyKey: 'Ключ', autoRecordId: 'ID записи', eventType: 'Событие', sourceType: 'Источник', sourceId: 'ID источника', recordType: 'Вид записи', kktId: 'ККТ', result: 'Результат', measurementMode: 'Способ замера',
+  value: 'Значение', unit: 'Ед.', confirmedByEmployee: 'Сотрудник', confirmedAt: 'Подтверждено', ruleVersion: 'Правило',
+  HazardID: 'ID опасности', ProcessID: 'Процесс', Category: 'Вид', Hazard: 'Опасность', Cause: 'Причина', PreventiveMeasure: 'Предупреждающая мера', Severity: 'Тяжесть', Likelihood: 'Вероятность', Risk: 'Риск',
+  Significant: 'Значима', ExistingControl: 'Мера управления', Evidence: 'Доказательство', Status: 'Статус', CreatedAt: 'Создано', CreatedBy: 'Кем', Code: 'Код', Name: 'Название', Sequence: 'Порядок', Input: 'Вход', Output: 'Выход',
+  Responsible: 'Ответственный', Version: 'Версия', ApprovedAt: 'Утверждено', ApprovedBy: 'Утвердил', Notes: 'Примечание', ControlID: 'ID контроля', Type: 'Тип', ControlPoint: 'Точка контроля', CriticalLimit: 'Критический предел',
+  LimitUnit: 'Ед.', MonitoringMethod: 'Мониторинг', Frequency: 'Периодичность', CorrectiveAction: 'Корректирующее действие', VerificationMethod: 'Верификация', RecordSource: 'Запись', ScheduleID: 'ID пункта графика',
+  PPKID: 'ППК', ControlPlanID: 'Мероприятие', Period: 'Период', DueDate: 'Срок', AssignedTo: 'Исполнитель', FactID: 'Факт', DeviationID: 'Нарушение', CompletedAt: 'Выполнено', CompletedBy: 'Кто выполнил',
+  DateFrom: 'Действует с', DateTo: 'Действует по' };
+var A360_VALUE_RU_ = { PROPOSED: 'предложено системой', ACTIVE: 'действует', DRAFT: 'черновик', ARCHIVED: 'в архиве', OPEN: 'открыто', RESOLVED: 'устранено', VERIFY_REQUIRED: 'ожидает проверки', DONE: 'выполнено',
+  MISSED: 'пропущено', FAILED: 'не выполнено («Нет»)', PLANNED: 'запланировано', DEVIATION: 'с отклонением', DETECTED: 'определено', REVIEW_REQUIRED: 'на проверку', CONFIRMED: 'подтверждено', REJECTED: 'отклонено',
+  SUPERSEDED: 'устарело', NEEDS_DECISION: 'ждёт решения', NO_CONTROL: 'нет меры', CONTROLLED: 'под контролем', NOT_SIGNIFICANT: 'не значима', OBSOLETE: 'пересмотреть', TASK: 'задача на экране «Сейчас»',
+  EVENT: 'по событию', COVERED: 'уже исполняется', DATE: 'контроль сроков', NO_SCHEDULE: 'нет периодичности', CONFIRM: 'Да / Нет', MEASURE: 'замер', true: 'да', false: 'нет' };
 function _a360Evidence_(id) {
   id = String(id || '').trim(); if (!id) throw new Error('VALIDATION: нет ID записи');
   var fmt = function (v) { return v instanceof Date ? Utilities.formatDate(v, _mcTz_(), 'dd.MM.yyyy HH:mm') : v; };
@@ -155,6 +176,7 @@ function _a360Evidence_(id) {
     if (typeof e[4] === 'string') { var r = null; try { r = _ts2Find_(e[1], e[4], id); } catch (x) {} if (r) { fields = []; Object.keys(r).forEach(function (k) { if (k !== '_row' && r[k] !== '' && r[k] !== null && r[k] !== undefined) fields.push([k, fmt(r[k])]); }); } }
     else { var sh = _book_().getSheetByName(e[1]); if (sh && sh.getLastRow() > 1) { var v = sh.getDataRange().getValues(); for (var j = 1; j < v.length; j++) if (String(v[j][0]) === id) { fields = []; v[0].forEach(function (h, k) { if (v[j][k] !== '' && v[j][k] !== null) fields.push([String(h), fmt(v[j][k])]); }); break; } } }
     if (!fields) continue;
+    fields = fields.map(function (f) { var v = f[1]; return [A360_FIELD_RU_[f[0]] || f[0], A360_VALUE_RU_.hasOwnProperty(String(v)) ? A360_VALUE_RU_[String(v)] : v]; });
     var out = { id: id, kind: e[2], sheet: e[1], module: e[3], fields: fields.slice(0, 40), related: [] };
     if (e[1] === 'Журналы_Отклонения') { try { _corrSheet_().getDataRange().getValues().slice(1).forEach(function (c) { if (String(c[1]) === id) out.related.push([fmt(c[8]), String(c[2]), String(c[7] || ''), String(c[5] || '')]); }); } catch (x) {} }
     return out;

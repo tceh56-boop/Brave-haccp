@@ -95,6 +95,7 @@ let task;
 t('V43 исполнение: концентрация — числом (галочка не заменяет); вне режима — отклонение; исполнитель из сессии; повтор — идемпотентно', () => {
   table(S43.TASK, H43.TASK, []); const d = new Date(); d.setHours(0, 0, 0, 0);
   C.v43GenerateTasks(d.toISOString(), ''); const tasks = C._v43Rows_(S43.TASK); assert(tasks.length >= 1 && tasks.every(x => x.ItemID === 'I1'), 'задачи только по утверждённой связи');
+  assert.strictEqual(C.v43GenerateTasks(d.toISOString(), '').created, 0, 'повторная генерация не дублирует задачи (этап 9: индекс вместо перечитывания листа)'); assert.strictEqual(C._v43Rows_(S43.TASK).length, tasks.length);
   task = tasks[0]; session = { user_id: 'E1', name: 'Повар Иванова', fullName: 'Повар Иванова', role: 'Повар' };
   THROWS(() => C.v43CompleteChecklistItem({ taskId: task.TaskID, status: 'DONE', employeeId: 'ПОДДЕЛКА' }, ''), /введите измеренное значение/);
   const r = C.v43CompleteChecklistItem({ taskId: task.TaskID, status: 'DONE', measuredConcentration: '0,3', employeeId: 'ПОДДЕЛКА' }, '');

@@ -122,9 +122,11 @@ function _vioWho_(s) { return (s && (s.fullName || s.name || s.user_id)) || ''; 
 function vioList(token) {
   try {
     _requireAuth_(token);
-    var v = _devSheet_().getDataRange().getValues(), out = [];
+    var v = _devSheet_().getDataRange().getValues(), out = [], corr = {};
+    // кто устранил — одним чтением листа действий (а не по чтению на каждое нарушение)
+    _corrSheet_().getDataRange().getValues().slice(1).forEach(function (c) { if (/выполнен/i.test(String(c[5]))) corr[String(c[1])] = String(c[7] || ''); });
     for (var i = v.length - 1; i >= 1 && out.length < 300; i--) { var r = v[i]; if (!r[0] || VIO_CLOSED_RE_.test(String(r[7]))) continue;
-      out.push({ id: r[0], source: String(r[1] || '').split(':')[0] || 'журналы', journal: r[2], object: r[3], text: r[4], value: r[5], critical: r[6] === true, status: r[7], foundBy: r[10], at: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || ''), corrector: String(r[7]) === VIO_ST_.VERIFY ? _vioCorrector_(r[0]) : '' }); }
+      out.push({ id: r[0], source: String(r[1] || '').split(':')[0] || 'журналы', journal: r[2], object: r[3], text: r[4], value: r[5], critical: r[6] === true, status: r[7], foundBy: r[10], at: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || ''), corrector: String(r[7]) === VIO_ST_.VERIFY ? (corr[String(r[0])] || '') : '' }); }
     return _ok_({ items: out, mode: _vioMode_() });
   } catch (e) { return _failFrom_(e); }
 }
