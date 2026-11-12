@@ -236,4 +236,11 @@ describe('ЦЕХ AI-агент на YandexGPT (AI_PROVIDER=yandex)', () => {
     expect((await askAgent(cook.id, orgId, { question: 'Что сегодня не в порядке?' })).status).toBe('unavailable');
     expect(f).not.toHaveBeenCalled();
   });
+
+  it('ключ Anthropic без AI_PROVIDER=anthropic не включает зарубежного провайдера (152-ФЗ)', async () => {
+    vi.stubEnv('AI_PROVIDER', ''); vi.stubEnv('ANTHROPIC_API_KEY', 'sk-тест');
+    const f = vi.fn(); vi.stubGlobal('fetch', f);
+    expect((await askAgent(cook.id, orgId, { question: 'Что сегодня не в порядке?' })).status).toBe('unavailable');
+    expect(f).not.toHaveBeenCalled();
+  });
 });

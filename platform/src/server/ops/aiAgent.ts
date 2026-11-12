@@ -152,6 +152,8 @@ function provider(): AgentProvider | null {
   if (process.env.AI_PROVIDER === 'off') return null;
   // Как у разового помощника: YandexGPT — только явно (AI_PROVIDER=yandex) и при заданных ключах Yandex Cloud.
   if (process.env.AI_PROVIDER === 'yandex') return yandexStatus().configured ? new YandexAgent() : null;
+  // Зарубежный провайдер — только по явному AI_PROVIDER=anthropic: один ключ без этой настройки не отправляет данные за рубеж (152-ФЗ)
+  if (process.env.AI_PROVIDER !== 'anthropic') return null;
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return null;
   return new AnthropicAgent();
 }

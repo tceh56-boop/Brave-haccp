@@ -1,7 +1,7 @@
 /**
  * Проверка ЦЕХ AI на настоящей модели: демо-организация + типовые вопросы от имени разных ролей.
  * Запуск (нужны база и ключ модели, не на рабочем сервере — создаёт демо-организацию):
- *   Anthropic: ANTHROPIC_API_KEY=... DATABASE_URL=... npx tsx tools/ai/try-agent.ts ["свой вопрос"]
+ *   Anthropic: AI_PROVIDER=anthropic ANTHROPIC_API_KEY=... DATABASE_URL=... npx tsx tools/ai/try-agent.ts ["свой вопрос"]
  *   YandexGPT: AI_PROVIDER=yandex YANDEX_API_KEY=... YANDEX_FOLDER_ID=... DATABASE_URL=... npx tsx tools/ai/try-agent.ts
  * Печатает статус, какие данные AI запросил, ответ, источники и что отклонила проверка.
  */
