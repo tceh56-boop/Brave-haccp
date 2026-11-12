@@ -43,7 +43,8 @@ const fakeInit = () => {
       { id: 'EXP-2', title: 'Открытие смены', due: '09:00', overdue: false, mode: 'CONFIRM' },
       { id: 'EXP-5', title: 'Морозильник: температура: Морозильник рыбный №2', due: '18:00', overdue: false, auto: true, mode: 'MEASURE', measure: { kind: 'FREEZER', unit: '°C', min: -25, max: -18, object: 'Морозильник рыбный №2' } },
       { id: 'EXP-3', title: 'Тепловая обработка: ККТ при выпуске — замер не получен автоматически: укажите значение — Котлета куриная', due: '12:40', overdue: false, mode: 'MEASURE', measure: { kind: 'CCP', unit: '°C', min: '', max: '', object: '' } },
-      { id: 'EXP-4', title: 'Санитарная обработка рабочих мест — Горячий цех', due: '15:00', overdue: false, mode: 'CONFIRM' }] } }),
+      { id: 'EXP-4', title: 'Санитарная обработка рабочих мест — Горячий цех', due: '15:00', overdue: false, mode: 'CONFIRM' },
+      { id: 'EXP-6', title: 'ППК: Смывы с рук: Лабораторное исследование: БГКП', due: '10:00', overdue: false, mode: 'CONFIRM', checklist: ['Выполнено: Лабораторное исследование: БГКП — Смывы с рук', 'Способ: ГОСТ 31747', 'Протокол лаборатории получен и приложен'], onFail: 'при несоответствии — блокировка партии, повторное исследование, отклонение и корректирующее действие' }] } }),
     ts2Exceptions: () => JSON.stringify({ success: true, data: { exceptions: [{ autoRecordId: 'ARC-1', createdAt: '2026-11-11T08:12:00Z', value: 'Морозильник №2: -12 °C (норма -25…-18) — дверь была открыта', confirmedByEmployee: 'Поварова Тест' }], overdue: [], autoToday: 14 } }),
     ts2Wizard: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', enterpriseType: 'RESTAURANT', types: { RESTAURANT: 'Ресторан', CANTEEN: 'Столовая', CAFE: 'Кафе', CONFECTIONERY: 'Кондитерское производство', CATERING: 'Кейтеринг' },
       org: { name: 'ООО «Тест»', inn: '7700000000', address: 'г. Москва, ул. Тестовая, 1', responsible: 'Хассапова Тест', complete: true }, timezone: 'Europe/Moscow', employees: 12, dishes: 148,
@@ -72,6 +73,45 @@ const fakeInit = () => {
       { issueId: 'I2', severity: 'MAJOR', entityType: 'DISH', message: 'Срок реализации не задан или указан без основания', suggestedAction: 'Укажите срок и основание', entityId: 'D-12', status: 'OPEN' },
       { issueId: 'I3', severity: 'CRITICAL', entityType: 'EMPLOYEE', message: 'У сотрудника нет действующего медицинского допуска', suggestedAction: 'Внесите медкнижку', entityId: 'Поварова Тест', status: 'OPEN' }],
       proposals: [{ changeProposalId: 'CHG-1', operationType: 'UPDATE', entityId: 'D-7', reason: 'Выход = сумма нетто состава (420 г)', status: 'PROPOSED' }, { changeProposalId: 'CHG-2', operationType: 'ARCHIVE', entityId: 'D-3', reason: 'Дубликат D-1', status: 'APPLIED', rollbackAvailable: true }] } }),
+    // ---- Мастер-промт 4.0: цепочка контроля
+    ttkProcOverview: () => JSON.stringify({ success: true, data: { ttk: { ACTIVE: 148, DRAFT: 3, ARCHIVED: 12 }, analyzed: 148, dictVersion: '2026-11-11.1', dictionary: [], issuesTotal: 9,
+      model: [{ processCode: 'FRY', name: 'Жарка', ttkCount: 41, reviewRequired: 1 }, { processCode: 'BOIL', name: 'Варка', ttkCount: 37, reviewRequired: 0 }, { processCode: 'COOL', name: 'Охлаждение', ttkCount: 22, reviewRequired: 0 },
+        { processCode: 'BAKE', name: 'Запекание', ttkCount: 19, reviewRequired: 1 }, { processCode: 'SOUSVIDE', name: 'Су-вид', ttkCount: 4, reviewRequired: 0 }, { processCode: 'VACUUM', name: 'Вакуумирование', ttkCount: 6, reviewRequired: 0 }],
+      review: [{ id: 'TPM-000412', ttkId: 'ТТК-0087', process: 'Жарка', text: 'Овощи обжарить или запечь до готовности 10 мин.', parent: '', confidence: 0.6, method: 'DICTIONARY', note: '' },
+        { id: 'TPM-000415', ttkId: 'ТТК-0087', process: 'Запекание', text: 'Овощи обжарить или запечь до готовности 10 мин.', parent: '', confidence: 0.6, method: 'DICTIONARY', note: '' }],
+      issues: [{ ttkId: 'ТТК-0102', code: 'NO_COOLING_STAGE', message: 'После тепловой обработки продукт хранится, но этап охлаждения не описан' }, { ttkId: 'ТТК-0102', code: 'NO_PARAMS', message: 'Операция «Варка»: не указаны параметры (температура или время)' },
+        { ttkId: 'ТТК-0131', code: 'SEMI_LINK_MISSING', message: 'Ингредиент «Бульон куриный п/ф» — полуфабрикат, но его ТТК в реестре не найдена' }] } }),
+    ttkProcAnalyze: () => JSON.stringify({ success: true, data: { analyzed: 148, added: ['x'], removed: [], openIssues: 9 } }),
+    haccpLinkMap: () => JSON.stringify({ success: true, data: { counts: { NEEDS_DECISION: 2, CONTROLLED: 9, NOT_SIGNIFICANT: 4, NO_CONTROL: 1 }, gaps: ['значимая опасность «Перекрёстное загрязнение сырья» (Мойка): нет ККТ/ОППУ и доказательства'],
+      rows: [{ processName: 'Жарка', ttkCount: 41, hazard: 'Выживание патогенов при недостаточной прожарке', controlMeasure: 'ОППУ: температура в толще термощупом', journalId: 'J-KKT-THERMAL', status: 'CONTROLLED', controlType: 'ОППУ/ППУ', v30HazardId: 'HZ-PROC-TTK-FRY-MH-B-THERMAL' },
+        { processName: 'Охлаждение', ttkCount: 22, hazard: 'Прорастание спор и рост микрофлоры при медленном охлаждении', controlMeasure: 'Шоковое охлаждение, контроль времени', journalId: 'J-COOLING', status: 'CONTROLLED', controlType: 'ККТ', v30HazardId: 'HZ-P05-MH-B-COOLING' },
+        { processName: 'Нарезка', ttkCount: 63, hazard: 'Металлические и иные посторонние примеси', controlMeasure: 'исправность инвентаря и оборудования', journalId: '', status: 'NEEDS_DECISION', controlType: '', v30HazardId: 'HZ-PROC-TTK-CUT-MH-P-METAL' },
+        { processName: 'Мойка', ttkCount: 30, hazard: 'Перекрёстное загрязнение сырья', controlMeasure: '', journalId: '', status: 'NO_CONTROL', controlType: '', v30HazardId: 'HZ-PROC-TTK-WASH-MH-B-CROSS' }] } }),
+    haccpLinkSync: () => JSON.stringify({ success: true, data: { processesAdded: 0, hazardsProposed: 0, needDecision: 2 } }),
+    clgTemplates: () => JSON.stringify({ success: true, data: { ppk: { id: 'PPK-1', name: 'Программа производственного контроля', version: 3 }, templates: [
+      { id: 'CLT-000003', title: 'Вентиляция: Чистка фильтров', items: ['Выполнено: Чистка фильтров — Вентиляция'], mode: 'NO_SCHEDULE', coveredBy: '', frequency: '', time: '10:00', role: 'Директор' },
+      { id: 'CLT-000001', title: 'Смывы с рук: Лабораторное исследование: БГКП', items: ['Выполнено: Лабораторное исследование: БГКП — Смывы с рук', 'Способ: ГОСТ 31747', 'Протокол лаборатории получен и приложен'], mode: 'TASK', coveredBy: '', frequency: 'раз в 30 дней', time: '10:00', role: 'Ответственный за ХАССП' },
+      { id: 'CLT-000002', title: 'Программа производственного контроля: Верификация выполнения ППК', items: ['Выполнено: Верификация выполнения ППК', 'Способ: анализ графика, отклонений, протоколов'], mode: 'TASK', coveredBy: '', frequency: 'ежемесячно', time: '10:00', role: 'Ответственный за ХАССП' },
+      { id: 'CLT-000004', title: 'Жарка (ТТК: 41): Мера управления: ОППУ: температура в толще термощупом', items: ['Выполнено: Мера управления', 'Запись в журнале J-KKT-THERMAL'], mode: 'EVENT', coveredBy: 'Выпуск продукции (бракераж, ККТ по событию)', frequency: 'при каждой выработке', time: '10:00', role: 'Повар' },
+      { id: 'CLT-000005', title: 'Персонал: Ежедневный осмотр на допуск к работе', items: ['Выполнено: Ежедневный осмотр'], mode: 'COVERED', coveredBy: 'Контроль медицинских допусков смены (экран «Сейчас»)', frequency: 'ежедневно', time: '10:00', role: 'Шеф-повар' },
+      { id: 'CLT-000006', title: 'Персонал: Медицинские осмотры и гигиеническая аттестация', items: ['Выполнено: Медицинские осмотры'], mode: 'DATE', coveredBy: 'Контроль медицинских допусков (правило R-006)', frequency: 'по сроку медицинской книжки', time: '10:00', role: 'Директор' }] } }),
+    clgBuild: () => JSON.stringify({ success: true, data: { ppkId: 'PPK-1', TASK: 2, EVENT: 1, COVERED: 1, DATE: 1, NO_SCHEDULE: 1 } }),
+    vioList: () => JSON.stringify({ success: true, data: { mode: 'SECOND_PERSON', items: [
+      { id: 'DV-1731', source: 'TS2', journal: 'J-STORAGE-T', object: 'Морозильник рыбный №2', text: 'Морозильник №2: -12 °C (норма -25…-18) — дверь была открыта', status: 'ожидает проверки', critical: false, foundBy: 'Поварова Тест', at: '2026-11-12T08:12:00', corrector: 'Поварова Тест' },
+      { id: 'DV-1729', source: 'V43', journal: 'Санитария', object: 'Горячий цех', text: 'Концентрация 0,3 % вне режима 0,5 %', status: 'открыто повторно', critical: false, foundBy: 'Мойщикова Тест', at: '2026-11-11T16:40:00', corrector: '' },
+      { id: 'DV-1725', source: 'TS2', journal: 'LAB:L1', object: 'ППК: Смывы с рук: БГКП', text: 'Не выполнен пункт 3: Протокол лаборатории получен и приложен', status: 'открыто', critical: false, foundBy: 'Хассапова Тест', at: '2026-11-11T10:05:00', corrector: '' },
+      { id: 'DV-1720', source: 'журналы', journal: 'J03', object: 'Котлета куриная', text: 'ККТ: 68 °C в толще (норма не ниже 75 °C)', status: 'открыто', critical: true, foundBy: 'Поварова Тест', at: '2026-11-11T12:40:00', corrector: '' }] } }),
+    a360Run: () => JSON.stringify({ success: true, data: { overall: 'READY_WITH_WARNINGS', score: 82, runId: 'RDY-1762930000000', html: '<h2>Акт внутреннего санитарного аудита 360°</h2>', note: 'Готовность по внутреннему контрольному листу. Не является заключением надзорного органа.',
+      counts: { PASS: 22, FAIL: 2, REVIEW: 3, MISSING_EVIDENCE: 0, NOT_APPLICABLE: 1 }, items: [
+        { id: 'R22', area: 'HACCP', requirement: 'Для каждой операции действующих ТТК проведён анализ опасностей; значимые опасности под ККТ или мерой с доказательством', status: 'FAIL', blocking: true, detail: 'операций: 18, без анализа: 0, без решения: 2, значимых без меры: 1', evidence: ['HZ-PROC-TTK-WASH-MH-B-CROSS', 'HZ-PROC-TTK-CUT-MH-P-METAL'], correctiveAction: 'Процессы ТТК → «Опасности ХАССП»: свяжите с ТТК и примите решения', go: { module: 'tsTtkProc' } },
+        { id: 'R25', area: 'ППК', requirement: 'График ППК за 30 дней выполнен: по каждому пункту есть факт; пропусков нет', status: 'FAIL', blocking: false, detail: 'пунктов со сроком: 46, выполнено: 44, не выполнено: 1, с отклонением: 1 (96%)', evidence: ['SCH-7F3A21C0'], correctiveAction: 'Экран «Сейчас»: задачи ППК; пропуски разберите как нарушения', go: { module: 'tsNow' } },
+        { id: 'R27', area: 'Нарушения', requirement: 'Нарушения устраняются в течение 3 суток, устранение подтверждено другим сотрудником', status: 'REVIEW', blocking: false, detail: 'открыто: 4, дольше 3 суток: 0, открыто повторно: 0, ждут проверки: 1', evidence: ['DV-1731'], correctiveAction: 'Экран «Сейчас»: отклонения и «Ожидают проверки»', go: { module: 'tsNow' } },
+        { id: 'R21', area: 'ТТК', requirement: 'Действующие ТТК проанализированы: операции определены, режимы и сроки указаны в картах', status: 'REVIEW', blocking: false, detail: 'ТТК действующих: 148, не проанализировано: 0, «требуется заполнение ТТК»: 9, операций на проверку: 2', evidence: ['TPI-000031', 'TPI-000032'], correctiveAction: 'Процессы ТТК → «Проанализировать все ТТК», дополните карты по замечаниям', go: { module: 'tsTtkProc' } },
+        { id: 'R23', area: 'ППК', requirement: 'Действующая ППК полна: зоны, опасности, ККТ, лаборатория, ответственные, документы, связь с ТТК, разделы', status: 'PASS', blocking: true, detail: 'все проверки пройдены', evidence: ['PPK-1'], correctiveAction: '' },
+        { id: 'R05', area: 'Температуры', requirement: 'Температура холодильного оборудования замеряется ежедневно; отклонения отработаны', status: 'PASS', blocking: true, detail: 'последний замер сегодня', evidence: ['TM-20261112-01'], correctiveAction: '' }] } }),
+    a360Evidence: (tok, id) => JSON.stringify({ success: true, data: { id, kind: 'Опасность (анализ опасностей ХАССП)', sheet: 'HACCP_Опасности_V30', module: 'tsTtkProc', related: [],
+      fields: [['ID опасности', id], ['Процесс', 'PROC-TTK-WASH'], ['Вид', 'B'], ['Опасность', 'Перекрёстное загрязнение сырья'], ['Причина', 'Операция «Мойка» в действующих ТТК'], ['Предупреждающая мера', 'обработка сырья в отдельной зоне'], ['Значима', 'да'], ['Статус', 'действует'], ['Кем', 'ЦЕХ Стандарт (предложение) (решение: Хассапова Тест, 2026-11-11)']] } }),
+    ppkLegacyState: () => JSON.stringify({ success: true, data: { v35: { documents: 1, processes: 6, hazards: 14, controls: 5 }, v37: { documents: 2, processes: 31, controls: 3 }, importedToV30: 0 } }),
   };
   function mk() { let ok = () => {}, fl = () => {}; const o = new Proxy({}, { get(t, k) {
     if (k === 'withSuccessHandler') return f => { ok = f; return o; }; if (k === 'withFailureHandler') return f => { fl = f; return o; }; if (k === 'withUserObject') return () => o;
@@ -114,6 +154,7 @@ const MARK = (boxes) => {
   // главное окно
   await p.evaluate(() => { localStorage.setItem('mc_token', 'x'); TOKEN = 'x'; start(null); });
   await p.waitForTimeout(600);
+  await p.evaluate(() => { if (ACC && ACC.modules) ['ppk', 'ppkbuilder', 'ttkppk', 'compliance'].forEach(m => { ACC.modules[m] = true; }); });   // как у директора: полоса цепочки без приглушённых шагов
   const view = async (id) => { await p.evaluate(() => { try { closeMdl(); } catch (e) {} }); await p.click(`button[data-ts="${id}"]`); await p.waitForTimeout(500); };
   await view('tsPlan');
   await shot('plan', ['#tsPlanBadge', '.kpis', '.pwdays', '#mvf_key', 'button[data-mv="activate"]'], { x: 0, y: 0, width: 1400, height: 900 });
@@ -161,6 +202,31 @@ const MARK = (boxes) => {
   await p.click('button[data-mv="preview"]'); await p.waitForTimeout(500);
   await shot('gen_preview', ['.kpis', 'button[data-mv="resolve"]', 'button[data-mv="apply"]'], null);
   }
+  if (lvl >= 2) {   // Мастер-промт 4.0: цепочка ТТК → ХАССП → ППК → чек-листы (функция ППК — с Basic Pro)
+  await view('tsTtkProc');
+  await shot('ttkproc', ['nav.tschain', '.kpis', 'button[data-mv="run"]', 'button[data-mv="tab"][data-a="model"]'], { x: 0, y: 0, width: 1400, height: 900 });
+  await p.click('button[data-mv="tab"][data-a="review"]'); await p.waitForTimeout(300);
+  await shot('ttkproc_review', ['button[data-mv="ok"][data-a="TPM-000412"]', 'button[data-mv="no"][data-a="TPM-000412"]', 'button[data-mv="ai"][data-a="TPM-000412"]'], { x: 230, y: 0, width: 1170, height: 900 });
+  await p.click('button[data-mv="tab"][data-a="issues"]'); await p.waitForTimeout(300);
+  await shot('ttkproc_issues', ['.mvcard:last-of-type'], { x: 230, y: 0, width: 1170, height: 900 });
+  await p.click('button[data-mv="tab"][data-a="haccp"]'); await p.waitForTimeout(500);
+  await shot('ttkproc_haccp', ['.kpis', 'button[data-mv="hzSync"]', 'button[data-mv="hzYes"][data-a="HZ-PROC-TTK-CUT-MH-P-METAL"]', 'button[data-mv="hzNo"][data-a="HZ-PROC-TTK-CUT-MH-P-METAL"]'], null);
+  await view('tsChecklists');
+  await shot('checklists', ['.kpis', 'button[data-mv="build"]'], null);
+  await view('tsNow');
+  await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(200);
+  await shot('now_checklist', ['button[data-mv="yes"][data-a="EXP-6"]', 'button[data-mv="no"][data-a="EXP-6"]', 'button[data-mv="vok"]', 'button[data-mv="vno"]'], null);
+  await p.evaluate(() => { if (ACC && ACC.modules) ACC.modules.ppkbuilder = true; openView('ppkbuilder'); }); await p.waitForTimeout(500);
+  await shot('ppk_legacy', ['.ttnote', 'button[data-mv="imp"]'], { x: 230, y: 0, width: 1170, height: 700 });
+  }
+  // нарушения и аудит 360° — во всех тарифах
+  await view('tsViolations');
+  await shot('violations', ['.kpis', '.tabs', 'button[data-mv="fix"][data-a="DV-1720"]', 'button[data-mv="vok"][data-a="DV-1731"]', 'button[data-mv="vno"][data-a="DV-1731"]'], null);
+  await view('tsAudit360');
+  await shot('audit360', ['.kpis', 'button[data-mv="print"]', '.tabs', 'button[data-mv="go"]'], null);
+  await p.click('a:has-text("HZ-PROC-TTK-WASH-MH-B-CROSS")'); await p.waitForTimeout(400);
+  await shot('audit_evidence', ['#mdlBox table', '#mdlBox .btn.pri'], { x: 200, y: 0, width: 1200, height: 900 });
+  await p.evaluate(() => closeMdl());
   await view('tsData');
   await p.waitForTimeout(400);
   await shot('data_recon', ['.kpis', 'button[data-mv="recon"]', 'button[data-mv="pok"]', 'button[data-mv="prb"]'], null);
