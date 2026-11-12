@@ -60,17 +60,18 @@ function run(reqs, timeoutMs) {
 }
 
 function makeUrlFetch(tenant) {
+  const local = (req) => /^https:\/\/(www|script)\.googleapis\.com\//.test(req.url);
   const one = (req) => {
-    if (tenant.quota && !tenant.quota('urlfetch')) throw new Error('Превышен суточный лимит внешних запросов');
-    const res = run([req], 120000)[0];
+    const res = local(req) ? require('./googleapi').handle(req.url, req, tenant, api) : run([req], 120000)[0];
     if (res.error) throw new Error(`Адрес недоступен: ${req.url} (${res.error})`);
     if (res.status >= 400 && !req.mute) throw new Error(`Запрос к ${req.url} вернул код ${res.status}. Ответ сервера: ${Buffer.from(res.body || '', 'base64').toString('utf8').slice(0, 500)}`);
     return new HTTPResponse(res);
   };
-  return {
+  const api = {
     fetch: (url, params) => one(buildRequest(url, params)),
     fetchAll: (list) => {
       const reqs = list.map((x) => (typeof x === 'string' ? buildRequest(x) : buildRequest(x.url, x)));
+      if (reqs.some(local)) return reqs.map((r) => one(r));
       return run(reqs, 180000).map((res, i) => {
         if (res.error) throw new Error(`Адрес недоступен: ${reqs[i].url} (${res.error})`);
         if (res.status >= 400 && !reqs[i].mute) throw new Error(`Запрос к ${reqs[i].url} вернул код ${res.status}`);
@@ -79,6 +80,7 @@ function makeUrlFetch(tenant) {
     },
     getRequest: (url, params) => { const r = buildRequest(url, params); return { url: r.url, method: r.method.toLowerCase(), headers: r.headers, payload: r.body ? Buffer.from(r.body, 'base64').toString('utf8') : '' }; },
   };
+  return api;
 }
 
 module.exports = { makeUrlFetch, buildRequest };

@@ -78,6 +78,7 @@ class Tenant {
   mailName() { return this.cfg.mailName || 'ЦЕХ Стандарт'; }
   mainBookId() { return this.store.prop('TS_TENANT_SHEET_ID') || this.store.prop('SHEET_ID') || null; }
   spreadsheetApp() { return this._ss; }
+  documentApp() { return this._docs; }
 
   tenantConfig() {
     if (this.cfg.kind === 'admin') return null;
@@ -101,6 +102,7 @@ class Tenant {
     let resolve = null;
     const lookup = (n) => (resolve ? resolve(n) : undefined);
     const docs = S.makeDocumentApp(this, drive);
+    this._docs = docs;
     const services = {
       SpreadsheetApp: ss, DriveApp: drive, PropertiesService: S.makeProperties(store, this), CacheService: S.makeCache(store), LockService: lock.service,
       Session: S.makeSession(this), MailApp: S.makeMail(store, this), GmailApp: unsupported('GmailApp'), ScriptApp: S.makeScriptApp(store, this),
@@ -113,7 +115,13 @@ class Tenant {
     process.env.TZ = this.timeZone();
     const started = Date.now();
     try {
-      resolve = project.factory(...SERVICES.map((k) => services[k]));
+      // `this` на верхнем уровне проекта — глобальный объект Apps Script (MC_GLOBAL_ = this; MC_GLOBAL_[имя]): отдаём функции проекта
+      const globalThisProxy = new Proxy({}, {
+        get: (o, k) => (typeof k === 'string' ? (k in o ? o[k] : lookup(k)) : undefined),
+        has: (o, k) => typeof k === 'string' && (k in o || lookup(k) !== undefined),
+        set: (o, k, v) => { o[k] = v; return true; },
+      });
+      resolve = project.factory.apply(globalThisProxy, SERVICES.map((k) => services[k]));
       const f = typeof fn === 'function' ? fn(resolve) : resolve(String(fn));
       if (typeof f !== 'function') throw new Error(`Функция не найдена: ${fn}`);
       return f(...args);

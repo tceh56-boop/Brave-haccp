@@ -61,7 +61,12 @@ function makeDrive(tenant) {
     getUrl() { return url(this._id, false); }
     getDownloadUrl() { return url(this._id, false) + '?download=1'; }
     getMimeType() { return this._m().mime; }
-    getBlob() { const m = this._m(); return new Blob(m.mime === MIME_SHEET ? tenant.spreadsheetApp().openById(this._id).getBlob()._buffer() : store.readBlob(this._id), m.mime, m.name); }
+    getBlob() {
+      const m = this._m();
+      if (m.mime === MIME_SHEET) return tenant.spreadsheetApp().openById(this._id).getBlob();
+      if (m.mime === 'application/vnd.google-apps.document') return tenant.documentApp().openById(this._id).getBlob();
+      return new Blob(store.readBlob(this._id), m.mime, m.name);
+    }
     getAs(type) { return this.getBlob().getAs(type); }
     setContent(s) { store.writeBlob(this._id, Buffer.from(String(s), 'utf8')); return this; }
     getThumbnail() { const m = this._m(); return /^image\//.test(m.mime) ? new Blob(store.readBlob(this._id), m.mime, m.name) : null; }
