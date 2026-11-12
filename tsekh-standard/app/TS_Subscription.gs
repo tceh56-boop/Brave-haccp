@@ -315,6 +315,9 @@ var TS_GATE_ = [
   { n: 'vioCorrect', need: 'haccp|prod_manage|sanitation|journals', mut: true },
   { n: 'vioVerify', need: 'haccp|haccp_approve|prod_manage|sanitation', mut: true },
   { n: 'vioSetVerifyMode', need: 'org_edit', mut: true },
+  // Мастер-промт 4.0, этап 7 — санитарный аудит 360° (контрольный лист готовности R01–R28)
+  { n: 'a360Run', need: 'audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit' },
+  { n: 'a360MigrateViolations', need: 'haccp_approve', mut: true },
   { n: 'v43GetDeviations', need: 'sanitation|checklists' },
   { n: 'tsBackgroundEnable', need: 'org_edit', mut: true },
   { n: 'tsLsNormsSync', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },

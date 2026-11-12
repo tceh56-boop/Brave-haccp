@@ -40,7 +40,7 @@ function _vioCorrector_(devId) {
 }
 /** Статус источника: TS2 (исключение экрана «Сейчас»), V43 (санитария). */
 function _vioSyncSource_(ref, state, note) {
-  var m = /^(TS2|V43):(.+)$/.exec(String(ref || '')); if (!m) return;
+  var m = /^(TS2|V43|V42|V44):(.+)$/.exec(String(ref || '')); if (!m) return;
   try {
     if (m[1] === 'TS2' && typeof _ts2Update_ === 'function') _ts2Update_('AUTO_RECORDS', 'autoRecordId', m[2], { status: { VERIFY: 'VERIFY_REQUIRED', CLOSED: 'RESOLVED', REOPENED: 'OPEN' }[state] || 'OPEN' });
     if (m[1] === 'V43' && typeof _v43SetRow_ === 'function') {
@@ -48,6 +48,16 @@ function _vioSyncSource_(ref, state, note) {
       var patch = { Status: { VERIFY: 'VERIFY_REQUIRED', CLOSED: 'CLOSED', REOPENED: 'REOPENED' }[state] || 'OPEN', Message: String(a.Message) + (note ? ' | ' + note : '') };
       if (state === 'CLOSED') patch.ResolvedAt = new Date();
       _v43SetRow_('ALERT', m[2], patch);
+    }
+    if (m[1] === 'V42' || m[1] === 'V44') {
+      // лист сигналов модуля: AlertID | AlertType | ObjectID | … | Status (7-я колонка) | … ResolvedAt (последняя)
+      var sh = _book_().getSheetByName(m[1] === 'V42' ? 'Санитария_Алерты_V42' : 'Задачи_Алерты_V44'); if (!sh) return;
+      var v = sh.getDataRange().getValues(), w = v[0].length, key = m[2].split(':'), st = { VERIFY: 'VERIFY_REQUIRED', CLOSED: 'CLOSED', REOPENED: 'OPEN' }[state] || 'OPEN';
+      for (var i = 1; i < v.length; i++) {
+        var hit = key.length === 1 ? String(v[i][0]) === key[0] : String(v[i][1]) === key[0] && String(v[i][2]) === key.slice(1).join(':');
+        if (!hit || /CLOSED|RESOLVED/.test(String(v[i][6]))) continue;
+        sh.getRange(i + 1, 7).setValue(st); if (state === 'CLOSED') sh.getRange(i + 1, w).setValue(new Date());
+      }
     }
   } catch (e) { try { _log_('WARN', 'статус источника нарушения ' + ref + ': ' + e.message); } catch (x) {} }
 }
@@ -95,6 +105,15 @@ function _vioFromTs2_(rec, type, text, objectId, opts) {
 }
 function _vioFromV43_(alertId, type, obj, sev, msg) {
   return _vioOpen_({ source: 'V43:' + alertId, journal: 'Санитария', object: String(obj || ''), text: msg, critical: /CRIT/i.test(String(sev)), who: (typeof _v43Who_ === 'function' ? _v43Who_().name : '') || '' });
+}
+
+/** Сигналы V42 (растворы) и V44 (задачи) — в реестр только нарушения, не складские сигналы.
+ *  Сигнал, который модуль создаёт повторно при каждом запуске (просроченный раствор), — одна запись по «вид:объект». */
+function _vioFromAlert_(mod, alertId, type, obj, sev, msg) {
+  if (mod === 'V42' && !/CONCENTRATION|EXPIRED/.test(String(type))) return '';
+  if (mod === 'V44' && !/FAILED/.test(String(type))) return '';
+  var src = mod === 'V42' && !/CONCENTRATION/.test(String(type)) ? 'V42:' + type + ':' + obj : mod + ':' + alertId;
+  return _vioOpen_({ source: src, journal: mod === 'V42' ? 'Дезсредства' : 'Задачи', object: String(obj || ''), text: msg, critical: /CRIT/i.test(String(sev)), who: (typeof _v43Who_ === 'function' ? _v43Who_().name : '') || '' });
 }
 
 /* ------------------------------------------------------------------ API */

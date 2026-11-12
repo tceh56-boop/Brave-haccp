@@ -180,6 +180,8 @@ function _mcReadinessCompute_() {
         detail: ig.off.length ? 'отключено: ' + ig.off.map(function (w) { return w.name; }).join(', ') : !ig.protectedAt ? 'защита листов не включена' : ig.lastManualEdit ? 'последняя ручная правка: ' + ig.lastManualEdit.sheet + ' ' + ig.lastManualEdit.range + ' (' + (ig.lastManualEdit.who || '?') + ')' : 'контроли включены, листы защищены',
         action: ig.off.length ? 'Включите контроль (удалите свойство скрипта)' : 'Настройки → «Защита журналов»', go: { sec: 'settings' } }));
   } catch (e) {}
+  // R21–R28 — аудит 360° по цепочке ТТК → ХАССП → ППК → чек-листы → исполнение → нарушения (Мастер-промт 4.0, этап 7)
+  if (typeof _a360Items_ === 'function') { try { _a360Items_().forEach(function (x) { out.push(x); }); } catch (e) { try { _log_('WARN', 'аудит 360°: ' + e.message); } catch (y) {} } }
   var cnt = { PASS: 0, FAIL: 0, REVIEW: 0, MISSING_EVIDENCE: 0, NOT_APPLICABLE: 0 };
   out.forEach(function (x) { cnt[x.status]++; });
   var blockingFail = out.some(function (x) { return x.blocking && (x.status === 'FAIL' || x.status === 'MISSING_EVIDENCE'); });

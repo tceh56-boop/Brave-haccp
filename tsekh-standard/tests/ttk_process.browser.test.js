@@ -26,6 +26,12 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
       ts2Now: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', tasks: [{ id: 'EXP-1', title: 'ППК: Смывы с рук: БГКП', due: '10:00', overdue: false, checklist: ['Выполнено: смывы взяты', 'Протокол лаборатории получен и приложен'], onFail: 'повторное исследование' }] } }),
       vioList: () => JSON.stringify({ success: true, data: { mode: 'SECOND_PERSON', items: [{ id: 'DV-9', object: 'Холодильник 2', text: 't° 9 °C', status: 'ожидает проверки', corrector: 'Повар Иванова', at: '2026-11-12T10:00', critical: true }, { id: 'DV-8', object: 'x', text: 'y', status: 'открыто', at: '' }] } }),
       vioVerify: () => JSON.stringify({ success: true, data: { status: 'устранено' } }),
+      a360Run: () => JSON.stringify({ success: true, data: { overall: 'NOT_READY', score: 64, runId: 'RDY-1', note: 'Готовность по внутреннему контрольному листу. Не является заключением надзорного органа.', html: '<h2>Акт</h2>',
+        counts: { PASS: 9, FAIL: 3, REVIEW: 2, MISSING_EVIDENCE: 1, NOT_APPLICABLE: 1 }, items: [
+          { id: 'R22', area: 'HACCP', requirement: 'Анализ опасностей по операциям ТТК', status: 'FAIL', blocking: true, detail: 'без решения: 2', evidence: ['HZ-PROC-TTK-FRY-MH-B-THERMAL'], correctiveAction: 'Примите решения', go: { module: 'tsTtkProc' } },
+          { id: 'R01', area: 'Нормативы', requirement: 'СанПиН', status: 'PASS', blocking: true, detail: '', evidence: ['N-1'], correctiveAction: '' },
+          { id: 'R27', area: 'Нарушения', requirement: 'Нарушения устраняются', status: 'REVIEW', blocking: false, detail: 'ждут проверки: 1', evidence: ['DV-9'], correctiveAction: 'Проверьте', go: { module: 'tsNow' } }] } }),
+      a360MigrateViolations: () => JSON.stringify({ success: true, data: { migrated: 2 } }),
       ts2Confirm: () => JSON.stringify({ success: true, data: { result: 'FAIL' } }),
       ttkProcAnalyze: () => JSON.stringify({ success: true, data: { analyzed: 3, added: ['a'], removed: [], openIssues: 1 } }), ttkProcReview: () => JSON.stringify({ success: true, data: { status: 'CONFIRMED' } }),
       ttkProcAiSuggest: () => JSON.stringify({ success: true, data: { suggested: 'FRY', note: 'Предложение не утверждено' } }),
@@ -68,6 +74,10 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
   await p.evaluate(() => openView('tsNow')); await p.waitForTimeout(500);
   await p.click('button[data-mv="no"][data-a="EXP-1"]'); await p.waitForTimeout(400);
   assert(/ts2Confirm:\["x","EXP-1",false,"Не выполнен пункт 2: Протокол лаборатории получен и приложен"/.test(await calls()), '«Нет» с номером пункта: ' + (await calls()).split('\n').filter(x => /ts2Confirm/.test(x)));
+  await p.evaluate(() => { window.confirm = () => true; openView('tsAudit360'); }); await p.waitForTimeout(500);
+  txt = await p.textContent('#vbody'); assert(/Не готово к проверке/.test(txt) && /64%/.test(txt) && /HZ-PROC-TTK-FRY/.test(txt) && /блокирует/.test(txt) && /RDY-1/.test(txt), 'аудит 360°: ' + txt.slice(0, 300));
+  await p.click('button[data-mv="area"][data-a="Нарушения"]'); await p.waitForTimeout(200); txt = await p.textContent('#vbody'); assert(/DV-9/.test(txt) && !/HZ-PROC-TTK-FRY/.test(txt), 'фильтр по области');
+  await p.click('button[data-mv="migrate"]'); await p.waitForTimeout(400); assert(/a360MigrateViolations:\["x"\]/.test(await calls()), 'перенос нарушений');
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
-  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП, прежние разделы ППК, чек-листы ППК, проверка устранения нарушений');
+  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП, прежние разделы ППК, чек-листы ППК, проверка устранения нарушений, аудит 360°');
 })().catch(e => { console.error(e); process.exit(1); });

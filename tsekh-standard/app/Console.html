@@ -4863,6 +4863,7 @@ var TS_NAV = [
   ['tsSetup', 'Настройка и готовность', 'journals', '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
   ['tsTtkProc', 'Процессы ТТК', 'ppk', '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6h4l3 5M8.5 18h4l3-5"/>'],
   ['tsChecklists', 'Чек-листы ППК', 'ppk', '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15l1.5 1.5L12 14M14 9h2M14 15h2"/>'],
+  ['tsAudit360', 'Аудит 360°', '', '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/>'],
   ['tsGen', 'ТТК → ТУ / СТО / ППК', 'ppk', '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5M15 3v4h4"/>'],
   ['tsData', 'Данные и сверка', '', '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>'],
   ['tsPlan', 'Подписка', '', '<path d="M3 7h18v10H3z"/><path d="M3 10h18M7 14h4"/>']
@@ -5234,6 +5235,38 @@ VIEWS.tsChecklists = {
       }, function (e) { vMsg(String(e), 'err'); });
     },
     build: function (a, btn) { vDo(btn, 'clgBuild', [TOKEN], function (r) { return r.ppkId ? 'Чек-листы обновлены: задач ' + r.TASK + ', по событию ' + r.EVENT + ', уже исполняется ' + r.COVERED + ', без периодичности ' + r.NO_SCHEDULE : 'Действующей ППК нет'; }, function () { VIEWS.tsChecklists.h.load(); }); }
+  }
+};
+
+/* ---------- Мастер-промт 4.0, этап 7: санитарный аудит 360° (контрольный лист готовности R01–R28) ---------- */
+var TS_A360 = { d: null, area: '' };
+var TS_A360_ST = { PASS: ['выполнено', 'g'], FAIL: ['нарушение', 'r'], REVIEW: ['требует проверки', 'a'], MISSING_EVIDENCE: ['нет доказательств', 'r'], NOT_APPLICABLE: ['не применимо', ''] };
+VIEWS.tsAudit360 = {
+  title: 'Аудит 360°', sub: 'Внутренний санитарный аудит по фактам: от ТТК и ХАССП до исполнения и нарушений. Не заключение надзорного органа',
+  open: function () { this.h.run(); },
+  h: {
+    run: function (a, btn) {
+      if (!btn) vLoading();
+      vCall('a360Run', [TOKEN]).then(function (r) { var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; } TS_A360.d = vData(r); VIEWS.tsAudit360.h.draw(); }, function (e) { vMsg(String(e), 'err'); });
+    },
+    area: function (a) { TS_A360.area = TS_A360.area === a ? '' : a; VIEWS.tsAudit360.h.draw(); },
+    draw: function () {
+      var d = TS_A360.d, OV = { READY: ['Готово к проверке', 'green'], READY_WITH_WARNINGS: ['Готово с замечаниями', 'gold'], NOT_READY: ['Не готово к проверке', 'red'] }[d.overall] || [d.overall, ''];
+      var areas = {}; d.items.forEach(function (x) { var q = areas[x.area] = areas[x.area] || { pass: 0, total: 0, bad: 0 }; if (x.status !== 'NOT_APPLICABLE') { q.total++; if (x.status === 'PASS') q.pass++; else q.bad++; } });
+      var h = vKpis([['Итог', OV[0], OV[1]], ['Выполнено', d.score + '%', d.score >= 90 ? 'green' : d.score >= 70 ? 'gold' : 'red'], ['Нарушений', d.counts.FAIL, d.counts.FAIL ? 'red' : 'green'], ['Нет доказательств', d.counts.MISSING_EVIDENCE, d.counts.MISSING_EVIDENCE ? 'red' : 'green'], ['Требует проверки', d.counts.REVIEW]]);
+      h += '<div class="mvbar" style="margin:0 0 10px">' + vBtn('Пересчитать', 'run') + vBtn('Печать акта', 'print') + vBtn('Перенести нарушения в реестр', 'migrate') + '</div>';
+      h += '<div class="tabs" style="margin:6px 0 12px;flex-wrap:wrap"><button class="' + (!TS_A360.area ? 'on' : '') + '" data-mv="area" data-a="">Все</button>' + Object.keys(areas).map(function (a) { var q = areas[a]; return '<button class="' + (TS_A360.area === a ? 'on' : '') + '" data-mv="area" data-a="' + esc(a) + '">' + esc(a) + ' ' + q.pass + '/' + q.total + (q.bad ? ' ⚠' : '') + '</button>'; }).join('') + '</div>';
+      var items = d.items.filter(function (x) { return !TS_A360.area || x.area === TS_A360.area; }).sort(function (a, b) { var o = { FAIL: 0, MISSING_EVIDENCE: 1, REVIEW: 2, PASS: 3, NOT_APPLICABLE: 4 }; return o[a.status] - o[b.status]; });
+      h += vCard('Пункты аудита · ' + items.length, vTable([{ k: 'id', l: '№' }, { k: 'area', l: 'Область' }, { k: 'requirement', l: 'Требование' },
+        { l: 'Результат', html: true, f: function (x) { var q = TS_A360_ST[x.status] || [x.status, 'a']; return vChip(q[0], q[1]) + (x.blocking && /FAIL|MISSING/.test(x.status) ? '<div class="rdnote">блокирует</div>' : ''); } },
+        { k: 'detail', l: 'Подробно' }, { l: 'Доказательства', f: function (x) { return (x.evidence || []).slice(0, 5).join(', '); } }, { l: 'Что сделать', f: function (x) { return x.status === 'PASS' ? '' : x.correctiveAction; } }], items,
+        function (x) { return x.go && x.go.module && x.status !== 'PASS' ? vBtn('Открыть', 'go', x.go.module) : ''; }));
+      h += '<div class="rdnote">' + esc(d.note) + ' Прогон сохранён: ' + esc(d.runId || '') + '. ID в «Доказательствах» — записи таблицы, по ним проверяющий открывает первичный факт.</div>';
+      vBody(h);
+    },
+    go: function (m) { if (VIEWS[m]) openView(m); else vMsg('Раздел недоступен', 'err'); },
+    print: function () { tsPrint(TS_A360.d.html, 'Акт аудита 360°'); },
+    migrate: function (a, btn) { if (!confirm('Перенести открытые нарушения санитарии, растворов и задач в единый реестр нарушений?')) return; vDo(btn, 'a360MigrateViolations', [TOKEN], function (r) { return 'Перенесено нарушений: ' + r.migrated; }, function () { VIEWS.tsAudit360.h.run(null, true); }); }
   }
 };
 
