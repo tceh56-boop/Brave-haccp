@@ -231,6 +231,9 @@ function _publicSession_(session, user, locations) {
     organization_id: session.organization_id,
     location_id: session.location_id,
     requires_location: !session.location_id,
+    // Список модулей роли — тот же, что проверяет сервер (CONFIG.ROLE_MODULES). Меню строится по нему,
+    // а не по копии в Index.html, которая расходилась с сервером (у технолога меню было пустым).
+    modules: CONFIG.ROLE_MODULES[session.роль] === 'all' ? 'all' : (CONFIG.ROLE_MODULES[session.роль] || []),
     locations: (locations || getLocations_(session.organization_id).filter(function (l) { return session.allowed_locations.indexOf(l.location_id) !== -1; }))
       .map(function (l) { return { location_id: l.location_id, название: l.название }; })
   };

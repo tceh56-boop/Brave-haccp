@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ХАССП — сегодня</title>
+<style>
+:root{--wine:#6e1423;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8;--grey-bg:#eeeaea}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:16px}h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:12px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}
+.overall{border-radius:14px;padding:12px 14px;margin-bottom:12px;font-weight:700}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:800px){.cards{grid-template-columns:1fr 1fr}}@media(max-width:520px){.cards{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;cursor:pointer;border-left-width:6px}.card .t{font-weight:650}.st{display:inline-block;margin-top:6px;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px}
+.ok{border-left-color:var(--green)}.ok .st,.overall.ok{background:var(--green-bg);color:var(--green)}.part{border-left-color:var(--amber)}.part .st,.overall.part{background:var(--amber-bg);color:var(--amber)}
+.bad{border-left-color:var(--red)}.bad .st,.overall.bad{background:var(--red-bg);color:var(--red)}.none{border-left-color:#999}.none .st{background:var(--grey-bg);color:#555}
+.ln{color:var(--mut);font-size:13px;margin-top:4px}.tbl{width:100%;border-collapse:collapse;font-size:13px;background:#fff}.tbl td,.tbl th{padding:6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.tbl input,.tbl select{width:100%;padding:5px;border:1px solid #d9cfcc;border-radius:7px;font:inherit}.btn{border:0;border-radius:9px;padding:7px 12px;font:600 13px inherit;cursor:pointer;background:var(--wine);color:#fff}
+.msg{margin:8px 0;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut)}
+</style></head><body><div class="wrap">
+<h1>ХАССП — сегодня</h1>
+<div class="sub">Статус каждой карточки — словом и цветом. «Нет данных» не означает «всё выполнено». Нажмите карточку — откроется исходный раздел.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', TAB = 'today', D = null, S = null;
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; }
+function setTab(t) { TAB = t; draw(); if (t === 'set' && !S) loadSet(); }
+function load() { call('mcHaccpToday', [TOKEN]).then(function (r) { if (!okOf(r)) { document.getElementById('body').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } D = r.data; draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function loadSet() { call('mcNotifySettings', [TOKEN]).then(function (r) { if (!okOf(r)) return msg(errText(r)); S = r.data; draw(); }, function () { msg('Нет связи'); }); }
+function go(i) { var c = D.cards[i]; if (!c || !c.go) return; try { if (window.top && window.top !== window && window.top.postMessage) window.top.postMessage({ mcGo: c.go }, '*'); } catch (e) {} if (c.go.module) location.search = '?' + c.go.module + '=1&token=' + encodeURIComponent(TOKEN); }
+function draw() {
+  document.getElementById('tabs').innerHTML = [['today', 'Сегодня'], ['set', 'Настройки уведомлений']].map(function (t) { return '<button class="' + (TAB === t[0] ? 'on' : '') + '" onclick="setTab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('');
+  var h = '';
+  if (TAB === 'today') h = !D ? '<div class="empty">Загрузка…</div>' : '<div class="overall ' + D.state + '">Итог на ' + esc(D.date) + ': ' + esc(D.overall) + '</div><div class="cards">' + D.cards.map(function (c, i) {
+    return '<div class="card ' + c.state + '" onclick="go(' + i + ')"><div class="t">' + esc(c.title) + '</div><span class="st">' + esc(c.status) + '</span>' + c.lines.map(function (l) { return '<div class="ln">' + esc(l) + '</div>'; }).join('') + '</div>'; }).join('') + '</div>';
+  if (TAB === 'set') h = !S ? '<div class="empty">Загрузка…</div>' : '<div class="note" style="margin-bottom:8px">Уведомление не закрывается тем, что его отправили или прочитали — только условием из последней колонки. Сроки — в минутах. Менять настройки может ответственный за ХАССП или директор.</div><div style="overflow:auto"><table class="tbl"><tr><th>Тип</th><th>Кому</th><th>Приоритет</th><th>Реакция</th><th>Повтор</th><th>Не больше</th><th>Эскалация</th><th>Через</th><th>Вкл.</th><th>Закрывается</th><th></th></tr>' +
+    S.rules.map(function (r) { var c = esc(r.code); return '<tr><td><b>' + esc(r.name) + '</b></td><td><input id="to_' + c + '" value="' + esc(r.to) + '"></td><td><select id="pr_' + c + '">' + ['critical', 'high', 'medium', 'low'].map(function (p) { return '<option' + (p === r.priority ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '</select></td>' +
+      '<td><input id="re_' + c + '" type="number" value="' + r.react + '"></td><td><input id="rp_' + c + '" type="number" value="' + r.repeat + '"></td><td><input id="mx_' + c + '" type="number" value="' + r.maxRepeat + '"></td><td><input id="et_' + c + '" value="' + esc(r.escTo) + '"></td><td><input id="ea_' + c + '" type="number" value="' + r.escAfter + '"></td>' +
+      '<td><input id="ac_' + c + '" type="checkbox"' + (r.active ? ' checked' : '') + ' style="width:auto"></td><td class="note">' + esc(r.closes) + '</td><td><button class="btn" onclick="saveRule(\'' + c + '\',this)">Сохранить</button></td></tr>'; }).join('') + '</table></div>';
+  document.getElementById('body').innerHTML = h;
+}
+function val(id) { var e = document.getElementById(id); return e ? (e.type === 'checkbox' ? e.checked : e.value) : ''; }
+function saveRule(c, btn) { btn.disabled = true;
+  call('mcNotifySettingsSave', [JSON.stringify({ code: c, to: val('to_' + c), priority: val('pr_' + c), react: val('re_' + c), repeat: val('rp_' + c), maxRepeat: val('mx_' + c), escTo: val('et_' + c), escAfter: val('ea_' + c), active: val('ac_' + c) }), TOKEN])
+    .then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Сохранено', true); S = null; loadSet(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+load();
+</script></body></html>

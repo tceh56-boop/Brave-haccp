@@ -202,6 +202,12 @@ function approvePpkVersion_(ppkId, session) {
     if (!v.effective_from) patch.effective_from = todayDateStr_();
     updateRow_('PPK_VERSIONS', v, patch);
     prevApproved.forEach(function (r) { updateRow_('PPK_VERSIONS', r, { status: 'ARCHIVED' }); });
+    // Журналы ККТ из ТТК/техкарт ПФ начинают действовать вместе с ППК. Сбой здесь не отменяет
+    // утверждение (оно уже записано): журналы можно доформировать действием GENERATE_CCP_JOURNALS.
+    if (typeof generateCcpJournals_ === 'function') {
+      try { generateCcpJournals_({ ppkId: ppkId }, session); }
+      catch (journalErr) { auditLog_(session.user_id, 'Журналы ККТ не сформированы при утверждении ППК', 'PPK_VERSIONS:' + ppkId, '', String(journalErr.message || journalErr), 'error', session.cascade_id); }
+    }
     auditLog_(session.user_id, 'Версия ППК утверждена', 'PPK_VERSIONS:' + ppkId,
       prevApproved.length ? ('заменена: ' + prevApproved.map(function (r) { return 'v' + r.version; }).join(',')) : 'нет предыдущей', 'v' + v.version, 'success', session.cascade_id);
     return findOne_('PPK_VERSIONS', 'ppk_id', ppkId);

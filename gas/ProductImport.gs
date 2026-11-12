@@ -39,7 +39,15 @@ var PRODUCT_IMPORT_COLUMN_MAP = {
   'Срок (холодильник)': 'shelf_life_refrigerator',
   'Срок (морозильник)': 'shelf_life_freezer',
   'Признаки порчи': 'spoilage_signs',
-  'Важные замечания': 'notes'
+  'Важные замечания': 'notes',
+  // Staging-реестры MonChef V55 (Пищевые_Источники_V55 / Добавка_Продукты_V55): английские
+  // заголовки + статус проверки источника. Строка без APPROVED и SourceDoc остаётся
+  // verified=нет — расчёт ТУ покажет её как неподтверждённую, а не как норматив.
+  'OriginalNo': 'external_row_number', 'ProductName': 'name', 'ProductType': 'product_type', 'Description': 'description',
+  'Kcal100': 'calories_kcal_100g', 'Protein100': 'protein_g_100g', 'Fat100': 'fat_g_100g', 'Carbs100': 'carbohydrate_g_100g',
+  'Fiber100': 'fiber_g_100g', 'Sugars100': 'sugar_g_100g', 'Storage': 'storage_conditions',
+  'ShelfRoom': 'shelf_life_room', 'ShelfFridge': 'shelf_life_refrigerator', 'ShelfFreezer': 'shelf_life_freezer',
+  'Status': 'staging_status', 'SourceDoc': 'source_doc', 'SourceRef': 'source_ref', 'Flags': 'staging_flags'
 };
 
 /** "Калий: 415; Niacin mg: 8.1" → {"Калий": 415, "Niacin mg": 8.1} — best-effort, сохраняем и исходную строку отдельно на всякий случай парсинга неудачно. */
@@ -111,6 +119,11 @@ function importProductsPreview_(organizationId, rows, fileName, userId) {
         if (isNaN(n)) { messages.push('Нечисловое значение в поле ' + f + ': "' + mapped[f] + '".'); status = status === 'ERROR' ? status : 'WARNING'; }
         else if (n < 0) { messages.push('Отрицательное значение в поле ' + f + '.'); status = status === 'ERROR' ? status : 'WARNING'; }
       });
+
+      if (String(mapped.staging_flags || '').indexOf('BLOCKED_FOR_KBZHU') !== -1) {
+        messages.push('Staging-флаг BLOCKED_FOR_KBZHU: пищевая ценность неполная, для расчёта ТУ непригодна до проверки.');
+        status = status === 'ERROR' ? status : 'WARNING';
+      }
 
       var normalized = mapped.name ? normalizeProductName_(mapped.name) : '';
       var duplicateCandidateId = '';
@@ -234,7 +247,9 @@ function importProductsCommit_(importId, userId, session) {
           extraNutrients: _parseExtraNutrients_(mapped.extra_nutrients_raw),
           storageConditionsText: mapped.storage_conditions,
           importantNotes: mapped.notes,
-          source: batch.source_file_name || 'import', sourceType: 'REFERENCE', confidence: 'medium'
+          source: mapped.source_doc ? String(mapped.source_doc) + (mapped.source_ref ? ', ' + mapped.source_ref : '') : (batch.source_file_name || 'import'),
+          sourceType: 'REFERENCE', confidence: 'medium',
+          verified: String(mapped.staging_status || '').toUpperCase() === 'APPROVED' && !!mapped.source_doc
         }, userId);
 
         ['room', 'refrigerator', 'freezer'].forEach(function (mode) {

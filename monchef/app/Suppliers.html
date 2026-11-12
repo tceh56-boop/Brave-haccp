@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Поставщики</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+</style></head><body><div class="wrap">
+<h1>Поставщики</h1>
+<div class="sub">Единый реестр: заказы и партии ссылаются на поставщика по ID. Новый поставщик из прихода попадает сюда «на проверке» — подтвердите ИНН. Партия от заблокированного поставщика уходит в карантин.</div>
+<div class="acts" style="margin:0 0 12px"><button class="btn pri" onclick="edit(-1)">+ Поставщик</button><button class="btn" onclick="migrate(this)">Перенести из истории заказов</button></div>
+<div class="msg" id="msg"></div><div id="form"></div>
+<div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', L = [];
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+var ST = { ACTIVE: ['g', 'Действует'], REVIEW: ['a', 'На проверке'], BLOCKED: ['r', 'Заблокирован'] };
+function load() { call('mcGetSuppliers', [TOKEN]).then(function (r) { if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } L = r.data || []; draw(); }, function () { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function draw() {
+  document.getElementById('list').innerHTML = L.length ? L.map(function (s, i) { var st = ST[s.status] || ['', s.status];
+    return '<div class="card"><div class="row" onclick="edit(' + i + ')"><div><div class="nm">' + esc(s.name) + '</div><div class="meta">' + esc(s.id) + (s.inn ? ' · ИНН ' + esc(s.inn) : ' · ИНН не указан') + (s.categories ? ' · ' + esc(s.categories) : '') + (s.contacts ? ' · ' + esc(s.contacts) : '') + '</div>' + (s.note ? '<div class="meta">' + esc(s.note) + '</div>' : '') + '</div><span class="chip ' + st[0] + '">' + st[1] + '</span></div></div>'; }).join('') : '<div class="empty">Реестр пуст</div>';
+}
+function f(id, l, v) { return '<div><label>' + l + '</label><input id="' + id + '" value="' + esc(v || '') + '"></div>'; }
+function edit(i) {
+  var s = i >= 0 ? L[i] : {};
+  document.getElementById('form').innerHTML = '<div class="card open"><div class="nm">' + (s.id ? esc(s.id) : 'Новый поставщик') + '</div><div class="form" style="display:block"><div class="grid">' +
+    f('n', 'Название', s.name) + f('inn', 'ИНН', s.inn) + f('a', 'Адрес', s.address) + f('c', 'Контакты', s.contacts) + f('cat', 'Категории товаров', s.categories) + f('doc', 'Документы (декларации, сертификаты)', s.documents) +
+    '<div><label>Статус</label><select id="st"><option value="ACTIVE">действует</option><option value="REVIEW"' + (s.status === 'REVIEW' ? ' selected' : '') + '>на проверке</option><option value="BLOCKED"' + (s.status === 'BLOCKED' ? ' selected' : '') + '>заблокирован</option></select></div>' + f('note', 'Комментарий', s.note) +
+    '</div><div class="acts"><button class="btn pri" onclick="save(\'' + esc(s.id || '') + '\')">Сохранить</button><button class="btn" onclick="document.getElementById(\'form\').innerHTML=\'\'">Отмена</button></div><div class="msg" id="fm"></div></div></div>';
+  window.scrollTo(0, 0);
+}
+function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function save(id) {
+  call('mcSaveSupplier', [JSON.stringify({ id: id, name: v('n'), inn: v('inn'), address: v('a'), contacts: v('c'), categories: v('cat'), documents: v('doc'), status: v('st'), note: v('note') }), TOKEN]).then(function (r) {
+    var m = document.getElementById('fm'); if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    document.getElementById('form').innerHTML = ''; var g = document.getElementById('msg'); g.className = 'msg ok'; g.textContent = 'Сохранено' + (r.data.note ? ': ' + r.data.note : ''); load();
+  }, function () { var m = document.getElementById('fm'); m.className = 'msg err'; m.textContent = 'Нет связи'; });
+}
+function migrate(btn) { btn.disabled = true; call('mcMigrateSuppliers', [TOKEN]).then(function (r) { btn.disabled = false; var g = document.getElementById('msg'); if (!r || r.success === false) { g.className = 'msg err'; g.textContent = errText(r); return; } g.className = 'msg ok'; g.textContent = 'Перенесено: ' + r.data.added + ', всего ' + r.data.total; load(); }, function () { btn.disabled = false; }); }
+load();
+</script></body></html>

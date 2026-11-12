@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Суточные пробы</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+</style></head><body><div class="wrap">
+<h1>Суточные пробы</h1>
+<div class="sub" id="sub">Проба отбирается от каждой допущенной к выдаче партии. Без пробы партия на банкет не выдаётся.</div>
+<div class="tabs" id="tabs"></div>
+<div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', DATA = null, TAB = 'missing', EQ = [];
+var TABS = [['missing', 'Нужна проба'], ['stored', 'На хранении'], ['destroyed', 'Уничтожены']];
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function load() {
+  call('mcGetEquipment', [TOKEN]).then(function (r) { EQ = ((r && r.data && r.data.items) || []).filter(function (e) { return e.measuring && e.effective === 'ACTIVE'; }); }, function () {});
+  call('mcGetDailySamples', [TOKEN]).then(function (r) {
+    if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; }
+    DATA = r.data; var c = DATA.cfg || {};
+    document.getElementById('sub').textContent = 'Проба отбирается от каждой допущенной к выдаче партии: не менее ' + c.minWeightG + ' г (или порция целиком), хранение ' + c.retentionHours + ' ч при ' + c.tMin + '…' + c.tMax + ' °C. Без пробы партия на банкет не выдаётся.';
+    draw();
+  }, function () { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; });
+}
+function draw() {
+  document.getElementById('tabs').innerHTML = TABS.map(function (t) { return '<button class="' + (t[0] === TAB ? 'on' : '') + '" onclick="TAB=\'' + t[0] + '\';draw()">' + t[1] + '<b>' + (DATA[t[0]] || []).length + '</b></button>'; }).join('');
+  var a = DATA[TAB] || [];
+  document.getElementById('list').innerHTML = a.length ? a.map(TAB === 'missing' ? need : stored).join('') : '<div class="empty">' + ({ missing: 'Все допущенные партии с пробами', stored: 'Проб на хранении нет', destroyed: 'Уничтоженных проб нет' })[TAB] + '</div>';
+}
+function need(x, i) {
+  return '<div class="card" id="c' + i + '"><div class="row" onclick="this.parentNode.classList.toggle(\'open\')"><div><div class="nm">' + esc(x.dish) + '</div><div class="meta">Партия ' + esc(x.batchId) + ' · ' + esc(x.qty) + ' ' + esc(x.unit) + ' · допущена ' + esc(x.released) + '</div></div><span class="chip r">Нет пробы</span></div>' +
+    '<div class="form"><div class="grid"><div><label>Масса, г</label><input id="w' + i + '" inputmode="decimal"></div><div><label>Тара</label><input id="k' + i + '" value="стерильный контейнер с крышкой"></div><div><label>Место хранения</label><input id="l' + i + '" placeholder="холодильник для проб"></div>' +
+    '<div><label>t° в холодильнике, °C</label><input id="t' + i + '" inputmode="decimal"></div>' +
+    (EQ.length ? '<div><label>Термометр</label><select id="e' + i + '"><option value="">—</option>' + EQ.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>'; }).join('') + '</select></div>' : '') + '</div>' +
+    '<label class="chk" style="margin-top:8px"><input type="checkbox" id="p' + i + '">Порционное блюдо — отобрана порция целиком</label>' +
+    '<div class="acts"><button class="btn pri" onclick="take(' + i + ')">Записать отбор пробы</button></div><div class="msg" id="m' + i + '"></div></div></div>';
+}
+function stored(x, i) {
+  return '<div class="card"><div class="row"><div><div class="nm">' + esc(x.dish) + '</div><div class="meta">Проба ' + esc(x.id) + ' · партия ' + esc(x.batchId) + ' · ' + esc(x.weight) + (x.weight === 'порция' ? '' : ' г') + ' · ' + esc(x.location) + ', ' + esc(x.temp) + ' °C</div>' +
+    '<div class="meta">Отобрал ' + esc(x.who) + ' ' + esc(x.taken) + ' · хранить до ' + esc(x.until) + (x.status === 'DESTROYED' ? ' · уничтожена ' + esc(x.destroyed) + ' (' + esc(x.destroyedBy) + ')' : '') + '</div></div>' +
+    (x.status === 'STORED' ? (x.due ? '<button class="btn" onclick="destroy(\'' + esc(x.id) + '\')">Уничтожить</button>' : '<span class="chip g">Хранится</span>') : '<span class="chip">Уничтожена</span>') + '</div><div class="msg" id="d' + esc(x.id) + '"></div></div>';
+}
+function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function take(i) {
+  var x = DATA.missing[i], m = document.getElementById('m' + i);
+  call('mcTakeDailySample', [JSON.stringify({ batchId: x.batchId, weight: v('w' + i), container: v('k' + i), location: v('l' + i), temperature: v('t' + i), equipmentId: v('e' + i), portion: document.getElementById('p' + i).checked }), TOKEN]).then(function (r) {
+    if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    m.className = 'msg ok'; m.textContent = 'Проба записана, хранить до ' + r.data.keepUntil; setTimeout(load, 1000);
+  }, function () { m.className = 'msg err'; m.textContent = 'Нет связи — проба не записана'; });
+}
+function destroy(id) {
+  if (!confirm('Подтвердите уничтожение пробы ' + id)) return;
+  call('mcDestroyDailySample', [JSON.stringify({ sampleId: id }), TOKEN]).then(function (r) {
+    var m = document.getElementById('d' + id); if (!r || r.success === false) { if (m) { m.className = 'msg err'; m.textContent = errText(r); } return; } load();
+  }, function () {});
+}
+load();
+</script></body></html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Документы</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}.tbl th{font-size:12px;color:var(--mut)}
+</style></head><body><div class="wrap">
+<h1>Документы предприятия</h1>
+<div class="sub">ППК, договоры, документы персонала и оборудования — с файлом и сроком действия.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' && /^[\[{"]/.test(x) ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && !(typeof r === 'string' && /^err/i.test(r)) && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { if (typeof r === 'string') return r.replace(/^err:\s*/, ''); return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dataOf(r) { return r && r.data !== undefined ? r.data : r; }
+function v(id) { var e = document.getElementById(id); return e ? String(e.value).trim() : ''; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; window.scrollTo(0, 0); }
+function fld(id, l, val, type, extra) { return '<div' + (extra || '') + '><label>' + l + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function tabs(list, cur, fn) { document.getElementById('tabs').innerHTML = list.map(function (t) { return '<button class="' + (cur === t[0] ? 'on' : '') + '" onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + (t[2] !== undefined && t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join(''); }
+function fileUrl(id, cb) { var f = document.getElementById(id); f = f && f.files && f.files[0]; if (!f) return cb('', ''); var r = new FileReader(); r.onload = function () { cb(r.result, f.type); }; r.onerror = function () { cb('', ''); }; r.readAsDataURL(f); }
+
+var D = [], CATS = ['ТТК', 'Охрана труда', 'Журналы', 'ППК', 'Декларации'];   // те же категории, что принимает сервер
+function catSel(id) { return '<select id="' + id + '">' + CATS.map(function (k) { return '<option>' + k + '</option>'; }).join('') + '</select>'; }
+function load() { call('getDocuments', ['', TOKEN]).then(function (r) { D = dataOf(r) || []; draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function draw() {
+  document.getElementById('tabs').innerHTML = '';
+  document.getElementById('body').innerHTML = '<div class="card"><div class="nm">Загрузить документ</div><div class="grid" style="margin-top:8px"><div><label>Категория</label>' + catSel('dCat') + '</div>' +
+    fld('dName', 'Название *') + fld('dNum', 'Номер') + fld('dDate', 'Дата', today(), 'date') + fld('dTill', 'Действует до', '', 'date') + '<div><label>Файл *</label><input id="dFile" type="file"></div></div><div class="note">Документы на сырьё (накладные, декларации, ВСД) — в разделе «Документы, ВСД, маркировка».</div><div class="acts"><button class="btn pri" onclick="up(this)">Загрузить</button></div></div>' +
+    '<div class="card"><div class="nm">📝 Создать документ текстом</div><div class="grid" style="margin-top:8px"><div><label>Категория</label>' + catSel('cCat') + '</div>' + fld('cName', 'Название *') + fld('cNum', 'Номер') +
+    fld('cDate', 'Дата', today(), 'date') + fld('cTill', 'Действует до', '', 'date') + '<div style="grid-column:1/-1"><label>Текст документа *</label><textarea id="cText" rows="8" placeholder="Инструкция, приказ, ППК — текст целиком"></textarea></div></div>' +
+    '<div class="note">Система сохранит документ в PDF с местом для подписи «Утверждаю» — подпись ставится от руки на распечатке.</div><div class="acts"><button class="btn pri" onclick="mk(this)">Создать документ</button></div></div>' +
+    (D.length ? D.map(function (d) { return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(d.название) + (d.номер ? ' № ' + esc(d.номер) : '') + '</div><div class="meta">' + esc(d.категория) + ' · ' + esc(d.дата) + (d.действуетДо ? ' — ' + esc(d.действуетДо) : '') + ' · ' + esc(d.загрузил || '') + '</div></div><span class="chip ' + (d.просрочен ? 'r' : 'g') + '">' + (d.просрочен ? 'просрочен' : 'действует') + '</span></div></div>'; }).join('') : '<div class="empty">Документов нет</div>');
+}
+function up(btn) {
+  var meta = { категория: v('dCat'), название: v('dName'), номер: v('dNum'), дата: v('dDate'), действуетДо: v('dTill') };
+  if (!meta.название) return msg('Укажите название');
+  fileUrl('dFile', function (u, mime) { if (!u) return msg('Выберите файл'); meta.файл = u; meta.mime = mime || 'application/pdf'; btn.disabled = true;
+    call('uploadDocument', [JSON.stringify(meta), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Документ сохранён', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); }); });
+}
+function mk(btn) {
+  var meta = { категория: v('cCat'), название: v('cName'), номер: v('cNum'), дата: v('cDate'), действуетДо: v('cTill'), текст: (document.getElementById('cText') || {}).value || '' };
+  if (!meta.название || !String(meta.текст).trim()) return msg('Нужны название и текст документа');
+  btn.disabled = true;
+  call('createDocument', [JSON.stringify(meta), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); msg('Документ «' + meta.название + '» создан (PDF)', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+load();
+
+</script></body></html>

@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Документы на сырьё</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.warnbox{background:var(--red-bg);color:var(--red);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13.5px}.ambox{background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13.5px}.okbox{background:var(--green-bg);color:var(--green);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13.5px}
+.ck{display:flex;gap:6px;align-items:flex-start;font-size:13px;margin:2px 0}.ck i{font-style:normal;width:16px;flex:0 0 16px}.rc{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}.rc .inf{flex:1}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}.tbl td,.tbl th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.tbl th{font-size:12px;color:var(--mut)}@media(max-width:640px){.tbl .hm{display:none}}
+</style></head><body><div class="wrap">
+<h1>Документы на сырьё</h1>
+<div class="sub">Накладные, декларации, сертификаты, ветеринарные и маркировочные документы — с привязкой к поставщику, продукту и партии, файлом и его хешем. Проверку подтверждает другой сотрудник. ВСД ветеринарно подконтрольного товара получаются, проверяются и гасятся в ФГИС «Меркурий» — партия не допускается без погашенного ВСД.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' && /^[\[{"]/.test(x) ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && !(typeof r === 'string' && /^err/i.test(r)) && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { if (typeof r === 'string') return r.replace(/^err:\s*/, ''); return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dataOf(r) { return r && r.data !== undefined ? r.data : r; }
+function v(id) { var e = document.getElementById(id); return e ? String(e.value).trim() : ''; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; window.scrollTo(0, 0); }
+function fld(id, l, val, type, extra) { return '<div' + (extra || '') + '><label>' + l + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function tabs(list, cur, fn) { document.getElementById('tabs').innerHTML = list.map(function (t) { return '<button class="' + (cur === t[0] ? 'on' : '') + '" onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + (t[2] !== undefined && t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join(''); }
+function fileUrl(id, cb) { var f = document.getElementById(id); f = f && f.files && f.files[0]; if (!f) return cb('', ''); var r = new FileReader(); r.onload = function () { cb(r.result, f.type); }; r.onerror = function () { cb('', ''); }; r.readAsDataURL(f); }
+/* Ветеринарный документ (ВСД, ФГИС «Меркурий») — общий блок для приёмки, карточки партии и «Документов на сырьё».
+   Кнопки: ПРОВЕРИТЬ · ПОГАСИТЬ ВСД · ПРОВЕРИТЬ СТАТУС / РЕЗУЛЬТАТ · ОТКРЫТЬ ВСД · ИСТОРИЯ · ОТКРЫТЬ ПАРТИЮ · ПРОСЛЕЖИВАЕМОСТЬ.
+   Страница только показывает и передаёт нажатия; статус «погашен» ставит сервер по ответу «Меркурия».
+   Хост задаёт VS.onChange (перерисовка) и VS.cardUrl(batchId). */
+var VS = { by: {}, err: {}, note: {}, busy: {}, open: {}, hist: {}, conf: {}, onChange: function () {}, cardUrl: function (b) { return '?batch=' + encodeURIComponent(b); } };
+var VS_ST = { NOT_FOUND: ['Не найден', 'r'], FOUND: ['Найден', 'a'], CHECKING: ['Проверяется', 'a'], VALID: ['Проверен', 'g'], CONFLICT: ['Есть расхождения', 'r'], READY_TO_CANCEL: ['✓ Готов к гашению', 'g'],
+  SENDING: ['Выполняется гашение…', 'a'], UNKNOWN: ['Результат неизвестен', 'r'], CANCELLED: ['✓ Погашен', 'g'], REJECTED: ['Отклонён', 'r'], ERROR: ['Ошибка', 'r'] };
+function vsNum(x) { return /^UUID /.test(String(x.number || '')) ? 'UUID ' + String(x.uuid || x.number.slice(5)).slice(0, 8) + '…' : '№ ' + (x.number || ''); }
+function vsChip(st) { var s = VS_ST[st] || [st || '—', '']; return '<span class="chip ' + s[1] + '">' + esc(s[0]) + '</span>'; }
+function vsPut(v) { if (v && v.id) VS.by[v.id] = Object.assign(VS.by[v.id] || {}, v); return v; }
+/* Сверка: ✓/✗ по каждому пункту, ВСД против приёмки. */
+function vsChecks(ch, id) {
+  if (!ch || !ch.checks) return '';
+  var h = '<div class="vsCk">' + ch.checks.map(function (c) {
+    var ic = c.ok ? (c.confirmed ? '☑' : '✓') : c.hard ? '✗' : '⚠';
+    return '<div class="ck ' + (c.ok ? '' : c.hard ? 'bad' : 'warn') + '"><i>' + ic + '</i><span><b>' + esc(c.label) + ':</b> ВСД — ' + esc(c.vsd) + ' · приёмка — ' + esc(c.local) +
+      (c.msg ? ' <span class="meta">(' + esc(c.msg) + ')</span>' : '') + (c.confirmed ? ' <span class="meta">подтверждено: ' + esc(c.confirmReason) + '</span>' : '') + '</span></div>';
+  }).join('') + '</div>';
+  var q = ch.checks.filter(function (c) { return c.key === 'qty' && !c.ok; })[0];
+  if (q && id) h += '<div class="warnbox"><b>РАСХОЖДЕНИЕ ПО КОЛИЧЕСТВУ</b><br>' + esc(q.msg).replace(/ · /g, '<br>') + '<div class="acts">' +
+    '<button class="btn" onclick="vsPartial(\'' + esc(id) + '\')">Принять ' + esc(q.local) + '</button><button class="btn bad" onclick="vsReject(\'' + esc(id) + '\',this)">Отклонить</button>' +
+    '<button class="btn" onclick="vsFix(\'' + esc(id) + '\')">Исправить</button></div></div>';
+  var soft = ch.checks.filter(function (c) { return !c.ok && !c.hard; });
+  if (soft.length && id) h += '<div class="ambox">Нужно подтверждение человека: ' + soft.map(function (c) { return '<div style="margin-top:4px"><b>' + esc(c.label) + '</b> — укажите, почему это тот же товар:<input id="vsc_' + esc(id) + '_' + c.key + '" value="' + esc((VS.conf[id] || {})[c.key] || '') + '" placeholder="Причина (обязательно)"></div>'; }).join('') +
+    '<div class="acts"><button class="btn" onclick="vsConfirm(\'' + esc(id) + '\',this,' + JSON.stringify(soft.map(function (c) { return c.key; })).replace(/"/g, '&quot;') + ')">Подтвердить и проверить</button></div></div>';
+  return h;
+}
+/* Блок ВСД (ТЗ §25): до гашения — данные и кнопки, после — ✓ ВСД ПОГАШЕН, кто и когда, партия. */
+function vsBlock(v, o) {
+  o = o || {}; if (!v) return ''; v = VS.by[v.id] || vsPut(v);
+  var st = v.status, done = st === 'CANCELLED', id = v.id, e = VS.err[id], busy = VS.busy[id], b0 = (v.batches || [])[0] || o.batchId || '';
+  var h = '<div class="vsd' + (done ? ' ok' : st === 'CONFLICT' || st === 'ERROR' || st === 'UNKNOWN' || st === 'REJECTED' ? ' bad' : '') + '"><div class="vsH">' + (done ? '✓ ВСД ПОГАШЕН' : 'ВЕТЕРИНАРНЫЙ ДОКУМЕНТ') + ' <span class="meta">ФГИС «Меркурий»</span></div>' +
+    '<div class="vsG"><div><label>ВСД</label>' + (/^UUID /.test(v.number) ? '<b>UUID</b> <span style="font-size:12.5px">' + esc(v.uuid) + '</span>' : '<b>№ ' + esc(v.number) + '</b>' + (v.uuid ? '<div class="meta" style="font-size:11px">' + esc(v.uuid) + '</div>' : '')) + '</div>';
+  if (!done) h += '<div><label>Поставщик</label>' + esc(v.supplier || '—') + '</div><div><label>Продукт</label>' + esc(v.product || '—') + '</div><div><label>Количество</label>' + esc(v.qty) + ' ' + esc(v.unit) + '</div>' +
+    '<div><label>Статус</label>' + vsChip(st) + (v.mercuryStatus && v.mercuryStatus !== 'CONFIRMED' ? ' <span class="meta">в «Меркурии»: ' + esc(v.mercuryStatus) + '</span>' : '') + '</div>';
+  else h += '<div><label>Погашен</label>' + esc(v.cancelledAt || '—') + '</div><div><label>Сотрудник</label>' + esc(v.cancelledBy || '—') + '</div><div><label>Партия</label>' + (v.batches || []).map(esc).join(', ') + '</div>';
+  h += '</div>';
+  if (VS.note[id]) h += '<div class="okbox">' + esc(VS.note[id]) + '</div>';
+  if (e) h += '<div class="warnbox"><b>' + esc(e.title || (st === 'UNKNOWN' ? 'РЕЗУЛЬТАТ НЕИЗВЕСТЕН' : 'ВСД НЕ ПОГАШЕН')) + '</b><br>Причина: ' + esc(e.message) + (e.code ? '<br>Код: ' + esc(e.code) : '') + (e.fix ? '<br>Что необходимо сделать: ' + esc(e.fix) : '') + '</div>';
+  else if (v.error && !done) h += '<div class="ambox">' + esc(v.error) + '</div>';
+  if (!done && v.check && v.check.summary && v.check.summary !== 'Совпадает') h += '<div class="meta" style="margin-top:6px">' + esc(v.check.summary) + '</div>';
+  if (!done && v.check) h += vsChecks(v.check, id);
+  if (!done && !(v.batches || []).length && o.unlinkedNote !== false) h += '<div class="ambox">ВСД ещё не привязан к партии — «Сопоставить» с принятым товаром.</div>';
+  var B = function (label, fn, cls, dis) { return '<button class="btn' + (cls ? ' ' + cls : '') + '"' + (busy || dis ? ' disabled' : '') + ' onclick="' + fn + '">' + label + '</button>'; }, acts = [];
+  if (busy) acts.push('<span class="chip a">Выполняется…</span>');
+  if (!done && st !== 'REJECTED' && st !== 'SENDING' && st !== 'UNKNOWN') {
+    acts.push(B('Проверить', 'vsDo(\'check\',\'' + esc(id) + '\',this)'));
+    if (o.canCancel !== false) acts.push(B('Погасить ВСД', 'vsDo(\'cancel\',\'' + esc(id) + '\',this)', 'pri', !(st === 'READY_TO_CANCEL' || st === 'ERROR')));
+  }
+  if (st === 'SENDING' || st === 'UNKNOWN') acts.push(B('Проверить результат', 'vsDo(\'sync\',\'' + esc(id) + '\',this)', 'pri'));
+  if (done) { if (b0 && o.openBatch !== false) acts.push('<a class="btn pri" target="_top" href="' + esc(VS.cardUrl(b0)) + '">Открыть партию</a>'); if (o.traceJs) acts.push(B('Прослеживаемость', o.traceJs)); else if (b0) acts.push('<a class="btn" target="_top" href="' + esc(VS.cardUrl(b0) + '&view=trace') + '">Прослеживаемость</a>'); }
+  if (v.uuid && (done || st === 'ERROR' || st === 'CONFLICT')) acts.push(B('Проверить статус', 'vsDo(\'sync\',\'' + esc(id) + '\',this)'));
+  acts.push(B(VS.open[id] ? 'Скрыть ВСД' : 'Открыть ВСД', 'VS.open[\'' + esc(id) + '\']=!VS.open[\'' + esc(id) + '\'];VS.onChange()'));
+  acts.push(B('История', 'vsHist(\'' + esc(id) + '\',this)'));
+  h += '<div class="acts">' + acts.join('') + '</div>';
+  if (VS.open[id]) h += '<div class="vsG" style="margin-top:8px">' + [['UUID', v.uuid], ['Статус в «Меркурии»', v.mercuryStatus], ['Дата оформления', v.issueDate], ['Отправитель', v.from], ['Получатель', v.to], ['Изготовитель', v.producer], ['Страна', v.country],
+    ['Партия изготовителя', v.mfrBatch], ['Дата выработки', v.production], ['Годен до', v.expiry], ['Накладная', v.invoice], ['Партии MonChef', (v.batches || []).join(', ')], ['Проверил', v.checkedBy ? v.checkedBy + ' · ' + v.checkedAt : ''],
+    ['Результат гашения', v.result], ['Заявка «Меркурия»', v.applicationId]].filter(function (x) { return x[1]; }).map(function (x) { return '<div><label>' + esc(x[0]) + '</label>' + esc(x[1]) + '</div>'; }).join('') + '</div>' +
+    (v.unsupplied && o.canMap ? '<div class="ambox">Отправитель ВСД (' + esc(v.consignorName || v.consignorBE) + ') не сопоставлен с поставщиком MonChef. <button class="btn" onclick="vsMap(\'' + esc(id) + '\',this)">Сопоставить с поставщиком…</button></div>' : '');
+  if (VS.hist[id]) h += vsHistHtml(VS.hist[id]);
+  return h + '</div>';
+}
+function vsHistHtml(c) {
+  return '<div style="margin-top:8px"><b>История ВСД</b>' + (c.history || []).map(function (x) { return '<div class="rc"><div style="min-width:118px" class="meta">' + esc(x.at) + '</div><div class="inf"><b>' + esc(x.action) + '</b> · ' + esc(x.employee) + (x.role ? ' (' + esc(x.role) + ')' : '') +
+    '<div class="meta">' + esc(x.before) + ' → ' + esc(x.after) + (x.result ? ' · ' + esc(x.result) : '') + (x.code ? ' · ' + esc(x.code) : '') + (x.applicationId ? ' · заявка ' + esc(x.applicationId) : '') + '</div><div class="meta" style="font-size:11px">' + esc(x.operationId) + '</div></div></div>'; }).join('') +
+    '<div style="margin-top:6px"><b>Обмен с «Меркурием»</b></div>' + ((c.exchange || []).length ? c.exchange.map(function (x) { return '<div class="meta">' + esc(x.at) + ' · ' + esc(x.kind) + ' · ' + esc(x.status) + (x.code ? ' · ' + esc(x.code) : '') + (x.applicationId ? ' · ' + esc(x.applicationId) : '') + (x.message ? ' · ' + esc(x.message) : '') + '</div>'; }).join('') : '<div class="meta">запросов не было</div>') + '</div>';
+}
+/* Операция с защитой от двойного нажатия: кнопка блокируется, OperationID попытки один — повтор не выполняется. */
+function vsDo(kind, id, btn, extra) {
+  if (VS.busy[id]) return;
+  if (kind === 'cancel' && !confirm('Погасить ВСД в «Меркурии»? Операция необратима: груз будет принят на вашу площадку.')) return;
+  VS.busy[id] = true; VS.err[id] = null; VS.note[id] = ''; if (btn) { btn.disabled = true; btn.textContent = 'Выполняется…'; }
+  if (kind === 'cancel') VS.by[id] && (VS.by[id].status = 'SENDING');
+  VS.onChange();
+  var fn = kind === 'cancel' ? 'mcVsdCancel' : kind === 'sync' ? 'mcVsdSync' : 'mcVsdCheck';
+  var arg = kind === 'sync' ? id : JSON.stringify(Object.assign({ vsdId: id }, extra || {}, kind === 'cancel' ? { opKey: VS.opKey && VS.opKey[id] || (VS.opKey = VS.opKey || {}, VS.opKey[id] = 'C' + Date.now()) } : {}));
+  call(fn, [arg, TOKEN]).then(function (r) {
+    VS.busy[id] = false;
+    var d = dataOf(r) || {};
+    if (okOf(r)) { var v = d.vsd || d; vsPut(v); if (d.check && !v.check) VS.by[id].check = d.check; VS.note[id] = d.message || d.note || (kind === 'check' ? (d.check && d.check.summary) || '' : ''); if (kind === 'cancel') delete VS.opKey[id]; }
+    else {
+      var er = (r && r.error) || {}; VS.err[id] = { title: er.title, message: er.message || errText(r), code: er.code, fix: er.fix };
+      if (r && r.data) { if (r.data.vsd) vsPut(r.data.vsd); if (r.data.check && VS.by[id]) VS.by[id].check = r.data.check; }
+      if (VS.by[id] && VS.by[id].status === 'SENDING' && !(r && r.data && r.data.vsd)) VS.by[id].status = er.code === 'MERCURY_UNKNOWN_RESULT' ? 'UNKNOWN' : VS.by[id].status;
+      if (kind === 'cancel' && !/UNKNOWN|LOCAL_INCOMPLETE/.test(er.code || '')) delete VS.opKey[id];
+    }
+    VS.onChange();
+  }, function () { VS.busy[id] = false; VS.err[id] = { message: 'нет связи с сервером MonChef', fix: 'Проверьте интернет и нажмите «Проверить результат» — повторное гашение без проверки не выполняется' }; if (VS.by[id] && kind === 'cancel') VS.by[id].status = 'UNKNOWN'; VS.onChange(); });
+}
+function vsConfirm(id, btn, keys) {
+  var conf = {}, miss = 0; keys.forEach(function (k) { var e = document.getElementById('vsc_' + id + '_' + k), t = e ? e.value.trim() : ''; if (!t) miss++; conf[k] = { reason: t }; });
+  if (miss) return alert('Укажите причину для каждого пункта');
+  VS.conf[id] = {}; keys.forEach(function (k) { VS.conf[id][k] = conf[k].reason; });
+  vsDo('check', id, btn, { confirm: conf });
+}
+function vsHist(id, btn) {
+  if (VS.hist[id]) { delete VS.hist[id]; return VS.onChange(); }
+  btn.disabled = true; call('mcGetVsdCard', [id, TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return alert(errText(r)); VS.hist[id] = dataOf(r); vsPut(dataOf(r)); VS.onChange(); }, function () { btn.disabled = false; });
+}
+function vsPartial(id) { alert('Частичная приёмка в «Меркурии» через MonChef в этой версии не выполняется.\n\nОформите в веб-интерфейсе «Меркурия» приёмку фактического количества (акт несоответствия, возврат остатка), затем нажмите здесь «Проверить статус» — результат подтянется в приёмку без повторного гашения.\n\nЕсли количество в MonChef введено с ошибкой — «Исправить».'); }
+function vsFix(id) { var v = VS.by[id] || {}, b = (v.batches || [])[0]; if (b) window.top.location.href = VS.cardUrl(b); else alert('Исправьте количество в строке приёмки'); }
+function vsReject(id, btn) {
+  var why = prompt('Причина отклонения ВСД (товар не принимается / ВСД не к этому грузу). Партия останется в карантине; отказ в «Меркурии» оформляется в его интерфейсе.'); if (!why || !why.trim()) return;
+  btn.disabled = true; call('mcVsdReject', [JSON.stringify({ vsdId: id, reason: why.trim() }), TOKEN]).then(function (r) { if (!okOf(r)) { VS.err[id] = { message: errText(r) }; } else { vsPut(dataOf(r).vsd); VS.note[id] = dataOf(r).note; } VS.onChange(); }, function () { btn.disabled = false; });
+}
+function vsMap(id, btn) {
+  var v = VS.by[id] || {}, s = prompt('Поставщик MonChef для отправителя «' + (v.consignorName || v.consignorBE) + '» (название из справочника поставщиков):', v.supplier || ''); if (!s || !s.trim()) return;
+  btn.disabled = true; call('mcMercuryMapSupplier', [JSON.stringify({ businessEntityGuid: v.consignorBE, enterpriseGuid: v.consignorEnt, supplier: s.trim(), name: v.consignorName }), TOKEN]).then(function (r) { if (!okOf(r)) { alert(errText(r)); btn.disabled = false; return; } vsDo('check', id, null); }, function () { btn.disabled = false; });
+}
+var VS_CSS = '.vsP{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;font-size:13px}' + '.vsd{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;background:#fff}.vsd.ok{border-color:var(--green);background:#f4faf6}.vsd.bad{border-color:var(--red)}' +
+  '.vsH{font-weight:800;letter-spacing:.3px;font-size:13px;margin-bottom:6px}.vsG{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 12px;font-size:14px}.vsG label{display:block;font-size:11px;color:var(--mut)}' +
+  '.vsCk{margin-top:6px}.vsCk .ck{display:flex;gap:6px;font-size:13px;margin:2px 0}.vsCk .ck i{font-style:normal;width:16px;color:var(--green)}.vsCk .ck.bad i,.vsCk .ck.bad{color:var(--red)}.vsCk .ck.warn i{color:var(--amber)}' +
+  '.vsd .warnbox,.vsd .ambox,.vsd .okbox{margin-top:6px}.vsd .rc{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}';
+(function () { try { var st = document.createElement('style'); st.textContent = VS_CSS; document.head.appendChild(st); } catch (e) {} })();
+/* Документы на сырьё, ВСД (ФГИС «Меркурий»), маркировка, подконтрольные продукты. */
+var D = null, TAB = 'docs', VF = { q: '', st: '' }, AF = {}, AUD = null, CFG = null, APP = '';
+// этап 10.7: непогашенные накладные (ответственный за ХАССП) и корректировки проведённых накладных
+var UNP = null, RC = null;
+function acc(perm) { var a = window.__MC_ACCESS; if (!a) return true; if (a.dev) return true; return String(perm).split('|').some(function (k) { return a.perms && a.perms[k] === true; }); }
+VS.onChange = function () { draw(); };
+VS.cardUrl = function (id) { return (APP || '') + '?batch=' + encodeURIComponent(id) + '&token=' + encodeURIComponent(TOKEN); };
+call('getAppUrl', []).then(function (u) { APP = typeof u === 'string' ? u : (dataOf(u) || ''); }, function () {});
+function load() { call('mcGetSupplyDocs', [TOKEN]).then(function (r) { if (!r || r.success === false) { document.getElementById('body').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } D = r.data; draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function setTab(t) { TAB = t; if (t === 'unpaid' && !UNP) unpLoad(); if (t === 'corr' && !RC) rcLoad(); draw(); }
+function unpLoad() { call('mcGetVsdUnpaid', [JSON.stringify({}), TOKEN]).then(function (r) { UNP = r && r.success !== false ? dataOf(r) : { error: errText(r) }; if (D) draw(); }, function () { UNP = { error: 'Нет связи' }; if (D) draw(); }); }
+function rcLoad() { call('mcGetReceiptCorrections', [JSON.stringify({}), TOKEN]).then(function (r) { RC = r && r.success !== false ? dataOf(r) : { error: errText(r) }; if (D) draw(); }, function () { RC = { error: 'Нет связи' }; if (D) draw(); }); }
+if (acc('mercury|vsd_cancel')) setTimeout(unpLoad, 600);
+function rcNew(btn) {
+  btn.disabled = true;
+  call('mcReceiptCorrectionCreate', [JSON.stringify({ batchId: v('rcB'), field: v('rcF'), value: v('rcV'), reason: v('rcW') }), TOKEN]).then(function (r) {
+    btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg(dataOf(r).note || 'Создано', true); RC = null; rcLoad();
+  }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function rcDecide(id, ok, btn) {
+  var c = ok ? (prompt('Утвердить корректировку ' + id + '? Партия изменится, исходная запись приёмки останется. Комментарий:') ) : prompt('Почему отклоняете?');
+  if (c === null) return; btn.disabled = true;
+  call('mcReceiptCorrectionDecide', [JSON.stringify({ id: id, decision: ok ? 'APPROVE' : 'REJECT', comment: c }), TOKEN]).then(function (r) {
+    btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg('Корректировка ' + dataOf(r).status.toLowerCase(), true); RC = null; rcLoad(); load();
+  }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function batchSel(id, filter) { return '<select id="' + id + '"><option value="">— партия —</option>' + D.batches.filter(filter || function () { return true; }).map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.product) + ' · ' + esc(b.received) + ' · ' + esc(b.id) + (b.vet ? ' · ВСД: ' + esc(b.vetStatus) : '') + '</option>'; }).join('') + '</select>'; }
+function draw() {
+  var noVsd = D.batches.filter(function (b) { return b.vet && b.vetStatus !== 'ПОГАШЕН'; }).length;
+  document.getElementById('tabs').innerHTML = [['docs', 'Документы', D.docs.length], ['vet', 'ВСД', noVsd ? noVsd + ' без гашения' : D.vet.length], ['vaudit', 'Журнал ВСД', ''], ['mark', 'Маркировка', D.marks.length], ['vp', 'Подконтрольные продукты', D.vetProducts.filter(function (x) { return x['Подконтролен'] === 'да'; }).length]].concat(acc('mercury|vsd_cancel') ? [['unpaid', 'Непогашенные накладные', UNP && UNP.invoices ? UNP.invoices.length : '']] : [])
+    .concat(acc('invoices_view|stock|doc_edit') ? [['corr', 'Корректировки накладных', RC && RC.items ? RC.items.filter(function (x) { return x.status === 'На утверждении'; }).length || '' : '']] : []).map(function (t) { return '<button class="' + (TAB === t[0] ? 'on' : '') + '" onclick="setTab(\'' + t[0] + '\')">' + t[1] + '<b>' + t[2] + '</b></button>'; }).join('');
+  var h = '';
+  if (TAB === 'docs') {
+    if (D.canEdit) h += '<div class="card"><div class="nm">Новый документ</div><div class="grid" style="margin-top:8px"><div><label>Тип</label><select id="dType">' + D.types.map(function (t) { return '<option>' + esc(t) + '</option>'; }).join('') + '</select></div><div><label>Номер *</label><input id="dNum"></div><div><label>Дата *</label><input id="dDate" type="date"></div>' +
+      '<div><label>Действует до</label><input id="dTill" type="date"></div><div style="grid-column:span 2"><label>Партия (продукт и поставщик подставятся из неё)</label>' + batchSel('dBatch') + '</div><div><label>или поставщик</label><input id="dSup"></div><div><label>и продукт</label><input id="dProd"></div><div><label>Файл (фото/скан/PDF)</label><input id="dFile" type="file" accept="image/*,application/pdf"></div></div>' +
+      '<div class="acts"><button class="btn pri" onclick="saveDoc(this)">Сохранить документ</button></div></div>';
+    h += D.docs.length ? '<div class="card"><table class="tbl"><tr><th>Документ</th><th class="hm">Поставщик / продукт</th><th>Срок</th><th>Проверка</th></tr>' + D.docs.map(function (d) {
+      return '<tr><td><b>' + esc(d['Тип']) + ' № ' + esc(d['Номер']) + '</b><div class="meta">' + esc(d['Дата']) + (d.BatchID ? ' · партия ' + esc(d.BatchID) : '') + (d.Hash ? ' · SHA-256 ' + esc(String(d.Hash).slice(0, 12)) + '…' : ' · без файла') + '</div></td><td class="hm">' + esc(d['Поставщик'] || '—') + '<div class="meta">' + esc(d['Продукт'] || '') + '</div></td><td>' + (d.expired ? '<span class="chip r">истёк ' + esc(d['Действует до']) + '</span>' : esc(d['Действует до'] || '—')) + '</td><td>' +
+        (d['Проверил'] ? '<span class="chip g">' + esc(d['Проверил']) + '</span>' : D.canEdit && !d.expired ? '<button class="btn" onclick="verify(\'' + esc(d.DocumentID) + '\',this)">Сверено с оригиналом</button>' : '<span class="chip a">не проверен</span>') + '</td></tr>'; }).join('') + '</table></div>' : '<div class="empty">Документов пока нет</div>';
+  }
+  if (TAB === 'vet') {
+    var M = D.mercury || {};
+    h += '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">ФГИС «Меркурий»</div><div class="meta">' + (M.configured ? 'Интеграция настроена: ВСД получаются, проверяются и гасятся через ВетИС.API. Статус «погашен» — только по ответу «Меркурия».' : 'Интеграция не настроена' + ((M.missing || []).length ? ': не заполнено — ' + esc(M.missing.join(', ')) : '') + '.') + '</div></div>' +
+      '<span class="chip ' + (M.configured ? 'g' : 'a') + '">' + (M.configured ? 'подключено' : 'не настроено') + '</span></div>' + (M.isAdmin ? '<div class="acts"><button class="btn" onclick="cfgOpen(this)">' + (CFG ? 'Скрыть настройки' : 'Настройки «Меркурия»') + '</button></div>' + cfgHtml() : '') + '</div>';
+    if (M.configured && D.canEdit) h += '<div class="card"><div class="nm">Получить ВСД</div><div class="grid" style="margin-top:8px"><div><label>Накладная №</label><input id="fDoc"></div><div><label>Поставщик</label><input id="fSup"></div><div><label>или UUID ВСД</label><input id="fUuid"></div></div><div class="acts"><button class="btn pri" onclick="vsdGet(this)">ПОЛУЧИТЬ ВСД</button></div></div>';
+    if (D.canEdit && !M.configured) h += '<div class="card"><div class="nm">ВСД по партии — вручную</div><div class="ambox">Интеграция с «Меркурием» не настроена: номер и статус ВСД вносятся вручную и не подтверждаются «Меркурием». После настройки интеграции гашение выполняется только кнопкой «Погасить ВСД».</div><div class="note">' + (D.vetRequired ? 'Включено правило REQUIRES_VET_DOCUMENT: партия подконтрольного продукта не допускается без погашенного ВСД.' : 'Правило REQUIRES_VET_DOCUMENT выключено.') + '</div><div class="grid" style="margin-top:8px"><div style="grid-column:span 2"><label>Партия *</label>' + batchSel('vBatch', function (b) { return b.vet; }) + '</div><div><label>Номер ВСД *</label><input id="vNum"></div>' +
+      '<div><label>Статус</label><select id="vSt"><option>ОФОРМЛЕН</option><option>ПОГАШЕН</option><option>АННУЛИРОВАН</option></select></div><div><label>Дата гашения</label><input id="vExt" type="date"></div><div><label>Приход (накладная)</label><input id="vArr"></div></div><div class="note">В списке — партии продуктов, отмеченных как подконтрольные (вкладка «Подконтрольные продукты»).</div><div class="acts"><button class="btn pri" onclick="saveVet(this)">Сохранить ВСД</button></div></div>';
+    var list = D.vet.filter(function (x) { return (!VF.st || x.status === VF.st) && (!VF.q || (x.number + ' ' + x.uuid + ' ' + x.product + ' ' + x.supplier + ' ' + (x.batches || []).join(' ') + ' ' + x.invoice).toLowerCase().indexOf(VF.q.toLowerCase()) >= 0); });
+    h += '<div class="card"><div class="grid"><div style="grid-column:span 2"><label>Поиск: номер, UUID, продукт, поставщик, партия, накладная</label><input id="vfq" value="' + esc(VF.q) + '" onchange="VF.q=this.value;draw()"></div><div><label>Статус</label><select onchange="VF.st=this.value;draw()"><option value="">все</option>' +
+      Object.keys(VS_ST).map(function (k) { return '<option value="' + k + '"' + (VF.st === k ? ' selected' : '') + '>' + esc(VS_ST[k][0]) + '</option>'; }).join('') + '</select></div></div></div>';
+    h += list.length ? list.slice(0, 100).map(function (x) { return '<div class="card">' + (x.source === 'MANUAL' ? '<div class="meta">внесён вручную · ' + esc(x['Кто']) + '</div>' : '') + vsBlock(x, { canCancel: M.canCancel, canMap: D.canEdit }) + '</div>'; }).join('') : '<div class="empty">ВСД пока нет</div>';
+  }
+  if (TAB === 'vaudit') {
+    h += '<div class="card"><div class="nm">Журнал аудита ВСД</div><div class="meta">Кто, когда, какой ВСД, какой товар и количество, для какой партии и что ответил «Меркурий».</div><div class="grid" style="margin-top:8px">' +
+      '<div><label>Тип операции</label><select id="aT"><option value="">все операции ВСД</option>' + ['VSD_CANCEL', 'VSD_CANCEL_RECOVERED', 'VSD_CHECK', 'VSD_FETCH', 'VSD_LINK', 'VSD_SYNC', 'VSD_REJECT', 'VSD_UNLINK', 'VSD_SUPPLIER_MAP', 'MERCURY_CONFIG', 'MERCURY_TEST'].map(function (t) { return '<option' + (AF.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
+      fld('aS', 'Поставщик', AF.supplier) + fld('aV', 'ВСД (номер или UUID)', AF.vsd) + fld('aB', 'Партия (BatchID)', AF.batchId) + fld('aE', 'Сотрудник', AF.employee) + fld('aF', 'С даты', AF.from, 'date') + fld('aTo', 'По дату', AF.to, 'date') +
+      '</div><div class="acts"><button class="btn pri" onclick="audLoad(this)">Показать</button></div></div>';
+    h += AUD ? (AUD.length ? '<div class="card"><table class="tbl"><tr><th>Когда · кто</th><th>Операция · ВСД</th><th class="hm">Товар · партия</th><th>Результат</th></tr>' + AUD.map(function (x) {
+      return '<tr><td>' + esc(x.at) + '<div class="meta">' + esc(x.employee) + (x.role ? ' · ' + esc(x.role) : '') + '</div></td><td><b>' + esc(x.action) + '</b><div class="meta">' + esc(x.vsd) + '</div></td><td class="hm">' + esc(x.product) + (x.qty ? ' · ' + esc(x.qty) : '') + '<div class="meta">' + esc(x.batch) + (x.supplier ? ' · ' + esc(x.supplier) : '') + '</div></td>' +
+        '<td>' + esc(x.result) + (x.before || x.after ? '<div class="meta">' + esc(x.before) + ' → ' + esc(x.after) + '</div>' : '') + (x.code ? '<div class="meta">' + esc(x.code) + ': ' + esc(x.message) + '</div>' : '') + (x.applicationId ? '<div class="meta">заявка ' + esc(x.applicationId) + '</div>' : '') +
+        (x.mercury ? '<details><summary class="meta">ответ «Меркурия»</summary><pre style="white-space:pre-wrap;font-size:11px">' + esc(x.mercury) + '</pre></details>' : '') + '<div class="meta" style="font-size:11px">' + esc(x.operationId) + '</div></td></tr>';
+    }).join('') + '</table></div>' : '<div class="empty">Записей нет</div>') : '';
+  }
+  if (TAB === 'mark') {
+    if (D.canEdit) h += '<div class="card"><div class="nm">Приёмка кодов маркировки</div><div class="grid" style="margin-top:8px"><div style="grid-column:span 2"><label>Партия *</label>' + batchSel('mBatch') + '</div><div><label>Приёмка (документ)</label><input id="mRec"></div></div><label style="margin-top:8px">Коды (по одному в строке, со сканера)</label><textarea id="mCodes" style="min-height:90px"></textarea><div class="acts"><button class="btn pri" onclick="addMarks(this)">Принять коды</button></div></div>';
+    h += D.marks.length ? '<div class="card"><table class="tbl"><tr><th>Код</th><th class="hm">GTIN / партия</th><th>Статус</th></tr>' + D.marks.map(function (m) { var c = String(m['Код маркировки']); return '<tr><td><span style="font-family:monospace;font-size:12px">' + esc(c.length > 32 ? c.slice(0, 31) + '…' : c) + '</span><div class="meta">' + esc(m['Продукт']) + '</div></td><td class="hm">' + esc(m.GTIN) + '<div class="meta">' + esc(m.BatchID) + '</div></td><td>' +
+      (m['Статус'] === 'WITHDRAWN' ? '<span class="chip">выведен: ' + esc(m['Причина вывода']) + '</span>' : D.canEdit ? '<button class="btn" onclick="withdraw(\'' + esc(c).replace(/'/g, '&#39;') + '\',this)">Вывести из оборота</button>' : '<span class="chip g">в обороте</span>') + '</td></tr>'; }).join('') + '</table></div>' : '<div class="empty">Кодов пока нет</div>';
+  }
+  if (TAB === 'unpaid') {
+    if (!UNP) h += '<div class="empty">Загрузка…</div>';
+    else if (UNP.error) h += '<div class="empty">' + esc(UNP.error) + '</div>';
+    else h += UNP.invoices.length ? UNP.invoices.map(function (x) {
+      return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">Накладная № ' + esc(x.docNo) + ' · ' + esc(x.supplier) + '</div><div class="meta">принял ' + esc(x.receivedBy) + ' · ' + esc(x.receivedAt) +
+        (x.deadline ? ' · погасить до ' + esc(x.deadline) : '') + '</div></div><span class="chip ' + (x.overdue ? 'r' : 'a') + '">' + (x.overdue ? 'ПРОСРОЧЕНО · ' : '') + esc(x.status) + '</span></div>' +
+        '<table class="tbl"><tr><th>Товар</th><th>Кол-во</th><th>ВСД</th><th>Партия</th></tr>' + (x.items || []).map(function (i) {
+          return '<tr><td>' + esc(i.product) + '</td><td>' + esc(i.qty) + ' ' + esc(i.unit) + '</td><td>' + (i.vsd ? esc(i.vsd) : '<span class="chip r">не сопоставлен</span>') + ' <span class="meta">' + esc(i.state || '') + '</span></td><td><a target="_top" href="' + esc(VS.cardUrl(i.batchId)) + '">' + esc(i.batchId) + '</a></td></tr>';
+        }).join('') + '</table><div class="acts"><button class="btn pri" onclick="VF.q=\'' + esc(x.docNo) + '\';setTab(\'vet\')">Открыть ВСД этой накладной</button></div></div>';
+    }).join('') : '<div class="empty">Непогашенных накладных нет</div>';
+  }
+  if (TAB === 'corr') {
+    if (!RC) h += '<div class="empty">Загрузка…</div>';
+    else if (RC.error) h += '<div class="empty">' + esc(RC.error) + '</div>';
+    else {
+      if (RC.canCreate) h += '<div class="card"><div class="nm">Корректировка проведённой накладной</div><div class="meta">Накладную не правят: создаётся корректировка с причиной, её утверждает директор (не автор). Запись приёмки остаётся как была.</div><div class="grid" style="margin-top:8px"><div style="grid-column:span 2"><label>Партия *</label>' + batchSel('rcB') + '</div>' +
+        '<div><label>Что исправить</label><select id="rcF"><option value="qty">Количество</option><option value="price">Цена за единицу</option></select></div>' + fld('rcV', 'Новое значение *', '', 'number') + fld('rcW', 'Причина *', '', 'text', ' style="grid-column:span 2"') +
+        '</div><div class="acts"><button class="btn pri" onclick="rcNew(this)">Отправить на утверждение</button></div></div>';
+      h += RC.items.length ? '<div class="card"><table class="tbl"><tr><th>Корректировка</th><th>Было → стало</th><th>Причина · автор</th><th>Статус</th></tr>' + RC.items.map(function (x) {
+        var mine = x.authorId === RC.me;
+        return '<tr><td><b>' + esc(x.id) + '</b><div class="meta">№ ' + esc(x.docNo) + ' · ' + esc(x.supplier) + '<br>' + esc(x.product) + ' · ' + esc(x.batchId) + '</div></td><td>' + esc(x.field) + ': ' + esc(x.before) + ' → <b>' + esc(x.after) + '</b> ' + esc(x.unit) + '</td>' +
+          '<td>' + esc(x.reason) + '<div class="meta">' + esc(x.author) + (x.authorRole ? ' (' + esc(x.authorRole) + ')' : '') + ' · ' + esc(x.created) + '</div></td><td><span class="chip ' + (x.status === 'Утверждена' ? 'g' : x.status === 'Отклонена' ? 'r' : 'a') + '">' + esc(x.status) + '</span>' +
+          (x.decidedBy ? '<div class="meta">' + esc(x.decidedBy) + ' · ' + esc(x.decidedAt) + (x.comment ? ' · ' + esc(x.comment) : '') + '</div>' : '') +
+          (RC.canDecide && x.status === 'На утверждении' && !mine ? '<div class="acts"><button class="btn pri" onclick="rcDecide(\'' + esc(x.id) + '\',true,this)">Утвердить</button><button class="btn" onclick="rcDecide(\'' + esc(x.id) + '\',false,this)">Отклонить</button></div>' : '') + '</td></tr>';
+      }).join('') + '</table></div>' : '<div class="empty">Корректировок нет</div>';
+    }
+  }
+  if (TAB === 'vp') {
+    if (D.canVet) h += '<div class="card"><div class="nm">Подконтрольный ветнадзору продукт</div><div class="grid" style="margin-top:8px"><div><label>Продукт *</label><input id="pName" list="pList"><datalist id="pList">' + D.batches.map(function (b) { return b.product; }).filter(function (x, i, a) { return a.indexOf(x) === i; }).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist></div><div style="grid-column:span 2"><label>Основание *</label><input id="pBasis" placeholder="перечень подконтрольных товаров / решение ответственного"></div></div><div class="acts"><button class="btn pri" onclick="setVp(true,this)">Отметить подконтрольным</button><button class="btn" onclick="setVp(false,this)">Снять отметку</button></div></div>';
+    h += D.vetProducts.length ? D.vetProducts.map(function (p) { return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(p['Продукт']) + '</div><div class="meta">' + esc(p['Основание']) + ' · ' + esc(p['Кто']) + ', ' + esc(p['Когда']) + '</div></div><span class="chip ' + (p['Подконтролен'] === 'да' ? 'a' : '') + '">' + (p['Подконтролен'] === 'да' ? 'подконтролен' : 'не подконтролен') + '</span></div></div>'; }).join('') : '<div class="empty">Подконтрольные продукты не отмечены</div>';
+  }
+  document.getElementById('body').innerHTML = h;
+}
+function sdFile(cb) { var f = document.getElementById('dFile'); f = f && f.files && f.files[0]; if (!f) return cb(''); var r = new FileReader(); r.onload = function () { cb(r.result); }; r.onerror = function () { cb(''); }; r.readAsDataURL(f); }
+function saveDoc(btn) { btn.disabled = true; sdFile(function (u) { call('mcSaveSupplyDocument', [JSON.stringify({ type: v('dType'), number: v('dNum'), date: v('dDate'), expiry: v('dTill'), batchId: v('dBatch'), supplier: v('dSup'), product: v('dProd'), fileDataUrl: u }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg('Документ сохранён' + (r.data.hash ? ', SHA-256 ' + r.data.hash.slice(0, 16) + '…' : ''), true); load(); }, function () { btn.disabled = false; msg('Нет связи'); }); }); }
+function verify(id, btn) { btn.disabled = true; call('mcVerifySupplyDocument', [id, TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg('Документ отмечен как проверенный', true); load(); }); }
+function saveVet(btn) { btn.disabled = true; call('mcSaveVetDocument', [JSON.stringify({ batchId: v('vBatch'), number: v('vNum'), status: v('vSt'), extinguishedAt: v('vExt'), arrivalRef: v('vArr') }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg('ВСД сохранён' + (r.data.note ? '. ' + r.data.note : ''), true); load(); }); }
+function addMarks(btn) { btn.disabled = true; call('mcAddMarkingCodes', [JSON.stringify({ batchId: v('mBatch'), receiptRef: v('mRec'), codes: v('mCodes') }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg('Принято кодов: ' + r.data.added, true); load(); }); }
+function withdraw(code, btn) { var why = prompt('Причина вывода из оборота (использовано в производстве, списание, возврат…)'); if (!why) return; btn.disabled = true; call('mcWithdrawMarking', [JSON.stringify({ code: code, reason: why }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg('Код выведен из оборота', true); load(); }); }
+function setVp(on, btn) { btn.disabled = true; call('mcSetVetControlled', [JSON.stringify({ product: v('pName'), basis: v('pBasis'), controlled: on }), TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) { msg(errText(r)); return; } msg(on ? 'Продукт отмечен подконтрольным' : 'Отметка снята', true); load(); }); }
+
+function vsdGet(btn) {
+  btn.disabled = true; btn.textContent = 'Запрос в «Меркурий»…';
+  call('mcVsdFetch', [JSON.stringify({ docNo: v('fDoc'), supplier: v('fSup'), uuid: v('fUuid') }), TOKEN]).then(function (r) {
+    btn.disabled = false; btn.textContent = 'ПОЛУЧИТЬ ВСД';
+    if (!okOf(r)) { var e = (r && r.error) || {}; return msg((/UNAVAILABLE/.test(e.code || '') ? 'МЕРКУРИЙ НЕДОСТУПЕН. ' : '') + (e.message || errText(r)) + (e.fix ? ' — ' + e.fix : '')); }
+    msg('Найдено ВСД: ' + (dataOf(r).vsd || []).length, true); load();
+  }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+var CFG_F = [['MERCURY_API_URL', 'Адрес сервиса (prod / test или URL)'], ['MERCURY_LOGIN', 'Логин API'], ['MERCURY_PASSWORD', 'Пароль API'], ['MERCURY_API_KEY', 'APIKey'], ['MERCURY_ISSUER_ID', 'issuerId'],
+  ['MERCURY_ORGANIZATION_ID', 'GUID хозяйствующего субъекта'], ['MERCURY_ENTERPRISE_ID', 'GUID площадки (предприятия)'], ['MERCURY_INITIATOR', 'Логин пользователя «Меркурия» (инициатор)'],
+  ['MERCURY_USER_LOGINS', 'Логины сотрудников, JSON {"ID сотрудника":"логин"}'], ['MERCURY_UNIT_MAP', 'Единицы, JSON {"GUID":"кг"}'], ['MERCURY_POLL_TRIES', 'Опросов результата (по умолчанию 12)']];
+function cfgOpen(btn) {
+  if (CFG) { CFG = null; return draw(); }
+  btn.disabled = true; call('mcMercuryGetConfig', [TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); CFG = dataOf(r); draw(); }, function () { btn.disabled = false; });
+}
+function cfgHtml() {
+  if (!CFG) return '';
+  return '<div class="grid" style="margin-top:10px">' + CFG_F.map(function (f) { var val = CFG.values[f[0]] || '', sec = /PASSWORD|API_KEY/.test(f[0]);
+    return '<div' + (/LOGINS|UNIT_MAP/.test(f[0]) ? ' style="grid-column:span 3"' : '') + '><label>' + esc(f[1]) + '</label><input id="cf_' + f[0] + '" ' + (sec ? 'type="password" placeholder="' + (val ? 'задан — оставьте пустым, чтобы не менять' : 'не задан') + '"' : 'value="' + esc(val) + '"') + '></div>'; }).join('') + '</div>' +
+    '<div class="note">Пароль и APIKey хранятся в защищённых свойствах скрипта и в браузер не возвращаются. Адрес: «prod» — ' + esc(CFG.urls.prod) + ', «test» — тестовый контур ' + esc(CFG.urls.test) + '. Гасить ВСД могут: ' + esc((CFG.cancelRoles || []).join(', ')) + '.</div>' +
+    '<div class="acts"><button class="btn pri" onclick="cfgSave(this)">Сохранить</button><button class="btn" onclick="cfgTest(this)">Проверить связь</button></div>';
+}
+function cfgSave(btn) {
+  var o = {}; CFG_F.forEach(function (f) { var e = document.getElementById('cf_' + f[0]); if (e) o[f[0]] = e.value.trim(); });
+  btn.disabled = true; call('mcMercurySaveConfig', [JSON.stringify(o), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); var d = dataOf(r); msg(d.ready ? 'Сохранено — интеграция готова' : 'Сохранено. Не заполнено: ' + d.missing.join(', '), d.ready); CFG = null; load(); }, function () { btn.disabled = false; });
+}
+function cfgTest(btn) { btn.disabled = true; btn.textContent = 'Запрос…'; call('mcMercuryTestConnection', [TOKEN]).then(function (r) { btn.disabled = false; btn.textContent = 'Проверить связь'; var e = (r && r.error) || {}; msg(okOf(r) ? dataOf(r).message : (e.message || errText(r)) + (e.fix ? ' — ' + e.fix : ''), okOf(r)); }, function () { btn.disabled = false; }); }
+function audLoad(btn) {
+  AF = { type: v('aT'), supplier: v('aS'), vsd: v('aV'), batchId: v('aB'), employee: v('aE'), from: v('aF'), to: v('aTo') };
+  btn.disabled = true; call('mcGetVsdAudit', [JSON.stringify(AF), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg(errText(r)); AUD = dataOf(r).rows || []; draw(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}load();
+</script></body></html>

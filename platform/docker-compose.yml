@@ -1,0 +1,102 @@
+# ЦЕХ одной командой: база, приложение, отправка писем, почтовый ящик стенда (Mailpit).
+#   docker compose up -d --build                      → http://localhost:3000, письма — http://localhost:8025/mail/
+#   docker compose --profile https up -d --build      → сервер с доменом и HTTPS (настройки — в .env, см. .env.example)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ceh
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ceh}
+      POSTGRES_DB: ceh
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ceh -d ceh"]
+      interval: 3s
+      retries: 30
+
+  mail:
+    image: axllent/mailpit:v1.31
+    restart: unless-stopped
+    environment:
+      MP_WEBROOT: /mail/
+      MP_UI_AUTH: ${MAIL_UI_AUTH:-}
+    ports: ["127.0.0.1:8025:8025"]
+
+  app:
+    build: .
+    image: ceh-app
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment: &appenv
+      DATABASE_URL: postgres://ceh:${DB_PASSWORD:-ceh}@db:5432/ceh
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      # почта: по умолчанию — ящик стенда Mailpit; для работы — SMTP_URL почтового сервиса (см. .env.example)
+      SMTP_URL: ${SMTP_URL:-smtp://mail:1025}
+      MAIL_FROM: ${MAIL_FROM:-ЦЕХ <no-reply@ceh.local>}
+      BACKUP_DIR: /backups
+      DEMO: ${DEMO:-0}
+      # ключ шифрования учётных данных интеграций (AES-256-GCM, 32 байта base64); создаёт deploy/yandex-install.sh
+      CEH_SECRET_KEY: ${CEH_SECRET_KEY:-}
+      # приложение доступно только через Caddy (APP_BIND=127.0.0.1): адрес клиента — из X-Forwarded-For, последний прокси
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      ADMISSION_DEFAULT: ${ADMISSION_DEFAULT:-block}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # распознавание документов — Yandex Cloud (см. .env.example)
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
+      YANDEX_GPT_MODEL: ${YANDEX_GPT_MODEL:-yandexgpt/latest}
+      RECOGNITION_LLM_DISABLED: ${RECOGNITION_LLM_DISABLED:-}
+      # AI-помощник: yandex — YandexGPT (данные в РФ, платно, включает владелец); пусто или off — выключен; anthropic — зарубежный, только вне РФ
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      YANDEX_AI_MODEL: ${YANDEX_AI_MODEL:-yandexgpt/latest}
+      AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-300}
+      # Telegram-бот «ЦЕХ ИИ» (сервис bot): токен от @BotFather; пусто — бот выключен
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-}
+    ports: ["${APP_BIND:-127.0.0.1}:3000:3000"]
+    volumes: [backups:/backups]
+
+  mailer:
+    image: ceh-app
+    restart: unless-stopped
+    depends_on: [app]
+    environment: *appenv
+    command: ["npm", "run", "-s", "mail:watch"]
+
+  # Telegram-бот «ЦЕХ ИИ»: длинный опрос, входящих портов не нужно; без TELEGRAM_BOT_TOKEN ждёт и ничего не делает
+  bot:
+    image: ceh-app
+    restart: unless-stopped
+    depends_on: [app]
+    environment: *appenv
+    command: ["npm", "run", "-s", "bot"]
+    # бот «нездоров», если больше 3 минут не получил ответа от Telegram (сеть, блокировка, неверный токен): видно в docker compose ps
+    healthcheck:
+      test: ["CMD", "node", "-e", "const f=require('fs');try{process.exit(Date.now()-Number(f.readFileSync(process.env.BOT_HEARTBEAT_FILE||'/tmp/ceh-bot-heartbeat','utf8'))<180000?0:1)}catch{process.exit(1)}"]
+      interval: 60s
+      timeout: 5s
+      start_period: 90s
+      retries: 2
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [https]
+    restart: unless-stopped
+    depends_on: [app, mail]
+    environment:
+      DOMAIN: ${DOMAIN:-}
+      MAIL_UI_AUTH: ${MAIL_UI_AUTH:-}
+    # без домена и пароля почтового ящика (там ссылки сброса пароля) сервер в интернет не выставляется
+    command: ["sh", "-c", "[ -n \"$$DOMAIN\" ] && [ -n \"$$MAIL_UI_AUTH\" ] || { echo 'Укажите DOMAIN и MAIL_UI_AUTH в .env'; exit 1; }; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+
+volumes:
+  dbdata:
+  caddy:
+  backups:

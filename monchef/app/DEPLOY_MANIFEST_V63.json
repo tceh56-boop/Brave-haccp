@@ -1,0 +1,12 @@
+{
+  "product": "Mon Chef",
+  "release": "V63",
+  "scope": "V55-V63 production release stack",
+  "entry": "Code.gs",
+  "production_route": "?productionrelease=1&token=<session>",
+  "modules": ["MonChef_V54_RESOURCE_STOCK_ENGINE.gs", "MonChef_V55_63_PRODUCTION_RELEASE.gs"],
+  "ui": ["ResourceStockV54.html", "ProductionRelease.html"],
+  "principles": ["single stock source", "server-side authorization", "operation audit", "idempotent/concurrent-safe critical stock paths", "FACT/HACCP bridge", "release gates"],
+  "not_certification": true,
+  "go_live_requirement": "Run pilot on real site data, backup/restore drill, acceptance tests, and legal/e-signature validation where required."
+}

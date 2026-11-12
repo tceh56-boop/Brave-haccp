@@ -50,30 +50,53 @@ function _documentIntegrityCheck_(doc, lines, session, draftId){
   return result;
 }
 
-function createInvoiceIntakeDraft_(data, session){
-  data=data||{};
-  var invoice=data.mockInvoice || runSupplierInvoiceOcr_(data.base64Image,data.mimeType||'image/jpeg',session);
-  var doc=invoice.document||{}, lines=invoice.lines||[];
-  if(!lines.length) throw new Error('В документе не найдены товарные строки.');
-  var integrity=_documentIntegrityCheck_(doc,lines,session,'');
+/**
+ * Состояние черновика приёмки по документу и строкам: сопоставление, количество/цена,
+ * подсказка срока, ХАССП, целостность документа, статус. Общая точка для создания черновика
+ * и для правки (updateInvoiceDraft_). Строки с skip:true в приёмку не входят.
+ */
+function _invUnit_(u){var x=String(u||'').toLowerCase().replace(/[.\s]/g,'');return {'килограмм':'кг','kg':'кг','литр':'л','l':'л','штука':'шт','штук':'шт','pcs':'шт','упак':'уп','упаковка':'уп','грамм':'г','g':'г'}[x]||x;}
+
+function buildInvoiceDraftState_(doc, lines, session, draftId){
+  var active=lines.filter(function(l){return !l.skip;});
+  var integrity=_documentIntegrityCheck_(doc,active,session,draftId||'');
+  // Тот же кассовый чек (ФН/ФД/ФП) уже проведён — повтор (FiscalQrCore.gs).
+  if(doc.fiscal_qr&&doc.fiscal_qr.duplicate_of){integrity.status=DOCUMENT_INTEGRITY_STATUS.DUPLICATE;integrity.reasons=(integrity.reasons||[]).concat(['Кассовый чек уже проведён в приёмке '+doc.fiscal_qr.duplicate_of+'.']);}
   var mapped=[], errors=[], warnings=[];
   lines.forEach(function(line,i){
     line.line_no=line.line_no||i+1;
-    var m=matchInvoiceLineToProduct_(line,session); line.match=m;
-    if(!m.product_id){errors.push({line:line.line_no,error:'Товар не найден однозначно',candidates:m.candidates||[]});return;}
+    if(line.skip) return;
+    var m=matchInvoiceLineToProduct_(line,session,doc.supplier||''); line.match={product_id:m.product_id,source:m.source,score:m.score,candidates:(m.candidates||[]).map(function(c){return {product_id:c.product_id,название:c.название,score:c.score,source:c.source};}),auto:m.auto};
+    if(!m.product_id){errors.push({line:line.line_no,error:(m.candidates&&m.candidates.length)?'Выберите продукт из похожих':'Товар не найден в номенклатуре',candidates:m.candidates||[]});return;}
+    var q=Number(line.qty), p=Number(line.price);
+    if(!(q>0)){errors.push({line:line.line_no,error:'Количество должно быть больше нуля.'});return;}
+    if(line.price===null||line.price===''||!isFinite(p)||p<0){errors.push({line:line.line_no,error:'Цена должна быть числом не меньше нуля.'});return;}
+    var pu=_invUnit_(m.product&&m.product.единица), lu=_invUnit_(line.unit);
+    if(pu&&lu&&pu!==lu) warnings.push({line:line.line_no,warning:'Единица в документе «'+line.unit+'», у продукта «'+m.product.единица+'» — проверьте, что количество указано в единицах продукта.'});
+    line.expiry_suggestion=(!line.expiryDate&&typeof suggestReceiptExpiry_==='function')?suggestReceiptExpiry_(m.product_id,doc.invoice_date||''):null;
     var h=runHaccpDecisionEngine_({eventType:'RECEIPT',productId:m.product_id,line:line},session);
     line.haccp=h;
     if(h.decision===HACCP_DECISION.BLOCK) errors.push({line:line.line_no,error:'HACCP/ППК блокировка',reasons:h.reasons});
     else {mapped.push(line);(h.warnings||[]).forEach(function(w){warnings.push({line:line.line_no,warning:w});});}
   });
-  var status=(integrity.status===DOCUMENT_INTEGRITY_STATUS.CONFLICT||integrity.status===DOCUMENT_INTEGRITY_STATUS.DUPLICATE||integrity.status===DOCUMENT_INTEGRITY_STATUS.REVIEW||errors.length&&!mapped.length)?'BLOCKED':(errors.length?'PARTIAL':'READY');
+  var status=(integrity.status===DOCUMENT_INTEGRITY_STATUS.CONFLICT||integrity.status===DOCUMENT_INTEGRITY_STATUS.DUPLICATE||integrity.status===DOCUMENT_INTEGRITY_STATUS.REVIEW||errors.length&&!mapped.length||!mapped.length)?'BLOCKED':(errors.length?'PARTIAL':'READY');
+  return {integrity:integrity,mapped:mapped,errors:errors,warnings:warnings,status:status};
+}
+
+function createInvoiceIntakeDraft_(data, session){
+  data=data||{};
+  var invoice=data.mockInvoice || runSupplierInvoiceOcr_(data.base64Image,data.mimeType||'image/jpeg',session);
+  var doc=invoice.document||{}, lines=invoice.lines||[];
+  if(!lines.length) throw new Error('В документе не найдены товарные строки.');
+  var st=buildInvoiceDraftState_(doc,lines,session,'');
+  var integrity=st.integrity, mapped=st.mapped, errors=st.errors, warnings=st.warnings, status=st.status;
   var draft={draft_id:generateId_('INVOICE_INTAKE_DRAFTS'),organization_id:session.organization_id,location_id:session.location_id,status:status,document_json:JSON.stringify(doc),lines_json:JSON.stringify(lines),matched_lines_json:JSON.stringify(mapped),integrity_json:JSON.stringify(integrity),haccp_json:JSON.stringify(mapped.map(function(x){return x.haccp;})),warnings_json:JSON.stringify(warnings),errors_json:JSON.stringify(errors),operation_id:data.operationId||'',created_at:_ocNow_(),created_by:session.user_id,confirmed_at:'',confirmed_by:'',receipt_json:'',cascade_id:session.cascade_id||''};
   insertRow_('INVOICE_INTAKE_DRAFTS',draft);
   insertRow_('INVOICE_DOCUMENTS',{document_id:generateId_('INVOICE_DOCUMENTS'),organization_id:session.organization_id,location_id:session.location_id,draft_id:draft.draft_id,status:'DRAFT',document_number:String(doc.invoice_number||doc.number||''),document_date:String(doc.invoice_date||doc.date||''),supplier_id:String(doc.supplier_id||''),document_fingerprint:integrity.document_fingerprint,lines_fingerprint:integrity.lines_fingerprint,created_at:_ocNow_(),created_by:session.user_id,posted_at:'',posted_by:''});
   return {draft_id:draft.draft_id,status:status,document:doc,lines:lines,matched_lines:mapped,integrity:integrity,warnings:warnings,errors:errors,preview:buildInvoicePostingPreview_(mapped,session)};
 }
 
-function getInvoiceIntakeDraft_(session,data){var d=findOne_('INVOICE_INTAKE_DRAFTS','draft_id',data.draftId);_ocOwned_(session,d,'INVOICE_INTAKE_DRAFTS:'+data.draftId);return {draft:d,document:JSON.parse(d.document_json||'{}'),lines:JSON.parse(d.lines_json||'[]'),matched_lines:JSON.parse(d.matched_lines_json||'[]'),integrity:JSON.parse(d.integrity_json||'{}'),haccp:JSON.parse(d.haccp_json||'[]'),warnings:JSON.parse(d.warnings_json||'[]'),errors:JSON.parse(d.errors_json||'[]'),receipt:d.receipt_json?JSON.parse(d.receipt_json):null};}
+function getInvoiceIntakeDraft_(session,data){var d=findOne_('INVOICE_INTAKE_DRAFTS','draft_id',data.draftId);_ocOwned_(session,d,'INVOICE_INTAKE_DRAFTS:'+data.draftId);return {draft_id:d.draft_id,status:d.status,draft:{draft_id:d.draft_id,status:d.status,created_at:String(d.created_at||''),created_by:d.created_by||''},document:JSON.parse(d.document_json||'{}'),lines:JSON.parse(d.lines_json||'[]'),matched_lines:JSON.parse(d.matched_lines_json||'[]'),integrity:JSON.parse(d.integrity_json||'{}'),haccp:JSON.parse(d.haccp_json||'[]'),warnings:JSON.parse(d.warnings_json||'[]'),errors:JSON.parse(d.errors_json||'[]'),receipt:d.receipt_json?JSON.parse(d.receipt_json):null};}
 
 function confirmInvoiceReceipt_(data,session){
   return withLock_(function(){
@@ -110,7 +133,8 @@ function runHaccpDecisionEngine_(ctx,session){
     var line=ctx.line||{};
     if(lim){
       var raw = ctx.value!==undefined && ctx.value!=='' ? ctx.value : (lim.value_field && line[lim.value_field]!==undefined ? line[lim.value_field] : (lim.parameter && line[lim.parameter]!==undefined ? line[lim.parameter] : '')); var value=Number(raw);
-      if(!isNaN(value)){
+      // Нет измерения — нет оценки: Number('') === 0 раньше давал ложный BLOCK по любому пределу с нижней границей.
+      if(raw!==''&&raw!==null&&raw!==undefined&&!isNaN(value)){
         var min=lim.min_value!==''&&lim.min_value!=null?Number(lim.min_value):null, max=lim.max_value!==''&&lim.max_value!=null?Number(lim.max_value):null;
         if((min!==null&&!isNaN(min)&&value<min)||(max!==null&&!isNaN(max)&&value>max)){out.decision=HACCP_DECISION.BLOCK;out.reasons.push('Критический предел нарушен: '+(c.control_name||c.control_id));}
       }
@@ -150,7 +174,7 @@ function generateTtkA4Pdf_(session,data){
   var haccpHtml=(ctx.haccp_links||[]).map(function(h){return '<tr><td>'+esc(h.control_id||'')+'</td><td>'+esc(h.control_type||'')+'</td><td>'+esc(h.stage_id||'')+'</td><td>'+esc(h.critical_limit_id||'')+'</td></tr>';}).join('');
   var sanpinHtml=(ctx.sanpin_links||[]).map(function(h){return '<tr><td>'+esc(h.requirement_id||'')+'</td><td>'+esc(h.clause||'')+'</td><td>'+esc(h.source_document||'')+'</td></tr>';}).join('');
   var html='<!doctype html><html><head><meta charset="UTF-8"><style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;font-size:9pt;color:#111;line-height:1.35}h1{font-size:16pt;text-align:center;margin:4px 0}h2{font-size:11pt;margin:13px 0 5px;border-bottom:1px solid #777;padding-bottom:3px}.meta{text-align:center;color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse;margin:5px 0 10px}th,td{border:1px solid #888;padding:4px 5px;vertical-align:top}th{background:#f2f2f2}.kv td:first-child{width:28%;font-weight:bold}.sign{margin-top:22px;display:flex;justify-content:space-between}.small{font-size:8pt;color:#555}</style></head><body>'+
-    '<div style="text-align:center;font-weight:bold">'+esc(orgName)+'</div><h1>ТЕХНОЛОГИЧЕСКАЯ КАРТА №'+esc(String(ttk.version).padStart(3,'0'))+'</h1><div class="meta">'+esc(dish.название)+' · версия '+esc(ttk.version)+' · утверждена '+esc(ttk.approved_at||'')+'</div>'+    '<h2>1. Основные сведения</h2><table class="kv"><tr><td>Наименование</td><td>'+esc(dish.название)+'</td></tr><tr><td>Категория</td><td>'+esc(dish.категория_id||'')+'</td></tr><tr><td>Выход</td><td>'+esc(dish.выход)+'</td></tr><tr><td>Источник / основание</td><td>'+esc(ttk.источник||'')+'</td></tr><tr><td>Область применения</td><td>'+esc(ttk.область_применения||'')+'</td></tr></table>'+    '<h2>2. Состав сырья</h2><table><tr><th>№</th><th>Ингредиент</th><th>Брутто</th><th>Нетто</th><th>Ед.</th><th>Потери</th></tr>'+recipeHtml+'</table>'+    '<h2>3. Технологический процесс</h2><table><tr><th>№</th><th>Этап</th><th>Описание</th><th>Температура</th><th>Время</th></tr>'+stepsHtml+'</table><div>'+esc(ttk.технология||'')+'</div>'+    '<h2>4. Хранение и качество</h2><table class="kv"><tr><td>Условия хранения</td><td>'+esc(ttk.условия_хранения||'')+'</td></tr><tr><td>Срок реализации / хранения</td><td>'+esc(ttk.срок_реализации||'')+'</td></tr><tr><td>Органолептические показатели</td><td>'+esc(ttk.показатели_качества||'')+'</td></tr><tr><td>Пищевая ценность</td><td>'+esc(ttk.пищевая_ценность||'')+'</td></tr><tr><td>Аллергенная информация</td><td>'+esc(ttk.аллергенная_информация||'')+'</td></tr></table>'+    '<h2>5. HACCP</h2><table><tr><th>Контроль</th><th>Тип</th><th>Этап</th><th>Критический предел</th></tr>'+haccpHtml+'</table>'+    '<h2>6. Нормативные связи</h2><table><tr><th>Требование</th><th>Пункт</th><th>Источник</th></tr>'+sanpinHtml+'</table>'+    '<div class="sign"><span>Разработал: __________________</span><span>Утвердил: __________________</span></div><div class="small">Сформировано системой «ЦЕХ» · '+esc(_ocNow_())+'</div></body></html>';
+    '<div style="text-align:center;font-weight:bold">'+esc(orgName)+'</div><h1>ТЕХНОЛОГИЧЕСКАЯ КАРТА №'+esc(String(ttk.version).padStart(3,'0'))+'</h1><div class="meta">'+esc(dish.название)+' · версия '+esc(ttk.version)+' · утверждена '+esc(ttk.approved_at||'')+'</div>'+    '<h2>1. Основные сведения</h2><table class="kv"><tr><td>Наименование</td><td>'+esc(dish.название)+'</td></tr><tr><td>Категория</td><td>'+esc(dish.категория_id||'')+'</td></tr><tr><td>Выход</td><td>'+esc(dish.выход)+'</td></tr><tr><td>Источник / основание</td><td>'+esc(ttk.источник||'')+'</td></tr><tr><td>Область применения</td><td>'+esc(ttk.область_применения||'')+'</td></tr></table>'+    '<h2>2. Состав сырья</h2><table><tr><th>№</th><th>Ингредиент</th><th>Брутто</th><th>Нетто</th><th>Ед.</th><th>Потери</th></tr>'+recipeHtml+'</table>'+    '<h2>3. Технологический процесс</h2><table><tr><th>№</th><th>Этап</th><th>Описание</th><th>Температура</th><th>Время</th></tr>'+stepsHtml+'</table><div>'+esc(ttk.технология||'')+'</div>'+    '<h2>4. Хранение и качество</h2><table class="kv"><tr><td>Условия хранения</td><td>'+esc(ttk.условия_хранения||'')+'</td></tr><tr><td>Срок реализации / хранения</td><td>'+esc(ttk.срок_реализации||'')+'</td></tr><tr><td>Органолептические показатели</td><td>'+esc(ttk.показатели_качества||'')+'</td></tr><tr><td>Пищевая ценность</td><td>'+esc(ttk.пищевая_ценность||'')+'</td></tr><tr><td>Аллергенная информация</td><td>'+esc(ttk.аллергенная_информация||'')+'</td></tr></table>'+    '<h2>5. HACCP</h2><table><tr><th>Контроль</th><th>Тип</th><th>Этап</th><th>Критический предел</th></tr>'+haccpHtml+'</table>'+    '<h2>6. Нормативные связи</h2><table><tr><th>Требование</th><th>Пункт</th><th>Источник</th></tr>'+sanpinHtml+'</table>'+(typeof techSpecTtkSectionHtml_==='function'?techSpecTtkSectionHtml_(ttk.tech_spec_snapshot_json,esc):'')+    '<div class="sign"><span>Разработал: __________________</span><span>Утвердил: __________________</span></div><div class="small">Сформировано системой «ЦЕХ» · '+esc(_ocNow_())+'</div></body></html>';
   var out={document_type:'TTK_A4',html:html,generated_at:_ocNow_()};
   try{var blob=Utilities.newBlob(html,'text/html','ttk.html').getAs(MimeType.PDF).setName('TTK_'+data.dishId+'_v'+ttk.version+'.pdf');out.base64=Utilities.base64Encode(blob.getBytes());out.mimeType='application/pdf';out.fileName=blob.getName();}catch(e){out.pdf_error=String(e.message||e);}
   return out;
