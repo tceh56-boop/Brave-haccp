@@ -18,7 +18,8 @@ var MC_ORG_KEY_ = 'MC_ORG_SETTINGS', MC_ORG_LOGO_KEY_ = 'MC_ORG_LOGO';
 var MC_ORG_FIELDS_ = [
   ['name', 'Полное наименование', true], ['shortName', 'Краткое наименование', false], ['objectName', 'Объект (название предприятия питания)', false],
   ['legalAddress', 'Юридический адрес', true], ['actualAddress', 'Фактический адрес объекта', true],
-  ['inn', 'ИНН', true], ['kpp', 'КПП', false], ['ogrn', 'ОГРН / ОГРНИП', false],
+  ['inn', 'ИНН', true], ['kpp', 'КПП', false], ['ogrn', 'ОГРН / ОГРНИП', false], ['okpo', 'ОКПО (для форм ОП)', false],
+  ['division', 'Структурное подразделение (для форм ОП)', false], ['directorName', 'Руководитель (ФИО, для «Утверждаю»)', false], ['directorPosition', 'Должность руководителя', false],
   ['bank', 'Банк', false], ['bik', 'БИК', false], ['account', 'Расчётный счёт', false], ['corrAccount', 'Корреспондентский счёт', false],
   ['responsibleName', 'Ответственное лицо (ФИО)', true], ['responsiblePosition', 'Должность ответственного', false],
   ['phone', 'Телефон', true], ['email', 'Электронная почта', true]
@@ -77,6 +78,7 @@ function _mcOrgValidate_(o) {
   if (o.inn && !_mcOrgInnOk_(o.inn)) e.push('ИНН: 10 цифр (организация) или 12 (ИП), контрольное число не сходится — проверьте цифры');
   if (o.kpp && !/^\d{4}[\dA-Z]{2}\d{3}$/.test(_mcOrgDigits_(o.kpp))) e.push('КПП: 9 знаков');
   if (o.kpp && _mcOrgDigits_(o.inn).length === 12) e.push('КПП у индивидуального предпринимателя (ИНН из 12 цифр) не указывается');
+  if (o.okpo && !/^(\d{8}|\d{10})$/.test(_mcOrgDigits_(o.okpo))) e.push('ОКПО: 8 цифр (организация) или 10 (ИП)');
   if (o.ogrn && !_mcOrgOgrnOk_(o.ogrn)) e.push('ОГРН (13 цифр) или ОГРНИП (15 цифр): контрольное число не сходится');
   var bik = _mcOrgDigits_(o.bik);
   if (o.bik && !/^04\d{7}$/.test(bik)) e.push('БИК: 9 цифр, начинается с 04');
@@ -119,7 +121,7 @@ function mcOrgSave(json, token) {
       MC_ORG_FIELDS_.forEach(function (f) {
         var k = f[0], v = Object.prototype.hasOwnProperty.call(d, k) ? d[k] : before[k];
         v = String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim();
-        if (/^(inn|kpp|ogrn|bik|account|corrAccount)$/.test(k)) v = v.replace(/\s+/g, '').toUpperCase();
+        if (/^(inn|kpp|ogrn|okpo|bik|account|corrAccount)$/.test(k)) v = v.replace(/\s+/g, '').toUpperCase();
         next[k] = v;
       });
       var errs = _mcOrgValidate_(next);
