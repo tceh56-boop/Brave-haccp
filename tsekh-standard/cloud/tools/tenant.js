@@ -4,6 +4,7 @@
  * Управление предприятиями на сервере (вместо установщика на Google Диске).
  *
  *   node tools/tenant.js create <код> --name "Кафе Урал" --email director@kafe.ru [--tz Asia/Yekaterinburg] [--pin 123456]
+ *                              [--key TS-XXXX-XXXX-XXXX]   — ключ из админ-панели; секрет берётся из LICENSE_SECRET (не из командной строки)
  *   node tools/tenant.js list
  *   node tools/tenant.js run <код> <функция> [аргументы JSON…]   — выполнить функцию проекта (как «Выполнить» в редакторе)
  *   node tools/tenant.js pin <код> <6 цифр>                       — первичный код технического доступа (patch 0.1)
@@ -24,7 +25,9 @@ function main() {
   switch (cmd) {
     case 'create': {
       const [slug] = pos;
-      const r = tenants.create({ slug, name: flags.name, ownerEmail: flags.email, timeZone: flags.tz });
+      const base = (process.env.APP_URL || 'http://localhost:8080').replace(/\/$/, '');
+      const license = flags.key ? { key: flags.key, secret: flags.secret || process.env.LICENSE_SECRET || '', adminUrl: flags['admin-url'] || base + '/admin/exec' } : null;
+      const r = tenants.create({ slug, name: flags.name, ownerEmail: flags.email, timeZone: flags.tz, license });
       console.log(`Предприятие создано: ${slug}`);
       console.log(`  Ссылка для сотрудников: ${(process.env.APP_URL || 'http://localhost:8080').replace(/\/$/, '')}/t/${slug}/exec`);
       console.log(`  Папка: ${r.root}\n  Таблица-база: ${r.sheet}`);

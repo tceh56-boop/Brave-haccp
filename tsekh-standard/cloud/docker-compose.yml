@@ -1,0 +1,41 @@
+# ЦЕХ Стандарт на виртуальной машине Yandex Cloud: сервер приложения + Caddy (HTTPS-сертификат Let's Encrypt сам).
+# Запуск из каталога cloud:  docker compose up -d --build
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    image: tsekh-standard:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      PORT: "8080"
+    volumes:
+      - ./data:/data
+    expose:
+      - "8080"
+    # PDF через Chromium и конвертация Excel/Word требуют памяти; при 4 ГБ на ВМ оставьте WORKERS=2–3
+    shm_size: "256m"
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?укажите DOMAIN в .env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
