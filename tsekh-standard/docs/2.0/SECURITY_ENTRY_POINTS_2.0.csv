@@ -977,7 +977,7 @@ ts2CateringLabels;TS2_Serving.gs;интерфейс (сессия);да;banquets
 ts2SystemDoc;TS2_SystemDocs.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
 ts4TenantIntegrityCheck;TS4_TenantIntegrity.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
 a360Run;TS_Audit360.gs;интерфейс (сессия);;audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit;сессия → право «audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit» → тариф
-a360MigrateViolations;TS_Audit360.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
+a360MigrateViolations;TS_Audit360.gs;интерфейс (сессия);да;haccp|haccp_approve;сессия → право «haccp|haccp_approve» → тариф → допуск → блокировка → аудит
 a360Evidence;TS_Audit360.gs;интерфейс (сессия);;audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit;сессия → право «audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit» → тариф
 clgBuild;TS_ChecklistGen.gs;интерфейс (сессия);да;ppk_edit|haccp|haccp_approve;сессия → право «ppk_edit|haccp|haccp_approve» → тариф → допуск → блокировка → аудит
 clgTemplates;TS_ChecklistGen.gs;интерфейс (сессия);;ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation;сессия → право «ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation» → тариф
@@ -988,7 +988,7 @@ tsExecStatus;TS_Execution.gs;интерфейс (сессия);;org_edit;сес�
 tsBackgroundEnable;TS_Execution.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
 haccpLinkSync;TS_HaccpLink.gs;интерфейс (сессия);да;haccp|haccp_approve|ppk_edit;сессия → право «haccp|haccp_approve|ppk_edit» → тариф → допуск → блокировка → аудит
 haccpLinkMap;TS_HaccpLink.gs;интерфейс (сессия);;haccp|haccp_view|haccp_approve|ppk_view|ppk_edit;сессия → право «haccp|haccp_view|haccp_approve|ppk_view|ppk_edit» → тариф
-haccpHazardDecide;TS_HaccpLink.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
+haccpHazardDecide;TS_HaccpLink.gs;интерфейс (сессия);да;haccp|haccp_approve;сессия → право «haccp|haccp_approve» → тариф → допуск → блокировка → аудит
 tsLsNormsSync;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp_approve;сессия → право «personnel|haccp_approve» → тариф → допуск → блокировка → аудит
 tsLsGetAll;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsLsGetDoc;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
@@ -998,7 +998,7 @@ tsLsVerifyNorm;TS_LaborSafety.gs;интерфейс (сессия);да;personne
 tsLsCreateAct;TS_LaborSafety.gs;интерфейс (сессия);да;personnel|haccp|documents;сессия → право «personnel|haccp|documents» → тариф → допуск → блокировка → аудит
 tsLsGetAct;TS_LaborSafety.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 ppkLegacyState;TS_PpkLegacy.gs;интерфейс (сессия);;haccp|haccp_view|haccp_approve|ppk_view|ppk_edit;сессия → право «haccp|haccp_view|haccp_approve|ppk_view|ppk_edit» → тариф
-ppkLegacyImport;TS_PpkLegacy.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
+ppkLegacyImport;TS_PpkLegacy.gs;интерфейс (сессия);да;haccp|haccp_approve;сессия → право «haccp|haccp_approve» → тариф → допуск → блокировка → аудит
 tsAiAsk;TS_ProMax.gs;интерфейс (сессия);да;*;сессия → право «*» → тариф → допуск → блокировка → аудит
 tsAiHistory;TS_ProMax.gs;интерфейс (сессия);;*;сессия → право «*» → тариф
 tsTtkLibrary;TS_ProMax.gs;интерфейс (сессия);;catalog|ttk_edit;сессия → право «catalog|ttk_edit» → тариф
@@ -1030,7 +1030,7 @@ ttkProcOf;TS_TtkProcess.gs;интерфейс (сессия);;ttk_edit|ttk_appro
 ttkProcReview;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit|ttk_approve|haccp_approve|ppk_edit;сессия → право «ttk_edit|ttk_approve|haccp_approve|ppk_edit» → тариф → допуск → блокировка → аудит
 ttkProcSetStatus;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
 ttkProcAiSuggest;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit|haccp;сессия → право «ttk_edit|haccp» → тариф → допуск → блокировка → аудит
-ttkProcDictionarySave;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_approve|haccp_approve;сессия → право «ttk_approve|haccp_approve» → тариф → допуск → блокировка → аудит
+ttkProcDictionarySave;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_approve|haccp|haccp_approve;сессия → право «ttk_approve|haccp|haccp_approve» → тариф → допуск → блокировка → аудит
 vioList;TS_Violations.gs;интерфейс (сессия);;haccp|haccp_view|haccp_approve|prod_manage|sanitation|journals;сессия → право «haccp|haccp_view|haccp_approve|prod_manage|sanitation|journals» → тариф
 vioCorrect;TS_Violations.gs;интерфейс (сессия);да;haccp|prod_manage|sanitation|journals;сессия → право «haccp|prod_manage|sanitation|journals» → тариф → допуск → блокировка → аудит
 vioVerify;TS_Violations.gs;интерфейс (сессия);да;haccp|haccp_approve|prod_manage|sanitation;сессия → право «haccp|haccp_approve|prod_manage|sanitation» → тариф → допуск → блокировка → аудит

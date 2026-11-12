@@ -126,7 +126,7 @@ function a360Run(token) {
   } catch (e) { return _failFrom_(e); }
 }
 function a360MigrateViolations(token) {
-  try { _requireAuth_(token, 'haccp_approve'); return _withLock_(function () { var n = _a360MigrateViolations_(); try { _ts2Audit_('VIOLATION_MIGRATE', 'VIOLATION', 'V42/V43/V44', undefined, { migrated: n }, 'нарушения модулей → единый реестр'); } catch (e) {} return _ok_({ migrated: n }); }); } catch (e) { return _failFrom_(e); }
+  try { _requireAuth_(token, 'haccp|haccp_approve'); return _withLock_(function () { var n = _a360MigrateViolations_(); try { _ts2Audit_('VIOLATION_MIGRATE', 'VIOLATION', 'V42/V43/V44', undefined, { migrated: n }, 'нарушения модулей → единый реестр'); } catch (e) {} return _ok_({ migrated: n }); }); } catch (e) { return _failFrom_(e); }
 }
 
 /* ------------------------------------------------------------------ этап 8: запись-доказательство по ID */

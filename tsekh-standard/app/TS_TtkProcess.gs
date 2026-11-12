@@ -304,7 +304,7 @@ function ttkProcAiSuggest(token, id) {
 /** Справочник процессов: добавить или изменить операцию предприятия (правила — регулярные выражения, проверяются). */
 function ttkProcDictionarySave(token, item) {
   try {
-    var s = _requireAuth_(token, 'ttk_approve|haccp_approve'); item = typeof item === 'string' ? JSON.parse(item) : item || {};
+    var s = _requireAuth_(token, 'ttk_approve|haccp|haccp_approve'); item = typeof item === 'string' ? JSON.parse(item) : item || {};
     var code = String(item.code || '').trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9_]{1,23}$/.test(code)) return _fail_('VALIDATION', 'Код операции — латиница, цифры и «_» (2–24 символа)');
     if (!String(item.name || '').trim()) return _fail_('VALIDATION', 'Укажите название операции');

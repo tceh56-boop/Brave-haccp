@@ -299,14 +299,14 @@ var TS_GATE_ = [
   { n: 'ttkProcReview', need: 'ttk_edit|ttk_approve|haccp_approve|ppk_edit', mut: true },
   { n: 'ttkProcSetStatus', need: 'ttk_edit', mut: true },
   { n: 'ttkProcAiSuggest', need: 'ttk_edit|haccp', mut: true },
-  { n: 'ttkProcDictionarySave', need: 'ttk_approve|haccp_approve', mut: true },
+  { n: 'ttkProcDictionarySave', need: 'ttk_approve|haccp|haccp_approve', mut: true },
   // Мастер-промт 4.0, этап 3 — связь ТТК → ХАССП
   { n: 'haccpLinkSync', need: 'haccp|haccp_approve|ppk_edit', mut: true },
   { n: 'haccpLinkMap', need: 'haccp|haccp_view|haccp_approve|ppk_view|ppk_edit' },
-  { n: 'haccpHazardDecide', need: 'haccp_approve', mut: true },
+  { n: 'haccpHazardDecide', need: 'haccp|haccp_approve', mut: true },
   // Мастер-промт 4.0, этап 4 — один генератор ППК; прежние разделы V35/V37 — просмотр и перенос в ХАССП
   { n: 'ppkLegacyState', need: 'haccp|haccp_view|haccp_approve|ppk_view|ppk_edit' },
-  { n: 'ppkLegacyImport', need: 'haccp_approve', mut: true },
+  { n: 'ppkLegacyImport', need: 'haccp|haccp_approve', mut: true },
   // Мастер-промт 4.0, этап 5 — чек-листы из действующей ППК
   { n: 'clgBuild', need: 'ppk_edit|haccp|haccp_approve', mut: true },
   { n: 'clgTemplates', need: 'ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation' },
@@ -317,7 +317,7 @@ var TS_GATE_ = [
   { n: 'vioSetVerifyMode', need: 'org_edit', mut: true },
   // Мастер-промт 4.0, этап 7 — санитарный аудит 360° (контрольный лист готовности R01–R28)
   { n: 'a360Run', need: 'audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit' },
-  { n: 'a360MigrateViolations', need: 'haccp_approve', mut: true },
+  { n: 'a360MigrateViolations', need: 'haccp|haccp_approve', mut: true },
   // Мастер-промт 4.0, этап 8 — переход из пункта аудита к записи-доказательству
   { n: 'a360Evidence', need: 'audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit' },
   { n: 'v43GetDeviations', need: 'sanitation|checklists' },

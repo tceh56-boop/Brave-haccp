@@ -76,7 +76,7 @@ function ppkLegacyState(token) {
 }
 function ppkLegacyImport(token) {
   try {
-    var s = _requireAuth_(token, 'haccp_approve'); _v35Init_(); _v37Init_(); _v30Init_();
+    var s = _requireAuth_(token, 'haccp|haccp_approve'); _v35Init_(); _v37Init_(); _v30Init_();
     var r = _ppkLegacyImport_((s && (s.fullName || s.name)) || '');
     _ts2Audit_('PPK_LEGACY_IMPORT', 'HACCP', 'V35/V37', undefined, r, 'перенос прежних разделов ППК в ХАССП (V30)');
     return _ok_(r);

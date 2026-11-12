@@ -134,7 +134,7 @@ function haccpLinkMap(token) {
 /** Решение человека по опасности: значима («да»/«нет») + мера и доказательство (для значимой без ККТ) или обоснование (для незначимой). */
 function haccpHazardDecide(token, hazardId, significant, existingControl, evidence) {
   try {
-    var s = _requireAuth_(token, 'haccp_approve');
+    var s = _requireAuth_(token, 'haccp|haccp_approve');   // анализ опасностей — группа ХАССП; утверждение ППК — директор
     var sig = String(significant || '').trim().toLowerCase(); if (['да', 'нет'].indexOf(sig) < 0) return _fail_('VALIDATION', 'Решение — «да» или «нет»');
     existingControl = String(existingControl || '').trim().slice(0, 500); evidence = String(evidence || '').trim().slice(0, 500);
     if (sig === 'нет' && !evidence) return _fail_('VALIDATION', 'Для незначимой опасности укажите обоснование');
