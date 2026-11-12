@@ -165,7 +165,11 @@ export function checkAnswer(a: AiAnswer, sources: Source[], context: unknown) {
   const allowed = new Set<string>();
   // Даты, время и идентификаторы не «разрешают» чисел в ответе.
   const corpus = (JSON.stringify(context) + ' ' + sources.map((s) => `${s.text} ${s.clause} ${s.scope}`).join(' '))
-    .replace(/\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?/g, ' ').replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ' ');
+    .replace(/\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?/g, ' ').replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ' ')
+    // даты и время в русском виде из текста отклонений и журналов: «12.11, 17:48», «03.11.2026», «9:05:30»
+    .replace(/(?<![\d.,])\d{1,2}\.\d{1,2}(?:\.\d{2,4})?,?\s+(?:в\s+)?\d{1,2}:\d{2}(?::\d{2})?/g, ' ')
+    .replace(/(?<![\d.,])\d{1,2}\.\d{1,2}\.\d{4}(?![\d])/g, ' ')
+    .replace(/(?<![\d.,:])\d{1,2}:\d{2}(?::\d{2})?(?![\d])/g, ' ');
   for (const m of corpus.matchAll(/-?\d+(?:[.,]\d+)?/g)) allowed.add(numKey(m[0]));
   const text = [a.found, a.why, ...a.do_now, ...a.dont, a.who_confirms, a.closes_when, a.limitations].join('\n');
   const unsupported = [...text.matchAll(UNIT)].filter((m) => !allowed.has(numKey(m[1]))).map((m) => m[0].trim());
