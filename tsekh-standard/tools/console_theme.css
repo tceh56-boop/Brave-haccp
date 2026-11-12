@@ -1,0 +1,83 @@
+/* ==========================================================================
+   ЦЕХ Стандарт — фирменное оформление главного окна.
+   Только внешний вид: разметка, классы и логика экрана не меняются.
+   Цвета бренда: #0B0B0B (основной), #D4AF37 (акцент), #E5E7EB (фон), #6B7280 (текст).
+   ========================================================================== */
+:root{
+  --wine:#a87b22; --wine-d:#1d150d; --wine-dd:#0b0b0b; --wineghost:#f7ecd2;
+  --gold:#d4af37; --gold-l:#f1dc9c; --gold-d:#a87b22;
+  --bg:#f4ede1; --paper:#fffdf8; --ink:#1a1510; --muted:#7a6c5c; --line:#eadfca;
+  --shadow:0 18px 40px -26px rgba(70,45,10,.55); --r:18px;
+  --ts-grad:linear-gradient(135deg,#e2bf55 0%,#d4af37 40%,#a87b22 100%);
+}
+html,body{font-family:Roboto,-apple-system,"Segoe UI",Arial,sans-serif;
+  background:var(--bg);
+  background-image:radial-gradient(1200px 500px at 85% -10%,rgba(212,175,55,.16),transparent 60%),
+    radial-gradient(900px 600px at -10% 110%,rgba(168,123,34,.10),transparent 60%);
+  background-attachment:fixed}
+.head h1,.mdl h2,.kpi .v,.dph,.pfph,.side .brand b{font-family:Montserrat,Roboto,Arial,sans-serif!important;letter-spacing:-.01em}
+.head h1{font-weight:800;color:var(--ink)}
+.card .ch h3{font-family:Montserrat,Roboto,Arial,sans-serif;font-weight:700}
+
+/* вход */
+#login{background:radial-gradient(circle at 50% 25%,#fffaf0 0,#f1e4c9 60%,#e8d6ae 100%)}
+.login-card img{width:300px;max-width:86%;filter:drop-shadow(0 8px 18px rgba(60,40,10,.18))}
+.pin-dots i{border-color:var(--gold-d)}
+.pin-dots i.on{background:var(--ts-grad);border-color:var(--gold-d)}
+.pad button{border-radius:18px;border-color:#efe2c6;background:linear-gradient(180deg,#fffefb,#fbf4e6)}
+.pad button:active{background:#f7ecd2}
+
+/* боковое меню: тёмное, активный пункт — золотая плашка */
+.side{background:linear-gradient(180deg,#17110b 0%,#0b0b0b 55%,#120d08 100%);color:#efe4d0;box-shadow:6px 0 30px -12px rgba(0,0,0,.6)}
+.side:after{content:"";position:absolute;right:-1px;top:0;bottom:0;width:2px;background:linear-gradient(180deg,transparent,rgba(212,175,55,.65),transparent)}
+.side .brand{flex-direction:column;align-items:flex-start;gap:6px;padding:18px 16px 16px;border-bottom:1px solid rgba(212,175,55,.18)}
+.side .brand img{width:196px;height:auto;max-width:100%;filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}
+.side .brand small{color:#bfa76a;font-size:11px;letter-spacing:.04em;margin:0}
+.nav{padding:12px 10px}
+.nav button{color:#e9dcc4;padding:10px 12px;border-radius:12px;margin:2px 0;font-weight:500;transition:background .15s,color .15s}
+.nav button svg{color:#d4af37;opacity:1}
+.nav button:hover{background:rgba(212,175,55,.10);color:#fff}
+.nav button.on{background:var(--ts-grad);color:#fff;font-weight:700;box-shadow:0 8px 20px -10px rgba(212,175,55,.85),inset 0 1px 0 rgba(255,255,255,.35)}
+.nav button.on svg{color:#fff}
+.nav .ts-plan-lock{opacity:.45}
+.side .foot{border-top:1px solid rgba(212,175,55,.18)}
+.side .foot a{color:#d9c48a}
+
+/* верхняя панель */
+.top{background:rgba(255,252,245,.82);border-bottom:1px solid rgba(212,175,55,.25)}
+.search{border-radius:14px;border-color:#ecdcb8}
+.user .av{background:var(--ts-grad);color:#1a1510;box-shadow:0 4px 12px -6px rgba(168,123,34,.9)}
+
+/* кнопки */
+.btn{border-radius:12px;border-color:#e8d9b8}
+.btn.pri{background:var(--ts-grad);border-color:#b8902c;color:#fff;box-shadow:0 8px 18px -10px rgba(168,123,34,.9)}
+.btn.pri:hover{filter:brightness(1.05)}
+
+/* плитки и карточки — как на макете: светлые, скруглённые, золотая подсветка */
+.kpi{border-radius:20px;border-color:#efe2c6;background:linear-gradient(160deg,#fffefb 0%,#fbf3e3 100%)}
+.kpi:before{width:0}
+.kpi:after{content:"";position:absolute;right:-30px;bottom:-40px;width:140px;height:90px;border-radius:50%;background:radial-gradient(closest-side,rgba(212,175,55,.22),transparent)}
+.kpi .l{text-transform:none;letter-spacing:0;font-size:13px;color:#5d5144;font-weight:500}
+.kpi .v{font-weight:800;color:#1a1510}
+.kpi.red{background:linear-gradient(160deg,#fffaf9 0%,#fbe9e6 100%)}
+.kpi.red .v{color:#a8231f}
+.card{border-radius:20px;border-color:#efe2c6;background:linear-gradient(180deg,#fffefb,#fdf8ee)}
+.card .ch{border-bottom-color:#f1e6cf}
+th{background:#fbf4e5}
+.tabs button.on{background:var(--ts-grad);color:#fff}
+.bar i b{background:var(--ts-grad)}
+.spin{border-top-color:var(--gold)}
+.chip.g{background:#e4f3e8}
+.mdl .box{border-radius:22px}
+.mdl h4{color:var(--gold-d)}
+
+/* заставка входа */
+#mcxScreen{background:#f6efe2;background-image:radial-gradient(120% 80% at 100% -10%,rgba(212,175,55,.20),transparent 55%),radial-gradient(90% 60% at -10% 0%,rgba(11,11,11,.06),transparent 50%),radial-gradient(60% 50% at 50% 42%,#fffaf1,transparent 70%)}
+.mcx-bar-fill{background:linear-gradient(90deg,#0b0b0b,#a87b22 55%,#d4af37)!important}
+.mcx-word{width:min(230px,60vw)}
+
+/* плашка тарифа (TS_Subscription) */
+.ts-plan{margin:10px 16px 0;padding:10px 12px;border-radius:14px;background:rgba(212,175,55,.10);border:1px solid rgba(212,175,55,.28);font-size:12px;color:#e9dcc4;cursor:pointer}
+.ts-plan b{display:block;color:#f1dc9c;font:700 13px/1.2 Montserrat,Roboto,Arial,sans-serif}
+.ts-plan.warn{background:rgba(168,35,31,.18);border-color:rgba(232,120,110,.5)}
+.ts-lock{display:inline-block;margin-left:auto;font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(212,175,55,.18);color:#f1dc9c}

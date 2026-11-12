@@ -1,0 +1,391 @@
+// Приёмочные сценарии ЦЕХ Стандарт 2.0–2.2 (ТЗ 2.0 §20, 2.1 §21, 2.2 §14) на имитации Apps Script.
+// Запуск: node tests/ts2_acceptance.test.js
+const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert'), { make } = require('./gas_mock');
+const root = path.join(__dirname, '..');
+const G = make('owner@example.com');
+// таблица: листы с поддержкой всего, что использует ядро 2.0
+function sheet(name) {
+  const s = { data: [], getName: () => name, getLastRow: () => s.data.length, getLastColumn: () => Math.max(0, ...s.data.map(r => r.length)), getMaxRows: () => 1000, getMaxColumns: () => 50,
+    setFrozenRows() {}, getProtections: () => [], protect: () => ({ setDescription() { return this; }, setWarningOnly() { return this; } }),
+    appendRow(r) { s.data.push(r.slice()); },
+    getRange(r, c, nr = 1, nc = 1) { return {
+      setValues(v) { v.forEach((row, i) => { s.data[r - 1 + i] = s.data[r - 1 + i] || []; row.forEach((x, j) => { s.data[r - 1 + i][c - 1 + j] = x; }); }); return this; },
+      getValues() { G.__cells = (G.__cells || 0) + nr * nc; const o = []; for (let i = 0; i < nr; i++) { const row = []; for (let j = 0; j < nc; j++) row.push(((s.data[r - 1 + i] || [])[c - 1 + j]) ?? ''); o.push(row); } return o; },
+      // поиск на стороне Таблиц: ячейки не передаются в скрипт и в счётчик чтения не входят
+      createTextFinder(text) { const f = { matchEntireCell() { return f; }, matchCase() { return f; }, findAll() { const out = []; for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) { const v = (s.data[r - 1 + i] || [])[c - 1 + j]; if (v !== undefined && String(v) === String(text)) out.push({ getRow: () => r + i }); } return out; } }; return f; },
+      getValue() { return ((s.data[r - 1] || [])[c - 1]) ?? ''; }, setValue(v) { s.data[r - 1] = s.data[r - 1] || []; s.data[r - 1][c - 1] = v; return this; },
+      clearContent() { if (r - 1 + nr >= s.data.length) s.data.length = r - 1; else for (let i = 0; i < nr; i++) s.data[r - 1 + i] = []; return this; },
+      setFontWeight() { return this; }, setBackground() { return this; }, setFontColor() { return this; }, setNumberFormat() { return this; } }; } };
+  return s;
+}
+const sheets = {}; const book = { getId: () => 'BOOK', getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = sheet(n)), getSheets: () => Object.values(sheets) };
+function legacy(name, head, rows) { const s = book.insertSheet(name); s.data.push(head); rows.forEach(r => s.data.push(r)); }
+const files = {};
+const folder = () => ({ getId: () => 'FOLDER', getName: () => 'Папка', getUrl: () => 'u', isTrashed: () => false, getParents: () => ({ hasNext: () => false }), getFoldersByName: () => ({ hasNext: () => false }), createFolder: folder,
+  createFile: (n, content) => { const id = 'FILE' + Math.random().toString(36).slice(2, 9); files[id] = typeof content === 'string' ? content : ''; return { getId: () => id, getUrl: () => 'u' }; } });
+let docs = 0;
+G.DriveApp = { getFolderById: folder, getFoldersByName: () => ({ hasNext: () => false }), createFolder: folder,
+  getFileById: id => ({ moveTo() {}, getBlob: () => ({ getDataAsString: () => files[id] || '' }), getAs: () => ({ setName() { return this; } }), makeCopy: () => ({ getId: () => 'COPY', getSize: () => 1, getUrl: () => 'u' }) }) };
+const docText = {};
+G.DocumentApp = { ParagraphHeading: {}, create: (title) => { docs++; const id = 'DOC' + docs, t = docText[id] = [title]; const p = { setHeading() { return p; } };
+  return { getId: () => id, saveAndClose() {}, getBody: () => ({ appendParagraph: x => { t.push(x); return p; }, appendTable: rows => { rows.forEach(r => t.push(r.join(' | '))); } }) }; } };
+G.SpreadsheetApp.ProtectionType = { SHEET: 'SHEET' };
+G.Utilities.newBlob = () => ({}); G.Utilities.formatDate = (d, tz, f) => { const x = new Date(d), p = n => String(n).padStart(2, '0');
+  return f.replace('yyyy', x.getFullYear()).replace('MM', p(x.getMonth() + 1)).replace('dd', p(x.getDate())).replace("'T'", 'T').replace('HH', p(x.getHours())).replace('mm', p(x.getMinutes())).replace('ss', p(x.getSeconds())); };
+let session = null; const recorded = [];
+Object.assign(G, { _tsIsoPlusMonths_: (iso, m) => { const d = new Date(iso + 'T12:00:00'); d.setMonth(d.getMonth() + m); return d.toISOString().slice(0, 10); }, _book_: () => book, _mcTz_: () => 'Europe/Moscow', _withLock_: f => f(), _log_: () => {}, mcGateSession_: () => session,
+  _ok_: d => JSON.stringify({ success: true, data: d }), _fail_: (c, m) => JSON.stringify({ success: false, error: { code: c, message: m } }),
+  _failFrom_: e => JSON.stringify({ success: false, error: { message: String(e.message || e) } }), _requireAuth_: () => session || {},
+  _mcRbHas_: (s, p) => s.role === 'Ответственный за ХАССП' || s.role === 'Директор', getRolePermissions: () => ({ journals: true, haccp: true }),
+  _mcOrg_: () => ({ name: 'Тест', inn: '7700000000' }), _mcOrgCompleteness_: () => ({ complete: true }),
+  mcRecordTemperature: (j) => { recorded.push(JSON.parse(j)); return JSON.stringify({ success: true }); },
+  _tsLicense_: () => ({ plan: 'pro_max' }), _tsPlanFeatures_: () => ({ lab: true, ppk: true, journals: true }),
+  _findProduction_: () => ({ data: { 0: 'D-1' } }), _productionSheet_: () => null, PROD_COL_: { code: 0 }, _tccpState_: () => G.__ccp });
+legacy('Блюда', ['Код', 'Название', 'Категория', 'Выход', 'Кол-во', 'Технология', 'Файл', 'Шаги', 'Цех', 'Срок реализации (ч)'], [
+  ['D-1', 'Котлета куриная', 'Горячие блюда', '150 г', 2, 'Филе нарезать, сформовать котлеты. Обжарить и запекать до температуры в толще не ниже 75 °C. Хранить при t от +2 до +6 °C.', '', '', 'Горячий цех', 24],
+  ['D-2', 'Салат без срока', 'Салаты', '200 г', 1, 'Овощи промыть, нарезать, заправить. Тушить 10 минут.', '', '', 'Холодный цех', ''],
+  ['D-3', 'Котлета куриная', 'Горячие блюда', '', 0, '', '', '', 'Горячий цех', ''],
+  ['D-4', 'Соус сливочный', 'Соусы', '', 1, 'Сливки довести до кипения.', '', '', 'Горячий цех', '']]);
+legacy('Состав', ['code', 'name', 'unit', 'qty', 'base', 'netto'], [['D-1', 'Филе куриное', 'г', 120, 0, 110], ['D-1', 'Сливки', 'мл', 20, 0, 20], ['D-2', 'Огурец', 'г', 100, 0, 90], ['D-4', 'Сливки', 'мл', 200, 0, 180]]);
+legacy('Сотрудники', ['last', 'first', 'middle', 'pos', 'role'], []);
+legacy('Оборудование_Реестр', ['EquipmentID', 'Наименование', 'Модель', 'Заводской №', 'Место', 'Ответственный', 'Измерительный (да/нет)', 'Диапазон', 'Точность', 'Дата поверки', 'Следующая поверка', 'Документ поверки', 'Статус'],
+  [['EQ-1', 'Термометр ртутный ТЛ-2', '', '', 'Склад', '', 'да', '', '', '', '', '', 'ACTIVE'], ['EQ-2', 'Термощуп электронный', 'TP101', '', 'Горячий цех', '', 'да', '', '', '', '', '', 'ACTIVE']]);
+const isoIn = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+legacy('ЦС_Нормативы', ['Код', 'Группа', 'Документ', 'Название', 'Что требует', 'Где в системе', 'Статус', 'Проверил', 'Дата проверки', 'Ссылка', 'Действует до'], [
+  ['N-1', 'СанПиН', 'СанПиН скоро истекает', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(60)], ['N-2', 'СанПиН', 'Приказ истёк', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(-3)],
+  ['N-3', 'СанПиН', 'Действует долго', '', '', '', 'ДЕЙСТВУЕТ', '', '', '', isoIn(2000)], ['N-4', 'СанПиН', 'Отменён', '', '', '', 'УТРАТИЛ СИЛУ', '', '', '', isoIn(-400)]]);
+legacy('Температурные_Объекты', ['ObjectID', 'Тип', 'Название', 'EquipmentID', 'Мин', 'Макс', 'Ед.', 'Статус', 'Установленная t°', 'Время проверок'], [['T-1', 'REFRIGERATOR', 'Холодильник 1', '', 2, 6, '°C', 'ACTIVE', 4, '09:00']]);
+const ctx = vm.createContext(G);
+['TS2_Schema.gs', 'TS2_Core.gs', 'TS2_Documents.gs', 'TS2_Reconcile.gs', 'TS2_Ready.gs', 'TS2_Generate.gs', 'TS2_SystemDocs.gs', 'TS_Sensors.gs', 'TS2_Serving.gs', 'TS2_Archive.gs'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, 'app', f), 'utf8'), ctx, { filename: f }));
+const C = ctx, J = s => { const r = JSON.parse(s); if (!r.success) throw new Error(r.error.message); return r.data; };
+const rows = n => C._ts2Rows_(n);
+const F = s => JSON.parse(s).success ? { ok: true } : { ok: false };
+let pass = 0; const t = (name, fn) => { fn(); pass++; console.log('  ✓ ' + name); };
+
+t('схема: повторная установка не создаёт дублей листов и ID уникальны', () => {
+  const a = C._ts2EnsureSchema_(false), b = C._ts2EnsureSchema_(false);
+  assert(a.sheetsCreated > 30 && b.sheetsCreated === 0);
+  const ids = new Set([1, 2, 3].map(() => C._ts2Id_('APPROVAL_QUEUE'))); assert.strictEqual(ids.size, 3);
+});
+t('2.1: initializeReadyToWork идемпотентен (26 документов, 9 зон, правила событий)', () => {
+  const r1 = C._ts2InitializeReadyToWork_('READY_TO_WORK', 'RESTAURANT'), r2 = C._ts2InitializeReadyToWork_('READY_TO_WORK', 'RESTAURANT');
+  assert.strictEqual(rows('SYSTEM_DOCUMENTS').length, 26); assert.strictEqual(rows('WORKSHOPS').length, 9);
+  assert.strictEqual(rows('EVENT_RULES').length, C.TS2_EVENT_RULES_.length); assert.strictEqual(r2.created.documents, 0);
+  assert(r1.backupId === '' || /BKP/.test(r1.backupId));
+  assert.strictEqual(rows('MEASUREMENT_OBJECTS').filter(o => o.legacyObjectId === 'T-1').length, 1, 'холодильник из старого реестра');
+  assert(rows('APPROVAL_QUEUE').length >= 15, 'документы на утверждение предприятия');
+});
+t('2.1: расписание дня создаётся один раз', () => {
+  const n1 = C._ts2GenerateDay_('2026-11-10'), n2 = C._ts2GenerateDay_('2026-11-10');
+  assert(n1 > 5); assert.strictEqual(n2, 0);
+});
+t('2.1: выпуск без замера ККТ — число не выдумывается, создаётся ожидание замера', () => {
+  G.__ccp = { items: [{ controlId: 'C1', point: 'Тепловая обработка', status: 'MISSING' }] };
+  C._ts2OnGateCall_('completeProduction', ['P-1', 10], JSON.stringify({ success: true, data: {} }));
+  const thermal = rows('AUTO_RECORDS').filter(r => r.productionId === 'P-1' && r.recordType === 'HACCP_FACT');
+  assert.strictEqual(thermal.length, 1); assert.strictEqual(thermal[0].result, 'PENDING_CONFIRMATION'); assert.strictEqual(String(thermal[0].value), '');
+  assert(rows('JOURNAL_EXPECTATIONS').some(e => e.productionId === 'P-1' && e.confirmationMode === 'MEASURE'));
+});
+t('2.1: повтор события не создаёт дублей (ключ предприятие+производство+ККТ+событие+версия)', () => {
+  const before = rows('AUTO_RECORDS').length;
+  C._ts2OnGateCall_('completeProduction', ['P-1', 10], JSON.stringify({ success: true, data: {} }));
+  assert.strictEqual(rows('AUTO_RECORDS').length, before);
+});
+t('2.1: фактический замер из ККТ переносится с источником; отклонение — исключение', () => {
+  G.__ccp = { items: [{ controlId: 'C1', point: 'Тепловая обработка', status: 'DEVIATION', value: 62, unit: '°C', factId: 'F-9', who: 'Иванов' }] };
+  C._ts2OnGateCall_('completeProduction', ['P-2', 5], JSON.stringify({ success: true, data: {} }));
+  const r = rows('AUTO_RECORDS').filter(x => x.productionId === 'P-2' && x.recordType === 'HACCP_FACT')[0];
+  assert.strictEqual(r.result, 'FAIL'); assert.strictEqual(Number(r.value), 62); assert(/F-9/.test(r.sourceType));
+  assert(rows('AUTO_RECORDS').some(x => x.recordType === 'DEVIATION' && /62/.test(x.value)));
+});
+t('2.1: неудачная операция шлюза событий не создаёт', () => {
+  const before = rows('AUTO_RECORDS').length;
+  C._ts2OnGateCall_('completeProduction', ['P-3', 5], JSON.stringify({ success: false }));
+  assert.strictEqual(rows('AUTO_RECORDS').length, before);
+});
+t('2.1: экран повара — «Да», «Нет» только с причиной, замер вне нормы требует комментарий', () => {
+  session = { name: 'Петров', role: 'Повар горячего цеха' };
+  const tasks = C._ts2NowTasks_(), conf = tasks.find(x => x.mode === 'CONFIRM'), fr = tasks.find(x => x.measure && x.measure.kind === 'FRIDGE');
+  assert(conf && fr);
+  assert.throws(() => C._ts2Confirm_(conf.id, false, ''), /причину/);
+  assert.strictEqual(C._ts2Confirm_(conf.id, true).result, 'CONFIRMED_BY_OPERATOR');
+  assert.throws(() => C._ts2Confirm_(conf.id, true), /закрыта/);
+  assert.throws(() => C._ts2Confirm_(fr.id, true), /замер/);
+  assert.throws(() => C._ts2Measure_(fr.id, 9), /комментарий/);
+  assert.strictEqual(C._ts2Measure_(fr.id, 4).result, 'PASS');
+  assert.strictEqual(recorded.length, 1, 'замер холодильника записан и в прежний журнал температур');
+});
+t('2.1: цепочка хешей автозаписей и аудита не нарушена', () => {
+  const ar = rows('AUTO_RECORDS'); for (let i = 1; i < ar.length; i++) assert.strictEqual(ar[i].prevHash, ar[i - 1].hash);
+  const v = C._ts2VerifyAudit_(); assert(v.records > 0 && v.broken.length === 0, JSON.stringify(v));
+});
+t('2.1: технический доступ не утверждает документы предприятия; ответственный — утверждает', () => {
+  const q = rows('APPROVAL_QUEUE').find(x => x.requiredRole === 'Ответственный за ХАССП' && x.status === 'PENDING');
+  session = { name: 'Тех', role: '', dev: true }; assert.throws(() => C._ts2ApproveQueue_(q.approvalId, true), /технический/);
+  session = { name: 'Повар', role: 'Повар горячего цеха' }; assert.throws(() => C._ts2ApproveQueue_(q.approvalId, true), /утверждает/);
+  session = { name: 'Сидорова', role: 'Ответственный за ХАССП' }; assert.strictEqual(C._ts2ApproveQueue_(q.approvalId, true).status, 'APPROVED');
+});
+t('2.2: полная ТТК → ТУ, СТО, ППК; предел ККТ взят из текста ТТК с источником', () => {
+  const card = C._ts2GenPreview_('D-1');
+  assert(!card.issues.some(i => i.severity === 'BLOCKER'), JSON.stringify(card.issues)); assert(card.canApply);
+  assert(card.controls.some(c => /75/.test(c.criticalLimit) && /ТТК D-1/.test(c.limitSource)));
+  const again = C._ts2GenPreview_('D-1'); assert(again.existing && again.job.generationJobId === card.job.generationJobId, 'повторный предпросмотр той же версии ТТК — тот же пакет');
+  const applied = C._ts2GenApply_(card.job.generationJobId);
+  assert.strictEqual(applied.documents.tu.length, 1); assert.strictEqual(applied.documents.sto.length, 1); assert.strictEqual(applied.documents.ppk.length, 1);
+  assert.strictEqual(applied.documents.ppk[0].changeType, 'INITIAL');
+  assert(rows('DOCUMENT_SOURCE_LINKS').length >= 10);
+  assert(rows('EVENT_RULES').filter(r => r.sourceTtkId === 'D-1').every(r => String(r.active) === 'false'), 'правила неактивны до утверждения');
+  C._ts2GenApply_(card.job.generationJobId); assert.strictEqual(rows('PPK_DOCUMENTS').length, 1, 'повторное применение без дублей');
+  session = { name: 'Сидорова', role: 'Ответственный за ХАССП' };
+  const q = rows('APPROVAL_QUEUE').find(x => x.objectType === 'GENERATION_PACKAGE');
+  assert.throws(() => C._ts2ApproveQueue_(q.approvalId, true), /заблокировано/, 'конфликт (дубликат D-3) блокирует утверждение');
+  card.issues.filter(i => i.severity === 'CONFLICT').forEach(i => C._ts2GenResolveIssue_(i.issueId, 'D-3 — черновик, будет архивирован'));
+  C._ts2ApproveQueue_(q.approvalId, true);
+  assert(rows('EVENT_RULES').filter(r => r.sourceTtkId === 'D-1').every(r => String(r.active) === 'true'));
+  assert.strictEqual(rows('PPK_DOCUMENTS')[0].status, 'APPROVED');
+});
+t('2.2: ТТК без срока и предела — REQUIRES_SOURCE, число не подставляется; ППК — новая версия-дополнение', () => {
+  const card = C._ts2GenPreview_('D-2');
+  assert(card.issues.some(i => i.fieldCode === 'shelfLife'));
+  assert(card.controls.every(c => c.criticalLimit === '' && c.limitSource === 'REQUIRES_SOURCE'));
+  const ap = C._ts2GenApply_(card.job.generationJobId);
+  const ppk = ap.documents.ppk[0]; assert.strictEqual(ppk.changeType, 'TTK_ADDENDUM'); assert.strictEqual(Number(ppk.version), 2); assert(ppk.baseVersionId);
+  assert.strictEqual(rows('PPK_DOCUMENTS').length, 2, 'прежняя версия не перезаписана');
+  assert(rows('PPK_DOCUMENTS').every(d => /^Приложение к ППК/.test(d.name)), 'по ТТК — приложение к ППК V65, а не отдельная ППК (этап 4.0-4)');
+});
+t('2.2: дубликат и пустая ТТК — блок и конфликт; утверждение заблокировано', () => {
+  const card = C._ts2GenPreview_('D-3');
+  assert(card.issues.some(i => i.severity === 'BLOCKER')); assert(card.issues.some(i => /CONFLICT_DUPLICATE/.test(i.message)));
+  assert.strictEqual(card.canApply, false); assert.throws(() => C._ts2GenApply_(card.job.generationJobId), /блокирующ/);
+});
+t('2.0: сверка находит блокирующие проблемы и не дублирует их при повторе', () => {
+  const r1 = C._ts2RunReconciliation_ ? C._ts2RunReconciliation_() : null; if (!r1) return;
+  const n1 = rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN').length; C._ts2RunReconciliation_();
+  assert.strictEqual(rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN').length, n1);
+  assert(rows('RECONCILIATION_ISSUES').some(i => i.severity === 'BLOCKER'));
+  const byRule = code => rows('RECONCILIATION_ISSUES').filter(i => i.ruleId === C.TS2_RULES_.find(r => r.ruleCode === code).ruleId).map(i => i.entityId);
+  assert.strictEqual(JSON.stringify(byRule('THERMOMETER_MERCURY')), '["EQ-1"]', 'ртутный термометр — критично, электронный — нет (п. 48)');
+  assert(byRule('STORE_CLIMATE_OBJECT_MISSING').length === 1, 'нет помещения для замера влажности склада (п. 35, 40)');
+  const iss = code => rows('RECONCILIATION_ISSUES').filter(i => i.entityType === 'NORM' && i.ruleId === C.TS2_RULES_.find(r => r.ruleCode === code).ruleId).map(i => i.entityId);
+  assert.strictEqual(JSON.stringify(iss('NORM_EXPIRING')), '["N-1"]', 'истекает в ближайшие 120 дней');
+  assert.strictEqual(JSON.stringify(iss('NORM_EXPIRED')), '["N-2"]', 'истёк, но отмечен действующим; отменённый и долгосрочный — без проблем');
+});
+t('2.0: BLOCKER → предложение → согласование → backup → применение → аудит → откат', () => {
+  session = { name: 'Иванов', role: 'Директор', dev: false };
+  const p = rows('CHANGE_PROPOSALS').find(x => x.operationType === 'UPDATE' && x.entityId === 'D-4' && x.status === 'PROPOSED');
+  assert(p, 'предложение выхода для D-4: ' + JSON.stringify(rows('CHANGE_PROPOSALS').map(x => [x.entityId, x.operationType])));
+  const cell = () => sheets['Блюда'].data.find(r => r[0] === 'D-4')[3];
+  assert.strictEqual(cell(), '');
+  const bk = rows('BACKUP_CATALOG').length;
+  C._ts2Approve_(p.changeProposalId, true, 'ок'); C._ts2ApplyProposals_([p.changeProposalId]);
+  assert.strictEqual(Number(cell()), 180, 'выход = сумма нетто'); assert(rows('BACKUP_CATALOG').length > bk, 'резервная копия перед применением');
+  assert(rows('AUDIT_CHAIN').some(a => a.action === 'PROPOSAL_APPROVE'));
+  C._ts2Rollback_(p.changeProposalId); assert.strictEqual(cell(), '', 'откат вернул прежнее значение');
+  assert.strictEqual(C._ts2VerifyAudit_().broken.length, 0);
+});
+t('2.1: охлаждение и разогрев — отдельные журналы; замер ККТ сразу, без дубля при закрытии; ТТК без тепловой ККТ — без ложной задачи', () => {
+  const pid = 'P-10', ok = JSON.stringify({ success: true, data: {} });
+  G.__ccp = { items: [{ controlId: 'C1', point: 'Тепловая обработка', status: 'OK', value: 80, unit: '°C' }, { controlId: 'C2', point: 'Шоковое охлаждение', status: 'OK', value: 3, unit: '°C' }] };
+  C._ts2OnGateCall_('mcRecordProductionCcp', [JSON.stringify({ productionId: pid, controlId: 'C2', value: 3 })], JSON.stringify({ success: true, data: { state: G.__ccp } }));
+  const cool = () => rows('AUTO_RECORDS').filter(r => r.productionId === pid && r.journalCode === 'J-COOLING');
+  assert.strictEqual(cool().length, 1); assert.strictEqual(Number(cool()[0].value), 3);
+  C._ts2OnGateCall_('completeProduction', [pid, 5], ok);
+  assert.strictEqual(cool().length, 1, 'при закрытии заказа замер охлаждения не дублируется');
+  assert(rows('AUTO_RECORDS').some(r => r.productionId === pid && r.journalCode === 'J-KKT-THERMAL' && Number(r.value) === 80));
+  assert(!rows('AUTO_RECORDS').some(r => r.productionId === pid && r.journalCode === 'J-REHEAT'), 'разогрева в ТТК нет — записи нет');
+  G.__ccp = { items: [] }; C._ts2OnGateCall_('completeProduction', ['P-11', 5], ok);
+  assert(!rows('AUTO_RECORDS').some(r => r.productionId === 'P-11' && r.recordType === 'HACCP_FACT'), 'ТТК без тепловой ККТ (салат) — нет ложного ожидания замера');
+  assert(rows('AUTO_RECORDS').some(r => r.productionId === 'P-11' && r.journalCode === 'J-RELEASE'), 'журнал выпуска пишется всегда');
+});
+t('2.1: размораживание — запись с фактической t°; отклонение блокирует и уведомляет', () => {
+  C._ts2OnGateCall_('mcDefrostFinish', [JSON.stringify({ batchId: 'B-7', temperature: 2 })], JSON.stringify({ success: true, data: { batchId: 'B-7', blocked: false } }));
+  const r = rows('AUTO_RECORDS').find(x => x.batchId === 'B-7' && x.journalCode === 'J-DEFROST'); assert(r && Number(r.value) === 2 && r.result === 'PASS');
+  C._ts2OnGateCall_('mcDefrostFinish', [JSON.stringify({ batchId: 'B-8', temperature: 9 })], JSON.stringify({ success: true, data: { batchId: 'B-8', blocked: true, reasons: ['t° в толще 9 °C выше нормы'] } }));
+  assert.strictEqual(rows('AUTO_RECORDS').find(x => x.batchId === 'B-8' && x.journalCode === 'J-DEFROST').result, 'FAIL');
+  assert(rows('AUTO_RECORDS').some(x => x.recordType === 'DEVIATION' && /B-8/.test(x.value)));
+});
+t('2.1: 26 системных документов формируются из данных; без изменений — та же версия; изменение утверждённого → новая версия и повторное утверждение', () => {
+  session = { name: 'Сидорова', role: 'Ответственный за ХАССП' };
+  const all = rows('SYSTEM_DOCUMENTS'); assert.strictEqual(all.length, 26);
+  all.forEach(d => { const r = C._ts2SdocGenerate_(d.documentId, false); assert(r.fileId && r.changed, d.templateId); });
+  const txt = id => docText[rows('SYSTEM_DOCUMENTS').find(d => d.templateId === id).fileId].join('\n');
+  assert(/Котлета куриная/.test(txt('TPL-005')) && /75/.test(txt('TPL-005')), 'реестр ККТ содержит ККТ из утверждённой ТТК');
+  assert(/Холодильник 1/.test(txt('TPL-023')), 'реестр оборудования — из объектов замеров');
+  assert(/НЕТ ДАННЫХ: директор/.test(txt('TPL-001')), 'нет директора — документ прямо говорит, где внести');
+  assert(/показателей вносятся по протоколам/.test(txt('TPL-002')), 'ППК не выдумывает лабораторные показатели');
+  assert(/п\. 54/.test(txt('TPL-026')) && /изотермическ/.test(txt('TPL-026')), 'порядок кейтеринга — по п. 52–55');
+  assert(/J-KKT-THERMAL/.test(txt('TPL-007')) && /Акт списания/.test(txt('TPL-019')) && /FEFO/.test(txt('TPL-010')));
+  const d5 = rows('SYSTEM_DOCUMENTS').find(d => d.templateId === 'TPL-005');
+  assert.strictEqual(C._ts2SdocGenerate_(d5.documentId, false).changed, false, 'без изменений данных — без новой версии');
+  const q = rows('APPROVAL_QUEUE').find(x => x.objectId === d5.documentId && x.status === 'PENDING'); C._ts2ApproveQueue_(q.approvalId, true);
+  assert.strictEqual(C._ts2Find_('SYSTEM_DOCUMENTS', 'documentId', d5.documentId).status, 'ACTIVE');
+  C._ts2Insert_('MEASUREMENT_OBJECTS', { objectId: 'OBJ-X', enterpriseId: 'E', objectType: 'FREEZER', name: 'Морозильник 2', minValue: -25, maxValue: -18, status: 'ACTIVE' });
+  const r2 = C._ts2SdocGenerate_(d5.documentId, false); assert(r2.changed && r2.version === 2, 'данные изменились — версия 2');
+  assert.strictEqual(C._ts2Find_('SYSTEM_DOCUMENTS', 'documentId', d5.documentId).status, 'REQUIRES_ENTERPRISE_APPROVAL', 'изменённый документ снова на утверждении');
+  assert(rows('APPROVAL_QUEUE').some(x => x.objectId === d5.documentId && x.status === 'PENDING'));
+});
+t('2.1: датчик — ключ хешем, замер закрывает задачу, в журнал — время замера и отклонение, отклонение уведомляет один раз, отключение', () => {
+  session = { name: 'Директорова', role: 'Директор' };
+  const obj = rows('MEASUREMENT_OBJECTS').find(o => o.legacyObjectId === 'T-1');
+  const reg = J(C.ts2SensorRegister('t', obj.objectId, 'Датчик холодильника')); const dev = reg.deviceId, key = reg.token;
+  assert(key.length >= 40 && !JSON.stringify(rows('SENSOR_DEVICES')).includes(key), 'ключ в таблице не хранится');
+  const nowIso = C._ts2Iso_(new Date());
+  C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-SNS', enterpriseId: 'E', journalCode: 'J-STORAGE-T', eventRuleId: 'SCHED-FRIDGE', objectType: 'FRIDGE', objectId: obj.objectId, dueAt: nowIso, status: 'OPEN', confirmationMode: 'MEASURE', title: 't', idempotencyKey: 'k-sns' });
+  const post = b => JSON.parse(C.doPost({ postData: { contents: JSON.stringify(b) } }).text);
+  assert.strictEqual(post({ device: dev, token: 'wrong', value: 4 }).ok, false, 'чужой ключ не принят');
+  assert.strictEqual(post({ device: dev, token: key, value: 999 }).ok, false, 'физически невозможное значение');
+  const r1 = post({ device: dev, token: key, value: 4.1 }); assert(r1.ok && r1.stored && r1.result === 'PASS' && r1.closed === 1, JSON.stringify(r1));
+  assert.strictEqual(C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-SNS').status, 'DONE', 'задача замера закрыта датчиком');
+  assert(rows('MANUAL_MEASUREMENTS').some(m => m.source === 'SENSOR' && Number(m.value) === 4.1));
+  assert.strictEqual(post({ device: dev, token: key, value: 4.3 }).stored, false, 'вне времени замера в журнал не пишется');
+  const ex = () => rows('AUTO_RECORDS').filter(x => x.recordType === 'DEVIATION' && /Датчик/.test(x.value)).length;
+  assert(post({ device: dev, token: key, value: 9.5 }).stored, 'отклонение пишется сразу'); assert.strictEqual(ex(), 1);
+  post({ device: dev, token: key, value: 9.8 }); assert.strictEqual(ex(), 1, 'повторное отклонение в течение часа не дублирует уведомление');
+  J(C.ts2SensorRevoke('t', dev)); assert.strictEqual(post({ device: dev, token: key, value: 4 }).ok, false, 'отключённый датчик не принимается');
+  assert.strictEqual(JSON.parse(C.doPost({ postData: { contents: '{"hello":1}' } }).text).ok, false, 'прочие POST отклоняются');
+});
+t('датчик: поправка по сверке с поверенным термометром, замена модуля, уровень Wi-Fi, молчание больше часа, R-020/R-021', () => {
+  session = { name: 'Директорова', role: 'Директор' };
+  const obj = rows('MEASUREMENT_OBJECTS').find(o => o.legacyObjectId === 'T-1');
+  const reg = J(C.ts2SensorRegister('t', obj.objectId, 'Датчик 2')); const dev = reg.deviceId, key = reg.token;
+  const post = b => JSON.parse(C.doPost({ postData: { contents: JSON.stringify(b) } }).text);
+  assert.strictEqual(F(C.ts2SensorCalibrate('t', dev, 4, 'Testo 104')).ok, false, 'без свежего показания сверка не принимается');
+  assert(post({ device: dev, token: key, value: 3.6, rssi: -71 }).ok);
+  assert.strictEqual(F(C.ts2SensorCalibrate('t', dev, 4, '')).ok, false, 'без названия эталонного термометра — нельзя');
+  const c1 = J(C.ts2SensorCalibrate('t', dev, 4.0, 'Testo 104, зав. № 1')); assert(c1.result === 'OK' && c1.offsetAfter === 0.4 && c1.sensorRaw === 3.6, JSON.stringify(c1));
+  const task = (id, minutes) => C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: id, enterpriseId: 'E', journalCode: 'J-STORAGE-T', eventRuleId: 'SCHED-FRIDGE', objectType: 'FRIDGE', objectId: obj.objectId, dueAt: C._ts2Iso_(new Date(Date.now() + minutes * 60000)), status: 'OPEN', confirmationMode: 'MEASURE', title: 't', idempotencyKey: 'k-' + id });
+  assert.strictEqual(C._ts2Find_('MEASUREMENT_OBJECTS', 'objectId', obj.objectId).inputMode, 'SENSOR', 'подключение датчика включает автоматический ввод');
+  task('EXP-CAL', -5);
+  const pr = post({ device: dev, token: key, value: 3.6 }); assert(pr.stored && pr.closed === 1 && pr.input === 'SENSOR', 'время замера — запись датчика закрывает задачу: ' + JSON.stringify(pr));
+  const m = rows('MANUAL_MEASUREMENTS').filter(x => x.comment && String(x.comment).indexOf(dev) === 0).pop();
+  assert(Number(m.value) === 4 && /показание 3.6, поправка \+0.4/.test(m.comment), 'в журнал — с поправкой, сырое показание в комментарии: ' + m.value + ' ' + m.comment);
+  const sns = J(C.ts2Sensors('t')); const d = sns.devices.find(x => x.deviceId === dev);
+  assert(d.rssi === -71 && d.offset === 0.4 && d.calDueDays > 80 && !d.silent && sns.calibrations[0].deviceId === dev);
+  // повторная сверка: поправка считается от сырого показания, а не накапливается
+  const c2 = J(C.ts2SensorCalibrate('t', dev, 4.0, 'Testo 104, зав. № 1')); assert.strictEqual(c2.offsetAfter, 0.4, 'поправка не накапливается');
+  const exc = t => rows('AUTO_RECORDS').filter(x => x.recordType === 'DEVIATION' && x.sourceType === t).length;
+  const c3 = J(C.ts2SensorCalibrate('t', dev, 6.0, 'Testo 104, зав. № 1')); assert(c3.result === 'REPLACE' && c3.offsetAfter === 0.4, 'расхождение 2.4 °C — поправка не меняется');
+  assert.strictEqual(exc('SENSOR_CALIBRATION_FAIL'), 1, 'уведомление о замене модуля');
+  assert.strictEqual(rows('SENSOR_CALIBRATIONS').filter(x => x.deviceId === dev).length, 3, 'все сверки в журнале сверок');
+  // молчит больше часа: одно уведомление, повторный запуск не дублирует, показание снимает признак
+  C._ts2Update_('SENSOR_DEVICES', 'deviceId', dev, { lastSeenAt: C._ts2Iso_(new Date(Date.now() - 2 * 3600000)) });
+  assert.strictEqual(C.ts2SensorWatchSystem().notified, 1); assert.strictEqual(C.ts2SensorWatchSystem().notified, 0, 'без повторных уведомлений');
+  assert.strictEqual(exc('SENSOR_SILENT'), 1);
+  C._ts2Update_('SENSOR_DEVICES', 'deviceId', dev, { calibratedAt: C._ts2Iso_(new Date(Date.now() - 100 * 86400000)) });
+  C._ts2RunReconciliation_('ALL');
+  const open = rows('RECONCILIATION_ISSUES').filter(i => i.status === 'OPEN' && i.entityId === dev).map(i => i.ruleId);
+  assert(open.includes('R-020') && open.includes('R-021'), 'сверка видит молчащий датчик и просроченную сверку: ' + open);
+  assert(post({ device: dev, token: key, value: 3.7 }).ok); assert.strictEqual(C._ts2Find_('SENSOR_DEVICES', 'deviceId', dev).silentNotifiedAt, '', 'датчик снова на связи');
+  // время замеров одно для обоих вариантов: задача на 40 минут вперёд датчиком не закрывается и в журнал не пишется
+  task('EXP-LATER', 40); const pl = post({ device: dev, token: key, value: 3.7 }); assert(!pl.stored && !pl.closed, 'вне окна замера — только «последнее показание»');
+  assert(C._ts2NowTasks_().find(x => x.id === 'EXP-LATER').auto, '«Сейчас»: задачу заполнит датчик');
+  // ручной ввод: та же задача, датчик её не закрывает, повар видит её как обычную; отклонение всё равно пишется и уведомляет
+  J(C.ts2ObjectInputMode('t', obj.objectId, 'MANUAL'));
+  assert(!C._ts2NowTasks_().find(x => x.id === 'EXP-LATER').auto, 'ручной ввод — задача повара');
+  task('EXP-MAN', -3); const pm = post({ device: dev, token: key, value: 3.8 }); assert(!pm.stored && pm.input === 'MANUAL');
+  assert.strictEqual(C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-MAN').status, 'OPEN', 'ручной ввод: замер делает повар');
+  assert(post({ device: dev, token: key, value: 12 }).stored, 'отклонение пишется при ручном вводе');
+  assert.strictEqual(C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-MAN').status, 'OPEN', 'отклонение при ручном вводе задачу не закрывает');
+  assert.strictEqual(F(C.ts2ObjectInputMode('t', obj.objectId, 'AUTO')).ok, false);
+  J(C.ts2ObjectInputMode('t', obj.objectId, 'SENSOR'));
+  J(C.ts2SensorRevoke('t', dev));
+  assert.strictEqual(C._ts2Find_('MEASUREMENT_OBJECTS', 'objectId', obj.objectId).inputMode, 'MANUAL', 'датчик отключён — снова ручной ввод');
+  assert.strictEqual(F(C.ts2ObjectInputMode('t', obj.objectId, 'SENSOR')).ok, false, 'без датчика автоматический ввод не включить');
+  ['EXP-LATER', 'EXP-MAN'].forEach(id => C._ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', id, { status: 'DONE' }));
+});
+t('СанПиН 4282-26 п. 32, 54, 55: раздача 3 ч, кейтеринг — раннее комплектование и ярлыки без выдуманного времени', () => {
+  const p2 = n => String(n).padStart(2, '0'), loc = d => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+  const start = new Date(Date.now() + 5 * 3600000), made = new Date(Date.now() - 3600000);
+  G.getEvents = () => JSON.stringify([{ id: 'E1', format: 'Банкет', date: loc(new Date()), time: '19:00', items: [{ name: 'Котлета куриная', qty: 20 }] },
+    { id: 'E2', format: 'Выездной фуршет', date: loc(start), time: p2(start.getHours()) + ':' + p2(start.getMinutes()), items: [{ name: 'Котлета куриная', qty: 30 }, { name: 'Жюльен', qty: 30 }] }]);
+  G._productionSheet_ = () => ({ getDataRange: () => ({ getValues: () => [['id', 'op', 'name', 'code', 'v', 'p', 'f', 'u', 'ws', 'e', 'st', 'fin', 'status'], ['P1', '', 'Котлета куриная', 'D-1', '', '', '', '', '', '', '', made, 'COMPLETED']] }) });
+  G.PROD_COL_ = { name: 2, status: 12, finish: 11, code: 3 };
+  const ok = JSON.stringify({ success: true, data: {} });
+  C._ts2OnGateCall_('issueV28Banquet', ['E1', '[]'], ok); C._ts2OnGateCall_('issueV28Banquet', ['E1', '[]'], ok);
+  const e1 = rows('JOURNAL_EXPECTATIONS').filter(e => e.objectId === 'E1' && e.eventRuleId === 'SERVING');
+  assert.strictEqual(e1.length, 1, 'одна задача на выдачу, повтор без дублей'); assert(/п\. 32/.test(e1[0].title));
+  assert(Math.abs(new Date(e1[0].dueAt) - (Date.now() + 3 * 3600000)) < 120000, 'срок — через 3 часа');
+  C._ts2OnGateCall_('issueV28Banquet', ['E2', '[]'], ok);
+  assert(rows('JOURNAL_EXPECTATIONS').some(e => e.objectId === 'E2' && /п\. 55/.test(e.title)), 'кейтеринг: 3 часа в изотермических ёмкостях');
+  assert(rows('AUTO_RECORDS').some(r => r.recordType === 'DEVIATION' && /п\. 54/.test(r.value)), 'комплектование раньше чем за 3 часа — отклонение');
+  assert(C._ts2NowTasks_().some(t => t.catering === 'E2'), 'на экране «Сейчас» — кнопка ярлыков');
+  const L = C._ts2CateringLabels_('E2', 'Шефова Т.');
+  assert.strictEqual(L.count, 2); assert(/Тест/.test(L.html) && /Шефова Т\./.test(L.html) && /п\. 55/.test(L.html));
+  const hh = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
+  assert(L.html.includes(hh(made)) && L.html.includes(hh(new Date(made.getTime() + 3 * 3600000))), 'изготовлено и окончание раздачи — из факта производства');
+  assert(L.gaps.some(g => /Жюльен/.test(g)) && /__________________/.test(L.html), 'нет факта производства — поле для ручной записи, время не выдумано');
+});
+t('документ, добавленный в пакет после настройки (TPL-026), дописывается в уже работающую систему один раз', () => {
+  const d = rows('SYSTEM_DOCUMENTS').find(x => x.templateId === 'TPL-026'); const sh = sheets['SYSTEM_DOCUMENTS'];
+  sh.data.splice(d._row - 1, 1); C._TS2_SH_ = {};
+  assert(!rows('SYSTEM_DOCUMENTS').some(x => x.templateId === 'TPL-026'));
+  assert.strictEqual(C._ts2SeedSync_(), 1); assert.strictEqual(C._ts2SeedSync_(), 0);
+  const n = rows('SYSTEM_DOCUMENTS').find(x => x.templateId === 'TPL-026'); assert(n && rows('APPROVAL_QUEUE').some(q => q.objectId === n.documentId && q.status === 'PENDING'), 'новый документ — на утверждение');
+});
+t('офлайн: отметка из очереди устройства записывается со временем отметки, а не временем отправки', () => {
+  session = { name: 'Повар', role: 'Повар горячего цеха' };
+  C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-OFF', enterpriseId: 'E', journalCode: 'J-SHIFT', eventRuleId: 'SCHED-SHIFT_OPEN', objectType: 'SHIFT', objectId: 'SHIFT', dueAt: C._ts2Iso_(), status: 'OPEN', confirmationMode: 'CONFIRM', title: 'Открытие смены', idempotencyKey: 'k-off' });
+  const dev = new Date(Date.now() - 2 * 3600000); G._mcNow_ = () => new Date(dev.getTime());
+  try { C._ts2Confirm_('EXP-OFF', true); } finally { delete G._mcNow_; }
+  const e = C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-OFF'), r = C._ts2Find_('AUTO_RECORDS', 'autoRecordId', e.factId);
+  assert.strictEqual(e.completedAt, C._ts2Iso_(dev)); assert.strictEqual(r.confirmedAt, C._ts2Iso_(dev), 'время отметки — с устройства');
+});
+t('производительность: год работы (30 000 автозаписей, 20 000 задач) — запись события и экран «Сейчас» не читают историю', () => {
+  const fill = (name, n, mk) => { const sh = sheets[name], head = sh.data[0]; for (let i = 0; i < n; i++) { const o = mk(i); sh.data.push(head.map(h => o[h] === undefined ? '' : o[h])); } };
+  const old = i => C._ts2Iso_(new Date(Date.now() - (400 - i / 100) * 864e5));
+  fill('AUTO_RECORDS', 30000, i => ({ autoRecordId: 'ARC-OLD-' + i, eventType: 'PRODUCTION_RELEASE', recordType: 'PRODUCTION_JOURNAL', result: 'PASS', status: 'ACTIVE', createdAt: old(i), idempotencyKey: 'old|' + i }));
+  fill('JOURNAL_EXPECTATIONS', 20000, i => ({ expectationId: 'EXP-OLD-' + i, status: 'DONE', dueAt: old(i), title: 'старая', idempotencyKey: 'old-e|' + i }));
+  const meas = (f) => { G.__cells = 0; const t0 = Date.now(); f(); return { cells: G.__cells, ms: Date.now() - t0 }; };
+  G.__ccp = { items: [{ controlId: 'C1', point: 'Тепловая обработка', status: 'OK', value: 82, unit: '°C' }] };
+  const rel = meas(() => C._ts2OnGateCall_('completeProduction', ['P-PERF', 1], JSON.stringify({ success: true, data: {} })));
+  const now = meas(() => C._ts2NowTasks_());
+  const exc = meas(() => J(C.ts2Exceptions('t')));
+  console.log('      ячеек прочитано: выпуск — ' + rel.cells + ', «Сейчас» — ' + now.cells + ', отклонения — ' + exc.cells + ' (полное чтение автозаписей — ' + (sheets['AUTO_RECORDS'].data.length * 27) + ')');
+  assert(rel.cells < 20000, 'запись события не читает журнал целиком: ' + rel.cells);
+  assert(now.cells < 200000 && exc.cells < 200000, 'экраны читают только «хвост» и найденные строки');
+  assert(rows('AUTO_RECORDS').some(r => r.productionId === 'P-PERF' && Number(r.value) === 82), 'событие записано');
+});
+t('пропущенные задачи: не выполненные 2 суток после срока — «пропущено» и одно сводное уведомление', () => {
+  const d = new Date(Date.now() - 5 * 864e5);
+  C._ts2Insert_('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-MISS', enterpriseId: 'E', journalCode: 'J-SHIFT', eventRuleId: 'SCHED-SHIFT_OPEN', objectType: 'SHIFT', objectId: 'SHIFT', dueAt: C._ts2Iso_(d), status: 'OPEN', confirmationMode: 'CONFIRM', title: 'Открытие смены', idempotencyKey: 'k-miss' });
+  G.PropertiesService.getScriptProperties().deleteProperty('TS2_MISSED_DAY');
+  const today = C._ts2Today_(); const n = C._ts2ExpireMissed_(today);
+  assert(n >= 1 && C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-MISS').status === 'MISSED');
+  assert(rows('AUTO_RECORDS').some(r => r.recordType === 'DEVIATION' && /Пропущено задач/.test(r.value)));
+  assert.strictEqual(C._ts2ExpireMissed_(today), 0, 'в тот же день повторно не выполняется');
+  assert(!C._ts2NowTasks_().some(t => t.id === 'EXP-MISS'), 'в «Сейчас» пропущенной задачи нет');
+});
+t('архив месяца и вырезание: сверка с архивом, резервная копия, открытое остаётся, испорченный архив — отказ, цепочка аудита не рвётся', () => {
+  const books = {}; let nb = 0;
+  G.SpreadsheetApp.create = name => { const id = 'ARC' + (++nb), tabs = [], b = { getId: () => id, getName: () => name, getSheets: () => tabs, getSheetByName: n => tabs.find(x => x.__n === n) || null,
+    insertSheet: n => { const x = sheet(n); x.__n = n; x.setName = v => { x.__n = v; }; x.getSheetId = () => 1; tabs.push(x); return x; } }; b.insertSheet('Лист1'); books[id] = b; return b; };
+  G.SpreadsheetApp.openById = id => books[id];
+  const p2 = n => String(n).padStart(2, '0'), d = new Date(), prev = new Date(d.getFullYear(), d.getMonth() - 1, 15, 12), pIso = C._ts2Iso_(prev), y = prev.getFullYear(), m = prev.getMonth();
+  const add = (name, o) => { const sh = sheets[name], h = sh.data[0]; sh.data.push(h.map(k => o[k] === undefined ? '' : o[k])); };
+  add('AUTO_RECORDS', { autoRecordId: 'ARC-P1', eventType: 'PRODUCTION_RELEASE', recordType: 'PRODUCTION_JOURNAL', result: 'PASS', status: 'ACTIVE', createdAt: pIso, idempotencyKey: 'p1' });
+  add('AUTO_RECORDS', { autoRecordId: 'ARC-P2', eventType: 'EXCEPTION', recordType: 'DEVIATION', result: 'FAIL', status: 'OPEN', createdAt: pIso, idempotencyKey: 'p2' });
+  add('AUTO_RECORDS', { autoRecordId: 'ARC-P3', eventType: 'PRODUCTION_RELEASE', recordType: 'HACCP_FACT', result: 'PENDING_CONFIRMATION', status: 'ACTIVE', createdAt: pIso, idempotencyKey: 'p3' });
+  add('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-P1', status: 'DONE', dueAt: pIso, title: 'x', idempotencyKey: 'pe1' });
+  add('JOURNAL_EXPECTATIONS', { expectationId: 'EXP-P2', status: 'OPEN', dueAt: pIso, title: 'x', idempotencyKey: 'pe2' });
+  add('MANUAL_MEASUREMENTS', { measurementId: 'MSR-P1', value: 4, recordedAt: pIso });
+  C._TS2_SH_ = {}; const before = rows('AUTO_RECORDS').length, cur = rows('AUTO_RECORDS').filter(r => String(r.createdAt).slice(0, 7) !== C._ts2MonthKey_(y, m)).length;
+  const info = C._ts2ArchiveMonth_(y, m, null); assert.strictEqual(info.sheets.AUTO_RECORDS.rows, 3); assert.strictEqual(info.sheets.JOURNAL_EXPECTATIONS.rows, 2);
+  assert.strictEqual(C._ts2ArchiveMonth_(y, m, null).fileId, info.fileId, 'повторный запуск — тот же архив');
+  assert(/ЦЕХ Стандарт — журналы событий/.test(books[info.fileId].getName()), 'архив подписан месяцем: ' + books[info.fileId].getName());
+  // испорченный архив — вырезание отменяется
+  const tab = books[info.fileId].getSheetByName('Замеры'), keep = tab.data[1].slice(); tab.data[1][5] = 999;
+  assert.throws(() => C._ts2RotateMonth_(y, m), /не совпадает/); tab.data[1] = keep;
+  const r = C._ts2RotateMonth_(y, m); C._TS2_SH_ = {};
+  assert.strictEqual(r.removed.AUTO_RECORDS, 1, 'вырезана закрытая автозапись'); assert(C._ts2Find_('AUTO_RECORDS', 'autoRecordId', 'ARC-P2') && C._ts2Find_('AUTO_RECORDS', 'autoRecordId', 'ARC-P3'), 'открытое отклонение и «ждёт подтверждения» остались');
+  assert(!C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-P1') && C._ts2Find_('JOURNAL_EXPECTATIONS', 'expectationId', 'EXP-P2'), 'закрытая задача вырезана, открытая осталась');
+  assert.strictEqual(rows('AUTO_RECORDS').length, before - 1); assert.strictEqual(rows('AUTO_RECORDS').filter(x => String(x.createdAt).slice(0, 7) !== C._ts2MonthKey_(y, m)).length, cur, 'другие месяцы не тронуты');
+  assert(rows('BACKUP_CATALOG').some(b => b.backupType === 'PRE_ROTATION') && rows('BACKUP_CATALOG').some(b => b.backupType === 'MONTH_ARCHIVE'));
+  assert(/уже вырезано/.test(C._ts2RotateMonth_(y, m).skipped));
+  // вырезание журнала аудита (текущий месяц целиком) — проверка цепочки продолжается от якоря
+  const ck = new Date(), info2 = C._ts2ArchiveMonth_(ck.getFullYear(), ck.getMonth(), null), auditBefore = rows('AUDIT_CHAIN').length;
+  C._ts2RotateMonth_(ck.getFullYear(), ck.getMonth()); C._TS2_SH_ = {};
+  assert(rows('AUDIT_CHAIN').length < auditBefore, 'журнал аудита вынесен в архив');
+  C._ts2Audit_('TEST_AFTER_ROTATION', 'TEST', '1', undefined, {}, '');
+  const v = C._ts2VerifyAudit_(); assert(v.records >= 1 && v.broken.length === 0, 'цепочка после вырезания не рвётся: ' + JSON.stringify(v));
+});
+console.log('ЦЕХ Стандарт 2.x — приёмочные сценарии: ' + pass + ' пройдено');

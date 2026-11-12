@@ -1,0 +1,103 @@
+{
+  "version": "2.0.0",
+  "source": "app/TS2_Documents.gs, admin/Control.gs",
+  "confidence": {
+    "AUTO": 0.95,
+    "QUICK": 0.8,
+    "REVIEW": 0.5
+  },
+  "classification": [
+    [
+      "TTK",
+      "/ттк|технико|технологич\\w* карт|тк[\\s_№-]*\\d|рецептур|калькуляц/i"
+    ],
+    [
+      "CONTRACT",
+      "/договор|контракт|соглашени/i"
+    ],
+    [
+      "PPK",
+      "/ппк|производственн\\w* контрол/i"
+    ],
+    [
+      "INSTRUCTION",
+      "/инструкц|должностн|положени|регламент/i"
+    ],
+    [
+      "CERTIFICATE",
+      "/декларац|сертификат|удостоверени|протокол испыт/i"
+    ],
+    [
+      "INVOICE",
+      "/накладн|счёт|счет-фактур|упд|торг-12/i"
+    ],
+    [
+      "LABEL",
+      "/этикет|маркиров/i"
+    ],
+    [
+      "NORM",
+      "/санпин|гост|тр тс|тр еаэс|приказ|постановлени|сп \\d/i"
+    ],
+    [
+      "ACT",
+      "/\\bакт\\b|акт_|акт /i"
+    ]
+  ],
+  "profiles": [
+    {
+      "profileId": "IMP-TTK",
+      "documentType": "TTK",
+      "fields": [
+        "name",
+        "yield",
+        "composition",
+        "technology",
+        "shelfLife",
+        "storage"
+      ],
+      "minConfidence": 0.8
+    },
+    {
+      "profileId": "IMP-CONTRACT",
+      "documentType": "CONTRACT",
+      "fields": [
+        "number",
+        "date",
+        "counterparty",
+        "inn",
+        "validTo",
+        "subject"
+      ],
+      "minConfidence": 0.8
+    },
+    {
+      "profileId": "IMP-CERT",
+      "documentType": "CERTIFICATE",
+      "fields": [
+        "number",
+        "date",
+        "product",
+        "validTo"
+      ],
+      "minConfidence": 0.8
+    },
+    {
+      "profileId": "IMP-LAB",
+      "documentType": "LAB_PROTOCOL",
+      "fields": [
+        "number",
+        "date",
+        "lab",
+        "indicators"
+      ],
+      "minConfidence": 0.85
+    }
+  ],
+  "generationThresholds": {
+    "AUTO": 0.95,
+    "REVIEW": 0.8,
+    "CONFIRM": 0.5
+  },
+  "fieldFormat": "{value, raw, confidence, method, sourcePage, requiresReview}"
+}

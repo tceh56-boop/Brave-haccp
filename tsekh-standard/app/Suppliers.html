@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Поставщики</title>
+<style>
+:root{--wine:#a87b22;--wine2:#1d150d;--gold:#d4af37;--bg:#f7f1e6;--card:#fff;--ink:#1b1610;--mut:#7a6c5c;--line:#ece1cc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #ddd2bf;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#f1e8d8;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.hd{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.big{font-size:20px;font-weight:700;font-family:Montserrat,Roboto,Arial,sans-serif}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 16px;margin-top:10px}.kv div{font-size:14px}.kv b{display:block;font-size:12px;color:var(--mut);font-weight:500}@media(max-width:640px){.kv{grid-template-columns:1fr}}
+.kp{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0}@media(max-width:760px){.kp{grid-template-columns:repeat(3,1fr)}}.kp div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px}.kp b{display:block;font-size:20px}.kp span{font-size:12px;color:var(--mut)}
+h3{font-size:16px;margin:2px 0 8px}.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;font-size:12px;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line);padding:6px 8px}td{border-bottom:1px solid var(--line);padding:7px 8px;vertical-align:top}
+.search{margin-bottom:10px}a{color:var(--wine)}
+</style><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"><style id="tsTheme">/* ЦЕХ Стандарт — фирменное оформление */body{font-family:Roboto,-apple-system,"Segoe UI",Arial,sans-serif}h1,h2,h3,.h1,.title{font-family:Montserrat,Roboto,Arial,sans-serif;letter-spacing:-.01em}.btn.pri,button.pri{background:linear-gradient(135deg,#d4af37,#a87b22)!important;border-color:#a87b22!important;color:#fff!important}</style></head><body><div class="wrap">
+<h1>Поставщики</h1>
+<div class="sub">Карточка поставщика: организация, контактное лицо и e-mail, на который система отправляет заявки. Единый реестр: заказы и партии ссылаются на поставщика по ID. Новый поставщик из прихода попадает сюда «на проверке» — подтвердите ИНН. Партия от заблокированного поставщика уходит в карантин.</div>
+<div class="msg" id="msg"></div>
+<div id="view"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', L = [];
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+var ST = { ACTIVE: ['g', 'Действует'], REVIEW: ['a', 'На проверке'], BLOCKED: ['r', 'Заблокирован'] };
+var OST = { draft: ['a', 'черновик'], sent: ['a', 'отправлен'], confirmed: ['g', 'подтверждён'], received: ['g', 'принят'], partial: ['a', 'частично принят'], cancelled: ['', 'отменён'] };
+var IC = { RELEASED: ['g', 'допущена'], QUARANTINE: ['r', 'карантин'] }, TERM = { EXPIRED: ['r', 'просрочен'], EXPIRING: ['a', 'истекает'], OK: ['g', 'действует'] };
+var Q = '', CUR = null, NL = [];
+function V(h) { document.getElementById('view').innerHTML = h; }
+function msg(t, ok) { var g = document.getElementById('msg'); g.className = 'msg ' + (ok ? 'ok' : 'err'); g.textContent = t || ''; }
+function chip(m, k, dflt) { var c = m[k] || ['', k || dflt || '—']; return '<span class="chip ' + c[0] + '">' + esc(c[1]) + '</span>'; }
+function ru(d) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? m[3] + '.' + m[2] + '.' + m[1] : esc(d || ''); }
+function table(head, rows, empty) { return rows.length ? '<div class="tw"><table><tr>' + head.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>' + rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></div>' : '<div class="empty" style="padding:12px">' + empty + '</div>'; }
+
+/* ---------- список ---------- */
+function load(then) { call('mcGetSuppliers', [TOKEN]).then(function (r) { if (!r || r.success === false) { V('<div class="empty">' + esc(errText(r)) + '</div>'); return; } L = r.data || []; (then || showList)(); }, function () { V('<div class="empty">Нет связи</div>'); }); }
+function showList() {
+  CUR = null; var q = Q.toLowerCase(), rows = L.filter(function (s) { return !q || [s.name, s.inn, s.contactPerson, s.email, s.categories].join(' ').toLowerCase().indexOf(q) >= 0; });
+  V('<div class="acts" style="margin:0 0 12px"><button class="btn pri" onclick="edit(\'\')">+ Поставщик</button><button class="btn" onclick="migrate(this)">Перенести из истории заказов</button></div>' +
+    '<input class="search" id="q" placeholder="Поиск: название, ИНН, контактное лицо, e-mail" value="' + esc(Q) + '" oninput="Q=this.value;showList();document.getElementById(\'q\').focus()">' +
+    (rows.length ? rows.map(function (s) { var st = ST[s.status] || ['', s.status];
+      return '<div class="card"><div class="row" onclick="card(\'' + esc(s.id) + '\')"><div><div class="nm">' + esc(s.name) + '</div><div class="meta">' + (s.inn ? 'ИНН ' + esc(s.inn) : 'ИНН не указан') + (s.categories ? ' · ' + esc(s.categories) : '') + '</div><div class="meta">' + (s.contactPerson ? '👤 ' + esc(s.contactPerson) + ' · ' : '') + (s.phone ? esc(s.phone) + ' · ' : '') + (s.email ? '✉ ' + esc(s.email) : '<span style="color:var(--amber)">нет e-mail для заявок</span>') + '</div></div><span class="chip ' + st[0] + '">' + st[1] + '</span></div></div>'; }).join('') : '<div class="empty">' + (L.length ? 'Ничего не найдено' : 'Реестр пуст — добавьте поставщика') + '</div>'));
+}
+/* ---------- карточка ---------- */
+function card(id) {
+  V('<div class="empty">Загрузка карточки…</div>'); window.scrollTo(0, 0);
+  call('tsSupplierCard', [TOKEN, id]).then(function (r) { if (!r || r.success === false) { V('<div class="empty">' + esc(errText(r)) + '</div><div class="acts"><button class="btn" onclick="showList()">‹ К списку</button></div>'); return; } CUR = r.data; NL = []; drawCard(); }, function () { V('<div class="empty">Нет связи</div>'); });
+}
+function drawCard() {
+  var c = CUR, s = c.supplier, m = c.summary, st = ST[s.status] || ['', s.status], kv = function (l, v) { return '<div><b>' + l + '</b>' + (v || '—') + '</div>'; };
+  var h = '<div class="acts" style="margin:0 0 10px"><button class="btn" onclick="showList()">‹ Все поставщики</button></div><div class="card"><div class="hd"><div><div class="big">' + esc(s.name) + '</div><div class="meta">' + esc(s.id) + (s.inn ? ' · ИНН ' + esc(s.inn) : ' · ИНН не указан') + '</div></div><span class="chip ' + st[0] + '">' + st[1] + '</span></div>' +
+    '<div class="kv">' + kv('Контактное лицо', esc(s.contactPerson)) + kv('Телефон', s.phone ? '<a href="tel:' + esc(String(s.phone).replace(/[^\d+]/g, '')) + '">' + esc(s.phone) + '</a>' : '') + kv('E-mail для заявок', s.email ? '<a href="mailto:' + esc(s.email) + '">' + esc(s.email) + '</a>' : '<span style="color:var(--amber)">не указан — письмо с заявкой не отправится</span>') +
+    kv('Дни поставки / приёма заявок', esc(s.deliveryDays)) + kv('Адрес', esc(s.address)) + kv('Категории товаров', esc(s.categories)) + kv('Другие контакты', esc(s.contacts)) + kv('Документы', esc(s.documents)) + kv('Комментарий', esc(s.note)) + '</div>' +
+    '<div class="acts"><button class="btn pri" onclick="edit(\'' + esc(s.id) + '\')">✎ Изменить</button>' + (s.status !== 'BLOCKED' ? '<button class="btn" onclick="newOrder()">+ Новая заявка</button>' : '') +
+    (s.phone ? '<a class="btn" style="text-decoration:none" href="tel:' + esc(String(s.phone).replace(/[^\d+]/g, '')) + '">📞 Позвонить</a>' : '') + (s.email ? '<a class="btn" style="text-decoration:none" href="mailto:' + esc(s.email) + '">✉ Написать</a>' : '') +
+    (s.status === 'BLOCKED' ? '<button class="btn" onclick="setStatus(\'ACTIVE\')">Разблокировать</button>' : '<button class="btn bad" onclick="setStatus(\'BLOCKED\')">Заблокировать</button>') + '</div><div id="no"></div></div>';
+  h += '<div class="kp"><div><b>' + m.orders + '</b><span>заказов, в работе ' + m.ordersActive + '</span></div><div><b>' + (m.ordersSum ? Math.round(m.ordersSum).toLocaleString('ru-RU') : '—') + '</b><span>₽ по заказам</span></div><div><b>' + m.batches + '</b><span>поставок (партий)</span></div>' +
+    '<div><b>' + (m.lastDelivery ? ru(m.lastDelivery) : '—') + '</b><span>последняя поставка</span></div><div><b style="color:' + (m.rejected ? 'var(--red)' : 'inherit') + '">' + m.rejected + '</b><span>в карантине по входному контролю</span></div><div><b style="color:' + (m.docsProblems ? 'var(--amber)' : 'inherit') + '">' + m.docsProblems + '</b><span>документов истекает / просрочено</span></div></div>';
+  h += '<div class="card"><h3>Заявки и заказы</h3>' + table(['№', 'Дата', 'Статус', 'Позиций', 'Сумма', 'Поставка к', 'Письмо'], c.orders.map(function (o) {
+    return [esc(o.id), ru(o.date), chip(OST, o.status), o.lines, o.total ? Math.round(o.total).toLocaleString('ru-RU') + ' ₽' : '—', ru(o.dueDate), o.sentAt ? ru(o.sentAt) + '<div class="meta">' + esc(o.sentTo) + '</div>' + (o.file ? '<a href="' + esc(o.file) + '" target="_blank">PDF заявки</a>' : '') : '—']; }), 'Заказов этому поставщику ещё не было') + '</div>';
+  h += '<div class="card"><h3>Поставки и входной контроль</h3>' + table(['Получено', 'Продукт', 'Кол-во', 'Годен до', 'Входной контроль'], c.batches.map(function (b) {
+    return [ru(b.received), esc(b.product) + '<div class="meta">' + esc(b.id) + '</div>', esc(b.qty + ' ' + b.unit), ru(b.expiry), chip(IC, b.control, 'нет записи') + (b.reasons ? '<div class="meta">' + esc(b.reasons) + '</div>' : '')]; }), 'Поставок от этого поставщика ещё не было') + '</div>';
+  h += '<div class="card"><h3>Документы на сырьё</h3>' + table(['Тип', 'Номер', 'Продукт', 'Действует до', ''], c.documents.map(function (d) {
+    return [esc(d.type), esc(d.number) + (d.date ? ' от ' + ru(d.date) : ''), esc(d.product), ru(d.validTo) || '—', d.term ? chip(TERM, d.term) : '']; }), 'Документов нет — их прикладывают при приёмке (Склад → Приход)') + '</div>';
+  h += '<div class="card"><h3>Договоры</h3>' + table(['Номер', 'Вид', 'Срок', ''], c.contracts.map(function (x) {
+    return [esc(x.number), esc(x.kind), (x.start ? ru(x.start) + ' — ' : '') + (ru(x.end) || 'бессрочно') + (x.auto === 'да' ? '<div class="meta">автопролонгация</div>' : ''), x.term ? chip(TERM, x.term) : '']; }), 'Договоров нет (раздел «Договоры», по ИНН поставщика)') + '</div>';
+  V(h);
+}
+function setStatus(stv) {
+  var s = CUR.supplier; if (stv === 'BLOCKED' && !confirm('Заблокировать «' + s.name + '»? Новые заказы будут невозможны, партии от него уйдут в карантин.')) return;
+  call('mcSaveSupplier', [JSON.stringify(Object.assign({}, s, { status: stv })), TOKEN]).then(function (r) { if (!r || r.success === false) return msg(errText(r)); msg(stv === 'BLOCKED' ? 'Поставщик заблокирован' : 'Поставщик разблокирован', true); load(function () { card(s.id); }); });
+}
+/* ---------- новая заявка из карточки ---------- */
+function newOrder() { if (!NL.length) NL = [{ name: '', qty: '', unit: 'кг' }]; drawNew(); }
+function drawNew() {
+  var b = document.getElementById('no'); if (!b) return;
+  b.innerHTML = '<div class="form" style="display:block"><div class="nm">Новая заявка — ' + esc(CUR.supplier.name) + '</div>' + NL.map(function (l, i) { return '<div class="grid" style="grid-template-columns:3fr 1fr 1fr 34px;margin-top:6px"><input value="' + esc(l.name) + '" placeholder="Товар" onchange="NL[' + i + '].name=this.value"><input type="number" step="any" value="' + esc(l.qty) + '" placeholder="Кол-во" onchange="NL[' + i + '].qty=this.value"><select onchange="NL[' + i + '].unit=this.value">' + ['кг', 'г', 'л', 'мл', 'шт'].map(function (u) { return '<option' + (u === l.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select><button class="btn" onclick="NL.splice(' + i + ',1);drawNew()">×</button></div>'; }).join('') +
+    '<div class="grid" style="margin-top:8px"><div><label>Срок поставки</label><input id="nd" type="date"></div><div style="grid-column:span 2"><label>Комментарий</label><input id="nc"></div></div>' +
+    '<div class="acts"><button class="btn" onclick="NL.push({name:\'\',qty:\'\',unit:\'кг\'});drawNew()">+ Позиция</button><button class="btn pri" onclick="createOrder(this,false)">Создать заявку</button>' + (CUR.supplier.email ? '<button class="btn pri" onclick="createOrder(this,true)">Создать и отправить письмо</button>' : '') + '<button class="btn" onclick="NL=[];document.getElementById(\'no\').innerHTML=\'\'">Отмена</button></div><div class="msg" id="nm"></div></div>';
+}
+function createOrder(btn, send) {
+  var lines = NL.filter(function (l) { return String(l.name).trim() && parseFloat(l.qty) > 0; }).map(function (l) { return { name: l.name.trim(), qty: parseFloat(l.qty), unit: l.unit, supplier: CUR.supplier.name }; });
+  var m = document.getElementById('nm'); if (!lines.length) { m.className = 'msg err'; m.textContent = 'Добавьте товар и количество'; return; }
+  btn.disabled = true;
+  call('tsOrdersBuild', [TOKEN, JSON.stringify(lines), v('nd'), v('nc')]).then(function (r) {
+    if (!r || r.success === false) { btn.disabled = false; m.className = 'msg err'; m.textContent = errText(r); return; }
+    var id = r.data.orders[0].orderId, done = function (t) { msg(t, true); card(CUR.supplier.id); };
+    if (!send) return done('Заявка ' + id + ' создана (черновик). Письмо — в «Заказы поставщикам» или кнопкой ниже.');
+    call('tsOrderSend', [TOKEN, id, '']).then(function (x) { if (!x || x.success === false) { msg('Заявка ' + id + ' создана, но письмо не ушло: ' + errText(x)); card(CUR.supplier.id); return; } done('Заявка ' + id + ' отправлена на ' + x.data.to); });
+  }, function () { btn.disabled = false; m.className = 'msg err'; m.textContent = 'Нет связи'; });
+}
+/* ---------- добавить / изменить ---------- */
+function f(id, l, val, ph) { return '<div><label>' + l + '</label><input id="' + id + '" value="' + esc(val || '') + '" placeholder="' + esc(ph || '') + '"></div>'; }
+function edit(id) {
+  var s = id ? (L.filter(function (x) { return x.id === id; })[0] || (CUR && CUR.supplier) || {}) : {}; window.scrollTo(0, 0);
+  V('<div class="card"><div class="big">' + (s.id ? 'Изменить: ' + esc(s.name) : 'Новый поставщик') + '</div><div class="form" style="display:block"><div class="grid">' +
+    f('n', 'Название организации *', s.name, 'ООО «Птица»') + f('inn', 'ИНН', s.inn, '10 или 12 цифр') + f('a', 'Адрес', s.address) +
+    f('cp', 'Контактное лицо (ФИО)', s.contactPerson, 'Петрова Мария Ивановна') + f('ph', 'Телефон', s.phone, '+7 …') + f('em', 'E-mail для заявок', s.email, 'zakaz@…') +
+    f('dd', 'Дни поставки / приёма заявок', s.deliveryDays, 'пн, ср, пт до 10:00') + f('cat', 'Категории товаров', s.categories, 'мясо, птица') + f('c', 'Другие контакты', s.contacts) +
+    f('doc', 'Документы (декларации, сертификаты)', s.documents) + '<div><label>Статус</label><select id="st"><option value="ACTIVE">действует</option><option value="REVIEW"' + (s.status === 'REVIEW' ? ' selected' : '') + '>на проверке</option><option value="BLOCKED"' + (s.status === 'BLOCKED' ? ' selected' : '') + '>заблокирован</option></select></div>' + f('note', 'Комментарий', s.note) +
+    '</div><div class="note">Без ИНН поставщик остаётся «на проверке». E-mail для заявок нужен, чтобы система отправляла заявки письмом.</div><div class="acts"><button class="btn pri" onclick="save(\'' + esc(s.id || '') + '\',this)">Сохранить</button><button class="btn" onclick="' + (s.id ? 'card(\'' + esc(s.id) + '\')' : 'showList()') + '">Отмена</button></div><div class="msg" id="fm"></div></div></div>');
+}
+function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function save(id, btn) {
+  if (btn) btn.disabled = true;
+  call('mcSaveSupplier', [JSON.stringify({ id: id, name: v('n'), inn: v('inn'), address: v('a'), contacts: v('c'), contactPerson: v('cp'), phone: v('ph'), email: v('em'), deliveryDays: v('dd'), categories: v('cat'), documents: v('doc'), status: v('st'), note: v('note') }), TOKEN]).then(function (r) {
+    if (btn) btn.disabled = false;
+    var m = document.getElementById('fm'); if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    msg((id ? 'Изменения сохранены' : 'Поставщик добавлен') + (r.data.note ? ': ' + r.data.note : ''), true); load(function () { card(r.data.id); });
+  }, function () { if (btn) btn.disabled = false; var m = document.getElementById('fm'); m.className = 'msg err'; m.textContent = 'Нет связи'; });
+}
+function migrate(btn) { btn.disabled = true; call('mcMigrateSuppliers', [TOKEN]).then(function (r) { btn.disabled = false; if (!r || r.success === false) return msg(errText(r)); msg('Перенесено: ' + r.data.added + ', всего ' + r.data.total, true); load(); }, function () { btn.disabled = false; }); }
+var OPEN_ID = new URLSearchParams(location.search).get('id') || '';
+load(OPEN_ID ? function () { card(OPEN_ID); } : null);
+</script></body></html>

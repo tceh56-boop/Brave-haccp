@@ -1,0 +1,21 @@
+{
+  "name": "tsekh-standard-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ЦЕХ Стандарт в Yandex Cloud: тот же код Apps Script на своём сервере (Node.js), данные в России",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "tenant": "node tools/tenant.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "11.10.0",
+    "exceljs": "^4.4.0",
+    "mammoth": "^1.8.0",
+    "nodemailer": "6.10.1"
+  }
+}
