@@ -48,7 +48,7 @@ services:
       YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
       YANDEX_GPT_MODEL: ${YANDEX_GPT_MODEL:-yandexgpt/latest}
       RECOGNITION_LLM_DISABLED: ${RECOGNITION_LLM_DISABLED:-}
-      # AI-помощник: yandex — YandexGPT (данные в РФ, платно, включает владелец); off — выключен; пусто — по ключу ANTHROPIC_API_KEY
+      # AI-помощник: yandex — YandexGPT (данные в РФ, платно, включает владелец); пусто или off — выключен; anthropic — зарубежный, только вне РФ
       AI_PROVIDER: ${AI_PROVIDER:-}
       YANDEX_AI_MODEL: ${YANDEX_AI_MODEL:-yandexgpt/latest}
       AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-300}
@@ -73,6 +73,13 @@ services:
     depends_on: [app]
     environment: *appenv
     command: ["npm", "run", "-s", "bot"]
+    # бот «нездоров», если больше 3 минут не получил ответа от Telegram (сеть, блокировка, неверный токен): видно в docker compose ps
+    healthcheck:
+      test: ["CMD", "node", "-e", "const f=require('fs');try{process.exit(Date.now()-Number(f.readFileSync(process.env.BOT_HEARTBEAT_FILE||'/tmp/ceh-bot-heartbeat','utf8'))<180000?0:1)}catch{process.exit(1)}"]
+      interval: 60s
+      timeout: 5s
+      start_period: 90s
+      retries: 2
 
   caddy:
     image: caddy:2-alpine

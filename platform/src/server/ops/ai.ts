@@ -109,6 +109,8 @@ function provider(): AiProvider | null {
   if (process.env.AI_PROVIDER === 'off') return null;
   // YandexGPT включается только явно (AI_PROVIDER=yandex): ключи распознавания сами по себе не включают платного помощника
   if (process.env.AI_PROVIDER === 'yandex') return yandexStatus().configured ? new YandexProvider() : null;
+  // Зарубежный провайдер — только по явному AI_PROVIDER=anthropic: один ключ без этой настройки не отправляет данные за рубеж (152-ФЗ)
+  if (process.env.AI_PROVIDER !== 'anthropic') return null;
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return null;
   return new AnthropicProvider();
 }

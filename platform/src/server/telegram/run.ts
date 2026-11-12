@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { withSystem, closePool } from '../db/pool';
 import { tg, handleUpdate, deliverNotifications, telegramConfigured } from './bot';
 
@@ -7,13 +8,16 @@ import { tg, handleUpdate, deliverNotifications, telegramConfigured } from './bo
  * Без TELEGRAM_BOT_TOKEN процесс ждёт и ничего не делает (бот — необязательная часть установки).
  */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Отметка «бот жив» для проверки здоровья Docker: обновляется после каждого успешного опроса Telegram. */
+export const HEARTBEAT_FILE = process.env.BOT_HEARTBEAT_FILE || '/tmp/ceh-bot-heartbeat';
+const beat = () => { try { writeFileSync(HEARTBEAT_FILE, String(Date.now())); } catch { /* только для проверки здоровья */ } };
 let stop = false;
 process.on('SIGTERM', () => { stop = true; }); process.on('SIGINT', () => { stop = true; });
 
 async function main() {
   if (!telegramConfigured()) {
     console.log('Telegram-бот выключен: не задан TELEGRAM_BOT_TOKEN. Добавьте его в .env и перезапустите: docker compose up -d bot');
-    while (!stop) await sleep(60_000);
+    while (!stop) { beat(); await sleep(60_000); }
     return;
   }
   const me = await tg<{ username: string }>('getMe', {});
@@ -23,6 +27,7 @@ async function main() {
   while (!stop) {
     try {
       const updates = await tg<{ update_id: number }[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message'] });
+      beat();
       for (const u of updates) {
         await handleUpdate(u as never);
         offset = u.update_id + 1;
