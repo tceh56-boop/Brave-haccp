@@ -978,6 +978,7 @@ ts2SystemDoc;TS2_SystemDocs.gs;интерфейс (сессия);да;*;сесс
 ts4TenantIntegrityCheck;TS4_TenantIntegrity.gs;интерфейс (сессия);;org_edit;сессия → право «org_edit» → тариф
 a360Run;TS_Audit360.gs;интерфейс (сессия);;audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit;сессия → право «audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit» → тариф
 a360MigrateViolations;TS_Audit360.gs;интерфейс (сессия);да;haccp_approve;сессия → право «haccp_approve» → тариф → допуск → блокировка → аудит
+a360Evidence;TS_Audit360.gs;интерфейс (сессия);;audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit;сессия → право «audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit» → тариф
 clgBuild;TS_ChecklistGen.gs;интерфейс (сессия);да;ppk_edit|haccp|haccp_approve;сессия → право «ppk_edit|haccp|haccp_approve» → тариф → допуск → блокировка → аудит
 clgTemplates;TS_ChecklistGen.gs;интерфейс (сессия);;ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation;сессия → право «ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation» → тариф
 tsContractsList;TS_Contracts.gs;интерфейс (сессия);;documents_view|documents;сессия → право «documents_view|documents» → тариф

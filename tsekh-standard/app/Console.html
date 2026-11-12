@@ -4863,6 +4863,7 @@ var TS_NAV = [
   ['tsSetup', 'Настройка и готовность', 'journals', '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
   ['tsTtkProc', 'Процессы ТТК', 'ppk', '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6h4l3 5M8.5 18h4l3-5"/>'],
   ['tsChecklists', 'Чек-листы ППК', 'ppk', '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15l1.5 1.5L12 14M14 9h2M14 15h2"/>'],
+  ['tsViolations', 'Нарушения', '', '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>'],
   ['tsAudit360', 'Аудит 360°', '', '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/>'],
   ['tsGen', 'ТТК → ТУ / СТО / ППК', 'ppk', '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5M15 3v4h4"/>'],
   ['tsData', 'Данные и сверка', '', '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>'],
@@ -5168,6 +5169,29 @@ VIEWS.tsTtkLib = {
 };
 
 
+/* ---------- Мастер-промт 4.0, этап 8: цепочка контроля — переходы между разделами ---------- */
+var TS_CHAIN = [['tsTtkProc', 'Процессы ТТК', ''], ['tsTtkProc', 'Опасности ХАССП', 'haccp'], ['ppk', 'ППК', ''], ['tsChecklists', 'Чек-листы', ''], ['tsNow', 'Сейчас', ''], ['tsViolations', 'Нарушения', ''], ['tsAudit360', 'Аудит 360°', '']];
+function tsChain(cur, tab) {
+  return '<nav class="tschain" aria-label="Цепочка контроля" style="display:flex;flex-wrap:wrap;gap:4px 2px;align-items:center;margin:0 0 12px;font-size:13px">' + TS_CHAIN.map(function (c, i) {
+    var on = c[0] === cur && (c[2] || '') === (tab || ''), lock = typeof canMod === 'function' && !canMod(c[0]);
+    return (i ? '<span style="opacity:.45">→</span>' : '') + '<button class="btn" style="padding:4px 10px;min-height:30px;font-size:13px' + (on ? ';font-weight:700;border-color:#b8902f' : '') + (lock ? ';opacity:.45' : '') + '"' + (on ? ' aria-current="step"' : '') +
+      ' onclick="tsChainGo(\'' + c[0] + '\',\'' + c[2] + '\')">' + esc(c[1]) + '</button>';
+  }).join('') + '</nav>';
+}
+function tsChainGo(view, tab) { if (view === 'tsTtkProc') { TS_TP.tab = tab || 'model'; TS_TP.hz = null; } openView(view); }
+/** Запись-доказательство по ID (из аудита 360° и списков): что это, поля, связанные действия, переход в раздел. */
+function tsEvidence(id) {
+  vCall('a360Evidence', [TOKEN, id]).then(function (r) {
+    var e = vErr(r); if (e) { vMsg(e, 'err'); return; }
+    var d = vData(r), mdl = document.getElementById('mdl'), box = document.getElementById('mdlBox'); mdl.classList.remove('dish'); mdl.classList.add('on');
+    box.innerHTML = '<button class="x" onclick="closeMdl()">×</button><h2 style="word-break:break-all">' + esc(d.id) + '</h2><div class="dsub">' + esc(d.kind) + ' · лист «' + esc(d.sheet) + '»</div>' +
+      '<div class="tw" style="overflow:auto"><table><tbody>' + d.fields.map(function (f) { return '<tr><th style="text-align:left;vertical-align:top;white-space:nowrap">' + esc(f[0]) + '</th><td style="word-break:break-word">' + esc(f[1]) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      (d.related.length ? '<h4>Действия и проверки</h4><ul>' + d.related.map(function (x) { return '<li>' + esc(x[0]) + ' — ' + esc(x[1]) + (x[2] ? ' (' + esc(x[2]) + ')' : '') + ' · ' + esc(x[3]) + '</li>'; }).join('') + '</ul>' : '') +
+      (VIEWS[d.module] ? '<div class="mvbar"><button class="btn pri" onclick="closeMdl();tsChainGo(\'' + d.module + '\',\'' + (d.sheet === 'HACCP_Опасности_V30' || d.sheet === 'PPK_HACCP_RISK_MAP' ? 'haccp' : '') + '\')">Открыть раздел</button></div>' : '');
+  }, function (e) { vMsg(String(e), 'err'); });
+}
+function tsEvLinks(list) { return (list || []).slice(0, 6).map(function (id) { return '<a href="#" style="margin-right:6px;word-break:break-all" onclick="tsEvidence(\'' + esc(String(id)).replace(/'/g, '') + '\');return false">' + esc(id) + '</a>'; }).join(''); }
+
 /* ---------- Мастер-промт 4.0, этап 2: процессы ТТК (анализ основного реестра) ---------- */
 var TS_TP = { d: null, tab: 'model' };
 var TS_TP_ISSUE = { NO_TECHNOLOGY: 'нет технологии', NO_COOLING_STAGE: 'нет охлаждения', NO_STORAGE_CONDITIONS: 'нет температуры хранения', NO_PARAMS: 'нет параметров', NO_SHELF_LIFE: 'нет срока', NO_PACKAGING: 'нет упаковки', SEMI_LINK_MISSING: 'п/ф без ТТК', CYCLE: 'цикл' };
@@ -5179,7 +5203,7 @@ VIEWS.tsTtkProc = {
     tab: function (t) { TS_TP.tab = t; VIEWS.tsTtkProc.h.draw(); },
     draw: function () {
       var d = TS_TP.d, t = TS_TP.tab;
-      var h = vKpis([['Действующих ТТК', d.ttk.ACTIVE || 0, 'gold'], ['Проанализировано', d.analyzed], ['На проверку', d.review.length, d.review.length ? 'red' : 'green'], ['Требуется заполнение ТТК', d.issuesTotal, d.issuesTotal ? 'red' : 'green']]);
+      var h = tsChain('tsTtkProc', TS_TP.tab === 'haccp' ? 'haccp' : '') + vKpis([['Действующих ТТК', d.ttk.ACTIVE || 0, 'gold'], ['Проанализировано', d.analyzed], ['На проверку', d.review.length, d.review.length ? 'red' : 'green'], ['Требуется заполнение ТТК', d.issuesTotal, d.issuesTotal ? 'red' : 'green']]);
       h += '<div class="mvbar" style="margin:0 0 10px">' + vBtn('Проанализировать все ТТК', 'run') + '</div>';
       h += '<div class="rdnote">Источник — ваши ТТК («Меню и ТТК»). Черновики и архивные карты в модель не входят. Система определяет операции по тексту технологии и не придумывает температуры и сроки: если их нет в карте — появится замечание «Требуется заполнение ТТК». Неоднозначные операции подтверждает человек.</div>';
       h += '<div class="tabs" style="margin:6px 0 12px">' + [['model', 'Производственная модель'], ['review', 'На проверку · ' + d.review.length], ['issues', 'Требуется заполнение · ' + d.issuesTotal], ['haccp', 'Опасности ХАССП']].map(function (x) { return '<button class="' + (x[0] === t ? 'on' : '') + '" data-mv="tab" data-a="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
@@ -5222,7 +5246,7 @@ VIEWS.tsChecklists = {
       vCall('clgTemplates', [TOKEN]).then(function (r) {
         var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
         var d = vData(r), by = {}; d.templates.forEach(function (t) { (by[t.mode] = by[t.mode] || []).push(t); });
-        var h = d.ppk ? '<div class="rdnote" style="margin-bottom:10px">Действующая ППК: <b>' + esc(d.ppk.name || d.ppk.id) + '</b> (версия ' + esc(d.ppk.version) + ')</div>' : '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Действующей ППК нет — сформируйте и введите её в разделе «ППК». Чек-листы строятся из действующей ППК.</div>';
+        var h = tsChain('tsChecklists') + (d.ppk ? '<div class="rdnote" style="margin-bottom:10px">Действующая ППК: <b>' + esc(d.ppk.name || d.ppk.id) + '</b> (версия ' + esc(d.ppk.version) + ')</div>' : '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Действующей ППК нет — сформируйте и введите её в разделе «ППК». Чек-листы строятся из действующей ППК.</div>');
         h += vKpis(['TASK', 'EVENT', 'COVERED', 'DATE', 'NO_SCHEDULE'].map(function (k) { return [TS_CL_MODE[k][0], (by[k] || []).length, k === 'NO_SCHEDULE' && (by[k] || []).length ? 'red' : '']; }));
         h += '<div class="mvbar" style="margin:0 0 10px">' + vBtn('Обновить чек-листы', 'build') + '</div>';
         h += '<div class="rdnote">Задачи по графику ППК появляются на экране «Сейчас» в день срока; «Да / Нет» там же отмечает пункт графика ППК. Мероприятия, которые уже исполняются другими разделами (замеры температур, санитария, допуск смены), не дублируются. Периодичность система не придумывает: мероприятие без неё — пробел ППК.</div>';
@@ -5235,6 +5259,35 @@ VIEWS.tsChecklists = {
       }, function (e) { vMsg(String(e), 'err'); });
     },
     build: function (a, btn) { vDo(btn, 'clgBuild', [TOKEN], function (r) { return r.ppkId ? 'Чек-листы обновлены: задач ' + r.TASK + ', по событию ' + r.EVENT + ', уже исполняется ' + r.COVERED + ', без периодичности ' + r.NO_SCHEDULE : 'Действующей ППК нет'; }, function () { VIEWS.tsChecklists.h.load(); }); }
+  }
+};
+
+/* ---------- Мастер-промт 4.0, этап 8: единый список нарушений ---------- */
+var TS_VIO = { d: null, f: '' };
+var TS_VIO_SRC = { TS2: 'экран «Сейчас»', V43: 'санитария', V42: 'дезсредства', V44: 'задачи', 'журналы': 'журналы' };
+VIEWS.tsViolations = {
+  title: 'Нарушения', sub: 'Единый реестр: журналы, экран «Сейчас», санитария, дезсредства, задачи ППК. Устранение подтверждает другой сотрудник',
+  open: function () { this.h.load(); },
+  h: {
+    load: function () { vCall('vioList', [TOKEN]).then(function (r) { var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; } TS_VIO.d = vData(r); VIEWS.tsViolations.h.draw(); }, function (e) { vMsg(String(e), 'err'); }); },
+    f: function (x) { TS_VIO.f = TS_VIO.f === x ? '' : x; VIEWS.tsViolations.h.draw(); },
+    draw: function () {
+      var d = TS_VIO.d, items = d.items || [], by = function (st) { return items.filter(function (v) { return v.status === st; }); };
+      var h = tsChain('tsViolations') + vKpis([['Открыто', by('открыто').length, by('открыто').length ? 'red' : 'green'], ['Открыто повторно', by('открыто повторно').length, by('открыто повторно').length ? 'red' : 'green'], ['Ждут проверки', by('ожидает проверки').length, by('ожидает проверки').length ? 'gold' : 'green'], ['Критических', items.filter(function (v) { return v.critical; }).length, items.some(function (v) { return v.critical; }) ? 'red' : 'green']]);
+      h += '<div class="tabs" style="margin:6px 0 12px;flex-wrap:wrap">' + [['', 'Все'], ['открыто', 'Открыто'], ['открыто повторно', 'Повторно'], ['ожидает проверки', 'Ждут проверки']].map(function (x) { return '<button class="' + (TS_VIO.f === x[0] ? 'on' : '') + '" data-mv="f" data-a="' + esc(x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div>';
+      if (d.mode === 'SELF') h += '<div class="ttnote" style="margin-bottom:12px;border-radius:12px">Включена самопроверка (решение директора): некритические нарушения закрываются тем же сотрудником.</div>';
+      var list = items.filter(function (v) { return !TS_VIO.f || v.status === TS_VIO.f; });
+      h += vCard('Нарушения в работе · ' + list.length, vTable([{ l: 'Когда', f: function (v) { return String(v.at).slice(0, 16).replace('T', ' '); } }, { l: 'Откуда', f: function (v) { return TS_VIO_SRC[v.source] || v.source; } }, { k: 'object', l: 'Где' }, { k: 'text', l: 'Нарушение' },
+        { l: 'Статус', html: true, f: function (v) { return vChip(v.status, v.status === 'ожидает проверки' ? 'a' : 'r') + (v.critical ? ' ' + vChip('критическое', 'r') : '') + (v.corrector ? '<div class="rdnote">устранил: ' + esc(v.corrector) + '</div>' : ''); } }, { l: 'Запись', html: true, f: function (v) { return tsEvLinks([v.id]); } }], list,
+        function (v) { return v.status === 'ожидает проверки' ? vBtn('Подтвердить', 'vok', v.id) + vBtn('Не устранено', 'vno', v.id) : vBtn('Устранено', 'fix', v.id); }, 'Открытых нарушений нет'));
+      h += '<div class="rdnote">Закрытые нарушения — в журнале отклонений и в пакете проверки. Срок устранения в контрольном листе — 3 суток (аудит 360°, R27).</div>';
+      if (typeof canDo === 'function' && canDo('org_edit')) h += vCard('Кто подтверждает устранение', vForm([['vmode', 'Режим', 'select', d.mode, [['SECOND_PERSON', 'Другой сотрудник (рекомендуется)'], ['SELF', 'Тот же сотрудник — только некритические (один ответственный на предприятии)']]]]) + '<div class="mvbar">' + vBtn('Сохранить', 'mode') + '</div>');
+      vBody(h);
+    },
+    fix: function (id, btn) { var a = prompt('Корректирующее действие (что сделано):'); if (!a) return; var ev = prompt('Доказательство (фото, акт, запись журнала) — необязательно:') || ''; vDo(btn, 'vioCorrect', [TOKEN, id, a, ev], function (r) { return r.status === 'ожидает проверки' ? 'Записано — теперь проверка другим сотрудником' : 'Нарушение закрыто'; }, function () { VIEWS.tsViolations.h.load(); }); },
+    vok: function (id, btn) { vDo(btn, 'vioVerify', [TOKEN, id, true, ''], 'Устранение подтверждено', function () { VIEWS.tsViolations.h.load(); }); },
+    vno: function (id, btn) { var c = prompt('Что не устранено?'); if (!c) return; vDo(btn, 'vioVerify', [TOKEN, id, false, c], 'Нарушение открыто повторно', function () { VIEWS.tsViolations.h.load(); }); },
+    mode: function (a, btn) { if (vV('vmode') === 'SELF' && !confirm('Разрешить сотруднику самому подтверждать устранение некритических нарушений? Решение записывается в журнал аудита.')) return; vDo(btn, 'vioSetVerifyMode', [TOKEN, vV('vmode')], 'Сохранено', function () { VIEWS.tsViolations.h.load(); }); }
   }
 };
 
@@ -5253,13 +5306,13 @@ VIEWS.tsAudit360 = {
     draw: function () {
       var d = TS_A360.d, OV = { READY: ['Готово к проверке', 'green'], READY_WITH_WARNINGS: ['Готово с замечаниями', 'gold'], NOT_READY: ['Не готово к проверке', 'red'] }[d.overall] || [d.overall, ''];
       var areas = {}; d.items.forEach(function (x) { var q = areas[x.area] = areas[x.area] || { pass: 0, total: 0, bad: 0 }; if (x.status !== 'NOT_APPLICABLE') { q.total++; if (x.status === 'PASS') q.pass++; else q.bad++; } });
-      var h = vKpis([['Итог', OV[0], OV[1]], ['Выполнено', d.score + '%', d.score >= 90 ? 'green' : d.score >= 70 ? 'gold' : 'red'], ['Нарушений', d.counts.FAIL, d.counts.FAIL ? 'red' : 'green'], ['Нет доказательств', d.counts.MISSING_EVIDENCE, d.counts.MISSING_EVIDENCE ? 'red' : 'green'], ['Требует проверки', d.counts.REVIEW]]);
+      var h = tsChain('tsAudit360') + vKpis([['Итог', OV[0], OV[1]], ['Выполнено', d.score + '%', d.score >= 90 ? 'green' : d.score >= 70 ? 'gold' : 'red'], ['Нарушений', d.counts.FAIL, d.counts.FAIL ? 'red' : 'green'], ['Нет доказательств', d.counts.MISSING_EVIDENCE, d.counts.MISSING_EVIDENCE ? 'red' : 'green'], ['Требует проверки', d.counts.REVIEW]]);
       h += '<div class="mvbar" style="margin:0 0 10px">' + vBtn('Пересчитать', 'run') + vBtn('Печать акта', 'print') + vBtn('Перенести нарушения в реестр', 'migrate') + '</div>';
       h += '<div class="tabs" style="margin:6px 0 12px;flex-wrap:wrap"><button class="' + (!TS_A360.area ? 'on' : '') + '" data-mv="area" data-a="">Все</button>' + Object.keys(areas).map(function (a) { var q = areas[a]; return '<button class="' + (TS_A360.area === a ? 'on' : '') + '" data-mv="area" data-a="' + esc(a) + '">' + esc(a) + ' ' + q.pass + '/' + q.total + (q.bad ? ' ⚠' : '') + '</button>'; }).join('') + '</div>';
       var items = d.items.filter(function (x) { return !TS_A360.area || x.area === TS_A360.area; }).sort(function (a, b) { var o = { FAIL: 0, MISSING_EVIDENCE: 1, REVIEW: 2, PASS: 3, NOT_APPLICABLE: 4 }; return o[a.status] - o[b.status]; });
       h += vCard('Пункты аудита · ' + items.length, vTable([{ k: 'id', l: '№' }, { k: 'area', l: 'Область' }, { k: 'requirement', l: 'Требование' },
         { l: 'Результат', html: true, f: function (x) { var q = TS_A360_ST[x.status] || [x.status, 'a']; return vChip(q[0], q[1]) + (x.blocking && /FAIL|MISSING/.test(x.status) ? '<div class="rdnote">блокирует</div>' : ''); } },
-        { k: 'detail', l: 'Подробно' }, { l: 'Доказательства', f: function (x) { return (x.evidence || []).slice(0, 5).join(', '); } }, { l: 'Что сделать', f: function (x) { return x.status === 'PASS' ? '' : x.correctiveAction; } }], items,
+        { k: 'detail', l: 'Подробно' }, { l: 'Доказательства', html: true, f: function (x) { return tsEvLinks(x.evidence); } }, { l: 'Что сделать', f: function (x) { return x.status === 'PASS' ? '' : x.correctiveAction; } }], items,
         function (x) { return x.go && x.go.module && x.status !== 'PASS' ? vBtn('Открыть', 'go', x.go.module) : ''; }));
       h += '<div class="rdnote">' + esc(d.note) + ' Прогон сохранён: ' + esc(d.runId || '') + '. ID в «Доказательствах» — записи таблицы, по ним проверяющий открывает первичный факт.</div>';
       vBody(h);

@@ -128,3 +128,39 @@ function a360Run(token) {
 function a360MigrateViolations(token) {
   try { _requireAuth_(token, 'haccp_approve'); return _withLock_(function () { var n = _a360MigrateViolations_(); try { _ts2Audit_('VIOLATION_MIGRATE', 'VIOLATION', 'V42/V43/V44', undefined, { migrated: n }, 'нарушения модулей → единый реестр'); } catch (e) {} return _ok_({ migrated: n }); }); } catch (e) { return _failFrom_(e); }
 }
+
+/* ------------------------------------------------------------------ этап 8: запись-доказательство по ID */
+// [проверка ID, лист, что это, раздел, колонка ключа (для листов TS2 — имя поля)]
+var A360_EV_ = [
+  [/^TPI-/, 'TTK_PROCESS_ISSUES', 'Замечание к ТТК («Требуется заполнение ТТК»)', 'tsTtkProc', 'issueId'],
+  [/^TPM-/, 'TTK_PROCESS_MAP', 'Операция ТТК (анализ процессов)', 'tsTtkProc', 'id'],
+  [/^PHR-/, 'PPK_HACCP_RISK_MAP', 'Связь операции ТТК с опасностью', 'tsTtkProc', 'riskId'],
+  [/^CLT-/, 'CHECKLIST_TEMPLATES', 'Чек-лист мероприятия ППК', 'tsChecklists', 'templateId'],
+  [/^EXP-/, 'JOURNAL_EXPECTATIONS', 'Задача смены (экран «Сейчас»)', 'tsNow', 'expectationId'],
+  [/^(AR|ARC|AUR)-/, 'AUTO_RECORDS', 'Запись журнала (факт)', 'tsNow', 'autoRecordId'],
+  [/^(HZ-|V35-H)/, 'HACCP_Опасности_V30', 'Опасность (анализ опасностей ХАССП)', 'tsTtkProc', 0],
+  [/^(PROC-|P0|V35-P|V37-UNBOUND)/, 'HACCP_Процессы_V30', 'Процесс ХАССП', 'compliance', 0],
+  [/^(CCP-|V35-C|V37-K)/, 'HACCP_ТочкиКонтроля_V30', 'ККТ / мера управления', 'compliance', 0],
+  [/^SCH-/, 'ППК_График', 'Пункт графика ППК', 'ppk', 0],
+  [/^PPK-/, 'ППК_V30', 'Программа производственного контроля', 'ppk', 0],
+  [/^DV/, 'Журналы_Отклонения', 'Нарушение (единый реестр)', 'tsViolations', 0],
+  [/^RDY-/, 'Готовность_Проверки', 'Прогон контрольного листа', 'tsAudit360', 0]
+];
+function _a360Evidence_(id) {
+  id = String(id || '').trim(); if (!id) throw new Error('VALIDATION: нет ID записи');
+  var fmt = function (v) { return v instanceof Date ? Utilities.formatDate(v, _mcTz_(), 'dd.MM.yyyy HH:mm') : v; };
+  for (var i = 0; i < A360_EV_.length; i++) {
+    var e = A360_EV_[i]; if (!e[0].test(id)) continue;
+    var fields = null;
+    if (typeof e[4] === 'string') { var r = null; try { r = _ts2Find_(e[1], e[4], id); } catch (x) {} if (r) { fields = []; Object.keys(r).forEach(function (k) { if (k !== '_row' && r[k] !== '' && r[k] !== null && r[k] !== undefined) fields.push([k, fmt(r[k])]); }); } }
+    else { var sh = _book_().getSheetByName(e[1]); if (sh && sh.getLastRow() > 1) { var v = sh.getDataRange().getValues(); for (var j = 1; j < v.length; j++) if (String(v[j][0]) === id) { fields = []; v[0].forEach(function (h, k) { if (v[j][k] !== '' && v[j][k] !== null) fields.push([String(h), fmt(v[j][k])]); }); break; } } }
+    if (!fields) continue;
+    var out = { id: id, kind: e[2], sheet: e[1], module: e[3], fields: fields.slice(0, 40), related: [] };
+    if (e[1] === 'Журналы_Отклонения') { try { _corrSheet_().getDataRange().getValues().slice(1).forEach(function (c) { if (String(c[1]) === id) out.related.push([fmt(c[8]), String(c[2]), String(c[7] || ''), String(c[5] || '')]); }); } catch (x) {} }
+    return out;
+  }
+  throw new Error('NOT_FOUND: запись ' + id + ' не найдена');
+}
+function a360Evidence(token, id) {
+  try { _requireAuth_(token, 'audit_create|audit_view|haccp_view|haccp|haccp_approve|ppk_view|ppk_edit'); return _ok_(_a360Evidence_(id)); } catch (e) { return _failFrom_(e); }
+}

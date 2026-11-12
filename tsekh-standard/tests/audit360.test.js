@@ -124,4 +124,16 @@ t('Контрольный лист готовности содержит R21–R
   assert(/Акт внутреннего санитарного аудита 360°/.test(a.html) && /Не является заключением надзорного органа/.test(a.html) && /R22/.test(a.html) && typeof a.score === 'number');
   assert(sheets['Готовность_Проверки'].data.length === 2, 'прогон записан в «Готовность_Проверки»');
 });
+t('Этап 8: запись-доказательство по ID из пункта аудита — что это, поля, связанные действия, раздел; неизвестный ID — понятный отказ', () => {
+  fresh([dish('A1', 'Говядина', 'Жарить.', 0)]); C._ttkpAnalyze_(null); C._hzlSync_();
+  const iss = item('R21').evidence[0]; const e1 = J(C.a360Evidence('tok', iss));
+  assert(e1.kind === 'Замечание к ТТК («Требуется заполнение ТТК»)' && e1.module === 'tsTtkProc' && e1.fields.some(f => f[0] === 'ttkId' && f[1] === 'A1'), JSON.stringify(e1));
+  const hz = item('R22').evidence[0]; const e2 = J(C.a360Evidence('tok', hz));
+  assert(e2.sheet === 'HACCP_Опасности_V30' && e2.fields.some(f => f[0] === 'Status' && f[1] === 'PROPOSED'));
+  sheets['Журналы_Отклонения'].data.push(['DV-E', 'TS2:ARC-1', 'J01', 'Холодильник', 't° 9', 9, false, 'ожидает проверки', '', '', 'Иванова', new Date(), '', '']);
+  sheets['Корректирующие_Действия'].data.push(['CA1', 'DV-E', 'Перенесли продукты', 'Иванова', '', 'выполнено', '', 'Иванова', new Date(), '']);
+  const e3 = J(C.a360Evidence('tok', 'DV-E')); assert(e3.module === 'tsViolations' && e3.related.length === 1 && /Перенесли/.test(e3.related[0][1]));
+  assert(/не найдена/.test(JSON.parse(C.a360Evidence('tok', 'XYZ-1')).error.message));
+  assert(/не найдена/.test(JSON.parse(C.a360Evidence('tok', 'DV-нет')).error.message));
+});
 console.log('audit360: ' + n + ' сценариев пройдено');
