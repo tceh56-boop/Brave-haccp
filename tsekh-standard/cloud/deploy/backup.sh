@@ -25,12 +25,24 @@ tar -czf "$ARCHIVE" -C data/_backup "$STAMP"
 rm -rf "$WORK"
 echo "Архив: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
 
-if [ -n "${S3_BUCKET:-}" ]; then
+# Object Storage: каждый день — в daily/ (правило бакета удаляет через 30 дней), раз в месяц — ещё и в monthly/
+# (правило бакета: холодное хранение, удаление через 1200 дней). Журналы СанПиН хранятся три года, ежемесячные копии — с запасом.
+s3() {
   docker run --rm -v "$PWD/data/_backup:/b:ro" \
     -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION=ru-central1 \
-    amazon/aws-cli:2.17.0 --endpoint-url "${S3_ENDPOINT:-https://storage.yandexcloud.net}" \
-    s3 cp "/b/$(basename "$ARCHIVE")" "s3://$S3_BUCKET/${S3_PREFIX:-tsekh-backups}/$(basename "$ARCHIVE")"
-  echo "Загружено в Object Storage: s3://$S3_BUCKET/${S3_PREFIX:-tsekh-backups}/"
+    amazon/aws-cli:2.17.0 --endpoint-url "${S3_ENDPOINT:-https://storage.yandexcloud.net}" "$@"
+}
+if [ -n "${S3_BUCKET:-}" ]; then
+  NAME=$(basename "$ARCHIVE"); BASE="s3://$S3_BUCKET/${S3_PREFIX:-tsekh-backups}"
+  s3 s3 cp "/b/$NAME" "$BASE/daily/$NAME"
+  echo "Загружено: $BASE/daily/$NAME"
+  # первая успешная копия месяца (даже если 1-го сервер был выключен)
+  MONTH=$(date +%Y-%m)
+  if [ ! -f "data/_backup/monthly-$MONTH.done" ]; then
+    s3 s3 cp "/b/$NAME" "$BASE/monthly/$NAME"
+    date -Iseconds > "data/_backup/monthly-$MONTH.done"
+    echo "Ежемесячная копия (хранится 3+ года): $BASE/monthly/$NAME"
+  fi
 else
   echo "S3_BUCKET не задан — архив остался только на диске сервера"
 fi
