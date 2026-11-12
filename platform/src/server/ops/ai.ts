@@ -85,7 +85,7 @@ class AnthropicProvider implements AiProvider {
  * YandexGPT — провайдер для установок в России (Yandex Cloud, данные не покидают РФ). Тот же формат ответа и те же
  * серверные проверки цитат и чисел, что у основного провайдера: модель возвращает JSON, сервер сверяет его со схемой.
  */
-const JSON_FORMAT = `Ответ верни одним JSON-объектом без пояснений и без markdown, строго с полями:
+export const JSON_FORMAT = `Ответ верни одним JSON-объектом без пояснений и без markdown, строго с полями:
 {"found": строка, "why": строка, "do_now": [строки], "dont": [строки], "who_confirms": строка, "closes_when": строка,
  "citations": [{"source": "S1", "quote": "дословная цитата из текста источника"}], "limitations": строка, "confidence": "low" | "medium" | "high"}`;
 export const YANDEX_AI_MODEL = process.env.YANDEX_AI_MODEL || 'yandexgpt/latest';
@@ -95,13 +95,18 @@ export class YandexProvider implements AiProvider {
   model = YANDEX_AI_MODEL;
   async generate(req: AiRequest): Promise<AiResult> {
     const r = await yandexComplete(`${req.system}\n\n${JSON_FORMAT}`, req.user, 4000, { model: this.model, assistant: true, json: true });
-    const raw = r.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-    const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
-    let parsed: unknown = null;
-    try { parsed = a >= 0 && b > a ? JSON.parse(raw.slice(a, b + 1)) : null; } catch { parsed = null; }
-    const out = AnswerSchema.safeParse(parsed);
-    return { output: out.success ? out.data : null, model: this.model, usage: { total_tokens: r.tokens } };
+    return { output: parseJsonAnswer(r.text), model: this.model, usage: { total_tokens: r.tokens } };
   }
+}
+
+/** Ответ модели без структурированного вывода: JSON (возможно, в ```json … ```) → AiAnswer по схеме; не прошёл схему — null. */
+export function parseJsonAnswer(text: string): AiAnswer | null {
+  const raw = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
+  let parsed: unknown = null;
+  try { parsed = a >= 0 && b > a ? JSON.parse(raw.slice(a, b + 1)) : null; } catch { parsed = null; }
+  const out = AnswerSchema.safeParse(parsed);
+  return out.success ? out.data : null;
 }
 
 let override: AiProvider | null | undefined;

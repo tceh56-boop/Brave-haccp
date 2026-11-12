@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { closePool, withSystem } from '../src/server/db/pool';
 import { createOrganization, createSite, inviteMember, acceptInvitation } from '../src/server/org/organizations';
 import { createControlObject, createRule, approveRule } from '../src/server/ops/control';
@@ -10,7 +10,7 @@ import { askAgent, setAgentProvider, AGENT_TOOLS, type AgentProvider, type Agent
 import { makeUser, lastLinkToken } from './helpers';
 
 afterAll(() => { setAgentProvider(undefined); return closePool(); });
-afterEach(() => setAgentProvider(undefined));
+afterEach(() => { setAgentProvider(undefined); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 type U = Awaited<ReturnType<typeof makeUser>>;
 let owner: U, haccp: U, cook: U, cook2: U;
@@ -173,5 +173,67 @@ describe('ЦЕХ AI: агент сам собирает данные систе�
     const stranger = await makeUser();
     await expect(askAgent(stranger.id, orgId, { question: 'Что у вас в холодильнике?' })).rejects.toThrow();
     expect(p.calls).toHaveLength(0);
+  });
+});
+
+describe('ЦЕХ AI-агент на YandexGPT (AI_PROVIDER=yandex)', () => {
+  type Body = { model: string; messages: { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string }[]; tools?: { type: string; function: { name: string } }[]; response_format?: unknown };
+  /** Подменённый chat/completions: по очереди отдаёт ответы, запоминает запросы. Обращений к Yandex Cloud нет. */
+  function yandex(...replies: ((b: Body) => object)[]) {
+    const bodies: Body[] = []; const headers: Record<string, string>[] = []; const urls: string[] = [];
+    vi.stubEnv('AI_PROVIDER', 'yandex'); vi.stubEnv('YANDEX_API_KEY', 'AQVN-тест'); vi.stubEnv('YANDEX_FOLDER_ID', 'b1gtest00000');
+    vi.stubGlobal('fetch', vi.fn(async (u: unknown, init?: { body?: string; headers?: Record<string, string> }) => {
+      const b = JSON.parse(init!.body!) as Body; bodies.push(b); headers.push(init!.headers!); urls.push(String(u));
+      const msg = replies[Math.min(bodies.length - 1, replies.length - 1)](b);
+      return new Response(JSON.stringify({ choices: [{ message: msg, finish_reason: 'tool_calls' in msg ? 'tool_calls' : 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 20 } }), { status: 200 });
+    }));
+    return { bodies, headers, urls };
+  }
+  const toolCall = (id: string, name: string, a: unknown) => ({ role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(a) } }] });
+
+  it('вызывает инструменты через chat/completions, получает данные и отвечает JSON; проверки те же', async () => {
+    const y = yandex(
+      () => toolCall('c1', 'list_incidents', { only_open: true }),
+      (b) => toolCall('c2', 'incident_details', { incident_id: JSON.parse(b.messages.at(-1)!.content!).строки[0].id }),
+      () => ({ role: 'assistant', content: JSON.stringify(ANSWER) }),
+    );
+    const r = await askAgent(cook.id, orgId, { question: 'Что сегодня не в порядке с холодильниками?' });
+    expect(r.status).toBe('ok');
+    expect(r.model).toBe('yandexgpt/latest');
+    expect(r.steps!.map((s) => s.tool)).toEqual(['list_incidents', 'incident_details']);
+    expect(r.citations).toEqual([expect.objectContaining({ id: 'S1', quote: 'от 0 до +4 °C' })]);
+    expect(y.urls[0]).toBe('https://ai.api.cloud.yandex.net/v1/chat/completions');
+    expect(y.headers[0]).toMatchObject({ authorization: 'Api-Key AQVN-тест', 'OpenAI-Project': 'b1gtest00000' });
+    expect(y.bodies[0].model).toBe('gpt://b1gtest00000/yandexgpt/latest');
+    expect(y.bodies[0].tools!.map((t) => t.function.name).sort()).toEqual([...AGENT_TOOLS].sort());
+    expect(y.bodies[0].messages[0]).toMatchObject({ role: 'system', content: expect.stringContaining('JSON-объектом') });
+    // История: вызов модели и результат инструмента с тем же id; в результате — замер и текст требования.
+    const third = y.bodies[2].messages;
+    expect(third.filter((m) => m.role === 'tool').map((m) => m.tool_call_id)).toEqual(['c1', 'c2']);
+    expect(third.at(-1)!.content).toContain('7,5 °C');
+    expect(third.at(-1)!.content).toContain(RULE_TEXT);
+    const row = await withSystem(async (tx) => (await tx.query(`select provider, usage from ai_jobs where id = $1`, [r.job_id])).rows[0]);
+    expect(row).toMatchObject({ provider: 'yandexgpt', usage: { turns: 3, input_tokens: 300, output_tokens: 60 } });
+  });
+
+  it('ответ текстом вместо JSON — один повтор с требованием формата; не помогло — ошибка формата, а не выдумка', async () => {
+    const y = yandex(() => ({ role: 'assistant', content: 'Всё хорошо, не волнуйтесь.' }), () => ({ role: 'assistant', content: '```json\n' + JSON.stringify({ ...ANSWER, citations: [], found: 'Данных нет.', do_now: [] }) + '\n```' }));
+    const ok = await askAgent(cook.id, orgId, { question: 'Что сегодня не в порядке?' });
+    expect(ok.status).toBe('ok');
+    expect(y.bodies).toHaveLength(2);
+    expect(y.bodies[1].tools).toBeUndefined();
+    expect(y.bodies[1].response_format).toEqual({ type: 'json_object' });
+
+    yandex(() => ({ role: 'assistant', content: 'Не знаю.' }));
+    const bad = await askAgent(cook.id, orgId, { question: 'Что сегодня не в порядке?' });
+    expect(bad.status).toBe('error');
+    expect(bad.answer).toBeNull();
+  });
+
+  it('без ключей Yandex Cloud агент выключен и не обращается к сети', async () => {
+    vi.stubEnv('AI_PROVIDER', 'yandex'); vi.stubEnv('YANDEX_API_KEY', ''); vi.stubEnv('YANDEX_IAM_TOKEN', ''); vi.stubEnv('YANDEX_FOLDER_ID', '');
+    const f = vi.fn(); vi.stubGlobal('fetch', f);
+    expect((await askAgent(cook.id, orgId, { question: 'Что сегодня не в порядке?' })).status).toBe('unavailable');
+    expect(f).not.toHaveBeenCalled();
   });
 });

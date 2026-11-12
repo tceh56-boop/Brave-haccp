@@ -11,8 +11,9 @@ import { listTasks } from './tasks';
 import { listIncidents } from './incidents';
 import { listCapas } from './capa';
 import { listLots } from './lots';
+import { chat, yandexStatus, type ChatMessage, type ChatToolCall } from '../integrations/yandex';
 import {
-  AI_MODEL, AnswerSchema, DAILY_LIMIT, PROMPT_VERSION, checkAnswer, findSources, incidentContext, present, usedToday, words,
+  AI_MODEL, JSON_FORMAT, YANDEX_AI_MODEL, parseJsonAnswer, AnswerSchema, DAILY_LIMIT, PROMPT_VERSION, checkAnswer, findSources, incidentContext, present, usedToday, words,
   type AgentStepView, type AiAnswer, type Source,
 } from './ai';
 
@@ -80,12 +81,77 @@ class AnthropicAgent implements AgentProvider {
   }
 }
 
+/**
+ * YandexGPT — агент для установок в России (Yandex Cloud). Вызов функций — через OpenAI-совместимый API AI Studio.
+ * Внутри агента история хранится в формате Anthropic; здесь она переводится туда и обратно, поэтому цикл, инструменты,
+ * журнал и серверные проверки ответа одни для обоих провайдеров. Структурированного вывода вместе с инструментами нет:
+ * итоговый ответ модель даёт JSON-текстом, сервер сверяет его со схемой; не сошлось — один повтор с требованием JSON.
+ */
+export class YandexAgent implements AgentProvider {
+  name = 'yandexgpt';
+  model = YANDEX_AI_MODEL;
+  async turn(req: AgentRequest): Promise<AgentTurn> {
+    const messages = toChat(req);
+    const tools = req.tools.map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description || '', parameters: t.input_schema } }));
+    const r = await chat(messages, { model: this.model, tools, maxTokens: 6000 });
+    const usage = { input_tokens: r.usage?.prompt_tokens || 0, output_tokens: r.usage?.completion_tokens || 0 };
+    const calls = r.message.tool_calls || [];
+    if (calls.length) {
+      const content = [
+        ...(r.message.content?.trim() ? [{ type: 'text', text: r.message.content, citations: null }] : []),
+        ...calls.map((c, i) => ({ type: 'tool_use', id: c.id || `ya_${Date.now().toString(36)}_${i}`, name: c.function.name, input: args(c) })),
+      ] as Block[];
+      return { content, stop_reason: 'tool_use', output: null, model: this.model, usage };
+    }
+    const text = r.message.content || '';
+    const content = [{ type: 'text', text, citations: null }] as Block[];
+    if (r.finish_reason === 'content_filter') return { content, stop_reason: 'refusal', output: null, model: this.model, usage };
+    if (r.finish_reason === 'length') return { content, stop_reason: 'max_tokens', output: null, model: this.model, usage };
+    let output = parseJsonAnswer(text);
+    if (!output) {
+      // Модель ответила текстом, а не JSON: просим переписать тот же ответ в формате (без инструментов).
+      const fix = await chat([...messages, { role: 'assistant', content: text }, { role: 'user', content: `Перепиши свой ответ в требуемом формате, ничего не добавляя.\n\n${JSON_FORMAT}` }],
+        { model: this.model, maxTokens: 4000, json: true });
+      usage.input_tokens += fix.usage?.prompt_tokens || 0; usage.output_tokens += fix.usage?.completion_tokens || 0;
+      output = parseJsonAnswer(fix.message.content || '');
+    }
+    return { content, stop_reason: 'end_turn', output, model: this.model, usage };
+  }
+}
+
+function args(c: ChatToolCall): unknown {
+  const a = c.function.arguments;
+  if (a && typeof a === 'object') return a;
+  try { return JSON.parse(String(a || '{}')); } catch { return { _неразобрано: a }; }
+}
+
+/** История агента (формат Anthropic) → сообщения chat/completions. */
+function toChat(req: AgentRequest): ChatMessage[] {
+  const out: ChatMessage[] = [{ role: 'system', content: `${req.system}\n\nКогда данных достаточно, инструменты больше не вызывай. ${JSON_FORMAT}` }];
+  for (const m of req.messages) {
+    if (typeof m.content === 'string') { out.push({ role: m.role, content: m.content }); continue; }
+    const blocks = m.content as { type: string; text?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: unknown }[];
+    if (m.role === 'assistant') {
+      const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+      const tool_calls = blocks.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id!, type: 'function' as const, function: { name: b.name!, arguments: JSON.stringify(b.input ?? {}) } }));
+      out.push({ role: 'assistant', content: text || null, ...(tool_calls.length ? { tool_calls } : {}) });
+      continue;
+    }
+    for (const b of blocks.filter((x) => x.type === 'tool_result')) out.push({ role: 'tool', tool_call_id: b.tool_use_id!, content: typeof b.content === 'string' ? b.content : JSON.stringify(b.content) });
+    const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    if (text) out.push({ role: 'user', content: text });
+  }
+  return out;
+}
+
 let override: AgentProvider | null | undefined;
 /** Для тестов и офлайн-режима: подменить провайдера агента (null — AI отключён). */
 export function setAgentProvider(p: AgentProvider | null | undefined) { override = p; }
 function provider(): AgentProvider | null {
   if (override !== undefined) return override;
   if (process.env.AI_PROVIDER === 'off') return null;
+  // Как у разового помощника: YandexGPT — только явно (AI_PROVIDER=yandex) и при заданных ключах Yandex Cloud.
+  if (process.env.AI_PROVIDER === 'yandex') return yandexStatus().configured ? new YandexAgent() : null;
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return null;
   return new AnthropicAgent();
 }
