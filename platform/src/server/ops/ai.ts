@@ -27,9 +27,9 @@ import { complete as yandexComplete, yandexStatus } from '../integrations/yandex
 
 export const PROMPT_VERSION = 'ceh-ai-2026-10-21.1';
 export const AI_MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
-const DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT || 300);
+export const DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT || 300);
 
-const AnswerSchema = z4.object({
+export const AnswerSchema = z4.object({
   found: z4.string().describe('Что обнаружено — простыми словами, по входным данным'),
   why: z4.string().describe('Почему это важно для безопасности продукции или гостей'),
   do_now: z4.array(z4.string()).describe('Что сделать сейчас — конкретные шаги; каждый шаг — отдельная строка'),
@@ -54,6 +54,9 @@ const SYSTEM = `Ты — помощник по пищевой безопасно
 7. confidence: high — данные полные и источник прямо отвечает; medium — частично; low — данных или источников мало.`;
 
 /* ───────────── Провайдер ───────────── */
+
+/** Шаг агента для показа человеку: какие данные системы AI запросил. */
+export interface AgentStepView { tool: string; label: string; input: unknown; ok: boolean }
 
 export interface AiRequest { system: string; user: string }
 export interface AiResult { output: AiAnswer | null; model: string; refused?: boolean; usage?: unknown }
@@ -119,10 +122,10 @@ export const aiAvailable = () => provider() !== null;
 export interface Source { id: string; requirement_id: string; code: string; title: string; clause: string; text: string; scope: string; edition: string;
   state: string; state_label: string; last_checked_at: string | null; next_check_at: string | null; applicable: boolean | null }
 
-const words = (s: string) => [...new Set(s.toLowerCase().replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4 && !/^\d+$/.test(w)))].slice(0, 30);
+export const words = (s: string) => [...new Set(s.toLowerCase().replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4 && !/^\d+$/.test(w)))].slice(0, 30);
 
 /** Требования утверждённых редакций (действующих или вступающих в силу), ранжированные по совпадению с текстом. */
-async function findSources(tx: Tx, orgId: string, text: string, pinned: string[] = [], limit = 6): Promise<Source[]> {
+export async function findSources(tx: Tx, orgId: string, text: string, pinned: string[] = [], limit = 6): Promise<Source[]> {
   const w = words(text);
   const q = w.join(' | ');
   const rows = (await tx.query(`select r.id as requirement_id, r.clause, r.text, r.scope, v.edition, v.workflow_status, v.effective_from, v.effective_to, v.last_checked_at, v.next_check_at,
@@ -170,11 +173,17 @@ export function checkAnswer(a: AiAnswer, sources: Source[], context: unknown) {
   return { citations, badCitations, unsupported: [...new Set(unsupported)], ok: unsupported.length === 0 };
 }
 
+/** Запросов к модели за сутки: запуск агента считается по числу его обращений к модели. */
+export async function usedToday(tx: Tx, orgId: string) {
+  return Number((await tx.query(`select coalesce(sum(case when kind = 'agent' then greatest(coalesce((usage->>'turns')::int, 1), 1) else 1 end), 0) as n
+    from ai_jobs where organization_id = $1 and provider <> 'none' and created_at > now() - interval '1 day'`, [orgId])).rows[0].n);
+}
+
 /* ───────────── Контекст по задачам ───────────── */
 
 const roleLabel = (r: string | null) => (r && isRole(r) ? ROLES[r].label : r);
 
-async function incidentContext(tx: Tx, orgId: string, incidentId: string) {
+export async function incidentContext(tx: Tx, orgId: string, incidentId: string) {
   const i = (await tx.query(`select * from incidents where id = $1 and organization_id = $2`, [incidentId, orgId])).rows[0];
   if (!i) throw Errors.notFound('Отклонение не найдено.');
   const ctx: Record<string, unknown> = {
@@ -230,7 +239,7 @@ async function run(userId: string, orgId: string, kind: keyof typeof KIND_PERMIS
     } else if (kind === 'capa_suggest') built = await capaContext(tx, orgId, opts.entityId!);
     else built = { ctx: { вопрос: opts.question }, searchText: opts.question!, pinned: [] };
     const sources = await findSources(tx, orgId, built.searchText, built.pinned);
-    const used = Number((await tx.query(`select count(*) from ai_jobs where organization_id = $1 and provider <> 'none' and created_at > now() - interval '1 day'`, [orgId])).rows[0].count);
+    const used = await usedToday(tx, orgId);
     return { ...built, sources, used };
   });
 
@@ -275,17 +284,18 @@ async function run(userId: string, orgId: string, kind: keyof typeof KIND_PERMIS
   });
 }
 
-function present(id: string, status: string, answer: AiAnswer | null, sources: Source[], guard: Partial<ReturnType<typeof checkAnswer>>, model: string | null, error: string | null) {
+export function present(id: string, status: string, answer: AiAnswer | null, sources: Source[], guard: Partial<ReturnType<typeof checkAnswer>>, model: string | null, error: string | null, steps?: AgentStepView[]) {
   const byId = new Map(sources.map((s) => [s.id, s]));
   const visible = status === 'ok' ? answer : null;
   return {
     job_id: id, status, model, error,
     message: { ok: null, guard_rejected: 'Ответ отклонён проверкой: AI назвал значения, которых нет в данных и утверждённых источниках. Решение — по утверждённой процедуре.',
       no_sources: 'В реестре предприятия нет утверждённого требования по этому вопросу. AI не отвечает без источника — обратитесь к специалисту или внесите требование в реестр.',
-      unavailable: 'AI не подключён. Ниже — требования, которые система нашла в реестре.', refused: 'AI отказался отвечать на этот запрос.', error: error || 'Ошибка AI.' }[status] || null,
+      unavailable: 'AI не подключён. Ниже — требования, которые система нашла в реестре.', step_limit: 'AI не уложился в допустимое число шагов. Уточните вопрос.', refused: 'AI отказался отвечать на этот запрос.', error: error || 'Ошибка AI.' }[status] || null,
     answer: visible,
     citations: (visible?.citations || []).map((c) => ({ ...byId.get(c.source)!, quote: c.quote })),
     sources, unsupported: guard.unsupported || [], bad_citations: guard.badCitations || [],
+    ...(steps ? { steps } : {}),
   };
 }
 
@@ -357,6 +367,7 @@ export async function getJob(userId: string, orgId: string, jobId: string) {
     if (!j) throw Errors.notFound('Ответ AI не найден.');
     if (j.user_id !== userId && !roleHas(m.role, 'ai.audit')) throw Errors.forbidden('Чужие запросы видит только руководитель или аудитор.');
     const decisions = (await tx.query(`select d.item_index, d.decision, d.note, d.task_id, d.created_at, u.full_name as user_name from ai_decisions d join users u on u.id = d.user_id where d.job_id = $1 order by d.created_at`, [j.id])).rows;
-    return { ...present(j.id, j.status, j.answer, j.sources, j.guard, j.model, j.error), prompt_version: j.prompt_version, context: j.context, question: j.question, created_at: j.created_at, decisions };
+    const steps = j.kind === 'agent' ? ((j.context?.шаги || []) as { инструмент: string; название: string; параметры: unknown; ошибка?: string }[]).map((x) => ({ tool: x.инструмент, label: x.название, input: x.параметры, ok: !x.ошибка })) : undefined;
+    return { ...present(j.id, j.status, j.answer, j.sources, j.guard, j.model, j.error, steps), prompt_version: j.prompt_version, context: j.context, question: j.question, created_at: j.created_at, decisions };
   });
 }

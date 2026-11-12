@@ -55,7 +55,7 @@ const m = await call(`/orgs/${orgId}/measurements`, { controlObjectId: obj.id, v
 
 step('вопрос по требованиям: найдено утверждённое требование с реквизитами');
 await P.goto(`${BASE}${base}`);
-await P.click('text=AI-помощник: вопрос по требованиям');
+await P.click('text=ЦЕХ AI: вопрос по данным системы и требованиям');
 await P.waitForSelector('text=AI не подключён (нет ключа API)');
 await P.fill('#aq', 'При какой температуре хранить охлаждённое мясо?');
 await P.click('button:has-text("Спросить")');
