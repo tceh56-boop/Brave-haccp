@@ -247,9 +247,11 @@ function _ts2Expect_(rule, subject, ctx, mode, title) {
     completedAt: '', completedBy: '', factId: '', title: title + (ctx.title ? ' — ' + ctx.title : ''), idempotencyKey: key });
 }
 /** Исключение: только они создают уведомления (ТЗ 2.1 §17). */
-function _ts2Exception_(type, text, objectId) {
+function _ts2Exception_(type, text, objectId, opts) {
   var r = _ts2AutoRecord_({ eventType: 'EXCEPTION', sourceType: type, sourceId: objectId || '', recordType: 'DEVIATION', journalCode: 'J-DEVIATIONS', kktId: '', productionId: '', batchId: '', ttkId: '',
     result: 'FAIL', measurementMode: 'EVENT', value: text, unit: '', confidence: 1, status: 'OPEN', idempotencyKey: [_ts2Ent_(), type, objectId, _ts2Iso_()].join('|'), operationId: '', confirmedByEmployee: _ts2Actor_().name, confirmedAt: _ts2Iso_(), ruleVersion: '' });
+  // этап 4.0-6: нарушение — в единый реестр (Журналы_Отклонения) с единым жизненным циклом
+  if (typeof _vioFromTs2_ === 'function' && typeof _devSheet_ === 'function') { try { _vioFromTs2_(r, type, text, objectId, opts); } catch (e) { try { _log_('WARN', 'нарушение в реестр: ' + e.message); } catch (x) {} } }
   try { var to = PropertiesService.getScriptProperties().getProperty('MC_NOTIFY_EMAIL'); if (to && /KKT|TEMP|CRITICAL|HUMIDITY|SENSOR/.test(type)) MailApp.sendEmail(to, 'ЦЕХ Стандарт: отклонение', text); } catch (e) {}
   return r;
 }
@@ -351,14 +353,15 @@ function _ts2Measure_(id, value, comment, token) {
   var a = _ts2Actor_(), mId = _ts2Id_('MANUAL_MEASUREMENTS'), unit = TS2_MEASURE_TYPES_[kind][1];
   _ts2Insert_('MANUAL_MEASUREMENTS', { measurementId: mId, enterpriseId: _ts2Ent_(), measurementType: TS2_MEASURE_TYPES_[kind][0], objectType: kind, objectId: e.objectId, value: v, unit: unit, minValue: min, maxValue: max,
     result: res, employeeId: a.name, recordedAt: _ts2Iso_(), source: 'MANUAL', comment: comment || '', photoFileId: '', operationId: '' });
+  var legacyDev = '';
   if (o && o.legacyObjectId && (kind === 'FRIDGE' || kind === 'FREEZER') && typeof mcRecordTemperature === 'function') {
-    try { mcRecordTemperature(JSON.stringify({ objectId: o.legacyObjectId, value: v, comment: comment || '' }), token); } catch (x) {}   // журнал температур ведётся как прежде
+    try { var lr = mcRecordTemperature(JSON.stringify({ objectId: o.legacyObjectId, value: v, comment: comment || '' }), token); lr = typeof lr === 'string' ? JSON.parse(lr) : lr; if (lr && lr.success && lr.data && lr.data.deviationId) legacyDev = lr.data.deviationId; } catch (x) {}   // журнал температур ведётся как прежде
   }
   if (kind === 'UV_LAMP' && o) _ts2Update_('MEASUREMENT_OBJECTS', 'objectId', o.objectId, { resourceHours: Number(o.resourceHours || 0) + (Number(v) || 0) });
   var r = _ts2AutoRecord_({ eventType: 'MEASUREMENT', sourceType: 'MANUAL_MEASUREMENT', sourceId: mId, recordType: 'HACCP_FACT', journalCode: e.journalCode, kktId: '', productionId: e.productionId, batchId: e.batchId, ttkId: '',
     result: res, measurementMode: 'MANUAL', value: v, unit: unit, confidence: 1, status: 'ACTIVE', idempotencyKey: [_ts2Ent_(), id, 'MEASURE'].join('|'), operationId: '', confirmedByEmployee: a.name, confirmedAt: _ts2Iso_(), ruleVersion: e.eventRuleId });
   _ts2Update_('JOURNAL_EXPECTATIONS', 'expectationId', id, { status: res === 'FAIL' ? 'FAILED' : 'DONE', completedAt: _ts2Iso_(), completedBy: a.name, factId: r.autoRecordId });
-  if (res === 'FAIL') _ts2Exception_(kind === 'ROOM_HUMIDITY' ? 'HUMIDITY_OUT' : isFryer ? 'FRYER_REPLACE' : 'TEMP_OUT', e.title + ': ' + v + ' ' + unit + (min !== '' || max !== '' ? ' (норма ' + min + '…' + max + ')' : '') + (comment ? ' — ' + comment : ''), e.objectId);
+  if (res === 'FAIL') _ts2Exception_(kind === 'ROOM_HUMIDITY' ? 'HUMIDITY_OUT' : isFryer ? 'FRYER_REPLACE' : 'TEMP_OUT', e.title + ': ' + v + ' ' + unit + (min !== '' || max !== '' ? ' (норма ' + min + '…' + max + ')' : '') + (comment ? ' — ' + comment : ''), e.objectId, { deviationId: legacyDev });
   _ts2CloseAutoPending_(e, v, res);
   return { id: id, result: res, value: v, unit: unit };
 }
@@ -490,6 +493,16 @@ function ts2ResolveException(token, id, action) {
   try {
     _requireAuth_(token); if (!String(action || '').trim()) return _fail_('VALIDATION', 'Опишите корректирующее действие');
     var r = _ts2Find_('AUTO_RECORDS', 'autoRecordId', id); if (!r) return _fail_('NOT_FOUND', 'Отклонение не найдено');
+    // этап 4.0-6: устранение — через единый реестр: «ожидает проверки», закрывает проверка другим сотрудником
+    if (typeof _vioCorrect_ === 'function' && typeof _devSheet_ === 'function') {
+      var s0 = _requireAuth_(token), who = (s0 && (s0.fullName || s0.name)) || '';
+      return _withLock_(function () {
+        var dv = _vioBySource_('TS2:' + id); var devId = dv ? String(dv.v[0]) : _vioFromTs2_(r, r.sourceType, r.value, r.sourceId);
+        var res = _vioCorrect_(devId, { action: action }, who);
+        _ts2Audit_('DEVIATION_RESOLVE', 'DEVIATION', id, { status: 'OPEN' }, { status: res.status, action: action, devId: devId }, action);
+        return _ok_({ id: id, devId: devId, status: res.status });
+      });
+    }
     _ts2Update_('AUTO_RECORDS', 'autoRecordId', id, { status: 'RESOLVED' });
     _ts2Audit_('DEVIATION_RESOLVE', 'DEVIATION', id, { status: 'OPEN' }, { status: 'RESOLVED', action: action }, action);
     return _ok_({ id: id });

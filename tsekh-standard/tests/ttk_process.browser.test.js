@@ -24,6 +24,8 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
       clgBuild: () => JSON.stringify({ success: true, data: { ppkId: 'PPK-1', TASK: 1, EVENT: 2, COVERED: 1, DATE: 1, NO_SCHEDULE: 1 } }),
       ts2Exceptions: () => JSON.stringify({ success: true, data: { exceptions: [], autoCount: 0 } }),
       ts2Now: () => JSON.stringify({ success: true, data: { mode: 'READY_TO_WORK', tasks: [{ id: 'EXP-1', title: 'ППК: Смывы с рук: БГКП', due: '10:00', overdue: false, checklist: ['Выполнено: смывы взяты', 'Протокол лаборатории получен и приложен'], onFail: 'повторное исследование' }] } }),
+      vioList: () => JSON.stringify({ success: true, data: { mode: 'SECOND_PERSON', items: [{ id: 'DV-9', object: 'Холодильник 2', text: 't° 9 °C', status: 'ожидает проверки', corrector: 'Повар Иванова', at: '2026-11-12T10:00', critical: true }, { id: 'DV-8', object: 'x', text: 'y', status: 'открыто', at: '' }] } }),
+      vioVerify: () => JSON.stringify({ success: true, data: { status: 'устранено' } }),
       ts2Confirm: () => JSON.stringify({ success: true, data: { result: 'FAIL' } }),
       ttkProcAnalyze: () => JSON.stringify({ success: true, data: { analyzed: 3, added: ['a'], removed: [], openIssues: 1 } }), ttkProcReview: () => JSON.stringify({ success: true, data: { status: 'CONFIRMED' } }),
       ttkProcAiSuggest: () => JSON.stringify({ success: true, data: { suggested: 'FRY', note: 'Предложение не утверждено' } }),
@@ -61,8 +63,11 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
   await p.click('button[data-mv="build"]'); await p.waitForTimeout(300); assert(/clgBuild:\["x"\]/.test(await calls()), 'обновить чек-листы');
   await p.evaluate(() => { window.prompt = () => '2'; openView('tsNow'); }); await p.waitForTimeout(500);
   txt = await p.textContent('#vbody'); assert(/Выполнено: смывы взяты/.test(txt) && /повторное исследование/.test(txt), 'чек-лист в задаче на экране «Сейчас»: ' + txt.slice(0, 300));
+  txt = await p.textContent('#vbody'); assert(/Ожидают проверки — подтвердите устранение · 1/.test(txt) && /Повар Иванова/.test(txt) && /критическое/.test(txt), 'ожидают проверки: ' + txt.slice(0, 400));
+  await p.click('button[data-mv="vok"][data-a="DV-9"]'); await p.waitForTimeout(400); assert(/vioVerify:\["x","DV-9",true,""\]/.test(await calls()), 'подтвердить устранение');
+  await p.evaluate(() => openView('tsNow')); await p.waitForTimeout(500);
   await p.click('button[data-mv="no"][data-a="EXP-1"]'); await p.waitForTimeout(400);
   assert(/ts2Confirm:\["x","EXP-1",false,"Не выполнен пункт 2: Протокол лаборатории получен и приложен"/.test(await calls()), '«Нет» с номером пункта: ' + (await calls()).split('\n').filter(x => /ts2Confirm/.test(x)));
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
-  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП, прежние разделы ППК, чек-листы ППК');
+  await b.close(); console.log('OK: процессы ТТК — модель, проверка операций, замечания, опасности ХАССП, прежние разделы ППК, чек-листы ППК, проверка устранения нарушений');
 })().catch(e => { console.error(e); process.exit(1); });

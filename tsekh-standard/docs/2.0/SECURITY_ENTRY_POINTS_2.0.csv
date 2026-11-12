@@ -1028,5 +1028,9 @@ ttkProcReview;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit|t
 ttkProcSetStatus;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit;сессия → право «ttk_edit» → тариф → допуск → блокировка → аудит
 ttkProcAiSuggest;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_edit|haccp;сессия → право «ttk_edit|haccp» → тариф → допуск → блокировка → аудит
 ttkProcDictionarySave;TS_TtkProcess.gs;интерфейс (сессия);да;ttk_approve|haccp_approve;сессия → право «ttk_approve|haccp_approve» → тариф → допуск → блокировка → аудит
+vioList;TS_Violations.gs;интерфейс (сессия);;haccp|haccp_view|haccp_approve|prod_manage|sanitation|journals;сессия → право «haccp|haccp_view|haccp_approve|prod_manage|sanitation|journals» → тариф
+vioCorrect;TS_Violations.gs;интерфейс (сессия);да;haccp|prod_manage|sanitation|journals;сессия → право «haccp|prod_manage|sanitation|journals» → тариф → допуск → блокировка → аудит
+vioVerify;TS_Violations.gs;интерфейс (сессия);да;haccp|haccp_approve|prod_manage|sanitation;сессия → право «haccp|haccp_approve|prod_manage|sanitation» → тариф → допуск → блокировка → аудит
+vioSetVerifyMode;TS_Violations.gs;интерфейс (сессия);да;org_edit;сессия → право «org_edit» → тариф → допуск → блокировка → аудит
 dedupeChecklistItems;zz_MonChef_Runtime.gs;служебная;;;только технический доступ или владелец проекта
 getAppUrl;zz_MonChef_Runtime.gs;публичная;;;адрес приложения

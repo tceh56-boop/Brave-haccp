@@ -70,7 +70,10 @@ var sh=_v43Sheet_(V43_SAN.TASK,V43_HEADERS.TASK),idx=t._rowNo,h=sh.getRange(1,1,
 sh.getRange(idx,h.indexOf('Status')+1).setValue('DONE');sh.getRange(idx,h.indexOf('CompletedAt')+1).setValue(now);sh.getRange(idx,h.indexOf('CompletedBy')+1).setValue(who.name);
 sh.getRange(idx,h.indexOf('ExecutionID')+1).setValue(execId);sh.getRange(idx,h.indexOf('FactID')+1).setValue(factId);if(aid)sh.getRange(idx,h.indexOf('DeviationID')+1).setValue(aid);
 return{ok:true,executionId:execId,factId:factId,executed:true,result:result,deviationId:aid};});}
-function v43CreateAlert_(type,obj,sev,msg,task){var sh=_v43Sheet_(V43_SAN.ALERT,V43_HEADERS.ALERT),id=_v43Id_('ALT'),now=new Date();sh.appendRow([id,type,obj,now,sev,msg,'OPEN',task||'',now,'']);return id;}
+function v43CreateAlert_(type,obj,sev,msg,task){var sh=_v43Sheet_(V43_SAN.ALERT,V43_HEADERS.ALERT),id=_v43Id_('ALT'),now=new Date();sh.appendRow([id,type,obj,now,sev,msg,'OPEN',task||'',now,'']);
+// этап 4.0-6: нарушение санитарии — в единый реестр нарушений
+if(typeof _vioFromV43_==='function'&&typeof _devSheet_==='function'){try{_vioFromV43_(id,type,obj,sev,msg);}catch(e){}}
+return id;}
 /** Просрочка: одно уведомление на задачу (повторный запуск по расписанию не создаёт дублей). */
 function v43BuildOverdueAlerts(){setupV43SanitationChecklist();var now=new Date(),out=[],rows=_v43Rows_(V43_SAN.TASK),have={};
 _v43Rows_(V43_SAN.ALERT).forEach(function(a){if(String(a.AlertType)==='SANITATION_OVERDUE')have[String(a.TaskID||a.ObjectID)]=1;});
@@ -90,11 +93,13 @@ return _withLock_(function(){var who=_v43Who_(),x=_v43SetRow_('LINK',linkId,{App
 try{_audit_({session:null,id:'V43'},'V43_LINK_REVIEW','Санитария_Связь',linkId,x.ApprovalStatus,{status:decision,by:who.name});}catch(e){}return{ok:true,linkId:linkId,status:decision};});}
 /** УСТРАНЕНИЕ нарушения (отдельно от исполнения): корректирующее действие → «ожидает проверки». */
 function v43ResolveDeviation(alertId,correctiveAction,token){if(!String(correctiveAction||'').trim())throw new Error('Опишите корректирующее действие');
+if(typeof _vioCorrect_==='function'&&typeof _devSheet_==='function'){return _withLock_(function(){var a=_v43Rows_(V43_SAN.ALERT).find(function(r){return String(r.AlertID)===String(alertId);});if(!a)throw new Error('Нарушение не найдено');var dv=_vioBySource_('V43:'+alertId),dev=dv?String(dv.v[0]):_vioFromV43_(alertId,a.AlertType,a.ObjectID,a.Severity,a.Message);var r=_vioCorrect_(dev,{action:correctiveAction},_v43Who_().name||'');return{ok:true,alertId:alertId,devId:dev,status:r.status===VIO_ST_.VERIFY?'VERIFY_REQUIRED':'CLOSED'};});}
 return _withLock_(function(){var who=_v43Who_(),a=_v43Rows_(V43_SAN.ALERT).find(function(r){return String(r.AlertID)===String(alertId);});if(!a)throw new Error('Нарушение не найдено');
 if(['OPEN','IN_PROGRESS','REOPENED'].indexOf(String(a.Status))<0)throw new Error('Нарушение в статусе '+a.Status+' — устранение уже записано');
 _v43SetRow_('ALERT',alertId,{Status:'VERIFY_REQUIRED',Message:String(a.Message)+' | Устранено: '+correctiveAction+' ('+(who.name||'—')+', '+Utilities.formatDate(new Date(),_mcTz_(),'dd.MM.yyyy HH:mm')+')'});return{ok:true,alertId:alertId,status:'VERIFY_REQUIRED'};});}
 /** ПРОВЕРКА устранения: закрывает только другой сотрудник; не подтверждено — нарушение снова открыто. */
-function v43VerifyDeviation(alertId,confirmed,comment,token){return _withLock_(function(){var who=_v43Who_(),a=_v43Rows_(V43_SAN.ALERT).find(function(r){return String(r.AlertID)===String(alertId);});if(!a)throw new Error('Нарушение не найдено');
+function v43VerifyDeviation(alertId,confirmed,comment,token){if(typeof _vioVerify_==='function'&&typeof _devSheet_==='function'){return _withLock_(function(){var dv=_vioBySource_('V43:'+alertId);if(!dv)throw new Error('Нарушение не найдено в реестре нарушений');var r=_vioVerify_(String(dv.v[0]),confirmed,comment,_v43Who_().name||'',typeof mcGateSession_==='function'?mcGateSession_():null);return{ok:true,alertId:alertId,devId:String(dv.v[0]),status:r.status===VIO_ST_.CLOSED?'CLOSED':'REOPENED'};});}
+return _withLock_(function(){var who=_v43Who_(),a=_v43Rows_(V43_SAN.ALERT).find(function(r){return String(r.AlertID)===String(alertId);});if(!a)throw new Error('Нарушение не найдено');
 if(String(a.Status)!=='VERIFY_REQUIRED')throw new Error('Проверять можно нарушение «ожидает проверки»');
 var m=/Устранено: .*\((.*?), \d\d\.\d\d\.\d{4}/.exec(String(a.Message));if(m&&who.name&&m[1]===who.name)throw new Error('Устранение подтверждает другой сотрудник');
 var ok=confirmed===true||String(confirmed)==='true';_v43SetRow_('ALERT',alertId,{Status:ok?'CLOSED':'REOPENED',ResolvedAt:ok?new Date():'',Message:String(a.Message)+' | Проверка: '+(ok?'подтверждено':'не подтверждено')+(comment?' — '+comment:'')+' ('+(who.name||'—')+')'});

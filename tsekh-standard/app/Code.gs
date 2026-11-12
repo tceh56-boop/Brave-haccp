@@ -2363,7 +2363,7 @@ function getDashboard(token, days) {
       var dvv = _devSheet_().getDataRange().getValues();
       var openDev = 0, critOpen = 0;
       for (var di = 1; di < dvv.length; di++) {
-        if (!dvv[di][0] || dvv[di][7] !== 'открыто') continue;
+        if (!dvv[di][0] || /устран|закрыт|отмен/i.test(String(dvv[di][7]))) continue;   // «ожидает проверки», «открыто повторно» — тоже в работе
         openDev++; if (dvv[di][6] === true) critOpen++;
       }
       d.deviations = { открыто: openDev, критических: critOpen };
@@ -13459,36 +13459,16 @@ function recordCorrectiveAction(json, token) {
     var act = String(d.действие || '').trim();
     if (!d.devId || !act) { _endOp_(_op, 'FAILED'); return _fail_('VALIDATION', 'Нужны отклонение и описание действия', _op.id); }
     return _withLock_(function () {
-      var dsh = _devSheet_(), dv = dsh.getDataRange().getValues(), row = -1, critical = false;
-      for (var i = 1; i < dv.length; i++) if (String(dv[i][0]) === String(d.devId)) { row = i + 1; critical = dv[i][6] === true; break; }
-      if (row < 0) { _endOp_(_op, 'FAILED'); return _fail_('NOT_FOUND', 'Отклонение не найдено', _op.id); }
+      // Мастер-промт 4.0, этап 6: единый жизненный цикл (TS_Violations.gs): действие → «ожидает проверки» →
+      // проверка другим сотрудником → «устранено». Журнал J34 и задача «выполнить корректирующее действие» — как прежде.
       var who = (_op.session && (_op.session.fullName || _op.session.name || _op.session.user_id)) || '';
-      _corrSheet_().appendRow(['CA' + Date.now(), d.devId, act, d.исполнитель || who, d.срок || '',
-        'выполнено', d.доказательство || '', who, new Date(), _op.id]);
-      // автоматическая задача «выполнить корректирующее действие» по этому отклонению выполнена этим действием
-      try { var csh = _corrSheet_(), cvv = csh.getDataRange().getValues(); for (var ci = 1; ci < cvv.length; ci++) if (String(cvv[ci][1]) === String(d.devId) && /^открыт/i.test(String(cvv[ci][5]))) csh.getRange(ci + 1, 6).setValue('выполнено'); } catch (cErr) {}
-      // Критическое отклонение закрывает только решение ответственного по инциденту
-      if (!critical) {
-        dsh.getRange(row, 8).setValue('устранено');
-        dsh.getRange(row, 13).setValue(new Date());
-      }
-      // ТЗ §1: корректирующее действие попадает и в регулируемый журнал J34 —
-      // тем же путём, каким его писал прежний механизм бракеража. Два реестра
-      // рядом не держим: источник один, журнал получает ту же запись.
-      try {
-        var dv2 = dsh.getDataRange().getValues()[row - 1];
-        _addCorrectiveAction_(
-          Utilities.formatDate(new Date(), _mcTz_(), 'dd.MM.yyyy'),
-          Utilities.formatDate(new Date(), _mcTz_(), 'HH:mm'),
-          String(dv2[3] || ''),                 // объект (ККТ)
-          String(dv2[4] || ''),                 // что выявлено
-          String(d.причина || ''),              // причина — если указал человек
-          act, d.исполнитель || who);
-      } catch (e) { _log_('WARN', 'корректирующее действие в журнал: ' + e, _op.id); }
-      _audit_(_op, 'CORRECTIVE_ACTION', 'Журналы', d.devId, null, { действие: act, критическая: critical });
+      var r;
+      try { r = _vioCorrect_(d.devId, { action: act, executor: d.исполнитель, due: d.срок, evidence: d.доказательство, cause: d.причина, operationId: _op.id }, who); }
+      catch (ve) { var m = String(ve.message || ve); _endOp_(_op, 'FAILED'); return _fail_(/^NOT_FOUND/.test(m) ? 'NOT_FOUND' : 'VALIDATION', m.replace(/^[A-Z_]+: /, ''), _op.id); }
+      _audit_(_op, 'CORRECTIVE_ACTION', 'Журналы', d.devId, null, { действие: act, критическая: r.critical, статус: r.status });
       _endOp_(_op);
-      return _ok_({ закрыто: !critical,
-        примечание: critical ? 'Критический инцидент закрывает ответственный — решением с доказательством.' : '' }, _op.id);
+      return _ok_({ закрыто: r.status === 'устранено', статус: r.status,
+        примечание: r.status === 'ожидает проверки' ? 'Устранение подтверждает другой сотрудник (кнопка «Проверить»).' + (r.critical ? ' Критическое — ответственный за ХАССП.' : '') : '' }, _op.id);
     });
   } catch (e) { _endOp_(_op, 'FAILED'); return _failFrom_(e, _op && _op.id); }
 }
@@ -13517,7 +13497,7 @@ function resolveCriticalIncident(json, token) {
         var cv0 = _corrSheet_().getDataRange().getValues(), done0 = false;
         for (var b = 1; b < cv0.length; b++) if (String(cv0[b][1]) === String(d.devId) && /выполнено/i.test(String(cv0[b][5]))) { done0 = true; break; }
         if (!done0) { _endOp_(_op, 'FAILED'); return _fail_('VALIDATION', 'Сначала внесите корректирующее действие', _op.id); }
-        dsh0.getRange(r0, 8).setValue('устранено'); dsh0.getRange(r0, 13).setValue(new Date());
+        dsh0.getRange(r0, 8).setValue('устранено'); dsh0.getRange(r0, 13).setValue(new Date()); if (typeof _vioSyncSource_ === 'function') _vioSyncSource_(v0[r0 - 1][1], 'CLOSED', 'Закрыто решением по инциденту: ' + sol);
         _audit_(_op, 'DEVIATION_CLOSE', 'Журналы', d.devId, 'открыто', { решение: sol, доказательство: proof, критическое: true });
         _endOp_(_op);
         return _ok_({ закрыт: true, отклонение: d.devId }, _op.id);

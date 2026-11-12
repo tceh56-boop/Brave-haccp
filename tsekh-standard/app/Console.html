@@ -5247,9 +5247,10 @@ VIEWS.tsNow = {
   h: {
     load: function () {
       vLoading();
-      Promise.all([vCall('ts2Now', [TOKEN]), vCall('ts2Exceptions', [TOKEN])]).then(function (rs) {
+      Promise.all([vCall('ts2Now', [TOKEN]), vCall('ts2Exceptions', [TOKEN]), vCall('vioList', [TOKEN]).then(function (r) { return r; }, function () { return null; })]).then(function (rs) {
         var e = vErr(rs[0]); if (e) { vMsg(e, 'err'); vBody(''); return; }
         var d = vData(rs[0]), x = vErr(rs[1]) ? { exceptions: [], overdue: [], autoToday: 0 } : vData(rs[1]);
+        var vio = rs[2] && !vErr(rs[2]) ? (vData(rs[2]).items || []) : [], toVerify = vio.filter(function (v) { return v.status === 'ожидает проверки'; });
         // очередь на устройстве пуста — всё отправлено; что сервер не принял, снова показывается как задача
         var pend = []; try { pend = JSON.parse(localStorage.getItem('mc_offline_q') || '[]'); } catch (e) {}
         if (!pend.some(function (it) { return /^ts2(Confirm|Measure)$/.test(it.fn); })) TS2N.done = {};
@@ -5274,6 +5275,9 @@ VIEWS.tsNow = {
             (t.catering ? '<button class="btn" data-mv="labels" data-a="' + esc(t.catering) + '">Ярлыки ёмкостей</button>' : '') + '</div>';
           return '<div class="card" style="margin-bottom:10px;padding:14px 18px">' + head + body + '</div>';
         }).join('') : vCard('Все задачи выполнены', '<p>Новых задач нет. Записи о выпуске, приёмке и вскрытии система делает сама.</p>');
+        if (toVerify.length) h += vCard('Ожидают проверки — подтвердите устранение · ' + toVerify.length, '<div class="rdnote">Устранение подтверждает другой сотрудник, не тот, кто его записал. Критическое — ответственный за ХАССП.</div>' +
+          vTable([{ l: 'Когда', f: function (v) { return String(v.at).slice(0, 16).replace('T', ' '); } }, { k: 'object', l: 'Где' }, { k: 'text', l: 'Нарушение' }, { k: 'corrector', l: 'Устранил' }, { l: '', html: true, f: function (v) { return v.critical ? vChip('критическое', 'r') : ''; } }], toVerify,
+            function (v) { return vBtn('Подтвердить', 'vok', v.id) + vBtn('Не устранено', 'vno', v.id); }));
         if (x.exceptions.length) h += vCard('Отклонения — нужно решение', vTable([{ k: 'createdAt', l: 'Когда' }, { k: 'value', l: 'Что случилось' }, { k: 'confirmedByEmployee', l: 'Кто' }], x.exceptions, function (r) { return vBtn('Устранено', 'resolve', r.autoRecordId); }));
         vBody(h);
       }, function (e) { vMsg(String(e), 'err'); });
@@ -5291,10 +5295,12 @@ VIEWS.tsNow = {
       if (v === '') { vMsg('Введите значение', 'err'); return; }
       vDo(btn, 'ts2Measure', [TOKEN, id, v, c], function (d, x) { return x && x.queued ? 'Нет связи — замер сохранён на устройстве' : d.result === 'FAIL' ? 'Вне нормы — записано отклонение' : 'Записано: ' + d.value + ' ' + d.unit; }, VIEWS.tsNow.h.after(id));
     },
+    vok: function (id, btn) { vDo(btn, 'vioVerify', [TOKEN, id, true, ''], 'Устранение подтверждено — нарушение закрыто', function () { VIEWS.tsNow.h.load(); }); },
+    vno: function (id, btn) { var c = prompt('Что не устранено?'); if (!c) return; vDo(btn, 'vioVerify', [TOKEN, id, false, c], 'Нарушение открыто повторно', function () { VIEWS.tsNow.h.load(); }); },
     labels: function (eventId, btn) {
       vDo(btn, 'ts2CateringLabels', [TOKEN, eventId], function (d) { return 'Ярлыков: ' + d.count + (d.gaps.length ? '. Впишите от руки: ' + d.gaps.join('; ') : ''); }, function (d) { var w = window.open('', '_blank'); if (!w) { alert('Разрешите всплывающие окна для печати'); return; } w.document.write(d.html); w.document.close(); setTimeout(function () { try { w.print(); } catch (e) {} }, 300); });
     },
-    resolve: function (id, btn) { var a = prompt('Корректирующее действие (что сделано):'); if (!a) return; vDo(btn, 'ts2ResolveException', [TOKEN, id, a], 'Отклонение закрыто', function () { VIEWS.tsNow.h.load(); }); }
+    resolve: function (id, btn) { var a = prompt('Корректирующее действие (что сделано):'); if (!a) return; vDo(btn, 'ts2ResolveException', [TOKEN, id, a], function (r) { return r && r.status === 'ожидает проверки' ? 'Устранение записано — теперь его подтверждает другой сотрудник' : 'Отклонение закрыто'; }, function () { VIEWS.tsNow.h.load(); }); }
   }
 };
 

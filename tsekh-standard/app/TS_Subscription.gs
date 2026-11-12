@@ -310,6 +310,11 @@ var TS_GATE_ = [
   // Мастер-промт 4.0, этап 5 — чек-листы из действующей ППК
   { n: 'clgBuild', need: 'ppk_edit|haccp|haccp_approve', mut: true },
   { n: 'clgTemplates', need: 'ppk_view|ppk_edit|haccp|haccp_view|checklists|sanitation' },
+  // Мастер-промт 4.0, этап 6 — единый контур нарушений
+  { n: 'vioList', need: 'haccp|haccp_view|haccp_approve|prod_manage|sanitation|journals' },
+  { n: 'vioCorrect', need: 'haccp|prod_manage|sanitation|journals', mut: true },
+  { n: 'vioVerify', need: 'haccp|haccp_approve|prod_manage|sanitation', mut: true },
+  { n: 'vioSetVerifyMode', need: 'org_edit', mut: true },
   { n: 'v43GetDeviations', need: 'sanitation|checklists' },
   { n: 'tsBackgroundEnable', need: 'org_edit', mut: true },
   { n: 'tsLsNormsSync', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },
