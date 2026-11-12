@@ -58,3 +58,29 @@ export async function complete(system: string, user: string, maxTokens = 4000, o
   if (!res.ok) throw new Error(`YandexGPT: ${res.status} ${body.message || ''}`.trim());
   return { text: body.result?.alternatives?.[0]?.message?.text || '', tokens: Number(body.result?.usage?.totalTokens || 0) };
 }
+
+/**
+ * OpenAI-совместимый API Yandex AI Studio (chat/completions) — нужен ЦЕХ AI-агенту: в нём документирован вызов функций (tools).
+ * Адрес меняется настройкой YANDEX_CHAT_URL. Каталог передаётся заголовком OpenAI-Project, модель — как gpt://<каталог>/<модель>.
+ */
+export const CHAT_URL = process.env.YANDEX_CHAT_URL || 'https://ai.api.cloud.yandex.net/v1/chat/completions';
+
+export interface ChatToolCall { id?: string; type?: 'function'; function: { name: string; arguments: string | Record<string, unknown> } }
+export type ChatMessage =
+  | { role: 'system' | 'user'; content: string }
+  | { role: 'assistant'; content: string | null; tool_calls?: ChatToolCall[] }
+  | { role: 'tool'; tool_call_id: string; content: string };
+export interface ChatTool { type: 'function'; function: { name: string; description: string; parameters: unknown } }
+export interface ChatResult { message: { content?: string | null; tool_calls?: ChatToolCall[] }; finish_reason: string | null; model: string; usage: { prompt_tokens?: number; completion_tokens?: number } | null }
+
+export async function chat(messages: ChatMessage[], opts: { model?: string; tools?: ChatTool[]; maxTokens?: number; json?: boolean } = {}): Promise<ChatResult> {
+  const c = yandexConfig();
+  const headers = { ...yandexHeaders(c), 'OpenAI-Project': c.folderId! };
+  const res = await fetch(CHAT_URL, { method: 'POST', headers, signal: AbortSignal.timeout(120_000),
+    body: JSON.stringify({ model: `gpt://${c.folderId}/${opts.model || c.model}`, messages, temperature: 0, max_tokens: opts.maxTokens || 4000,
+      ...(opts.tools?.length ? { tools: opts.tools, tool_choice: 'auto' } : {}), ...(opts.json ? { response_format: { type: 'json_object' } } : {}) }) });
+  const body = await res.json().catch(() => ({})) as { choices?: { message?: ChatResult['message']; finish_reason?: string }[]; model?: string; usage?: ChatResult['usage']; error?: { message?: string }; message?: string };
+  if (!res.ok) throw new Error(`YandexGPT: ${res.status} ${body.error?.message || body.message || ''}`.trim());
+  const ch = body.choices?.[0];
+  return { message: ch?.message || {}, finish_reason: ch?.finish_reason || null, model: body.model || opts.model || c.model, usage: body.usage || null };
+}
