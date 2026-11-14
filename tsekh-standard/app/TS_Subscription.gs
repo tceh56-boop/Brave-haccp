@@ -391,6 +391,11 @@ var TS_GATE_ = [
   { n: 'v72SyncNow', need: 'finance_view' },
   { n: 'v72GetSummary', need: 'finance_view' },
   { n: 'v72GetRegistry', need: 'finance_view' },
-  { n: 'v72GetOperationHistory', need: 'finance_view' }
+  { n: 'v72GetOperationHistory', need: 'finance_view' },
+  // этап 3: управленческий P&L и CEO Dashboard (из дневных итогов), ориентиры показателей
+  { n: 'v73GetPnL', need: 'finance_view' },
+  { n: 'v73GetCeoDashboard', need: 'finance_view' },
+  { n: 'v73GetTargets', need: 'finance_view' },
+  { n: 'v73SetTargets', need: 'finance_edit', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();

@@ -26,7 +26,8 @@ var MC_V72 = {
     'Amount', 'Hash', 'Days', 'ClosedChanged', 'FirstSeenAt', 'UpdatedAt', 'RunID']],
   HIST: ['Фин_Реестр_История', ['At', 'RunID', 'RegKey', 'OperationID', 'Action', 'VersionFrom', 'VersionTo', 'AmountBefore', 'AmountAfter', 'HashBefore', 'HashAfter',
     'Days', 'ClosedPeriod', 'Note']],
-  DAY: ['Фин_Итоги_День', ['Day', 'LocationID'].concat(MC_V64_SUM_KEYS).concat(['WasteByReason', 'Frozen', 'UpdatedAt', 'RunID'])],
+  // ExpByCategory (этап 3, P&L) — в конце: у листов, созданных на этапе 2, колонка добавляется справа
+  DAY: ['Фин_Итоги_День', ['Day', 'LocationID'].concat(MC_V64_SUM_KEYS).concat(['WasteByReason', 'Frozen', 'UpdatedAt', 'RunID', 'ExpByCategory'])],
   DISH: ['Фин_Итоги_Блюдо_День', ['Day', 'LocationID', 'Dish', 'DishCode', 'Qty', 'Revenue', 'Cost', 'UpdatedAt', 'RunID']]
 };
 var MC_V72_TYPE_RU = { PURCHASE: 'Приёмка партии', BATCH_EVENT: 'Событие партии', PROCESSING: 'Зачистка и разделка', PRODUCTION: 'Выпуск', ISSUE: 'Выдача на банкет',
@@ -45,6 +46,12 @@ function _v72RowOf_(h, o) { return h.map(function (c) { var x = o[c]; return x =
 function _v72Hash_(x) { return _v64Hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(x), Utilities.Charset.UTF_8)).slice(0, 24); }
 function _v72Tenant_() { var t = { organization_id: 'ORG-001', location_id: 'LOC-001' }; try { t = _defaultTenant_(); } catch (e) {} return t; }
 function _v72DayOf_(l) { return l.date ? _v64Day_(l.date) : ''; }
+/** Статья управленческого расхода строки журнала: расходы — по статье, фин. операции без распределения — по типу. */
+function _v72ExpCat_(l) {
+  if (l.objType === 'EXPENSE') return l.product || 'Прочие расходы';
+  var t = String(l.note || '').split(' ')[0];
+  return t === 'DELIVERY' ? 'Доставка' : t === 'LAB_COST' ? 'Лабораторный контроль (ППК)' : 'Прочие расходы';
+}
 
 /** Ключ первичной операции строки журнала V64: тип + номер в первичном листе. */
 function _v72Key_(l) {
@@ -159,7 +166,9 @@ function _v72WriteDays_(days, lines, D, runId, now, T) {
   var set = {}; days.forEach(function (d) { set[d] = 1; });
   var byDay = {}; lines.forEach(function (l) { var d = _v72DayOf_(l); if (set[d]) (byDay[d] = byDay[d] || []).push(l); });
   var H = MC_V72.DAY[1], fresh = days.map(function (d) {
-    var t = _v64Totals_(byDay[d] || []), o = { Day: d, LocationID: T.location_id, WasteByReason: JSON.stringify(t.wasteByReason || {}), Frozen: false, UpdatedAt: now, RunID: runId };
+    var t = _v64Totals_(byDay[d] || []), ec = {};
+    (byDay[d] || []).forEach(function (l) { if (l.stage === 'EXPENSE') { var c = _v72ExpCat_(l); ec[c] = _v64R2_((ec[c] || 0) + (Number(l.amount) || 0)); } });
+    var o = { Day: d, LocationID: T.location_id, WasteByReason: JSON.stringify(t.wasteByReason || {}), ExpByCategory: JSON.stringify(ec), Frozen: false, UpdatedAt: now, RunID: runId };
     MC_V64_SUM_KEYS.forEach(function (k) { o[k] = t[k] || 0; }); return _v72RowOf_(H, o);
   });
   _v72Replace_(D.sh, H, set, fresh);
@@ -218,34 +227,45 @@ function v72FinSyncSystem() {
 function v72GetSummary(token, fromDate, toDate) {
   try {
     _requireAuth_(token, 'finance_view');
-    var rg = _v64Range_(fromDate, toDate), D = _v72Read_('DAY'), t = {}, wr = {}, byDay = [], frozen = 0;
-    MC_V64_SUM_KEYS.forEach(function (k) { t[k] = 0; });
-    D.rows.forEach(function (r) {
-      var d = _v72DayStr_(r.Day); if (d < rg.fromIso || d > rg.toIso) return;
-      MC_V64_SUM_KEYS.forEach(function (k) { t[k] += _v64Num_(r[k]); });
-      var w = {}; try { w = JSON.parse(String(r.WasteByReason || '{}')); } catch (e) {}
-      Object.keys(w).forEach(function (k) { wr[k] = (wr[k] || 0) + _v64Num_(w[k]); });
-      if (r.Frozen === true || String(r.Frozen) === 'true') frozen++;
-      var dt = _v64Derive_((function () { var o = {}; MC_V64_SUM_KEYS.forEach(function (k) { o[k] = _v64Num_(r[k]); }); return o; })());
-      byDay.push({ day: d, revenue: dt.revenue, cogs: dt.cogsWithPackaging, gross: dt.grossContribution, marginPct: dt.marginPct, waste: dt.wasteCost, frozen: r.Frozen === true || String(r.Frozen) === 'true' });
-    });
-    t.wasteByReason = wr; t = _v64Derive_(t);
-    var dish = {}; _v72Read_('DISH').rows.forEach(function (r) {
-      var d = _v72DayStr_(r.Day); if (d < rg.fromIso || d > rg.toIso) return;
-      var x = dish[r.Dish] || (dish[r.Dish] = { dish: String(r.Dish), code: String(r.DishCode || ''), qty: 0, revenue: 0, cost: 0 });
-      x.qty += _v64Num_(r.Qty); x.revenue += _v64Num_(r.Revenue); x.cost += _v64Num_(r.Cost); if (!x.code && r.DishCode) x.code = String(r.DishCode);
-    });
-    var dishes = Object.keys(dish).map(function (k) { var x = dish[k]; x.qty = _v64R3_(x.qty); x.revenue = _v64R2_(x.revenue); x.cost = _v64R2_(x.cost); x.gross = _v64R2_(x.revenue - x.cost);
-      x.marginPct = x.revenue > 0 ? Math.round(x.gross / x.revenue * 1000) / 10 : null; return x; }).sort(function (a, b) { return b.revenue - a.revenue; });
-    var last = null; try { last = JSON.parse(PropertiesService.getScriptProperties().getProperty('MC_V72_LAST') || 'null'); } catch (e) {}
-    var age = last && last.at ? Math.round((Date.now() - new Date(last.at).getTime()) / 60000) : null;
+    var rg = _v64Range_(fromDate, toDate), S = _v72Sum_(rg.fromIso, rg.toIso), t = S.totals, last = S.lastSync;
     var reasons = Object.keys(t.wasteByReason).map(function (k) { return { code: k, title: MC_V64_WASTE_REASON_RU[k] || (k === 'BANQUET' ? 'Брак и остаток банкета' : k), amount: t.wasteByReason[k] }; });
-    return _ok_({ from: rg.fromIso, to: rg.toIso, totals: t, wasteByReason: reasons, byDay: byDay.sort(function (a, b) { return a.day < b.day ? -1 : 1; }), dishes: dishes,
-      frozenDays: frozen, lastSync: last, minutesSinceSync: age, stale: age === null || age > MC_V72_STALE_MIN,
-      closedChanged: last ? last.closedChanged || 0 : 0,
+    return _ok_({ from: rg.fromIso, to: rg.toIso, totals: t, wasteByReason: reasons, byDay: S.byDay, dishes: S.dishes, expByCategory: S.expByCategory,
+      frozenDays: S.frozenDays, lastSync: last, minutesSinceSync: S.minutesSinceSync, stale: S.stale, closedChanged: last ? last.closedChanged || 0 : 0,
       note: 'Сводка из дневных итогов реестра операций. Управленческие показатели (валовой вклад), бухгалтерский учёт не заменяют.' });
   } catch (e) { return _failFrom_(e); }
 }
+/** Сложить дневные итоги за дни fromIso…toIso: totals (как у V64), по дням, по блюдам, расходы по статьям, свежесть сверки. */
+function _v72Sum_(fromIso, toIso) {
+  var D = _v72Read_('DAY'), t = {}, wr = {}, ec = {}, byDay = [], frozen = 0;
+  MC_V64_SUM_KEYS.forEach(function (k) { t[k] = 0; });
+  D.rows.forEach(function (r) {
+    var d = _v72DayStr_(r.Day); if (d < fromIso || d > toIso) return;
+    MC_V64_SUM_KEYS.forEach(function (k) { t[k] += _v64Num_(r[k]); });
+    var w = {}; try { w = JSON.parse(String(r.WasteByReason || '{}')); } catch (e) {}
+    Object.keys(w).forEach(function (k) { wr[k] = (wr[k] || 0) + _v64Num_(w[k]); });
+    var e = {}; try { e = JSON.parse(String(r.ExpByCategory || '{}')); } catch (x) {}
+    var es = 0; Object.keys(e).forEach(function (k) { ec[k] = (ec[k] || 0) + _v64Num_(e[k]); es += _v64Num_(e[k]); });
+    // день посчитан до этапа 3 (без разбивки по статьям) — остаток в «без статьи», сумма расходов не теряется
+    var rest = _v64R2_(_v64Num_(r.expenses) - es); if (Math.abs(rest) >= 0.01) ec['Без разбивки по статьям'] = (ec['Без разбивки по статьям'] || 0) + rest;
+    var fz = r.Frozen === true || String(r.Frozen) === 'true'; if (fz) frozen++;
+    var dt = _v64Derive_((function () { var o = {}; MC_V64_SUM_KEYS.forEach(function (k) { o[k] = _v64Num_(r[k]); }); return o; })());
+    byDay.push({ day: d, revenue: dt.revenue, cogs: dt.cogsWithPackaging, gross: dt.grossContribution, marginPct: dt.marginPct, waste: dt.wasteCost, expenses: dt.expenses,
+      foodCostPct: dt.revenue > 0 ? Math.round(dt.cogs / dt.revenue * 1000) / 10 : null, frozen: fz });
+  });
+  t.wasteByReason = wr; t = _v64Derive_(t);
+  Object.keys(ec).forEach(function (k) { ec[k] = _v64R2_(ec[k]); });
+  var dish = {}; _v72Read_('DISH').rows.forEach(function (r) {
+    var d = _v72DayStr_(r.Day); if (d < fromIso || d > toIso) return;
+    var x = dish[r.Dish] || (dish[r.Dish] = { dish: String(r.Dish), code: String(r.DishCode || ''), qty: 0, revenue: 0, cost: 0 });
+    x.qty += _v64Num_(r.Qty); x.revenue += _v64Num_(r.Revenue); x.cost += _v64Num_(r.Cost); if (!x.code && r.DishCode) x.code = String(r.DishCode);
+  });
+  var dishes = Object.keys(dish).map(function (k) { var x = dish[k]; x.qty = _v64R3_(x.qty); x.revenue = _v64R2_(x.revenue); x.cost = _v64R2_(x.cost); x.gross = _v64R2_(x.revenue - x.cost);
+    x.marginPct = x.revenue > 0 ? Math.round(x.gross / x.revenue * 1000) / 10 : null; return x; }).sort(function (a, b) { return b.revenue - a.revenue; });
+  var last = _v72Last_(), age = last && last.at ? Math.round((Date.now() - new Date(last.at).getTime()) / 60000) : null;
+  return { totals: t, byDay: byDay.sort(function (a, b) { return a.day < b.day ? -1 : 1; }), dishes: dishes, expByCategory: ec, frozenDays: frozen, lastSync: last,
+    minutesSinceSync: age, stale: age === null || age > MC_V72_STALE_MIN };
+}
+function _v72Last_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('MC_V72_LAST') || 'null'); } catch (e) { return null; } }
 /** Реестр операций с отбором. json: {from, to, type, status, q, limit}. */
 function v72GetRegistry(json, token) {
   try {
