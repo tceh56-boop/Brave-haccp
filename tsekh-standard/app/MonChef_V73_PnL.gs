@@ -156,6 +156,15 @@ function v73GetCeoDashboard(token, fromDate, toDate) {
     over('LOSS_HIGH', P.ratios.lossPct, T.lossPct, 'Потери выше ориентира');
     var weak = S.dishes.filter(function (d) { return d.revenue > 0 && d.marginPct !== null && d.marginPct < T.minDishMarginPct; }).sort(function (a, b) { return a.marginPct - b.marginPct; });
     if (weak.length) signals.push({ level: weak[0].marginPct < 0 ? 'red' : 'gold', code: 'WEAK_DISHES', text: 'Блюд с маржой ниже ' + T.minDishMarginPct + '%: ' + weak.length + ' (хуже всех — ' + weak[0].dish + ', ' + weak[0].marginPct + '%)' });
+    // этап 5: деньги — остаток на конец периода, неразнесённые движения, долги поставщикам
+    var cash = null; try { cash = typeof _v75Brief_ === 'function' ? _v75Brief_(rg.toIso) : null; } catch (e) {}
+    if (cash) {
+      kpis.push({ code: 'CASH_BALANCE', title: 'Деньги на конец периода', unit: '₽', value: cash.balance, prev: null, delta: null, deltaPct: null, tone: cash.balance < 0 ? 'bad' : '' });
+      kpis.push({ code: 'SUPPLIER_DEBT', title: 'Долг поставщикам', unit: '₽', value: cash.debt, prev: null, delta: null, deltaPct: null, tone: cash.overdue30.length ? 'bad' : '' });
+      cash.negative.forEach(function (a) { signals.push({ level: 'red', code: 'CASH_NEGATIVE', text: 'Отрицательный остаток «' + a.name + '»: ' + a.balance + ' ₽' }); });
+      if (cash.uncategorized) signals.push({ level: 'gold', code: 'CASH_UNCATEGORIZED', text: 'Движений денег не разнесено по статьям: ' + cash.uncategorized });
+      if (cash.overdue30.length) signals.push({ level: 'gold', code: 'SUPPLIER_DEBT_OLD', text: 'Неоплаченные накладные старше 30 дней: ' + cash.overdue30.map(function (p) { return p.supplier + ' ' + p.debt + ' ₽'; }).slice(0, 3).join('; ') });
+    }
     var lossDays = S.byDay.filter(function (d) { return d.revenue > 0 && d.gross < 0; });
     if (lossDays.length) signals.push({ level: 'red', code: 'NEGATIVE_DAYS', text: 'Дней с отрицательной валовой прибылью: ' + lossDays.length + ' (' + lossDays.slice(0, 3).map(function (d) { return d.day; }).join(', ') + ')' });
     if (pf.revenue > 0 && f.revenue < pf.revenue * 0.9) signals.push({ level: 'gold', code: 'REVENUE_DOWN', text: 'Выручка ниже прошлого периода на ' + Math.round((1 - f.revenue / pf.revenue) * 1000) / 10 + '%' });
