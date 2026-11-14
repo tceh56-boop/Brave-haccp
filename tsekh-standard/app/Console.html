@@ -4652,6 +4652,31 @@ VIEWS.tu = {
   }
 };
 
+/* ---------- ТИ для поваров (V73) ---------- */
+VIEWS.ti = {
+  fns: { build: 'v73TiBuild', one: 'v73TiBuild', cat: 'v73TiBuild', all: 'v73TiBuild' },
+  title: 'Технологические инструкции (ТИ)', sub: 'Карточка на блюдо или полуфабрикат из ТТК: состав с массой, технология, подача и хранение, фото, выход. Номер ТИ = номер ТТК. Чего нет в ТТК — отмечено в карточке, система не дописывает.',
+  open: function () { this.h.list(); },
+  h: {
+    list: function () { var V = VIEWS.ti; vLoading();
+      vCall('v73TiList', []).then(function (r) { var d = m9Ok(r); if (!d) { vBody(''); return; } V._d = d; V.h.draw(); }); },
+    draw: function () { var V = VIEWS.ti, d = V._d, q = String(V._q || '').toLowerCase(), cat = V._cat || '';
+      var rows = d.items.filter(function (x) { return (!cat || x.cat === cat) && (!q || (x.code + ' ' + x.name).toLowerCase().indexOf(q) >= 0); });
+      var h = vCard('Собрать ТИ', vForm([['ticat', 'Категория', 'select', cat, [['', 'всё меню']].concat(d.categories.map(function (c) { return [c, c]; }))], ['tiq', 'Поиск блюда', 'text', V._q || '', 'номер или название'], ['ticodes', 'Номера ТТК через запятую', 'text', '', 'например 265, 289, 362'], ['tiph', 'С фото блюд', 'check', V._ph !== false]]) +
+        '<div class="mvbar">' + vBtn('Показать', 'filter') + vBtn('ТИ по номерам', 'build', '', true) + (cat ? vBtn('ТИ категории «' + cat + '»', 'cat', '', true) : vBtn('ТИ на всё меню', 'all')) + '</div>' +
+        (V._gaps && V._gaps.length ? '<div class="rdnote"><b>Чего не хватает в ТТК (в ТИ отмечено «не указано в ТТК»):</b><br>' + V._gaps.slice(0, 60).map(function (g) { return '• № ' + esc(g.code) + ' ' + esc(g.name) + ': ' + esc(g.gaps.join(', ')); }).join('<br>') + (V._gaps.length > 60 ? '<br>… и ещё ' + (V._gaps.length - 60) : '') + '</div>' : ''));
+      h += vCard('Блюда и полуфабрикаты (' + rows.length + ')', vTable([{ k: 'code', l: '№ ТТК' }, { k: 'name', l: 'Название' }, { k: 'cat', l: 'Категория' }, { k: 'ingredients', l: 'Продуктов', t: 'num' }], rows, function (x) { return vBtn('ТИ', 'one', x.code, true); }, 'ТТК не найдены'));
+      vBody(h); },
+    filter: function () { var V = VIEWS.ti; V._cat = vV('ticat'); V._q = vV('tiq'); V._ph = vV('tiph'); V.h.draw(); },
+    run: function (btn, arg) { var V = VIEWS.ti; V._ph = vV('tiph'); arg.photos = V._ph !== false;
+      vDo(btn, 'v73TiBuild', [JSON.stringify(arg)], function (d) { return 'ТИ готова: карточек ' + d.cards + (d.gaps.length ? ', с пробелами в ТТК: ' + d.gaps.length : '') + (arg.photos && !d.photos ? ' (без фото: карточек больше 120)' : ''); }, function (d) { V._gaps = d.gaps; m9Url(d); V.h.draw(); }); },
+    one: function (a, btn) { VIEWS.ti.h.run(btn, { codes: [a] }); },
+    build: function (a, btn) { var c = vV('ticodes'); if (!c) { vMsg('Укажите номера ТТК', 'err'); return; } VIEWS.ti.h.run(btn, { codes: c.split(/[\s,;]+/).filter(Boolean) }); },
+    cat: function (a, btn) { VIEWS.ti.h.run(btn, { category: VIEWS.ti._cat }); },
+    all: function (a, btn) { VIEWS.ti.h.run(btn, { all: true }); }
+  }
+};
+
 /* ---------- Лаборатория (V67) ---------- */
 VIEWS.labx = {
   fns: { plan: 'v67SaveLabPlan', sample: 'v67TakeSample', transfer: 'v67TransferSample', proto: 'v67UploadProtocol', decide: 'v67Decide' },
