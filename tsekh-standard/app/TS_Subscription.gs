@@ -431,6 +431,9 @@ var TS_GATE_ = [
   // этап 2: iiko по API — подключение (пароль хранится только как SHA-1, его требует iiko), загрузка продаж за период, отключение
   { n: 'v77IikoSave', need: 'finance_edit', mut: true },
   { n: 'v77IikoPull', need: 'finance_edit', mut: true },
-  { n: 'v77IikoDisconnect', need: 'finance_edit', mut: true }
+  { n: 'v77IikoDisconnect', need: 'finance_edit', mut: true },
+  // этап 2б: техкарты iiko — сверка с ТТК (только чтение); приходные накладные iiko — сохранение и сверка с приёмкой ЦЕХ
+  { n: 'v77IikoCharts', need: 'finance_view|catalog|ttk_edit' },
+  { n: 'v77IikoInvoices', need: 'finance_edit|receiving|procurement', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();

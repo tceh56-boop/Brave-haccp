@@ -30,6 +30,8 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
         unmatched: [{ name: 'Компот домашний', lines: 1, match: '' }] } : { recorded: 1, duplicates: 0, pending: 1, skipped: 0, closedSkipped: 0, errors: 0 } }); },
       v77IikoSave: () => JSON.stringify({ success: true, data: { settings: {}, check: { ok: true, message: 'Вход в iiko выполнен' } } }),
       v77IikoPull: () => JSON.stringify({ success: true, data: { lines: 3, recorded: 2, duplicates: 0, pending: 1, otherSource: 1, otherSourceDays: [{ day: '2026-11-11' }] } }),
+      v77IikoCharts: () => JSON.stringify({ success: true, data: { totals: { charts: 2, same: 0, diff: 1, missing: 1 }, charts: [{ dish: 'Борщ', cehDish: 'Борщ', items: 2, issues: ['Свёкла: брутто iiko 200 г, ЦЕХ 250 г (-20 %)'] }, { dish: 'Плов', cehDish: '', items: 1, issues: ['нет в ТТК ЦЕХ'] }], note: 'ТТК ЦЕХ не меняются' } }),
+      v77IikoInvoices: () => JSON.stringify({ success: true, data: { invoices: 2, loaded: { newLines: 3 }, notReceived: [{ date: '2026-11-13', number: '000077', supplier: 'ООО Мясо', lines: 1, sum: 75 }], matched: [{ date: '2026-11-12', number: 'УПД-15', supplier: 'Овощная база', lines: 2, sum: 550, cehSum: 540, diff: -10 }] } }),
       v77SaveMapping: () => JSON.stringify({ success: true, data: { applied: 1, recorded: 1, skipped: 0, closed: 0 } }) };
     function mk(s) { s = s || {}; return new Proxy({}, { get(t, k) {
       if (k === 'withSuccessHandler') return f => mk(Object.assign({}, s, { ok: f })); if (k === 'withFailureHandler') return f => mk(Object.assign({}, s, { fl: f })); if (k === 'withUserObject') return u => mk(Object.assign({}, s, { uo: u }));
@@ -70,6 +72,12 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
   await p.fill('#mvf_ifrom', '2026-11-10'); await p.fill('#mvf_ito', '2026-11-14'); await p.click('button[data-mv="iikoPull"]'); await p.waitForTimeout(500);
   c = (await calls()).filter(x => x.startsWith('v77IikoPull:')).pop();
   assert.deepStrictEqual(JSON.parse(JSON.parse(c.slice('v77IikoPull:'.length))[0]), { from: '2026-11-10', to: '2026-11-14' });
+  await p.evaluate(() => { openView('finance', 'int'); }); await p.waitForTimeout(500);
+  await p.fill('#mvf_cdate', '2026-11-14'); await p.click('button[data-mv="iikoCharts"]'); await p.waitForTimeout(500);
+  t = await txt(); assert(t.includes('брутто iiko 200 г') && t.includes('нет в ТТК ЦЕХ'), 'сверка техкарт показана');
+  assert(/v77IikoCharts:\["\{\\"date\\":\\"2026-11-14\\"\}"/.test((await calls()).join('\n')), 'дата техкарт уходит на сервер');
+  await p.click('button[data-mv="iikoInv"]'); await p.waitForTimeout(500);
+  t = await txt(); assert(t.includes('Нет приёмки в ЦЕХ') && t.includes('000077') && t.includes('УПД-15'), 'сверка накладных показана');
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
   await b.close(); fs.rmSync(dir, { recursive: true, force: true });
   console.log('OK: Экономика → Кассы и 1С — Excel и CSV, проверка без записи, загрузка, сопоставление, iiko по API: кнопки вызывают сервер');
