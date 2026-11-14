@@ -8,7 +8,8 @@
  *     по допущенным партиям, акт не проводится и экран показывает, чего именно;
  *   • партии уменьшаются по FEFO; для питания персонала, проработки и представительских просроченные
  *     партии не берутся — их списывают только как порчу, истёкший срок, недостачу или «прочее»;
- *   • себестоимость — средняя цена остатка на момент списания (как в журнале склада), цену человек не вводит;
+ *   • себестоимость — по ценам списанных партий (единое правило экономики); средняя цена остатка — только для части
+ *     без цены партии (в строке акта priceSource); цену человек не вводит;
  *   • акт — лист «Акты_Списания», операции — журнал склада («Списание», источник «Акт …»), партии —
  *     связь прослеживаемости «списана по акту», в аудите — что списано и на сколько.
  *
@@ -190,15 +191,19 @@ function mcWriteOffAct(json, token) {
       var pidOf = {}; try { pidOf = _ttkPidByProdKey_(); } catch (e) {}
       var who = _author_(op), done = [], total = 0;
       plan.rows.forEach(function (r) {
-        var price = _currentAvgPrice_(r.name, r.unit) || 0;
-        _logStockOp_('Списание', r.name, r.qty, r.unit, price, src, note);
         var got = _fifoConsume_(r.name, r.unit, r.qty, { allowExpired: allowExp, productId: pidOf[_prodKey_(r.name)] || '' });
+        // единое правило цены (этап 1 «Финансы»): стоимость — по ценам списанных партий; средняя цена — только для части без цены партии
+        var cost = typeof _mcCostOfConsumed_ === 'function' ? _mcCostOfConsumed_(r.name, r.qty, r.unit, got) : null;
+        var price = cost ? cost.price : (_currentAvgPrice_(r.name, r.unit) || 0);
+        _logStockOp_('Списание', r.name, r.qty, r.unit, price, src, note);
         got.forEach(function (g) {
           try { if (typeof _mcCreateTraceLink_ === 'function' && g.batchId) _mcCreateTraceLink_('BATCH', String(g.batchId), 'СПИСАНА_ПО_АКТУ', 'WRITEOFF_ACT', actId,
             { dateTime: now, actor: who.фио, source: src, weight: g.qty, unit: g.unit }); } catch (te) {}
         });
-        total += price * r.qty;
-        done.push({ name: r.name, qty: r.qty, unit: r.unit, price: _woR2_(price), sum: _woR2_(price * r.qty), pf: r.pf, batches: got.map(function (g) { return { batchId: g.batchId, qty: g.qty, unit: g.unit }; }) });
+        var rowSum = cost ? cost.total : price * r.qty;
+        total += rowSum;
+        done.push({ name: r.name, qty: r.qty, unit: r.unit, price: _woR2_(price), sum: _woR2_(rowSum), priceSource: cost ? cost.priceSource : 'AVG', pf: r.pf,
+          batches: got.map(function (g) { return { batchId: g.batchId, qty: g.qty, unit: g.unit }; }) });
       });
       sh.appendRow([actId, now, p.reason[0], p.reason[1], p.comment, exp.lines.length, _woR2_(total), who.фио, who.роль,
         JSON.stringify(exp.lines), JSON.stringify(done), op.id]);

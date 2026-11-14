@@ -66,7 +66,9 @@ function _v64ClosedPeriodOf_(d) {
     if (f && to && day >= new Date(f.getFullYear(), f.getMonth(), f.getDate()) && day <= new Date(to.getFullYear(), to.getMonth(), to.getDate())) return { id: String(_v64G_(t, r, 'PeriodID')), from: _v64Day_(f), to: _v64Day_(to) }; }
   return null;
 }
-/** Для других модулей: изменение с датой в закрытом периоде запрещено (бросает VALIDATION). */
+/** Для других модулей: изменение с датой в закрытом периоде запрещено (бросает VALIDATION).
+ *  Операции текущей датой в закрытый период не попадают: закрыть можно только дни до сегодняшнего (v64ClosePeriod).
+ *  Проверка нужна там, где дату вводят задним числом или правят старую запись: продажа, исправление приёмки, исправление журнала продаж, финансы. */
 function _v64AssertOpen_(d, what) {
   var p = null; try { _V64_TAB_ = {}; p = _v64ClosedPeriodOf_(d); } catch (e) { p = null; }
   if (p) throw new Error('VALIDATION: финансовый период ' + p.from + ' — ' + p.to + ' закрыт (' + p.id + '): ' + (what || 'изменение') + ' задним числом запрещено — оформите корректировку в «Экономике»');
@@ -277,7 +279,9 @@ function v64ClosePeriod(json, token) {
   var op = null; try { op = _beginOp_(token, 'finance_close', 'V64_CLOSE', 'Экономика', null, null); } catch (e) { return _failFrom_(e); }
   try {
     var d = _v64Json_(json), rg = _v64Range_(d.from, d.to);
-    if (rg.to > new Date()) return _v64Fail_(op, 'VALIDATION', 'Закрыть можно только прошедший период (дата «по» не позже сегодняшней)');
+    // этап 1 «Финансы»: сегодняшний день не закрывается — склад, производство, списания и продажи сегодня ещё идут
+    // и записываются текущей датой; так ни одна текущая операция не попадает в закрытый период.
+    if (rg.toIso >= _v64Day_(new Date())) return _v64Fail_(op, 'VALIDATION', 'Закрыть можно только период, который закончился до сегодняшнего дня: операции сегодняшнего дня ещё идут');
     return _withLock_(function () {
       _V64_TAB_ = {};
       var clash = _v64Periods_().filter(function (p) { return p.status === 'CLOSED' && p.from <= rg.toIso && p.to >= rg.fromIso; });

@@ -574,8 +574,22 @@ function mcSaleAdd(json, token) {
       dish = item.name;
     }
     var unitLbl = item && item.kind === 'GOODS' ? item.unit : 'порц.';
+    var req = String(d.requestId || '').replace(/[^\w\-]/g, '').slice(0, 64);
     return _withLock_(function () {
       var j = _mcJById_('J36'), sh = _book_().getSheetByName(j.sheetName) || _createJournalSheet_(j);
+      // этап 1 «Финансы»: одна продажа — одна запись. Повтор того же запроса (сеть оборвалась, нажали ещё раз) возвращает уже записанную продажу;
+      // такая же продажа за последние 2 минуты без номера запроса — предупреждение, повторное нажатие с тем же запросом записывает вторую.
+      var dup = _mcSaleDuplicate_(sh, j, req, { date: date, time: time, dish: dish, qty: qty, price: price, seller: seller.name });
+      if (dup && dup.same) { _audit_(op, 'SALE_ENTRY_REPEAT', 'Журнал продаж', 'J36', null, { запрос: req, строка: dup.row, продажа: dup.saleId }); _endOp_(op);
+        return _ok_({ duplicate: true, dish: dish, qty: qty, unit: unitLbl, price: price, sum: sum, seller: seller.name, date: date, time: time, saleId: dup.saleId, stock: null,
+          note: 'Эта продажа уже записана (строка ' + dup.row + ') — повторно не записывается.' }, op.id); }
+      if (dup && dup.similar) {
+        var ck = 'saledup:' + req, cache = null; try { cache = CacheService.getScriptCache(); } catch (ce) {}
+        var confirmed = !!(req && cache && cache.get(ck)) || d.allowDuplicate === true;
+        if (!confirmed) { try { if (req && cache) cache.put(ck, '1', 600); } catch (ce) {}
+          _endOp_(op, 'FAILED'); return _fail_('DUPLICATE', 'Такая же продажа (' + dish + ' × ' + qty + ', ' + time + ') записана меньше 2 минут назад, строка ' + dup.row +
+            '. Если это вторая продажа, нажмите «Записать» ещё раз.', op.id); }
+      }
       var saleId = 'SL-' + Utilities.formatDate(new Date(), _mcTz_(), 'yyyyMMdd') + '-' + Utilities.getUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
       var row = j.columns.map(function (col) {
         switch (col) {
@@ -584,7 +598,7 @@ function mcSaleAdd(json, token) {
           case 'ФИО продавца': return seller.name; case 'Должность': return seller.position; default: return '';
         }
       });
-      _mcJournalAppendTo_(sh, op, 'вручную' + (d.check ? ' · чек ' + String(d.check) : '') + (item ? ' · ' + saleId : ''), row);
+      _mcJournalAppendTo_(sh, op, 'вручную' + (d.check ? ' · чек ' + String(d.check) : '') + (item ? ' · ' + saleId : '') + (req ? ' · req:' + req : ''), row);
       try { if (typeof _mcMirrorRow_ === 'function') _mcMirrorRow_('J36', sh.getLastRow()); } catch (er) {}
       try { if (typeof _mcCreateFactInternal_ === 'function') _mcCreateFactInternal_({ factType: 'SALE', objectType: 'SALE', objectId: item ? saleId : 'SALE-' + Date.now(), operationType: 'SALE', dateTime: new Date(),
         value: sum, unit: 'RUB', result: 'RECORDED', source: 'J36', employeeName: seller.name, description: 'Продажа (вручную) ' + dish + ' × ' + qty + ' ' + unitLbl, skipRules: true }, op.session); } catch (er) {}
@@ -608,6 +622,30 @@ function mcSaleAdd(json, token) {
       return _ok_({ dish: dish, qty: qty, unit: unitLbl, price: price, sum: sum, seller: seller.name, date: date, time: time, saleId: item ? saleId : '', stock: stock }, op.id);
     });
   } catch (e) { if (op) _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
+}
+
+/** Повтор ручной продажи: {same} — уже записана с этим номером запроса; {similar} — такая же продажа внесена меньше 2 минут назад. */
+function _mcSaleDuplicate_(sh, j, req, p) {
+  var v = sh.getDataRange().getValues(); if (v.length < 2) return null;
+  var head = v[0].map(function (x) { return String(x || '').trim(); }), col = function (n) { return head.indexOf(n); };
+  var cSrc = col('Источник записи'), cEnt = col('Внесено'), cD = col('Дата'), cT = col('Время'), cDish = col('Блюдо'), cQ = col('Количество'), cP = col('Цена'), cS = col('ФИО продавца');
+  var day = function (x) { var dd = typeof _v64Date_ === 'function' ? _v64Date_(x) : null; return dd ? dd.getFullYear() + '-' + dd.getMonth() + '-' + dd.getDate() : String(x); };
+  var hm = function (x) { if (Object.prototype.toString.call(x) === '[object Date]') return typeof _mcTimeStr_ === 'function' ? _mcTimeStr_(x) : ''; return String(x || '').trim(); };
+  var slOf = function (r) { var m = cSrc >= 0 ? /\b(SL-\d{8}-[0-9A-F]{8})\b/.exec(String(r[cSrc] || '')) : null; return m ? m[1] : ''; };
+  var now = Date.now(), pd = day(p.date);
+  for (var i = v.length - 1; i >= 1; i--) {
+    var r = v[i];
+    if (req && cSrc >= 0 && String(r[cSrc] || '').indexOf('req:' + req) >= 0 && String(r[cDish] || '').trim() === String(p.dish) && Number(r[cQ]) === Number(p.qty)) return { same: true, row: i + 1, saleId: slOf(r) };
+  }
+  for (var k = v.length - 1; k >= 1 && k >= v.length - 200; k--) {
+    var x = v[k], ent = cEnt >= 0 ? x[cEnt] : '', at = null;
+    if (Object.prototype.toString.call(ent) === '[object Date]') at = ent.getTime();
+    else { var m = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/.exec(String(ent || '')); if (m) at = new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]).getTime(); }
+    if (at === null || now - at > 120000 || now - at < -60000) continue;
+    if (String(x[cDish] || '').trim() === String(p.dish) && Number(x[cQ]) === Number(p.qty) && Number(x[cP]) === Number(p.price) && String(x[cS] || '').trim() === String(p.seller)
+      && day(x[cD]) === pd && hm(x[cT]) === String(p.time)) return { similar: true, row: k + 1, saleId: slOf(x) };
+  }
+  return null;
 }
 
 /* ============================== Канбан: банкеты для пересборки задач ============================== */
