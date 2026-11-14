@@ -12,7 +12,9 @@ const { spawn } = require('child_process');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tsekh-iiko-'));
 const tenants = require('../lib/tenants');
 
-const now = new Date(), pad = (n) => String(n).padStart(2, '0');
+// «сегодня» — в часовом поясе предприятия (Europe/Moscow), как его считает сервер, а не в поясе машины тестов
+const pad = (n) => String(n).padStart(2, '0'), msk = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
+const now = new Date(msk[0], msk[1] - 1, msk[2]);
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const TODAY = iso(now), YDAY = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
 const ru = (s) => s.split('-').reverse().join('.');
