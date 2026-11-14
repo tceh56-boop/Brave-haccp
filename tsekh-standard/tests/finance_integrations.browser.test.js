@@ -17,7 +17,7 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
     window.__calls = []; window.confirm = () => true;
     const st = { mode: 'READY_TO_WORK', enterpriseType: 'RESTAURANT', types: { RESTAURANT: 'Ресторан' }, org: { name: 'Тест', inn: '', address: '', responsible: '', complete: false }, timezone: 'Europe/Moscow', employees: 1, dishes: 1,
       workshops: [], objects: [], summary: { created: 1, requiresDecision: 0, numericObjects: 0, blockers: 0 } };
-    const I = { systems: [{ id: 'iiko', name: 'iiko' }, { id: 'rkeeper', name: 'R-Keeper' }, { id: '1c', name: '1С' }, { id: 'other', name: 'Другая касса' }], counts: { RECORDED: 5, PENDING: 3, SKIPPED: 1, CLOSED: 0, ERROR: 0 },
+    const I = { iiko: { configured: true, url: 'https://kafe.iiko.it', login: 'api', auto: true, lastSync: '2026-11-14T15:00:00.000Z', lastError: '', lastResult: { recorded: 7, pending: 1, otherSource: 0 } }, systems: [{ id: 'iiko', name: 'iiko' }, { id: 'rkeeper', name: 'R-Keeper' }, { id: '1c', name: '1С' }, { id: 'other', name: 'Другая касса' }], counts: { RECORDED: 5, PENDING: 3, SKIPPED: 1, CLOSED: 0, ERROR: 0 },
       pending: [{ system: 'iiko', systemRu: 'iiko', extId: '77', name: 'Компот домашний', lines: 1, qty: 3, sum: 450, note: 'нет в ТТК и на складе под таким названием — сопоставьте позицию' }],
       mappings: [{ id: 'MAP-1', system: 'iiko', systemRu: 'iiko', extId: '', name: 'Борщ', kind: 'DISH', kindRu: 'блюдо по ТТК', target: 'Борщ', unit: '', factor: 1, auto: 'точное совпадение названия' }],
       imports: [{ id: 'INT-1', systemRu: 'iiko', source: 'файл', fileName: 'olap.xlsx', from: '2026-11-14', to: '2026-11-14', lines: 6, recorded: 5, duplicates: 0, pending: 1, skipped: 1, closed: 0, errors: 0, at: '14.11.2026 20:00', by: 'Директор' }],
@@ -28,6 +28,8 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
       ts2Wizard: () => JSON.stringify({ success: true, data: st }), v77GetIntegrations: () => JSON.stringify({ success: true, data: I }),
       v77ImportSales: (j) => { const d = JSON.parse(j); return JSON.stringify({ success: true, data: d.dry ? { dry: true, lines: 2, from: '2026-11-14', to: '2026-11-14', sum: 1050.5, items: 2, errors: [], columns: { name: 'Блюдо', qty: 'Количество блюд' },
         unmatched: [{ name: 'Компот домашний', lines: 1, match: '' }] } : { recorded: 1, duplicates: 0, pending: 1, skipped: 0, closedSkipped: 0, errors: 0 } }); },
+      v77IikoSave: () => JSON.stringify({ success: true, data: { settings: {}, check: { ok: true, message: 'Вход в iiko выполнен' } } }),
+      v77IikoPull: () => JSON.stringify({ success: true, data: { lines: 3, recorded: 2, duplicates: 0, pending: 1, otherSource: 1, otherSourceDays: [{ day: '2026-11-11' }] } }),
       v77SaveMapping: () => JSON.stringify({ success: true, data: { applied: 1, recorded: 1, skipped: 0, closed: 0 } }) };
     function mk(s) { s = s || {}; return new Proxy({}, { get(t, k) {
       if (k === 'withSuccessHandler') return f => mk(Object.assign({}, s, { ok: f })); if (k === 'withFailureHandler') return f => mk(Object.assign({}, s, { fl: f })); if (k === 'withUserObject') return u => mk(Object.assign({}, s, { uo: u }));
@@ -58,7 +60,17 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
   await p.click('button[data-mv="intPick"]'); await p.selectOption('#mvf_mtarget', 'DISH|Компот'); await p.fill('#mvf_mfactor', '2'); await p.click('button[data-mv="intMap"]'); await p.waitForTimeout(500);
   c = (await calls()).filter(x => x.startsWith('v77SaveMapping:')).pop();
   assert.deepStrictEqual(JSON.parse(JSON.parse(c.slice('v77SaveMapping:'.length))[0]), { system: 'iiko', name: 'Компот домашний', extId: '77', kind: 'DISH', target: 'Компот', factor: '2' });
+  // iiko по API
+  await p.evaluate(() => { openView('finance', 'int'); }); await p.waitForTimeout(500);
+  t = await txt(); ['iiko по API', 'Подключено: https://kafe.iiko.it', 'каждые 30 минут', 'проведено 7'].forEach(s => assert(t.includes(s), 'iiko: ' + s));
+  await p.fill('#mvf_ipass', 'secret'); await p.click('button[data-mv="iikoSave"]'); await p.waitForTimeout(500);
+  c = (await calls()).filter(x => x.startsWith('v77IikoSave:')).pop();
+  assert.deepStrictEqual(JSON.parse(JSON.parse(c.slice('v77IikoSave:'.length))[0]), { url: 'https://kafe.iiko.it', login: 'api', password: 'secret', auto: true });
+  await p.evaluate(() => { openView('finance', 'int'); }); await p.waitForTimeout(500);
+  await p.fill('#mvf_ifrom', '2026-11-10'); await p.fill('#mvf_ito', '2026-11-14'); await p.click('button[data-mv="iikoPull"]'); await p.waitForTimeout(500);
+  c = (await calls()).filter(x => x.startsWith('v77IikoPull:')).pop();
+  assert.deepStrictEqual(JSON.parse(JSON.parse(c.slice('v77IikoPull:'.length))[0]), { from: '2026-11-10', to: '2026-11-14' });
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
   await b.close(); fs.rmSync(dir, { recursive: true, force: true });
-  console.log('OK: Экономика → Кассы и 1С — Excel и CSV, проверка без записи, загрузка, сопоставление: кнопки вызывают сервер');
+  console.log('OK: Экономика → Кассы и 1С — Excel и CSV, проверка без записи, загрузка, сопоставление, iiko по API: кнопки вызывают сервер');
 })().catch(e => { console.error(e); process.exit(1); });
