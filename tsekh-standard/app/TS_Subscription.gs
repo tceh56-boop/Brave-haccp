@@ -404,6 +404,13 @@ var TS_GATE_ = [
   { n: 'v74CorrectHours', need: 'finance_edit', mut: true },
   { n: 'v74CancelRecord', need: 'finance_edit', mut: true },
   { n: 'v74AddBonus', need: 'finance_edit', mut: true },
-  { n: 'v74DecideBonus', need: 'finance_close', mut: true }
+  { n: 'v74DecideBonus', need: 'finance_close', mut: true },
+  // этап 5: деньги — счета, движения, загрузка банковской выписки, разнесение по статьям ДДС
+  { n: 'v75GetCash', need: 'finance_view' },
+  { n: 'v75SaveAccount', need: 'finance_edit', mut: true },
+  { n: 'v75AddMove', need: 'finance_edit', mut: true },
+  { n: 'v75ImportStatement', need: 'finance_edit', mut: true },
+  { n: 'v75SetCategory', need: 'finance_edit', mut: true },
+  { n: 'v75CancelMove', need: 'finance_edit', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();

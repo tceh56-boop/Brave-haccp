@@ -4181,14 +4181,15 @@ VIEWS.org = {
 VIEWS.finance = {
   fns: { rebuild: 'v64RebuildLedger', price: 'v64SaveMenuPrice', pack: 'v64SavePackagingNorm', labor: 'v64SaveLaborRate', exp: 'v64SaveExpense', rule: 'v64SaveAllocationRule', approve: 'v64ApproveAllocationRule',
     op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk',
-    payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus' },
+    payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus',
+    cashAcc: 'v75SaveAccount', cashMove: 'v75AddMove', cashImport: 'v75ImportStatement', cashCat: 'v75SetCategory', cashCancel: 'v75CancelMove' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
   h: {
     tab: function (k) {
       var V = VIEWS.finance; V._tab = k;
-      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'], ['pay', 'ФОТ'],
+      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'], ['pay', 'ФОТ'], ['cash', 'Деньги'],
         ['exp', 'Расходы и распределение'], ['ops', 'Финансовые операции'], ['close', 'Закрытие периода']], k);
       var per = vForm([['from', 'Период с', 'date', V._from || ''], ['to', 'по', 'date', V._to || '']]);
       var need = function (cb) { if (V._set && !V._dirty) { cb(V._set); return; } vCall('v64GetFinanceSettings', []).then(function (r) { var d = m9Ok(r); if (d) { V._set = d; V._dirty = false; cb(d); } }); };
@@ -4215,6 +4216,37 @@ VIEWS.finance = {
         box(vCard('Экономика выпуска', vForm([['prod', 'Выпуск (production_id)', 'text', V._prod || '']]) + '<div class="mvbar">' + vBtn('Показать', 'prod', '', true) + '</div>') + '<div id="m9out"></div>');
       } else if (k === 'flow') {
         box(vCard('Движение стоимости продукта: от поставщика до продажи', vForm([['product', 'Продукт или ProductID', 'text', V._product || '']]) + per + '<div class="mvbar">' + vBtn('Показать', 'flow', '', true) + '</div>') + '<div id="m9out"></div>');
+      } else if (k === 'cash') {
+        // этап 5 «Финансы»: деньги — счета, Cash Flow по статьям ДДС, загрузка выписки, разнесение, долги поставщикам
+        vCall('v75GetCash', ['', V._from || '', V._to || '']).then(function (r) {
+          var d = m9Ok(r); if (!d) { box(''); return; } var t = d.totals, accs = d.accounts.map(function (a) { return [a.id, a.name]; });
+          var cats = function (dir) { return d.categories.filter(function (c) { return !c.dir || !dir || c.dir === dir; }).map(function (c) { return c.category; }); };
+          var debt = d.payables.reduce(function (s, p) { return s + Math.max(p.debt, 0); }, 0), rv = d.revenueVsCash;
+          box(vCard('Период', per + '<div class="mvbar">' + vBtn('Показать', 'cashPeriod', '', true) + '</div>') +
+            vKpis([['Остаток на начало, ₽', vNum(t.opening, 2)], ['Поступления, ₽', vNum(t.inflow, 2), 'green'], ['Выплаты, ₽', vNum(t.outflow, 2)], ['Чистый поток, ₽', vNum(t.net, 2), t.net < 0 ? 'red' : 'green'],
+              ['Остаток на конец, ₽', vNum(t.closing, 2), t.closing < 0 ? 'red' : ''], ['Не разнесено', t.uncategorized, t.uncategorized ? 'gold' : 'green'], ['Долг поставщикам, ₽', vNum(debt, 2), debt ? 'gold' : 'green']]) +
+            (d.warnings.length ? '<div class="bqmsg err">' + d.warnings.map(function (w) { return esc(w.text); }).join('<br>') + '</div>' : '') +
+            vCard('Счета', vTable([{ k: 'name', l: 'Счёт' }, { k: 'typeRu', l: 'Вид' }, { k: 'bankAccount', l: 'Номер' }, { k: 'opening', l: 'На начало, ₽', t: 'num' }, { k: 'inflow', l: 'Поступило, ₽', t: 'num' }, { k: 'outflow', l: 'Выплачено, ₽', t: 'num' }, { k: 'closing', l: 'На конец, ₽', t: 'num' }], d.accounts, null, 'Счетов нет')) +
+            vCard('Загрузить банковскую выписку', vForm([['sfile', 'Файл выписки (1С: kl_to_1c.txt или CSV)', 'file'], ['sacc', 'Счёт (если в файле нет номера счёта)', 'select', '', [['', 'по номеру из выписки']].concat(accs)]]) +
+              '<div class="mvbar">' + vBtn('Загрузить', 'cashImport', '', true) + '</div><small style="color:var(--muted)">Повторная загрузка той же выписки ничего не задваивает. Нового счёта нет — он заведётся с остатком из выписки.</small>' + '<div id="m9imp"></div>') +
+            vCard('Cash Flow по статьям', vTable([{ k: 'activityRu', l: 'Деятельность' }, { k: 'category', l: 'Статья' }, { k: 'inflow', l: 'Поступления, ₽', t: 'num' }, { k: 'outflow', l: 'Выплаты, ₽', t: 'num' }, { k: 'net', l: 'Итого, ₽', t: 'num' }, { k: 'count', l: 'Операций', t: 'num' }], d.flow, null, 'Движений нет') +
+              vTable([{ k: 'activityRu', l: 'Итого по деятельности' }, { k: 'inflow', l: 'Поступления, ₽', t: 'num' }, { k: 'outflow', l: 'Выплаты, ₽', t: 'num' }, { k: 'net', l: 'Итого, ₽', t: 'num' }], d.activities) +
+              (rv.revenue !== null ? '<small style="color:var(--muted)">Выручка по продажам за период ' + vNum(rv.revenue, 2) + ' ₽, поступило выручки ' + vNum(rv.cashRevenue, 2) + ' ₽, разница ' + vNum(rv.diff, 2) + ' ₽ (не сданная касса, долги покупателей или поступления за другой период).</small>' : '')) +
+            vCard('Разнести по статье', vForm([['cmove', 'Движение (выберите «Разнести» в таблице ниже)', 'text'], ['ccat', 'Статья ДДС *', 'select', '', cats('')], ['crem', 'Запомнить для этого контрагента', 'check', true]]) + '<div class="mvbar">' + vBtn('Сохранить статью', 'cashCat', '', true) + '</div>') +
+            vCard('Не разнесено', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'dirRu', l: 'Вид' }, { k: 'amount', l: 'Сумма, ₽', t: 'num' }, { k: 'counterparty', l: 'Контрагент' }, { k: 'inn', l: 'ИНН' }, { k: 'purpose', l: 'Назначение' }], d.uncategorized,
+              function (x) { return vBtn('Разнести', 'cashPick', x.id); }, 'Всё разнесено')) +
+            vCard('Касса и банк вручную', vForm([['macc', 'Счёт *', 'select', '', accs], ['mdate', 'Дата *', 'date'], ['mdir', 'Вид', 'select', 'IN', [['IN', 'поступление'], ['OUT', 'выплата']]], ['mamount', 'Сумма, ₽ *', 'number'],
+              ['mcat', 'Статья ДДС (пусто — определить по назначению)', 'select', '', [['', '—']].concat(cats(''))], ['mwho', 'Контрагент', 'text'], ['minn', 'ИНН', 'text'], ['mpurpose', 'Назначение', 'text'], ['mto', 'Перевод на свой счёт (инкассация)', 'select', '', [['', 'нет']].concat(accs)]]) +
+              '<div class="mvbar">' + vBtn('Записать', 'cashMove', '', true) + '</div>') +
+            vCard('Новый счёт', vForm([['aname', 'Название *', 'text'], ['atype', 'Вид', 'select', 'CASH', [['CASH', 'касса'], ['BANK', 'расчётный счёт']]], ['ano', 'Номер р/с (20 цифр)', 'text'], ['aopen', 'Остаток на дату, ₽ *', 'number'], ['adate', 'Дата остатка *', 'date']]) +
+              '<div class="mvbar">' + vBtn('Завести счёт', 'cashAcc', '', true) + '</div>') +
+            vCard('Долги поставщикам', vTable([{ k: 'supplier', l: 'Поставщик' }, { k: 'invoiced', l: 'По накладным, ₽', t: 'num' }, { k: 'paid', l: 'Оплачено, ₽', t: 'num' }, { k: 'debt', l: 'Долг, ₽', t: 'num' },
+              { k: 'oldestDate', l: 'Старейшая неоплаченная', t: 'date' }, { k: 'oldestDays', l: 'Дней', t: 'num' }], d.payables, null, 'Нет накладных и оплат')) +
+            vCard('Движения', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'account', l: 'Счёт' }, { k: 'dirRu', l: 'Вид' }, { k: 'amount', l: 'Сумма, ₽', t: 'num' }, { k: 'category', l: 'Статья' }, { k: 'counterparty', l: 'Контрагент' }, { k: 'purpose', l: 'Назначение' }, { k: 'source', l: 'Источник' }], d.moves,
+              function (x) { return vBtn('Статья', 'cashPick', x.id) + vBtn('Отменить', 'cashCancel', x.id); }, 'Нет')) +
+            vCard('Загрузки выписок', vTable([{ k: 'At', l: 'Когда' }, { k: 'FileName', l: 'Файл' }, { k: 'PeriodFrom', l: 'С', t: 'date' }, { k: 'PeriodTo', l: 'По', t: 'date' }, { k: 'Added', l: 'Добавлено', t: 'num' }, { k: 'Duplicates', l: 'Повторов', t: 'num' }, { k: 'ClosedSkipped', l: 'Закрытый период', t: 'num' }, { k: 'By', l: 'Кто' }], d.imports, null, 'Нет')) +
+            '<small style="color:var(--muted)">' + esc(d.note) + '</small>');
+        });
       } else if (k === 'pay') {
         // этап 4 «Финансы»: Labor Cost = ставка × часы (смены и табель) + подтверждённые премии − удержания
         vCall('v74GetLabor', ['', V._from || '', V._to || '']).then(function (r) {
@@ -4267,6 +4299,24 @@ VIEWS.finance = {
       });
     },
     period: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('dash'); },
+    cashPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('cash'); },
+    cashImport: function (a, btn) {
+      var f = document.getElementById('mvf_sfile'), file = f && f.files && f.files[0]; if (!file) { vMsg('Выберите файл выписки', 'err'); return; }
+      var rd = new FileReader();
+      rd.onload = function () {
+        var buf = rd.result, text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (e) { text = new TextDecoder('windows-1251').decode(buf); }   // выписки 1С обычно в Windows-1251
+        vDo(btn, 'v75ImportStatement', [JSON.stringify({ text: text, fileName: file.name, accountId: vV('sacc') })], function (d) {
+          return 'Выписка ' + d.account + (d.accountCreated ? ' (счёт заведён)' : '') + ': добавлено ' + d.added + ', повторов ' + d.duplicates + (d.closedSkipped ? ', в закрытом периоде ' + d.closedSkipped : '') + ', не разнесено ' + d.uncategorized +
+            (d.check ? (d.check.ok ? '. Остаток сходится с выпиской.' : '. Остаток расходится с выпиской на ' + d.check.diff + ' ₽ — проверьте начальный остаток.') : '');
+        }, function () { VIEWS.finance.h.tab('cash'); });
+      };
+      rd.readAsArrayBuffer(file);
+    },
+    cashPick: function (id) { var e = document.getElementById('mvf_cmove'); if (e) { e.value = id; e.scrollIntoView({ block: 'center' }); } },
+    cashCat: function (a, btn) { vDo(btn, 'v75SetCategory', [JSON.stringify({ moveId: vV('cmove'), category: vV('ccat'), remember: vV('crem') })], function (d) { return 'Статья сохранена' + (d.alsoApplied ? ', разнесено ещё ' + d.alsoApplied : ''); }, function () { VIEWS.finance.h.tab('cash'); }); },
+    cashMove: function (a, btn) { vDo(btn, 'v75AddMove', [JSON.stringify({ accountId: vV('macc'), date: vV('mdate'), direction: vV('mdir'), amount: vV('mamount'), category: vV('mcat'), counterparty: vV('mwho'), inn: vV('minn'), purpose: vV('mpurpose'), toAccountId: vV('mto') })], 'Записано', function () { VIEWS.finance.h.tab('cash'); }); },
+    cashAcc: function (a, btn) { vDo(btn, 'v75SaveAccount', [JSON.stringify({ name: vV('aname'), type: vV('atype'), bankAccount: vV('ano'), openingBalance: vV('aopen'), openingDate: vV('adate') })], 'Счёт заведён', function () { VIEWS.finance.h.tab('cash'); }); },
+    cashCancel: function (id, btn) { var why = prompt('Причина отмены'); if (!why) return; vDo(btn, 'v75CancelMove', [JSON.stringify({ moveId: id, reason: why })], 'Отменено', function () { VIEWS.finance.h.tab('cash'); }); },
     payPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('pay'); },
     payRate: function (a, btn) { vDo(btn, 'v74SaveRate', [JSON.stringify({ employee: vV('pemp'), role: vV('prole'), ratePerHour: vV('prate'), dateFrom: vV('pfrom'), comment: vV('pcom') })], 'Ставка сохранена', function () { VIEWS.finance.h.tab('pay'); }); },
     payHours: function (a, btn) { vDo(btn, 'v74AddHours', [JSON.stringify({ date: vV('hdate'), employee: vV('hemp'), role: vV('hrole'), hours: vV('hours'), reason: vV('hreason'), allowSecond: vV('hsecond') })], 'Часы внесены', function () { VIEWS.finance.h.tab('pay'); }); },

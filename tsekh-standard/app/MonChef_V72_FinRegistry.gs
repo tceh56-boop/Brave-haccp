@@ -34,7 +34,7 @@ var MC_V72 = {
 };
 var MC_V72_TYPE_RU = { PURCHASE: 'Приёмка партии', BATCH_EVENT: 'Событие партии', PROCESSING: 'Зачистка и разделка', PRODUCTION: 'Выпуск', ISSUE: 'Выдача на банкет',
   BANQUET: 'Факт банкета', SALE: 'Продажа', WRITEOFF: 'Акт списания', STOCK_OP: 'Списание со склада', REVISION: 'Ревизия', FIN_OP: 'Финансовая операция',
-  EXPENSE: 'Управленческий расход', FIN_CORR: 'Корректировка закрытого периода', SHIFT: 'Смена сотрудника', TIMESHEET: 'Запись табеля', BONUS: 'Премия или удержание',
+  EXPENSE: 'Управленческий расход', FIN_CORR: 'Корректировка закрытого периода', SHIFT: 'Смена сотрудника', TIMESHEET: 'Запись табеля', BONUS: 'Премия или удержание', CASH: 'Движение денег',
   OTHER: 'Прочее' };
 var MC_V72_STALE_MIN = 30;
 
@@ -60,6 +60,7 @@ function _v72ExpCat_(l) {
 function _v72Key_(l) {
   var s = l.source || '', ot = l.objType || '';
   if (ot === 'SALE' || (l.stage === 'PACKAGING' && ot === 'SALE')) return ['SALE', l.objId];
+  if (l.stage === 'CASH') return ['CASH', l.objId];
   if (l.stage === 'LABOR') return [ot === 'SHIFT' ? 'SHIFT' : ot === 'BONUS' ? 'BONUS' : 'TIMESHEET', l.objId];
   if (ot === 'FIN_OPERATION' || s === 'Финансы_Операции') return ['FIN_OP', l.ref || l.objId];
   if (s === 'Финансы_Корректировки') return ['FIN_CORR', l.ref || l.objId];
