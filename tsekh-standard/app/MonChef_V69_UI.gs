@@ -53,8 +53,9 @@ _UI_BUILDERS_.finance = function (token, opts, s) {
   add('haccp', [{ label: 'ППК: версии, разделы, график', module: 'ppk' }, { label: 'Нормативы: база на Google Диске', module: 'normbase' }]);
   add('lab', [{ label: 'Лаборатория: план, отбор, протоколы, решения', module: 'labx' }, { label: 'Технические условия (ТУ)', module: 'tu' }]);
   add('reports', [{ label: 'Отчёты: экономика, ППК, ТУ, лаборатория', module: 'reports20' }]);
+  add('menu', [{ label: 'Технологические инструкции (ТИ) для поваров', module: 'ti' }]);
   add('settings', [{ label: 'Организация: реквизиты и логотип', module: 'org' }, { label: 'Нормативы: база на Google Диске', module: 'normbase' }]);
 })();
 
 // прямой адрес экрана (?finance=1, ?ppk=1, …) открывает экран главного окна
-try { MC_UI_VIEWS_ = MC_UI_VIEWS_.concat(['finance', 'ppk', 'tu', 'labx', 'org', 'reports20', 'normbase'].filter(function (v) { return MC_UI_VIEWS_.indexOf(v) < 0; })); } catch (e) {}
+try { MC_UI_VIEWS_ = MC_UI_VIEWS_.concat(['finance', 'ppk', 'tu', 'ti', 'labx', 'org', 'reports20', 'normbase'].filter(function (v) { return MC_UI_VIEWS_.indexOf(v) < 0; })); } catch (e) {}

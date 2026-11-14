@@ -211,7 +211,8 @@ var MC_RB_MODULES_ = { haccptasks: 'haccp_view|journals', weekly: 'plan', procur
   // ТЗ «Итоговая структура…»: экономика потока, ППК, ТУ, лаборатория, реквизиты организации, отчёты §20
   finance: 'finance_view', ppk: 'ppk_view|ppk_edit|ppk_approve', tu: 'tu_view|tu_edit|tu_approve', labx: 'lab|lab_view|lab_edit|lab_upload|lab_approve',
   org: 'org_edit|system', reports20: 'reports|finance_view|ppk_view|tu_view|lab_view|audit_view',
-  normbase: 'haccp|haccp_view|haccp_approve|ppk_view|lab_view|audit_view|system'
+  normbase: 'haccp|haccp_view|haccp_approve|ppk_view|lab_view|audit_view|system',
+  ti: 'catalog|ttk_edit|ttk_approve'
 };
 /** Кнопки разделов, которые вызывают функцию экрана (Console.html), → право. Нет в списке — кнопка видна всем, кто видит раздел. */
 var MC_RB_UI_FN_ = { banqNew: 'banquets', banqScanPick: 'banquet_scan', dishNew: 'ttk_edit', dpOpen: 'ttk_edit', syncTtk: 'ttk_edit', ttkFixDoubled: 'ttk_approve', mcTtkIds: 'ttk_approve',
@@ -225,7 +226,7 @@ var MC_RB_MODULE_RU_ = { haccptoday: 'ХАССП — сегодня', income: '�
 // ТЗ «Итоговая структура…»: новые экраны
 MC_RB_MODULE_RU_.finance = 'Экономика потока'; MC_RB_MODULE_RU_.ppk = 'ППК: версии, разделы, график'; MC_RB_MODULE_RU_.tu = 'Технические условия';
 MC_RB_MODULE_RU_.labx = 'Лаборатория: план, отбор, протоколы'; MC_RB_MODULE_RU_.org = 'Организация: реквизиты и логотип'; MC_RB_MODULE_RU_.reports20 = 'Отчёты: экономика, ППК, ТУ, лаборатория';
-MC_RB_MODULE_RU_.normbase = 'Нормативы: база на Google Диске';
+MC_RB_MODULE_RU_.normbase = 'Нормативы: база на Google Диске'; MC_RB_MODULE_RU_.ti = 'Технологические инструкции (ТИ)';
 
 /** Уведомления, адресованные прежним ролям, → кто получает теперь. */
 var MC_RB_TARGETS_ = {
