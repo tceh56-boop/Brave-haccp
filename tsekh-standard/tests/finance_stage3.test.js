@@ -161,7 +161,7 @@ t('Экран «Экономика»: показатели руководите�
   eq(s.tabs.slice(0, 4).map(x => x.title), ['P&L', 'Сигналы', 'По дням', 'Блюда']);
   assert(s.kpis.some(k => /^Выручка/.test(k.label) && /прошлый период: 600/.test(k.hint)));
   assert(s.kpis.some(k => /Без цены закупки/.test(k.label)), 'показатели качества данных остались');
-  assert(s.tabs[0].rows.some(r => r.title === '— ФОТ (Labor Cost)' && r.amount === 300));
+  assert(s.tabs[0].rows.some(r => r.title === '— ФОТ (Labor Cost), всего' && r.amount === 300));
 });
 
 console.log('finance_stage3: ' + n + ' сценариев пройдено');

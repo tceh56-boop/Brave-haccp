@@ -21,18 +21,21 @@
  * Сверка: по расписанию (каждые 15 минут), после закрытия периода и по кнопке «Обновить» (v72SyncNow).
  * Точка = предприятие (решение 14.11.2026): организация и точка берутся из настроек предприятия; свод сети — позже.
  */
+/** Все слагаемые дневных итогов: V64 + труд (этап 4). */
+var MC_V72_KEYS = MC_V64_SUM_KEYS.concat(MC_V64_SUM_KEYS2);
 var MC_V72 = {
   REG: ['Фин_Реестр', ['RegKey', 'OperationID', 'Type', 'ObjectType', 'ObjectID', 'Date', 'OrgID', 'LocationID', 'Source', 'SourceRef', 'Author', 'Status', 'Version',
     'Amount', 'Hash', 'Days', 'ClosedChanged', 'FirstSeenAt', 'UpdatedAt', 'RunID']],
   HIST: ['Фин_Реестр_История', ['At', 'RunID', 'RegKey', 'OperationID', 'Action', 'VersionFrom', 'VersionTo', 'AmountBefore', 'AmountAfter', 'HashBefore', 'HashAfter',
     'Days', 'ClosedPeriod', 'Note']],
   // ExpByCategory (этап 3, P&L) — в конце: у листов, созданных на этапе 2, колонка добавляется справа
-  DAY: ['Фин_Итоги_День', ['Day', 'LocationID'].concat(MC_V64_SUM_KEYS).concat(['WasteByReason', 'Frozen', 'UpdatedAt', 'RunID', 'ExpByCategory'])],
+  DAY: ['Фин_Итоги_День', ['Day', 'LocationID'].concat(MC_V64_SUM_KEYS).concat(['WasteByReason', 'Frozen', 'UpdatedAt', 'RunID', 'ExpByCategory']).concat(MC_V64_SUM_KEYS2)],
   DISH: ['Фин_Итоги_Блюдо_День', ['Day', 'LocationID', 'Dish', 'DishCode', 'Qty', 'Revenue', 'Cost', 'UpdatedAt', 'RunID']]
 };
 var MC_V72_TYPE_RU = { PURCHASE: 'Приёмка партии', BATCH_EVENT: 'Событие партии', PROCESSING: 'Зачистка и разделка', PRODUCTION: 'Выпуск', ISSUE: 'Выдача на банкет',
   BANQUET: 'Факт банкета', SALE: 'Продажа', WRITEOFF: 'Акт списания', STOCK_OP: 'Списание со склада', REVISION: 'Ревизия', FIN_OP: 'Финансовая операция',
-  EXPENSE: 'Управленческий расход', FIN_CORR: 'Корректировка закрытого периода', OTHER: 'Прочее' };
+  EXPENSE: 'Управленческий расход', FIN_CORR: 'Корректировка закрытого периода', SHIFT: 'Смена сотрудника', TIMESHEET: 'Запись табеля', BONUS: 'Премия или удержание',
+  OTHER: 'Прочее' };
 var MC_V72_STALE_MIN = 30;
 
 /* ---------------- служебное ---------------- */
@@ -57,6 +60,7 @@ function _v72ExpCat_(l) {
 function _v72Key_(l) {
   var s = l.source || '', ot = l.objType || '';
   if (ot === 'SALE' || (l.stage === 'PACKAGING' && ot === 'SALE')) return ['SALE', l.objId];
+  if (l.stage === 'LABOR') return [ot === 'SHIFT' ? 'SHIFT' : ot === 'BONUS' ? 'BONUS' : 'TIMESHEET', l.objId];
   if (ot === 'FIN_OPERATION' || s === 'Финансы_Операции') return ['FIN_OP', l.ref || l.objId];
   if (s === 'Финансы_Корректировки') return ['FIN_CORR', l.ref || l.objId];
   if (s === 'Финансы_Расходы' || ot === 'EXPENSE') return ['EXPENSE', l.objId];
@@ -169,7 +173,7 @@ function _v72WriteDays_(days, lines, D, runId, now, T) {
     var t = _v64Totals_(byDay[d] || []), ec = {};
     (byDay[d] || []).forEach(function (l) { if (l.stage === 'EXPENSE') { var c = _v72ExpCat_(l); ec[c] = _v64R2_((ec[c] || 0) + (Number(l.amount) || 0)); } });
     var o = { Day: d, LocationID: T.location_id, WasteByReason: JSON.stringify(t.wasteByReason || {}), ExpByCategory: JSON.stringify(ec), Frozen: false, UpdatedAt: now, RunID: runId };
-    MC_V64_SUM_KEYS.forEach(function (k) { o[k] = t[k] || 0; }); return _v72RowOf_(H, o);
+    MC_V72_KEYS.forEach(function (k) { o[k] = t[k] || 0; }); return _v72RowOf_(H, o);
   });
   _v72Replace_(D.sh, H, set, fresh);
   // день × блюдо — для меню-аналитики и сводки по блюдам
@@ -237,10 +241,10 @@ function v72GetSummary(token, fromDate, toDate) {
 /** Сложить дневные итоги за дни fromIso…toIso: totals (как у V64), по дням, по блюдам, расходы по статьям, свежесть сверки. */
 function _v72Sum_(fromIso, toIso) {
   var D = _v72Read_('DAY'), t = {}, wr = {}, ec = {}, byDay = [], frozen = 0;
-  MC_V64_SUM_KEYS.forEach(function (k) { t[k] = 0; });
+  MC_V72_KEYS.forEach(function (k) { t[k] = 0; });
   D.rows.forEach(function (r) {
     var d = _v72DayStr_(r.Day); if (d < fromIso || d > toIso) return;
-    MC_V64_SUM_KEYS.forEach(function (k) { t[k] += _v64Num_(r[k]); });
+    MC_V72_KEYS.forEach(function (k) { t[k] += _v64Num_(r[k]); });
     var w = {}; try { w = JSON.parse(String(r.WasteByReason || '{}')); } catch (e) {}
     Object.keys(w).forEach(function (k) { wr[k] = (wr[k] || 0) + _v64Num_(w[k]); });
     var e = {}; try { e = JSON.parse(String(r.ExpByCategory || '{}')); } catch (x) {}
@@ -248,8 +252,8 @@ function _v72Sum_(fromIso, toIso) {
     // день посчитан до этапа 3 (без разбивки по статьям) — остаток в «без статьи», сумма расходов не теряется
     var rest = _v64R2_(_v64Num_(r.expenses) - es); if (Math.abs(rest) >= 0.01) ec['Без разбивки по статьям'] = (ec['Без разбивки по статьям'] || 0) + rest;
     var fz = r.Frozen === true || String(r.Frozen) === 'true'; if (fz) frozen++;
-    var dt = _v64Derive_((function () { var o = {}; MC_V64_SUM_KEYS.forEach(function (k) { o[k] = _v64Num_(r[k]); }); return o; })());
-    byDay.push({ day: d, revenue: dt.revenue, cogs: dt.cogsWithPackaging, gross: dt.grossContribution, marginPct: dt.marginPct, waste: dt.wasteCost, expenses: dt.expenses,
+    var dt = _v64Derive_((function () { var o = {}; MC_V72_KEYS.forEach(function (k) { o[k] = _v64Num_(r[k]); }); return o; })());
+    byDay.push({ day: d, revenue: dt.revenue, cogs: dt.cogsWithPackaging, gross: dt.grossContribution, marginPct: dt.marginPct, waste: dt.wasteCost, expenses: dt.expenses, labor: dt.labor, laborHours: dt.laborHours,
       foodCostPct: dt.revenue > 0 ? Math.round(dt.cogs / dt.revenue * 1000) / 10 : null, frozen: fz });
   });
   t.wasteByReason = wr; t = _v64Derive_(t);
