@@ -4182,14 +4182,15 @@ VIEWS.finance = {
   fns: { rebuild: 'v64RebuildLedger', price: 'v64SaveMenuPrice', pack: 'v64SavePackagingNorm', labor: 'v64SaveLaborRate', exp: 'v64SaveExpense', rule: 'v64SaveAllocationRule', approve: 'v64ApproveAllocationRule',
     op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk',
     payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus',
-    cashAcc: 'v75SaveAccount', cashMove: 'v75AddMove', cashImport: 'v75ImportStatement', cashCat: 'v75SetCategory', cashCancel: 'v75CancelMove' },
+    cashAcc: 'v75SaveAccount', cashMove: 'v75AddMove', cashImport: 'v75ImportStatement', cashCat: 'v75SetCategory', cashCancel: 'v75CancelMove',
+    fcOrder: 'v76CreateOrderRequests' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
   h: {
     tab: function (k) {
       var V = VIEWS.finance; V._tab = k;
-      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'], ['pay', 'ФОТ'], ['cash', 'Деньги'],
+      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'], ['pay', 'ФОТ'], ['cash', 'Деньги'], ['menu', 'Меню'], ['buy', 'Закупки'], ['fc', 'Прогноз'],
         ['exp', 'Расходы и распределение'], ['ops', 'Финансовые операции'], ['close', 'Закрытие периода']], k);
       var per = vForm([['from', 'Период с', 'date', V._from || ''], ['to', 'по', 'date', V._to || '']]);
       var need = function (cb) { if (V._set && !V._dirty) { cb(V._set); return; } vCall('v64GetFinanceSettings', []).then(function (r) { var d = m9Ok(r); if (d) { V._set = d; V._dirty = false; cb(d); } }); };
@@ -4245,6 +4246,57 @@ VIEWS.finance = {
             vCard('Движения', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'account', l: 'Счёт' }, { k: 'dirRu', l: 'Вид' }, { k: 'amount', l: 'Сумма, ₽', t: 'num' }, { k: 'category', l: 'Статья' }, { k: 'counterparty', l: 'Контрагент' }, { k: 'purpose', l: 'Назначение' }, { k: 'source', l: 'Источник' }], d.moves,
               function (x) { return vBtn('Статья', 'cashPick', x.id) + vBtn('Отменить', 'cashCancel', x.id); }, 'Нет')) +
             vCard('Загрузки выписок', vTable([{ k: 'At', l: 'Когда' }, { k: 'FileName', l: 'Файл' }, { k: 'PeriodFrom', l: 'С', t: 'date' }, { k: 'PeriodTo', l: 'По', t: 'date' }, { k: 'Added', l: 'Добавлено', t: 'num' }, { k: 'Duplicates', l: 'Повторов', t: 'num' }, { k: 'ClosedSkipped', l: 'Закрытый период', t: 'num' }, { k: 'By', l: 'Кто' }], d.imports, null, 'Нет')) +
+            '<small style="color:var(--muted)">' + esc(d.note) + '</small>');
+        });
+      } else if (k === 'menu') {
+        // этап 6 «Финансы»: меню-инжиниринг (Kasavana–Smith) — из дневных итогов продаж и себестоимости по партиям
+        vCall('v76GetMenuEngineering', ['', V._from || '', V._to || '']).then(function (r) {
+          var d = m9Ok(r); if (!d) { box(''); return; } var th = d.thresholds, cl = {}; d.classes.forEach(function (c) { cl[c.cls] = c; });
+          var tone = { STAR: 'green', PLOWHORSE: 'gold', PUZZLE: '', DOG: 'red' };
+          box(vCard('Период', per + '<div class="mvbar">' + vBtn('Показать', 'menuPeriod', '', true) + '</div>') +
+            vKpis([['Блюд продано', d.totals.dishes], ['Порций', vNum(d.totals.qty, 1)], ['Валовой вклад, ₽', vNum(d.totals.gross, 2)], ['Средний вклад на порцию, ₽', vNum(th.avgCmPerPortion, 2)], ['Порог популярности, % порций', th.popularityPct]]
+              .concat(['STAR', 'PLOWHORSE', 'PUZZLE', 'DOG'].map(function (c) { return [cl[c].clsRu + ' (блюд)', cl[c].dishes, tone[c]]; }))) +
+            (d.warnings.length ? '<div class="bqmsg err">' + d.warnings.map(function (w) { return esc(w.text); }).join('<br>') + '</div>' : '') +
+            vCard('Что делать с каждой группой', vTable([{ k: 'clsRu', l: 'Группа' }, { k: 'dishes', l: 'Блюд', t: 'num' }, { k: 'qty', l: 'Порций', t: 'num' }, { k: 'revenue', l: 'Выручка, ₽', t: 'num' }, { k: 'gross', l: 'Вклад, ₽', t: 'num' }, { k: 'advice', l: 'Рекомендация' }], d.classes)) +
+            vCard('Блюда', vTable([{ l: 'Группа', html: true, f: function (x) { return vChip(x.clsRu, tone[x.cls]); } }, { k: 'dish', l: 'Блюдо' }, { k: 'qty', l: 'Продано', t: 'num' }, { k: 'mixPct', l: 'Доля порций, %', t: 'num' }, { k: 'avgPrice', l: 'Цена, ₽', t: 'num' },
+              { k: 'costPerPortion', l: 'Себест. порции, ₽', t: 'num' }, { k: 'normCost', l: 'По ТТК, ₽', t: 'num' }, { k: 'cmPerPortion', l: 'Вклад на порцию, ₽', t: 'num' }, { k: 'gross', l: 'Вклад, ₽', t: 'num' }, { k: 'foodCostPct', l: 'Food cost, %', t: 'num' },
+              { k: 'marginPct', l: 'Маржа, %', t: 'num' }, { l: 'Признаки', f: function (x) { return (x.flagsRu || []).join(', '); } }], d.items, null, 'Продаж за период нет')) +
+            vCard('В меню, но не продавалось', vTable([{ k: 'dish', l: 'Блюдо' }, { k: 'code', l: 'ТТК' }, { k: 'menuPrice', l: 'Цена меню, ₽', t: 'num' }], d.unsold, null, 'Нет')) +
+            '<small style="color:var(--muted)">' + esc(d.note) + '</small>');
+        });
+      } else if (k === 'buy') {
+        // этап 6 «Финансы»: закупки — поставщики, цены, рост цен, дешевле у другого поставщика, влияние на блюда
+        vCall('v76GetProcurement', ['', V._from || '', V._to || '']).then(function (r) {
+          var d = m9Ok(r); if (!d) { box(''); return; } var t = d.totals, flags = function (x) { return (x.flagsRu || []).join(', '); };
+          var pc = [{ k: 'product', l: 'Продукт' }, { k: 'unit', l: 'Ед.' }, { k: 'lastPrice', l: 'Последняя цена, ₽', t: 'num' }, { k: 'lastDate', l: 'Дата', t: 'date' }, { k: 'lastSupplier', l: 'Поставщик' }, { k: 'prevPrice', l: 'Предыдущая, ₽', t: 'num' },
+            { k: 'changePct', l: 'Изм., %', t: 'num' }, { k: 'avg90', l: 'Средняя за 90 дн. до периода, ₽', t: 'num' }, { k: 'vsAvg90Pct', l: 'К средней, %', t: 'num' }];
+          box(vCard('Период', per + '<div class="mvbar">' + vBtn('Показать', 'buyPeriod', '', true) + '</div>') +
+            vKpis([['Закуплено, ₽', vNum(t.amount, 2)], ['Партий', t.batches], ['Поставщиков', t.suppliers], ['Продуктов', t.products], ['Рост цены от ' + d.threshold + '%', t.priceRises, t.priceRises ? 'gold' : 'green'], ['Возможная экономия, ₽', vNum(t.possibleSaving, 2), t.possibleSaving ? 'gold' : 'green']]) +
+            vCard('Рост цен', vTable(pc, d.rises, null, 'Роста цен нет')) +
+            vCard('Как рост цен меняет себестоимость блюд (на порцию, по ТТК)', vTable([{ k: 'dish', l: 'Блюдо' }, { k: 'deltaPerPortion', l: 'Изменение, ₽/порц.', t: 'num' }, { k: 'deltaPctOfPrice', l: '% цены меню', t: 'num' }, { k: 'normCost', l: 'Себест. по ТТК сейчас, ₽', t: 'num' },
+              { k: 'menuPrice', l: 'Цена меню, ₽', t: 'num' }, { k: 'foodCostPct', l: 'Food cost по ТТК, %', t: 'num' }, { k: 'drivers', l: 'Из-за чего' }], d.impact.slice(0, 50), null, 'Цены не менялись')) +
+            vCard('Дешевле у другого поставщика', vTable([{ k: 'product', l: 'Продукт' }, { k: 'unit', l: 'Ед.' }, { k: 'lastSupplier', l: 'Покупаем у' }, { k: 'lastPrice', l: 'Цена, ₽', t: 'num' }, { k: 'bestSupplier', l: 'Дешевле у' }, { k: 'bestPrice', l: 'Цена, ₽', t: 'num' }, { k: 'bestDate', l: 'Когда', t: 'date' },
+              { k: 'saving', l: 'Экономия за период, ₽', t: 'num' }], d.cheaper, null, 'Нет')) +
+            vCard('Поставщики', vTable([{ k: 'supplier', l: 'Поставщик' }, { k: 'amount', l: 'Закуплено, ₽', t: 'num' }, { k: 'sharePct', l: 'Доля, %', t: 'num' }, { k: 'batches', l: 'Партий', t: 'num' }, { k: 'products', l: 'Продуктов', t: 'num' }], d.suppliers, null, 'Закупок нет')) +
+            vCard('Продукты', vTable(pc.concat([{ k: 'periodQty', l: 'Куплено', t: 'num' }, { k: 'periodAmount', l: 'Сумма, ₽', t: 'num' }, { k: 'minPrice', l: 'Мин., ₽', t: 'num' }, { k: 'maxPrice', l: 'Макс., ₽', t: 'num' }, { l: 'Признаки', f: flags }]), d.products, null, 'Закупок нет')) +
+            vCard('Партии', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'product', l: 'Продукт' }, { k: 'supplier', l: 'Поставщик' }, { k: 'invoice', l: 'Накладная' }, { k: 'qty', l: 'Кол-во', t: 'num' }, { k: 'unit', l: 'Ед.' }, { k: 'price', l: 'Цена, ₽', t: 'num' }, { k: 'amount', l: 'Сумма, ₽', t: 'num' }], d.purchases, null, 'Нет')) +
+            '<small style="color:var(--muted)">' + esc(d.note) + '</small>');
+        });
+      } else if (k === 'fc') {
+        // этап 6 «Финансы»: прогноз продаж по дням недели и потребность в продуктах по ТТК → заявки на закупку (V21)
+        var fo = { days: V._fcDays || 7, weeks: V._fcWeeks || 8 };
+        vCall('v76GetForecast', [JSON.stringify(fo)]).then(function (r) {
+          var d = m9Ok(r); if (!d) { box(''); return; } var t = d.totals; V._fc = d; V._fcPlan = 'FC-' + d.from.replace(/-/g, '') + '-' + d.days;
+          box(vCard('Прогноз', vForm([['fdays', 'На сколько дней вперёд', 'number', fo.days], ['fweeks', 'История, недель', 'number', fo.weeks]]) + '<div class="mvbar">' + vBtn('Рассчитать', 'fcRun', '', true) + '</div>' +
+              '<small style="color:var(--muted)">' + esc(d.from) + ' — ' + esc(d.to) + ' по продажам ' + esc(d.historyFrom) + ' — ' + esc(d.historyTo) + ' (' + d.workDays + ' дней с продажами).</small>') +
+            vKpis([['Выручка, ₽', vNum(t.revenue, 2)], ['Порций', vNum(t.portions, 1)], ['Себестоимость, ₽', vNum(t.cost, 2)], ['Food cost, %', t.foodCostPct === null ? '—' : t.foodCostPct], ['Позиций к заказу', t.orderLines, t.orderLines ? 'gold' : 'green'], ['Заказ на сумму, ₽', vNum(t.orderAmount, 2)]]) +
+            (d.warnings.length ? '<div class="bqmsg err">' + d.warnings.map(function (w) { return esc(w.text); }).join('<br>') + '</div>' : '') +
+            vCard('По дням', vTable([{ k: 'day', l: 'День', t: 'date' }, { k: 'weekday', l: '' }, { k: 'portions', l: 'Порций', t: 'num' }, { k: 'revenue', l: 'Выручка, ₽', t: 'num' }, { k: 'cost', l: 'Себестоимость, ₽', t: 'num' }, { k: 'foodCostPct', l: 'Food cost, %', t: 'num' }, { k: 'basis', l: 'Основа' }], d.perDay)) +
+            vCard('К заказу', vTable([{ k: 'product', l: 'Продукт' }, { k: 'unit', l: 'Ед.' }, { k: 'need', l: 'Нужно по ТТК', t: 'num' }, { k: 'onHand', l: 'Остаток', t: 'num' }, { k: 'minStock', l: 'Мин. запас', t: 'num' }, { k: 'ordered', l: 'Уже заказано', t: 'num' },
+              { k: 'toOrder', l: 'Заказать', t: 'num' }, { k: 'supplier', l: 'Поставщик' }, { k: 'lastPrice', l: 'Цена, ₽', t: 'num' }, { k: 'estAmount', l: 'Сумма, ₽', t: 'num' }], d.toOrder, null, 'Всего хватает') +
+              (d.toOrder.length ? '<div class="mvbar">' + vBtn('Создать заявки на закупку', 'fcOrder', '', true) + vBtn('Заказы поставщикам', 'fcSup') + '</div><small style="color:var(--muted)">Заявки попадают в общий список закупок; повторно та же позиция этого прогноза не создаётся. «Заказы поставщикам» группирует открытые заявки прогноза по поставщикам.</small><div id="m9fcres"></div>' : '')) +
+            vCard('Блюда', vTable([{ k: 'dish', l: 'Блюдо' }, { k: 'forecastQty', l: 'Прогноз, порций', t: 'num' }, { k: 'perWorkDay', l: 'В среднем за рабочий день', t: 'num' }, { k: 'histQty', l: 'Продано за историю', t: 'num' }, { k: 'avgPrice', l: 'Средняя цена, ₽', t: 'num' }], d.dishes, null, 'Нет продаж в истории')) +
+            vCard('Вся потребность', vTable([{ k: 'product', l: 'Продукт' }, { k: 'unit', l: 'Ед.' }, { k: 'need', l: 'Нужно', t: 'num' }, { k: 'onHand', l: 'Остаток', t: 'num' }, { k: 'toOrder', l: 'Заказать', t: 'num' }, { k: 'dishes', l: 'Для блюд' }], d.items, null, 'Нет')) +
             '<small style="color:var(--muted)">' + esc(d.note) + '</small>');
         });
       } else if (k === 'pay') {
@@ -4317,6 +4369,12 @@ VIEWS.finance = {
     cashMove: function (a, btn) { vDo(btn, 'v75AddMove', [JSON.stringify({ accountId: vV('macc'), date: vV('mdate'), direction: vV('mdir'), amount: vV('mamount'), category: vV('mcat'), counterparty: vV('mwho'), inn: vV('minn'), purpose: vV('mpurpose'), toAccountId: vV('mto') })], 'Записано', function () { VIEWS.finance.h.tab('cash'); }); },
     cashAcc: function (a, btn) { vDo(btn, 'v75SaveAccount', [JSON.stringify({ name: vV('aname'), type: vV('atype'), bankAccount: vV('ano'), openingBalance: vV('aopen'), openingDate: vV('adate') })], 'Счёт заведён', function () { VIEWS.finance.h.tab('cash'); }); },
     cashCancel: function (id, btn) { var why = prompt('Причина отмены'); if (!why) return; vDo(btn, 'v75CancelMove', [JSON.stringify({ moveId: id, reason: why })], 'Отменено', function () { VIEWS.finance.h.tab('cash'); }); },
+    menuPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('menu'); },
+    buyPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('buy'); },
+    fcRun: function () { var V = VIEWS.finance; V._fcDays = vV('fdays') || 7; V._fcWeeks = vV('fweeks') || 8; V.h.tab('fc'); },
+    fcOrder: function (a, btn) { var V = VIEWS.finance; vDo(btn, 'v76CreateOrderRequests', [JSON.stringify({ days: V._fcDays || 7, weeks: V._fcWeeks || 8, asOf: V._fc && V._fc.asOf })], function (d) { V._fcPlan = d.planId; return d.note + (d.skipped.length ? ' Пропущено: ' + d.skipped.length + '.' : ''); },
+      function (d) { var o = document.getElementById('m9fcres'); if (o) o.innerHTML = vTable([{ k: 'product', l: 'Продукт' }, { k: 'qty', l: 'Кол-во', t: 'num' }, { k: 'unit', l: 'Ед.' }, { k: 'supplier', l: 'Поставщик' }, { k: 'requestId', l: 'Заявка' }], d.created, null, 'Новых заявок нет'); }); },
+    fcSup: function (a, btn) { var V = VIEWS.finance; if (!V._fcPlan) { vMsg('Сначала создайте заявки', 'err'); return; } vDo(btn, 'createSupplierOrdersFromWeeklyPlan', [V._fcPlan, V._fc ? V._fc.from : ''], function (d) { return 'Заказов поставщикам: ' + (d.orders || []).length; }); },
     payPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('pay'); },
     payRate: function (a, btn) { vDo(btn, 'v74SaveRate', [JSON.stringify({ employee: vV('pemp'), role: vV('prole'), ratePerHour: vV('prate'), dateFrom: vV('pfrom'), comment: vV('pcom') })], 'Ставка сохранена', function () { VIEWS.finance.h.tab('pay'); }); },
     payHours: function (a, btn) { vDo(btn, 'v74AddHours', [JSON.stringify({ date: vV('hdate'), employee: vV('hemp'), role: vV('hrole'), hours: vV('hours'), reason: vV('hreason'), allowSecond: vV('hsecond') })], 'Часы внесены', function () { VIEWS.finance.h.tab('pay'); }); },
