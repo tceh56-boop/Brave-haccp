@@ -4180,14 +4180,15 @@ VIEWS.org = {
 /* ---------- Экономика (V64) ---------- */
 VIEWS.finance = {
   fns: { rebuild: 'v64RebuildLedger', price: 'v64SaveMenuPrice', pack: 'v64SavePackagingNorm', labor: 'v64SaveLaborRate', exp: 'v64SaveExpense', rule: 'v64SaveAllocationRule', approve: 'v64ApproveAllocationRule',
-    op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk' },
+    op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk',
+    payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
   h: {
     tab: function (k) {
       var V = VIEWS.finance; V._tab = k;
-      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'],
+      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'], ['pay', 'ФОТ'],
         ['exp', 'Расходы и распределение'], ['ops', 'Финансовые операции'], ['close', 'Закрытие периода']], k);
       var per = vForm([['from', 'Период с', 'date', V._from || ''], ['to', 'по', 'date', V._to || '']]);
       var need = function (cb) { if (V._set && !V._dirty) { cb(V._set); return; } vCall('v64GetFinanceSettings', []).then(function (r) { var d = m9Ok(r); if (d) { V._set = d; V._dirty = false; cb(d); } }); };
@@ -4214,6 +4215,31 @@ VIEWS.finance = {
         box(vCard('Экономика выпуска', vForm([['prod', 'Выпуск (production_id)', 'text', V._prod || '']]) + '<div class="mvbar">' + vBtn('Показать', 'prod', '', true) + '</div>') + '<div id="m9out"></div>');
       } else if (k === 'flow') {
         box(vCard('Движение стоимости продукта: от поставщика до продажи', vForm([['product', 'Продукт или ProductID', 'text', V._product || '']]) + per + '<div class="mvbar">' + vBtn('Показать', 'flow', '', true) + '</div>') + '<div id="m9out"></div>');
+      } else if (k === 'pay') {
+        // этап 4 «Финансы»: Labor Cost = ставка × часы (смены и табель) + подтверждённые премии − удержания
+        vCall('v74GetLabor', ['', V._from || '', V._to || '']).then(function (r) {
+          var d = m9Ok(r); if (!d) { box(''); return; } var t = d.totals;
+          box(vCard('Период', per + '<div class="mvbar">' + vBtn('Показать', 'payPeriod', '', true) + '</div>') +
+            vKpis([['Labor Cost, ₽', vNum(t.total, 2)], ['Часы', vNum(t.hours, 2)], ['Ставка × часы, ₽', vNum(t.base, 2)], ['Премии, ₽', vNum(t.bonus, 2)], ['Удержания, ₽', vNum(t.penalty, 2)],
+              ['Без ставки', t.noRate, t.noRate ? 'red' : 'green'], ['Требует внимания', d.problems.length, d.problems.length ? 'gold' : 'green']]) +
+            vCard('Требует внимания', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'employee', l: 'Сотрудник' }, { k: 'text', l: 'Что сделать' }, { k: 'ref', l: 'Запись' }], d.problems, null, 'Нет')) +
+            vCard('По сотрудникам', vTable([{ k: 'employee', l: 'Сотрудник' }, { k: 'role', l: 'Роль' }, { k: 'shifts', l: 'Смен', t: 'num' }, { k: 'hours', l: 'Часы', t: 'num' }, { k: 'rate', l: 'Ставка, ₽/ч' }, { k: 'base', l: 'Ставка × часы, ₽', t: 'num' },
+              { k: 'bonus', l: 'Премии, ₽', t: 'num' }, { k: 'penalty', l: 'Удержания, ₽', t: 'num' }, { k: 'total', l: 'Итого, ₽', t: 'num' }], d.byEmployee, null, 'Нет смен и записей табеля')) +
+            vCard('Ставка в час', vForm([['pemp', 'Сотрудник (ФИО как в смене)', 'text'], ['prole', 'или роль — для всех без своей ставки', 'text'], ['prate', 'Ставка, ₽/ч *', 'number'], ['pfrom', 'Действует с *', 'date'], ['pcom', 'Комментарий', 'text']]) +
+              '<div class="mvbar">' + vBtn('Сохранить ставку', 'payRate', '', true) + '</div><small style="color:var(--muted)">Новая ставка закрывает прежнюю днём раньше; прошлые смены считаются по прежней ставке.</small>') +
+            vCard('Ставки', vTable([{ k: 'employee', l: 'Сотрудник' }, { k: 'role', l: 'Роль' }, { k: 'rate', l: '₽/ч', t: 'num' }, { k: 'from', l: 'С', t: 'date' }, { k: 'to', l: 'По', t: 'date' }, { l: 'Статус', html: true, f: function (x) { return m9St(x.status); } }], d.rates,
+              function (x) { return x.status === 'ACTIVE' ? vBtn('Отменить', 'payCancel', 'RATE|' + x.id) : ''; })) +
+            vCard('Часы без смены', vForm([['hdate', 'Дата *', 'date'], ['hemp', 'Сотрудник *', 'text'], ['hrole', 'Роль', 'text'], ['hours', 'Часы *', 'number'], ['hreason', 'Комментарий', 'text'], ['hsecond', 'Вторая смена за день', 'check']]) +
+              '<div class="mvbar">' + vBtn('Внести часы', 'payHours', '', true) + '</div><small style="color:var(--muted)">Смены из «Моей смены» учитываются сами. Если у сотрудника есть смена на эту дату — исправьте её часы ниже.</small>') +
+            vCard('Исправить часы смены или записи', vForm([['fid', 'Смена (ShiftID) или запись табеля (TS-…) *', 'text'], ['fhours', 'Часы *', 'number'], ['freason', 'Причина *', 'text']]) + '<div class="mvbar">' + vBtn('Исправить', 'payFix', '', true) + '</div>') +
+            vCard('Смены и табель', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'kind', l: 'Вид' }, { k: 'id', l: 'Запись' }, { k: 'employee', l: 'Сотрудник' }, { k: 'hours', l: 'Часы', t: 'num' }, { k: 'rate', l: '₽/ч', t: 'num' }, { k: 'amount', l: 'Сумма, ₽', t: 'num' },
+              { l: 'Признаки', f: function (x) { return (x.flagsRu || []).join(', '); } }], d.entries, function (x) { return /^TS-/.test(x.id) ? vBtn('Отменить', 'payCancel', 'TS|' + x.id) : ''; }, 'Нет')) +
+            vCard('Премия или удержание', vForm([['bdate', 'Дата *', 'date'], ['bemp', 'Сотрудник *', 'text'], ['btype', 'Вид', 'select', 'BONUS', [['BONUS', 'премия'], ['PENALTY', 'удержание']]], ['bamount', 'Сумма, ₽ *', 'number'], ['breason', 'Основание *', 'text']]) +
+              '<div class="mvbar">' + vBtn('Создать', 'payBonus', '', true) + '</div><small style="color:var(--muted)">Входит в Labor Cost после подтверждения другим сотрудником с правом закрытия периода.</small>') +
+            vCard('Премии и удержания', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'employee', l: 'Сотрудник' }, { k: 'typeRu', l: 'Вид' }, { k: 'amount', l: 'Сумма, ₽', t: 'num' }, { k: 'reason', l: 'Основание' }, { k: 'author', l: 'Автор' },
+              { l: 'Статус', html: true, f: function (x) { return m9St(x.status); } }, { k: 'decidedBy', l: 'Решение' }], d.bonuses, function (x) { return x.status === 'DRAFT' ? vBtn('Подтвердить', 'payOk', x.id, true) + vBtn('Отклонить', 'payNo', x.id) : ''; }, 'Нет')) +
+            '<small style="color:var(--muted)">' + esc(d.note) + '</small>');
+        });
       } else need(function (S) {
         if (k === 'prices') box(vCard('Новая цена продажи', vForm([['dish', 'Код ТТК или название *', 'text'], ['price', 'Цена, ₽ *', 'number'], ['source', 'Источник', 'select', 'MENU', [['MENU', 'меню'], ['CONTRACT', 'договор банкета']]], ['event', 'Банкет (для договора)', 'text'], ['dfrom', 'Действует с', 'date']]) +
           '<div class="mvbar">' + vBtn('Сохранить цену', 'price', '', true) + '</div><small style="color:var(--muted)">Цена продажи не рассчитывается от себестоимости: только меню, договор или факт продажи.</small>') +
@@ -4241,6 +4267,15 @@ VIEWS.finance = {
       });
     },
     period: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('dash'); },
+    payPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('pay'); },
+    payRate: function (a, btn) { vDo(btn, 'v74SaveRate', [JSON.stringify({ employee: vV('pemp'), role: vV('prole'), ratePerHour: vV('prate'), dateFrom: vV('pfrom'), comment: vV('pcom') })], 'Ставка сохранена', function () { VIEWS.finance.h.tab('pay'); }); },
+    payHours: function (a, btn) { vDo(btn, 'v74AddHours', [JSON.stringify({ date: vV('hdate'), employee: vV('hemp'), role: vV('hrole'), hours: vV('hours'), reason: vV('hreason'), allowSecond: vV('hsecond') })], 'Часы внесены', function () { VIEWS.finance.h.tab('pay'); }); },
+    payFix: function (a, btn) { var id = String(vV('fid') || '').trim(), o = { hours: vV('fhours'), reason: vV('freason') }; if (/^TS-/.test(id)) o.entryId = id; else o.shiftId = id;
+      vDo(btn, 'v74CorrectHours', [JSON.stringify(o)], 'Часы исправлены', function () { VIEWS.finance.h.tab('pay'); }); },
+    payCancel: function (arg, btn) { var p = String(arg).split('|'), why = prompt('Причина отмены'); if (!why) return; vDo(btn, 'v74CancelRecord', [JSON.stringify({ kind: p[0], id: p[1], reason: why })], 'Запись отменена', function () { VIEWS.finance.h.tab('pay'); }); },
+    payBonus: function (a, btn) { vDo(btn, 'v74AddBonus', [JSON.stringify({ date: vV('bdate'), employee: vV('bemp'), type: vV('btype'), amount: vV('bamount'), reason: vV('breason') })], function (d) { return d.note; }, function () { VIEWS.finance.h.tab('pay'); }); },
+    payOk: function (id, btn) { vDo(btn, 'v74DecideBonus', [JSON.stringify({ bonusId: id, decision: 'APPROVE' })], 'Подтверждено', function () { VIEWS.finance.h.tab('pay'); }); },
+    payNo: function (id, btn) { var why = prompt('Почему отклонить?'); if (!why) return; vDo(btn, 'v74DecideBonus', [JSON.stringify({ bonusId: id, decision: 'REJECT', comment: why })], 'Отклонено', function () { VIEWS.finance.h.tab('pay'); }); },
     rebuild: function (a, btn) { var V = VIEWS.finance; vDo(btn, 'v64RebuildLedger', [vV('from') || V._from || '', vV('to') || V._to || ''], function (d) { return 'Журнал пересобран: ' + d.lines + ' строк (' + d.from + ' — ' + d.to + '), новых снимков ' + d.snapshotsCreated; }, function () { if (V._tab === 'dash') V.h.tab('dash'); }); },
     dish: function () {
       var V = VIEWS.finance; V._dish = vV('dish'); if (!V._dish) { vMsg('Укажите блюдо', 'err'); return; }

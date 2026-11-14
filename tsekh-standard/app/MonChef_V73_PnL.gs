@@ -48,7 +48,8 @@ function _v73Fresh_() {
 /** P&L из сводки _v72Sum_: строки и коэффициенты. */
 function _v73Build_(S) {
   var t = S.totals, ec = JSON.parse(JSON.stringify(S.expByCategory || {})), R = t.revenue || 0;
-  var labor = _v64R2_(ec[MC_V73_LABOR_CAT] || 0), depr = _v64R2_(ec[MC_V73_DEPR_CAT] || 0); delete ec[MC_V73_LABOR_CAT]; delete ec[MC_V73_DEPR_CAT];
+  var laborExp = _v64R2_(ec[MC_V73_LABOR_CAT] || 0), laborBonus = _v64R2_(t.laborBonus || 0), laborBase = _v64R2_((t.labor || 0) - laborBonus);
+  var labor = _v64R2_(laborExp + laborBase + laborBonus), depr = _v64R2_(ec[MC_V73_DEPR_CAT] || 0); delete ec[MC_V73_LABOR_CAT]; delete ec[MC_V73_DEPR_CAT];
   var cats = MC_V64_EXP_CATS.filter(function (c) { return c !== MC_V73_LABOR_CAT && c !== MC_V73_DEPR_CAT; });
   Object.keys(ec).forEach(function (c) { if (cats.indexOf(c) < 0) cats.push(c); });
   var opex = _v64R2_(cats.reduce(function (a, c) { return a + (ec[c] || 0); }, 0));
@@ -65,7 +66,10 @@ function _v73Build_(S) {
   add('RETURNS', 'Возвраты', t.returnsCost, 'cost', 1);
   add('INVENTORY', 'Инвентаризация: недостача − излишек', inv, 'cost', 1);
   add('AFTER_LOSSES', 'Вклад после потерь', t.contributionAfterLosses, 'total');
-  add('LABOR', 'ФОТ (Labor Cost)', labor, 'cost', 1);
+  add('LABOR', 'ФОТ (Labor Cost), всего', labor, 'subtotal', 1);
+  if (laborBase || t.laborHours) add('LABOR_TIMESHEET', 'по сменам и табелю: ставка × часы (' + _v64R2_(t.laborHours || 0) + ' ч)', laborBase, 'cost', 2);
+  if (laborBonus) add('LABOR_BONUS', 'премии − удержания (подтверждённые)', laborBonus, 'cost', 2);
+  if (laborExp) add('LABOR_EXPENSE', 'расход «Фонд оплаты труда»', laborExp, 'cost', 2);
   cats.forEach(function (c) { if (ec[c]) add('OPEX:' + c, c, ec[c], 'cost', 1); });
   add('OPEX', 'Прочие управленческие расходы, всего', opex, 'subtotal', 1);
   if (t.corrections) add('CORRECTIONS', 'Корректировки закрытых периодов', t.corrections, 'cost', 1);
@@ -75,7 +79,8 @@ function _v73Build_(S) {
   var ratios = { foodCostPct: _v73Pct_(t.cogs, R), packagingPct: _v73Pct_(t.packaging, R), laborPct: _v73Pct_(labor, R), primeCostPct: _v73Pct_(t.cogs + t.packaging + labor, R),
     lossPct: _v73Pct_(losses, R), grossMarginPct: t.marginPct, ebitdaPct: _v73Pct_(ebitda, R), operatingMarginPct: _v73Pct_(op, R) };
   return { lines: L, ratios: ratios, figures: { revenue: R, cogs: t.cogs, packaging: t.packaging, gross: t.grossContribution, losses: losses, labor: labor, opex: opex, corrections: t.corrections,
-    ebitda: ebitda, depreciation: depr, operating: op, afterLosses: t.contributionAfterLosses }, totals: t };
+    ebitda: ebitda, depreciation: depr, operating: op, afterLosses: t.contributionAfterLosses, laborTimesheet: _v64R2_(laborBase + laborBonus), laborExpense: laborExp,
+    laborHours: _v64R2_(t.laborHours || 0), revenuePerLaborHour: t.laborHours > 0 ? _v64R2_(R / t.laborHours) : null }, totals: t };
 }
 function _v73Delta_(cur, prev) {
   if (cur === null || cur === undefined || prev === null || prev === undefined) return { prev: prev === undefined ? null : prev, delta: null, deltaPct: null };
@@ -86,7 +91,9 @@ function _v73Quality_(S, P) {
   var t = S.totals, w = [];
   if (t.missingSalePrice) w.push({ level: 'red', code: 'MISSING_SALE_PRICE', text: 'Продаж без цены: ' + t.missingSalePrice + ' — выручка занижена. Внесите цену меню.' });
   if (t.missingPrice) w.push({ level: 'red', code: 'MISSING_PRICE', text: 'Записей без цены закупки: ' + t.missingPrice + ' — себестоимость занижена.' });
-  if (t.revenue > 0 && !P.figures.labor) w.push({ level: 'gold', code: 'NO_LABOR', text: 'ФОТ за период не внесён: Labor cost и prime cost неполные. Внесите расход «Фонд оплаты труда» (табель — этап 4).' });
+  if (t.revenue > 0 && !P.figures.labor) w.push({ level: 'gold', code: 'NO_LABOR', text: 'ФОТ за период не внесён: Labor cost и prime cost неполные. Закрывайте смены, вносите часы в табель и ставки (Экономика → ФОТ).' });
+  if (t.laborNoRate) w.push({ level: 'red', code: 'LABOR_NO_RATE', text: 'Смен и записей табеля без ставки: ' + t.laborNoRate + ' — Labor cost занижен. Внесите ставку сотрудника или роли.' });
+  if (P.figures.laborTimesheet && P.figures.laborExpense) w.push({ level: 'gold', code: 'LABOR_DOUBLE', text: 'ФОТ есть и в табеле, и в расходе «Фонд оплаты труда» — проверьте, что расход не повторяет табель (например, только оклады и налоги).' });
   if (S.expByCategory && S.expByCategory['Без разбивки по статьям']) w.push({ level: 'gold', code: 'EXP_NO_SPLIT', text: 'Часть расходов посчитана до разбивки по статьям — нажмите «Обновить» с полным пересчётом.' });
   if (S.stale) w.push({ level: 'gold', code: 'STALE', text: S.lastSync ? 'Итоги сверялись ' + S.minutesSinceSync + ' мин назад — нажмите «Обновить».' : 'Итоги ещё не сверялись — нажмите «Обновить».' });
   if (S.lastSync && S.lastSync.closedChanged) w.push({ level: 'gold', code: 'CLOSED_CHANGED', text: 'Есть изменения операций в закрытых периодах: ' + S.lastSync.closedChanged + ' — нужна корректировка (реестр операций).' });
@@ -138,7 +145,9 @@ function v73GetCeoDashboard(token, fromDate, toDate) {
       k('LOSS_PCT', 'Потери', '%', P.ratios.lossPct, PP.ratios.lossPct, { max: T.lossPct }),
       k('EBITDA', 'EBITDA', '₽', f.ebitda, pf.ebitda),
       k('OPERATING', 'Операционная прибыль', '₽', f.operating, pf.operating),
-      k('PORTIONS', 'Продано порций', 'шт.', _v64R3_(qty), _v64R3_(pqty))
+      k('PORTIONS', 'Продано порций', 'шт.', _v64R3_(qty), _v64R3_(pqty)),
+      k('LABOR_HOURS', 'Часы труда', 'ч', f.laborHours, pf.laborHours, { lowerBetter: true }),
+      k('REVENUE_PER_HOUR', 'Выручка на час труда', '₽', f.revenuePerLaborHour, pf.revenuePerLaborHour)
     ];
     var signals = _v73Quality_(S, P);
     var over = function (code, v, max, text) { if (v !== null && v > max) signals.unshift({ level: 'red', code: code, text: text + ': ' + v + '% при ориентире ' + max + '%' }); };

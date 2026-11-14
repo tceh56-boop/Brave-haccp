@@ -21,11 +21,11 @@ var MC_V64_HEAD = ['LedgerID', 'RunID', 'Date', 'Stage', 'Direction', 'ObjectTyp
   'ProductID', 'Product', 'Qty', 'Unit', 'UnitPrice', 'Amount', 'Source', 'SourceRef', 'Employee', 'OperationID', 'TraceStatus', 'Flags', 'Note'];
 var MC_V64_STAGE_RU = { PURCHASE: 'Закупка', STORAGE: 'Хранение', DEFROST: 'Дефрост', PROCESSING: 'Зачистка и разделка', SEMI: 'Полуфабрикат', DISH: 'Блюдо',
   PACKAGING: 'Упаковка', ISSUE: 'Выдача', SALE: 'Продажа', RETURN: 'Возврат', WASTE: 'Отходы и брак', LAB: 'Лабораторный контроль', CORRECTION: 'Корректировка', EXPENSE: 'Управленческие расходы',
-  INVENTORY: 'Инвентаризация' };
+  INVENTORY: 'Инвентаризация', LABOR: 'Труд (смены, табель, премии)' };
 /** Причины списания (коды актов списания и других путей списания) — для разреза потерь. */
 var MC_V64_WASTE_REASON_RU = { STAFF: 'Питание персонала', SPOIL: 'Порча, брак', EXPIRED: 'Истёк срок годности', TASTING: 'Проработка блюд, дегустация', HOSPITALITY: 'Представительские расходы',
   SHORTAGE: 'Недостача по инвентаризации', OTHER: 'Прочее', MANUAL: 'Списание вручную', BATCH: 'Списание партии' };
-var MC_V64_FLAG_RU = { MISSING_PRICE: 'нет цены закупки', MISSING_SALE_PRICE: 'нет цены продажи', NO_BATCH: 'расход без партии', NO_PASSPORT: 'нет паспорта приёмки',
+var MC_V64_FLAG_RU = { NO_RATE: 'нет ставки сотрудника', LONG_SHIFT: 'смена длиннее 16 часов', MISSING_PRICE: 'нет цены закупки', MISSING_SALE_PRICE: 'нет цены продажи', NO_BATCH: 'расход без партии', NO_PASSPORT: 'нет паспорта приёмки',
   NO_SUPPLIER_DOC: 'нет поставщика или накладной', COST_DIFF: 'себестоимость выпуска отличается от расчёта по партиям', PRICE_FROM_MENU: 'цена из меню / договора',
   NO_ISSUE_BATCH: 'продажа без выдачи по партии', NORMATIVE_COST: 'себестоимость по нормативу ТТК', SALE_STOCK_SHORT: 'продажа: на складе не хватило', EXTRA_ALLOCATED: 'с доп. расходами партии',
   CHANGED_AFTER_SNAPSHOT: 'изменилось после снимка', CLOSED_PERIOD_CHANGED: 'изменение в закрытом периоде', BANQUET_NOT_CLOSED: 'банкет не закрыт',
@@ -440,6 +440,8 @@ function _v64Build_(rg) {
       product: String(_v64G_(xt, r, 'Category')), amount: _v64R2_(_v64Num_(_v64G_(xt, r, 'Amount'))), source: 'Финансы_Расходы', ref: String(_v64G_(xt, r, 'Document')), trace: 'NOT_APPLICABLE', flags: [],
       note: 'управленческий слой — не входит в продуктовую себестоимость' + (String(_v64G_(xt, r, 'Workshop')) ? ' · ' + _v64G_(xt, r, 'Workshop') : '') });
   });
+  // 9. «Финансы» этап 4: труд — смены и табель (ставка × часы), подтверждённые премии и удержания (MonChef_V74_Labor.gs)
+  if (typeof _v74LaborLines_ === 'function') _v74LaborLines_(push);
   lines.sort(function (a, b) { return (a.date ? a.date.getTime() : 0) - (b.date ? b.date.getTime() : 0); });
   return { lines: lines, batches: B, production: prodUnit };
 }
@@ -582,7 +584,8 @@ function _v64Snapshots_(lines, op) {
 /* ---------------- итоги ---------------- */
 function _v64Totals_(lines) {
   var t = { purchases: 0, extraCosts: 0, consumption: 0, semiOutput: 0, dishOutput: 0, issueCost: 0, packaging: 0, revenue: 0, cogs: 0, wasteCost: 0, defrostLoss: 0, returnsCost: 0,
-    quarantineReturns: 0, processingWasteValue: 0, labCost: 0, corrections: 0, expenses: 0, inventoryShortage: 0, inventorySurplus: 0, wasteByReason: {}, missingPrice: 0, missingSalePrice: 0, review: 0, missingEvidence: 0, lines: lines.length };
+    quarantineReturns: 0, processingWasteValue: 0, labCost: 0, corrections: 0, expenses: 0, inventoryShortage: 0, inventorySurplus: 0, wasteByReason: {}, missingPrice: 0, missingSalePrice: 0, review: 0, missingEvidence: 0, lines: lines.length,
+    labor: 0, laborHours: 0, laborBonus: 0, laborNoRate: 0 };
   lines.forEach(function (l) {
     var a = Number(l.amount) || 0;
     if (l.stage === 'PURCHASE' && l.dir === 'IN') { if (l.source === 'Финансы_Операции') t.extraCosts += a; else t.purchases += a; }
@@ -603,6 +606,7 @@ function _v64Totals_(lines) {
     if (l.stage === 'LAB') t.labCost += a;
     if (l.stage === 'CORRECTION') t.corrections += a;
     if (l.stage === 'EXPENSE') t.expenses += a;
+    if (l.stage === 'LABOR') { t.labor += a; if (l.objType === 'BONUS') t.laborBonus += a; else t.laborHours += Number(l.qty) || 0; if (l.flags.indexOf('NO_RATE') >= 0) t.laborNoRate++; }
     if (l.flags.indexOf('MISSING_PRICE') >= 0) t.missingPrice++;
     if (l.flags.indexOf('MISSING_SALE_PRICE') >= 0) t.missingSalePrice++;
     if (l.trace === 'REVIEW') t.review++;
@@ -624,6 +628,8 @@ function _v64Derive_(t) {
 /** Слагаемые итогов (без производных) — их хранят дневные итоги V72. */
 var MC_V64_SUM_KEYS = ['purchases', 'extraCosts', 'consumption', 'semiOutput', 'dishOutput', 'issueCost', 'packaging', 'revenue', 'cogs', 'wasteCost', 'defrostLoss', 'returnsCost',
   'quarantineReturns', 'processingWasteValue', 'labCost', 'corrections', 'expenses', 'inventoryShortage', 'inventorySurplus', 'missingPrice', 'missingSalePrice', 'review', 'missingEvidence', 'lines'];
+/** Слагаемые этапа 4 (труд): в дневных итогах — колонками справа, чтобы не сдвигать колонки листов этапов 2–3. */
+var MC_V64_SUM_KEYS2 = ['labor', 'laborHours', 'laborBonus', 'laborNoRate'];
 function _v64LineOut_(l) {
   return { date: l.date ? Utilities.formatDate(l.date, _mcTz_(), 'yyyy-MM-dd HH:mm') : '', stage: l.stage, stageRu: MC_V64_STAGE_RU[l.stage] || l.stage, dir: l.dir, objectType: l.objType || '', objectId: l.objId || '',
     batch: l.batch || '', parent: l.parent || '', production: l.production || '', event: l.event || '', dish: l.dish || '', productId: l.productId || '', product: l.product || '', qty: l.qty === undefined ? '' : _v64R3_(l.qty),

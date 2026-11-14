@@ -396,6 +396,14 @@ var TS_GATE_ = [
   { n: 'v73GetPnL', need: 'finance_view' },
   { n: 'v73GetCeoDashboard', need: 'finance_view' },
   { n: 'v73GetTargets', need: 'finance_view' },
-  { n: 'v73SetTargets', need: 'finance_edit', mut: true }
+  { n: 'v73SetTargets', need: 'finance_edit', mut: true },
+  // этап 4: Labor Cost — ставки, табель, премии (подтверждает другой сотрудник с правом закрытия периода)
+  { n: 'v74GetLabor', need: 'finance_view' },
+  { n: 'v74SaveRate', need: 'finance_edit', mut: true },
+  { n: 'v74AddHours', need: 'finance_edit', mut: true },
+  { n: 'v74CorrectHours', need: 'finance_edit', mut: true },
+  { n: 'v74CancelRecord', need: 'finance_edit', mut: true },
+  { n: 'v74AddBonus', need: 'finance_edit', mut: true },
+  { n: 'v74DecideBonus', need: 'finance_close', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();

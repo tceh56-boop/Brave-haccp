@@ -20,10 +20,10 @@ _UI_BUILDERS_.finance = function (token, opts, s) {
   }).concat(quality) : null;
   var ceoTabs = !pnl ? [] : [
     { title: 'P&L', columns: [_uiCol_('title', 'Статья'), _uiCol_('amount', 'Сумма, ₽', 'num'), _uiCol_('pct', '% выручки', 'num'), _uiCol_('prev', 'Прошлый период, ₽', 'num'), _uiCol_('delta', 'Изменение, ₽', 'num'), _uiCol_('deltaPct', 'Изменение, %', 'num')],
-      rows: (pnl.lines || []).map(function (l) { return Object.assign({}, l, { title: (l.level ? '— ' : '') + l.title }); }) },
+      rows: (pnl.lines || []).map(function (l) { return Object.assign({}, l, { title: (l.level === 2 ? '    · ' : l.level ? '— ' : '') + l.title }); }) },
     { title: 'Сигналы', columns: [_uiCol_('levelRu', 'Важность'), _uiCol_('text', 'Что происходит')],
       rows: ((ceo && ceo.signals) || []).map(function (g) { return { levelRu: g.level === 'red' ? 'Срочно' : 'Внимание', text: g.text }; }) },
-    { title: 'По дням', columns: [_uiCol_('day', 'День'), _uiCol_('revenue', 'Выручка, ₽', 'num'), _uiCol_('cogs', 'Себестоимость, ₽', 'num'), _uiCol_('gross', 'Валовая прибыль, ₽', 'num'), _uiCol_('marginPct', 'Маржа, %', 'num'), _uiCol_('foodCostPct', 'Food cost, %', 'num'), _uiCol_('waste', 'Списания, ₽', 'num'), _uiCol_('expenses', 'Расходы, ₽', 'num')],
+    { title: 'По дням', columns: [_uiCol_('day', 'День'), _uiCol_('revenue', 'Выручка, ₽', 'num'), _uiCol_('cogs', 'Себестоимость, ₽', 'num'), _uiCol_('gross', 'Валовая прибыль, ₽', 'num'), _uiCol_('marginPct', 'Маржа, %', 'num'), _uiCol_('foodCostPct', 'Food cost, %', 'num'), _uiCol_('waste', 'Списания, ₽', 'num'), _uiCol_('labor', 'ФОТ по табелю, ₽', 'num'), _uiCol_('laborHours', 'Часы', 'num'), _uiCol_('expenses', 'Расходы, ₽', 'num')],
       rows: (ceo && ceo.byDay) || [] }
   ];
   return {
