@@ -325,6 +325,13 @@ var TS_GATE_ = [
   { n: 'tsLsNormsSync', need: 'personnel|haccp_approve', mut: true, f: 'labor_safety' },
   { n: 'tsLsCreateAct', need: 'personnel|haccp|documents', mut: true, f: 'labor_safety' },
   { n: 'tsLsGetAct', need: '*', f: 'labor_safety' },
+  // формы первичных документов общепита (ОП-3, 7, 10, 11, 12, 18, 21, 23) — TS_OpForms.gs
+  { n: 'tsOpList', need: 'finance_view|finance_edit|stock_view|stock|documents_view|documents|prod_manage|reports', f: 'economics' },
+  { n: 'tsOpPrefill', need: 'finance_view|finance_edit|stock_view|stock|documents|prod_manage|reports', f: 'economics' },
+  { n: 'tsOpPrice', need: 'finance_view|finance_edit|stock_view|stock|documents|prod_manage|reports', f: 'economics' },
+  { n: 'tsOpCreate', need: 'finance_edit|stock|documents|prod_manage', mut: true, f: 'economics' },
+  { n: 'tsOpGet', need: 'finance_view|finance_edit|stock_view|stock|documents_view|documents|prod_manage|reports', f: 'economics' },
+  { n: 'tsOpPdf', need: 'finance_view|finance_edit|stock_view|stock|documents_view|documents|prod_manage|reports', mut: true, f: 'economics' },
   { n: 'tsContractsList', need: 'documents_view|documents', f: 'contracts' },
   { n: 'tsContractSave', need: 'documents', mut: true, f: 'contracts' },
   { n: 'tsContractUpload', need: 'documents', mut: true, f: 'contracts' },
