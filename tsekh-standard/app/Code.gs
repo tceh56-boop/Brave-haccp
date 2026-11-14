@@ -5330,11 +5330,17 @@ function stockWriteOff(name, qty, unit, comment, token) {
      // расход сверх остатка запрещён: считаем доступное по допущенным партиям (в базовой единице)
      var avail = _mcAvailableBase_(name, unit || 'г', true), need = _toBaseUnitServer_(q, unit || 'г').qty;
      if (need > avail + 0.0005) { _endOp_(_op, 'FAILED'); return 'err:STOCK_SHORTAGE: ' + ('Списать ' + q + ' ' + (unit || 'г') + ' нельзя: доступно ' + Math.round(avail * 1000) / 1000 + ' (в базовой единице). Партии в карантине и браке не списываются этим способом.'); }
-     _logStockOp_('Списание', name, q, unit || 'г', 0, 'Вручную', comment || '');
      // ТЗ §10: партии уменьшаются по FEFO. Раньше _fifoConsume_ не вызывал никто —
      // партии оставались «полными» навсегда, и контроль сроков тревожил по уже
      // списанному товару.
-     _fifoConsume_(name, unit || 'г', q, { allowExpired: true });
+     var got = _fifoConsume_(name, unit || 'г', q, { allowExpired: true });
+     // этап 1 «Финансы»: стоимость — по ценам списанных партий, партии связаны с операцией (экономика видит, что и откуда списано)
+     var cost = typeof _mcCostOfConsumed_ === 'function' ? _mcCostOfConsumed_(name, q, unit || 'г', got) : null;
+     var opId = _logStockOp_('Списание', name, q, unit || 'г', cost ? cost.price : 0, 'Вручную', comment || '');
+     (got || []).forEach(function (g) {
+       try { if (g.batchId && typeof _mcCreateTraceLink_ === 'function') _mcCreateTraceLink_('BATCH', String(g.batchId), 'СПИСАНА_ВРУЧНУЮ', 'STOCK_OP', opId,
+         { factId: opId, actor: _author_(_op).фио, source: 'Вручную', weight: g.qty, unit: g.unit }); } catch (te) {}
+     });
      _endOp_(_op); return 'ok';
    } catch (e) { _endOp_(_op, 'FAILED'); return 'err:' + e; }
   });
@@ -6880,7 +6886,9 @@ function writeOffExpiredBatch(batchId, comment, token) {
           var remain = parseFloat(v[i][9]) || 0;
           if (remain <= 0) return JSON.stringify({ error: 'empty' });
           var name = v[i][1], unit = v[i][2], price = parseFloat(v[i][6]) || 0;
-          _logStockOp_('Списание', name, remain, unit, price, 'Срок годности истёк', comment || 'Партия ' + batchId);
+          var opId = _logStockOp_('Списание', name, remain, unit, price, 'Срок годности истёк', comment || 'Партия ' + batchId);
+          try { if (typeof _mcCreateTraceLink_ === 'function') _mcCreateTraceLink_('BATCH', String(batchId), 'СПИСАНА_ПО_СРОКУ', 'STOCK_OP', opId,
+            { factId: opId, actor: _author_(_op).фио, source: 'Срок годности истёк', weight: remain, unit: unit }); } catch (te) {}
           sh.getRange(i + 1, 10).setValue(0);        // Остаток = 0
           sh.getRange(i + 1, 11).setValue('expired'); // Статус
           _endOp_(_op); return JSON.stringify({ ok: true });
@@ -10661,22 +10669,25 @@ function getSalesStats(dateFrom, dateTo) {
   try {
     var sh = _book_().getSheetByName('Ж_Продажи');
     if (!sh) return JSON.stringify({ error: 'not-found' });
-    var v = sh.getDataRange().getValues();
     var from = _parseDateStr_(dateFrom);
     var to = _parseDateStr_(dateTo);
     if (to) to.setDate(to.getDate() + 1);
-
+    // этап 1 «Финансы»: один источник выручки — те же строки и то же правило суммы, что в экономике V64
+    // (с утверждёнными исправлениями журнала); раньше здесь суммировалась только колонка «Сумма».
+    if (typeof _v64Drop_ === 'function') _v64Drop_();
+    var rows = _mcSaleRows_();
     var totalSum = 0, totalQty = 0, count = 0;
     var byDish = {};
     var bySeller = {};
-    for (var i = 1; i < v.length; i++) {
-      var d = _parseDateStr_(v[i][1]);
+    for (var i = 0; i < rows.length; i++) {
+      var d = rows[i].date;
+      if (!d && (from || to)) continue;
       if (from && d < from) continue;
-      if (to && d > to) continue;
-      var qty = parseFloat(v[i][4]) || 0;
-      var sum = parseFloat(v[i][6]) || 0;
-      var dish = v[i][3] || '—';
-      var seller = v[i][7] || '—';
+      if (to && d >= to) continue;
+      var qty = rows[i].qty || 0;
+      var sum = _mcSaleAmount_(rows[i]);
+      var dish = rows[i].dish || '—';
+      var seller = rows[i].seller || '—';
       totalSum += sum; totalQty += qty; count++;
       byDish[dish] = (byDish[dish] || { qty: 0, sum: 0 });
       byDish[dish].qty += qty; byDish[dish].sum += sum;
@@ -14944,6 +14955,13 @@ function _mcCorrectionsSheet_() {
   ]);
 }
 
+/** Этап 1 «Финансы»: исправление строки журнала продаж в закрытом финансовом периоде меняло бы выручку задним числом.
+ *  Возвращает текст отказа или ''. Другие журналы не затрагиваются. */
+function _mcFinClosedForJournalRow_(j, row) {
+  if (!j || j.id !== 'J36' || typeof _v64AssertOpen_ !== 'function') return '';
+  var c = (j.columns || []).indexOf('Дата'); if (c < 0 || !row || row[c] === '' || row[c] === undefined) return '';
+  try { _v64AssertOpen_(row[c], 'исправление журнала продаж'); return ''; } catch (e) { return String(e.message || e).replace(/^VALIDATION:\s*/, ''); }
+}
 function createJournalCorrection(journalId, rowNumber, correctedJson, reason, token) {
   try {
     var session = _requireAuth_(token, 'journals');
@@ -14962,6 +14980,7 @@ function createJournalCorrection(journalId, rowNumber, correctedJson, reason, to
     for (var ci = 1; ci < cv.length; ci++) if (String(cv[ci][1]) === String(j.id) && Number(cv[ci][5]) === row && String(cv[ci][13]) === 'OPEN')
       return coreErr('CORRECTION_EXISTS', 'По этой строке уже есть корректировка на согласовании: ' + cv[ci][0]);
     if (!Object.keys(corrected).length) return coreErr('INVALID_CORRECTION', 'Укажите, какие значения исправляются');
+    var fin = _mcFinClosedForJournalRow_(j, original); if (fin) return coreErr('FINANCE_PERIOD_CLOSED', fin);
     var correctionId = _mcUuid_();
     var now = new Date();
     _mcCorrectionsSheet_().appendRow([
@@ -15012,6 +15031,8 @@ function decideJournalCorrection(correctionId, decision, comment, token) {
         if (String(v[i][13]) !== 'OPEN') return coreErr('VALIDATION', 'Корректировка уже ' + (v[i][13] === 'APPROVED' ? 'утверждена' : 'отклонена'));
         var me = _mcSessionFullName_(session);
         if (String(v[i][9]) === String(session.user_id || '') && session.user_id) return coreErr('FORBIDDEN', 'Свой запрос на исправление утверждает другой ответственный');
+        if (d === 'APPROVED') { var orig = []; try { orig = JSON.parse(v[i][6] || '[]'); } catch (pe) {}
+          var fin = _mcFinClosedForJournalRow_(_mcJournal_(v[i][1]), orig); if (fin) return coreErr('FINANCE_PERIOD_CLOSED', fin); }
         sh.getRange(i + 1, 14, 1, 5).setValues([[d, me, session.role || '', new Date(), String(comment || '').trim()]]);
         try {
           _audit_({ session: session, tenant: _defaultTenant_(), id: correctionId, type: 'CORRECTION' },

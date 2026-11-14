@@ -4066,8 +4066,12 @@ VIEWS.sales = {
       var g = vV('sk') === 'goods';
       if (!vV('sd') || !(Number(vV('sq')) > 0) || vV('sp') === '') { vMsg('Нужны ' + (g ? 'товар' : 'блюдо') + ', количество и цена', 'err'); return; }
       var text = '';
-      vDo(btn, 'mcSaleAdd', [JSON.stringify({ dish: vV('sd'), kind: vV('sk'), unit: vV('su'), qty: vV('sq'), price: vV('sp'), sum: vV('ss'), seller: vV('se'), date: vV('sdt'), time: vV('stm'), check: vV('sc') })],
+      // номер запроса живёт до успешной записи: повтор после обрыва связи не создаёт вторую продажу
+      window._saleReq = window._saleReq || ('rq' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+      vDo(btn, 'mcSaleAdd', [JSON.stringify({ dish: vV('sd'), kind: vV('sk'), unit: vV('su'), qty: vV('sq'), price: vV('sp'), sum: vV('ss'), seller: vV('se'), date: vV('sdt'), time: vV('stm'), check: vV('sc'), requestId: window._saleReq })],
         function (d) {
+          window._saleReq = null;
+          if (d.duplicate) return d.note || 'Эта продажа уже записана';
           var s = d.stock;
           text = 'Продажа записана: ' + d.dish + ' × ' + String(d.qty).replace('.', ',') + ' ' + (d.unit || '') + ' = ' + vNum(d.sum, 2) + ' ₽' +
             (s ? '. Склад: ' + s.statusRu + (s.lines && s.lines.length ? ', партий: ' + s.lines.length : '') + (s.short && s.short.length ? '; не хватило: ' + s.short.map(function (x) { return x.product + ' ' + String(x.qty).replace('.', ',') + ' ' + x.unit; }).join(', ') : '') : '');

@@ -20,12 +20,17 @@ var MC_V64 = { LEDGER: 'Экономика_Движение_V64' };
 var MC_V64_HEAD = ['LedgerID', 'RunID', 'Date', 'Stage', 'Direction', 'ObjectType', 'ObjectID', 'BatchID', 'ParentBatchID', 'ProductionID', 'EventID',
   'ProductID', 'Product', 'Qty', 'Unit', 'UnitPrice', 'Amount', 'Source', 'SourceRef', 'Employee', 'OperationID', 'TraceStatus', 'Flags', 'Note'];
 var MC_V64_STAGE_RU = { PURCHASE: 'Закупка', STORAGE: 'Хранение', DEFROST: 'Дефрост', PROCESSING: 'Зачистка и разделка', SEMI: 'Полуфабрикат', DISH: 'Блюдо',
-  PACKAGING: 'Упаковка', ISSUE: 'Выдача', SALE: 'Продажа', RETURN: 'Возврат', WASTE: 'Отходы и брак', LAB: 'Лабораторный контроль', CORRECTION: 'Корректировка', EXPENSE: 'Управленческие расходы' };
+  PACKAGING: 'Упаковка', ISSUE: 'Выдача', SALE: 'Продажа', RETURN: 'Возврат', WASTE: 'Отходы и брак', LAB: 'Лабораторный контроль', CORRECTION: 'Корректировка', EXPENSE: 'Управленческие расходы',
+  INVENTORY: 'Инвентаризация' };
+/** Причины списания (коды актов списания и других путей списания) — для разреза потерь. */
+var MC_V64_WASTE_REASON_RU = { STAFF: 'Питание персонала', SPOIL: 'Порча, брак', EXPIRED: 'Истёк срок годности', TASTING: 'Проработка блюд, дегустация', HOSPITALITY: 'Представительские расходы',
+  SHORTAGE: 'Недостача по инвентаризации', OTHER: 'Прочее', MANUAL: 'Списание вручную', BATCH: 'Списание партии' };
 var MC_V64_FLAG_RU = { MISSING_PRICE: 'нет цены закупки', MISSING_SALE_PRICE: 'нет цены продажи', NO_BATCH: 'расход без партии', NO_PASSPORT: 'нет паспорта приёмки',
   NO_SUPPLIER_DOC: 'нет поставщика или накладной', COST_DIFF: 'себестоимость выпуска отличается от расчёта по партиям', PRICE_FROM_MENU: 'цена из меню / договора',
   NO_ISSUE_BATCH: 'продажа без выдачи по партии', NORMATIVE_COST: 'себестоимость по нормативу ТТК', SALE_STOCK_SHORT: 'продажа: на складе не хватило', EXTRA_ALLOCATED: 'с доп. расходами партии',
   CHANGED_AFTER_SNAPSHOT: 'изменилось после снимка', CLOSED_PERIOD_CHANGED: 'изменение в закрытом периоде', BANQUET_NOT_CLOSED: 'банкет не закрыт',
-  WASTE_ABOVE_NORM: 'отходы выше нормы', NO_UNIT_MATCH: 'единицы не сопоставимы', MASS_NOT_MEASURED: 'масса не измерялась' };
+  WASTE_ABOVE_NORM: 'отходы выше нормы', NO_UNIT_MATCH: 'единицы не сопоставимы', MASS_NOT_MEASURED: 'масса не измерялась',
+  AVG_PRICE: 'оценка по средней цене остатка (партия не определена или без цены)', JOURNAL_CORRECTED: 'по утверждённому исправлению журнала' };
 
 /* ---------------- служебное ---------------- */
 function _v64Sheet_(name, head) {
@@ -42,7 +47,8 @@ function _v64Tab_(name) {
   if (sh && sh.getLastRow() >= 1) {
     var v = sh.getDataRange().getValues(), h = v[0];
     for (var i = 0; i < h.length; i++) { var k = String(h[i] || '').trim(); if (k && !(k in t.idx)) t.idx[k] = i; }
-    t.rows = v.slice(1).filter(function (r) { return r.some(function (x) { return x !== '' && x !== null; }); });
+    t.rowNos = [];   // номер строки листа для каждой строки rows (пустые строки пропускаются — номер по индексу врал)
+    for (var j = 1; j < v.length; j++) if (v[j].some(function (x) { return x !== '' && x !== null; })) { t.rows.push(v[j]); t.rowNos.push(j + 1); }
   }
   return (_V64_TAB_[name] = t);
 }
@@ -108,9 +114,15 @@ function _v64Batches_() {
         qty: _v64Num_(_v64G_(p, pr, 'Кол-во')), by: String(_v64G_(p, pr, 'Принял')), op: String(_v64G_(p, pr, 'OperationID')), parent: String(_v64G_(p, pr, 'ParentBatchID')),
         vsd: String(_v64G_(p, pr, 'ВСД')) } : null,
       extra: 0, extraNotes: [] };
+    // излишек, найденный ревизией без партии (V49): цены закупки нет — оценка по средней цене остатка, с признаком
+    if (out[id].source === 'REVISION_FOUND' && !(out[id].price > 0)) {
+      var avg = 0; try { avg = _currentAvgPrice_(out[id].product, out[id].unit) || 0; } catch (e) { avg = 0; }
+      if (avg > 0) { out[id].price = avg; out[id].priceSource = 'AVG'; }
+    }
   });
   return out;
 }
+function _v64Found_(b) { return b.source === 'REVISION_FOUND'; }
 function _v64Produced_(b) { return /^Производство\s/.test(b.source) || /^Выпуск/.test(b.source); }
 function _v64ProcessedChild_(b) { return /^(Зачистка|Разбор)\s/.test(b.source) || !!(b.pass && b.pass.parent); }
 /** Цена единицы партии с доп. расходами (доставка, скидки, лаборатория партии) — для оценки расхода. */
@@ -159,7 +171,7 @@ function _v64Build_(rg) {
   var push = function (o) { if (_v64In_(o.date, rg)) lines.push(o); };
   // 1. закупка
   Object.keys(B).forEach(function (id) {
-    var b = B[id]; if (_v64Produced_(b) || _v64ProcessedChild_(b)) return;
+    var b = B[id]; if (_v64Produced_(b) || _v64ProcessedChild_(b) || _v64Found_(b)) return;   // излишек ревизии — не закупка (этап «Инвентаризация»)
     var flags = [], trace = 'PASS', amount = 0;
     if (!(b.price > 0)) { flags.push('MISSING_PRICE'); trace = 'REVIEW'; }
     else amount = b.pass && _v64Num_(b.pass.cost) > 0 && Math.abs(_v64Num_(b.pass.cost) - b.qty * b.price) <= Math.max(1, b.qty * b.price * 0.02) ? _v64Num_(b.pass.cost) : b.qty * b.price;
@@ -179,7 +191,7 @@ function _v64Build_(rg) {
     var qb = b ? _v64Conv_(q, u, b.unit) : null, pr = _v64EffPrice_(b), val = qb === null ? 0 : qb * pr;
     var mk = function (stage, dir, note, amount) { var o = JSON.parse(JSON.stringify(base)); o.date = d; o.stage = stage; o.dir = dir; o.qty = q; o.unit = u; o.price = qb === null ? '' : pr; o.amount = _v64R2_(amount); o.note = note;
       if (b && !(b.price > 0) && amount === 0 && dir !== 'INFO') { o.flags.push('MISSING_PRICE'); o.trace = 'REVIEW'; } if (b && qb === null && q) o.flags.push('NO_UNIT_MATCH'); return o; };
-    if (type === 'BATCH_WASTE') push(mk('WASTE', 'OUT', 'списание партии: ' + reason, val));
+    if (type === 'BATCH_WASTE') { var ow = mk('WASTE', 'OUT', 'списание партии: ' + reason, val); ow.reason = 'BATCH'; push(ow); }
     else if (type === 'BATCH_RETURN') push(mk('RETURN', 'OUT', 'возврат поставщику: ' + reason, val));
     else if (type === 'BATCH_USE' || type === 'BATCH_PARTIAL_USE') push(mk('STORAGE', 'OUT', 'расход партии: ' + reason, val));
     else if (type === 'PROCESSING_WASTE' && /размораж/i.test(reason)) push(mk('DEFROST', 'OUT', 'потеря массы при дефросте (отдельно, не снижает цену единицы): ' + reason, val));
@@ -187,6 +199,62 @@ function _v64Build_(rg) {
     else if (type === 'MOVE' || type === 'OPEN_CONTAINER' || type === 'STORAGE_ASSIGNED' || type === 'RECALCULATE_EXPIRY') push(mk('STORAGE', 'INFO', (MC_BL_EVT_RU_[type] || type) + (reason ? ': ' + reason : ''), 0));
     else if (type === 'DEFROST_FINISH') push(mk('DEFROST', 'INFO', 'разморожена' + (reason ? ': ' + reason : ''), 0));
     else if (type === 'CORRECTION') push(mk('CORRECTION', 'INFO', 'корректировка партии: ' + reason, 0));
+  });
+  // 2a. списание по акту (MonChef_WriteOff: питание персонала, порча, истёк срок, проработка, представительские, недостача, прочее).
+  //     Акт уменьшает партии по FEFO, но событий партии не пишет — раньше эти потери в экономику не попадали. Оценка — по цене списанных партий.
+  var batchLine = function (o, g) {   // строка расхода конкретной партии по её цене (с доп. расходами); g: {batchId, qty, unit}
+    var b = B[String(g.batchId)], q = _v64Num_(g.qty), u = String(g.unit || (b ? b.unit : o.unit || 'г')), qb = b ? _v64Conv_(q, u, b.unit) : null, pr = _v64EffPrice_(b), fl = [];
+    if (!b) fl.push('NO_BATCH'); else if (!(b.price > 0)) fl.push('MISSING_PRICE');
+    if (b && qb === null && q) fl.push('NO_UNIT_MATCH');
+    if (b && b.priceSource === 'AVG') fl.push('AVG_PRICE');
+    if (b && b.extra) fl.push('EXTRA_ALLOCATED');
+    var x = JSON.parse(JSON.stringify(o)); x.date = o.date; x.batch = String(g.batchId); x.product = b ? b.product : (o.product || ''); x.productId = b ? b.productId : '';
+    x.qty = q; x.unit = u; x.price = qb === null ? '' : pr; x.amount = _v64R2_(qb === null ? 0 : qb * pr); x.flags = fl;
+    x.trace = !b ? 'MISSING_EVIDENCE' : (fl.indexOf('MISSING_PRICE') >= 0 || fl.indexOf('NO_UNIT_MATCH') >= 0 || fl.indexOf('AVG_PRICE') >= 0 ? 'REVIEW' : 'PASS');
+    return x;
+  };
+  var wo = _v64Tab_('Акты_Списания');
+  wo.rows.forEach(function (r) {
+    var act = String(_v64G_(wo, r, 'Акт')); if (!act) return;
+    var d = _v64Date_(_v64G_(wo, r, 'Дата')), code = String(_v64G_(wo, r, 'Причина (код)') || 'OTHER'), why = String(_v64G_(wo, r, 'Причина')), cm = String(_v64G_(wo, r, 'Комментарий'));
+    var done = []; try { done = JSON.parse(String(_v64G_(wo, r, 'Списано со склада (JSON)', '[]')) || '[]'); } catch (eJ) { done = []; }
+    var base = { date: d, stage: 'WASTE', dir: 'OUT', objType: 'WRITEOFF_ACT', objId: act, source: 'Акты_Списания', ref: act, employee: String(_v64G_(wo, r, 'Составил')),
+      op: String(_v64G_(wo, r, 'OperationID')), reason: code, note: 'акт списания ' + act + ': ' + (why || MC_V64_WASTE_REASON_RU[code] || code) + (cm ? ' · ' + cm : '') };
+    done.forEach(function (x) {
+      var unit = String(x.unit || 'г'), need = _v64Num_(x.qty), covered = 0;
+      (x.batches || []).forEach(function (g) { push(batchLine(Object.assign({}, base, { product: x.name, unit: unit }), g)); var c = _v64Conv_(_v64Num_(g.qty), g.unit || unit, unit); covered += c === null ? 0 : c; });
+      var rest = need - covered;
+      if (rest > 0.0005) push(Object.assign({}, base, { product: String(x.name || ''), qty: _v64R3_(rest), unit: unit, price: _v64Num_(x.price), amount: _v64R2_(rest * _v64Num_(x.price)),
+        trace: 'REVIEW', flags: ['NO_BATCH', 'AVG_PRICE'], note: base.note + ' · не списано с партий: оценка по средней цене из акта' }));
+    });
+  });
+  // 2b. списание вне акта: «Вручную» (stockWriteOff) и «Срок годности истёк» (writeOffExpiredBatch) — по журналу склада.
+  //     Партии берутся из связей прослеживаемости операции; старые записи без связей — по цене из журнала склада, с признаком.
+  var tlw = _v64Tab_('TRACE_LINKS'), woLinks = {};
+  tlw.rows.forEach(function (r) { var rel = String(_v64G_(tlw, r, 'Relation')); if (rel !== 'СПИСАНА_ВРУЧНУЮ' && rel !== 'СПИСАНА_ПО_СРОКУ') return;
+    var k = String(_v64G_(tlw, r, 'ToID')); (woLinks[k] = woLinks[k] || []).push({ batchId: String(_v64G_(tlw, r, 'FromID')), qty: _v64G_(tlw, r, 'Weight'), unit: String(_v64G_(tlw, r, 'Unit')) }); });
+  var so = _v64Tab_('Склад_Операции');
+  so.rows.forEach(function (r) {
+    if (String(_v64G_(so, r, 'Тип')) !== 'Списание') return;
+    var src = String(_v64G_(so, r, 'Источник')), code = src === 'Вручную' ? 'MANUAL' : src === 'Срок годности истёк' ? 'EXPIRED' : ''; if (!code) return;   // акты и партии — выше
+    var id = String(_v64G_(so, r, 'ID')), q = _v64Num_(_v64G_(so, r, 'Кол-во')), u = String(_v64G_(so, r, 'Ед.изм') || 'г'), cm = String(_v64G_(so, r, 'Комментарий'));
+    var base = { date: _v64Date_(_v64G_(so, r, 'Дата')), stage: 'WASTE', dir: 'OUT', objType: 'STOCK_OP', objId: id, product: String(_v64G_(so, r, 'Продукт')), unit: u, source: 'Склад_Операции', ref: id,
+      reason: code, note: (MC_V64_WASTE_REASON_RU[code] || src) + (cm ? ': ' + cm : '') };
+    var links = woLinks[id] || [];
+    if (!links.length && code === 'EXPIRED') { var m = /Партия\s+(\S+)/.exec(cm); if (m && B[m[1]]) links = [{ batchId: m[1], qty: q, unit: u }]; }
+    if (links.length) links.forEach(function (g) { push(batchLine(base, g)); });
+    else push(Object.assign({}, base, { qty: q, price: _v64Num_(_v64G_(so, r, 'Цена за ед.')), amount: _v64R2_(_v64Num_(_v64G_(so, r, 'Сумма'))), trace: 'REVIEW', flags: ['NO_BATCH', 'AVG_PRICE'],
+      note: base.note + ' · партии не записаны (запись до этапа 1): оценка по цене журнала склада' }));
+  });
+  // 2c. ревизия (V49): недостача и излишек по партиям — отдельный этап «Инвентаризация», по цене партии.
+  var ra = _v64Tab_('Ревизии_Корректировки_V49');
+  ra.rows.forEach(function (r) {
+    var type = String(_v64G_(ra, r, 'AdjustmentType')); if (type !== 'SHORTAGE' && type !== 'EXCESS') return;
+    var bid = String(_v64G_(ra, r, 'BatchID')), b = B[bid], dq = Math.abs(_v64Num_(_v64G_(ra, r, 'DeltaQty'))), rev = String(_v64G_(ra, r, 'RevisionID')), why = String(_v64G_(ra, r, 'Reason'));
+    var x = batchLine({ date: _v64Date_(_v64G_(ra, r, 'CreatedAt')), stage: 'INVENTORY', dir: type === 'SHORTAGE' ? 'OUT' : 'IN', objType: 'REVISION', objId: String(_v64G_(ra, r, 'AdjustmentID')),
+      product: String(_v64G_(ra, r, 'Product')), source: 'Ревизии_Корректировки_V49', ref: rev, employee: String(_v64G_(ra, r, 'CreatedBy')),
+      note: (type === 'SHORTAGE' ? 'недостача' : 'излишек') + ' по ревизии ' + rev + (why ? ': ' + why : '') }, { batchId: bid, qty: dq, unit: b ? b.unit : String(_v64G_(ra, r, 'Unit')) });
+    push(x);
   });
   // 3. зачистка и разделка: стоимость взятого сырья → выход по массе полезного выхода
   var acts = _v64Tab_('Разбор_Акты'), al = _v64Tab_('Разбор_Строки'), linesByAct = {};
@@ -295,7 +363,7 @@ function _v64Build_(rg) {
     push({ date: x.date, stage: 'SALE', dir: 'OUT', objType: 'BANQUET', objId: e, event: e, product: x.name, qty: x.qty, unit: 'порц.', price: x.qty > 0 ? x.cost / x.qty : 0, amount: _v64R2_(x.cost),
       source: 'Выдача_V28', ref: x.id, trace: 'REVIEW', flags: ['BANQUET_NOT_CLOSED'], note: 'банкет не закрыт: себестоимость выданного (обслужено/возврат/брак не распределены)' }); }); });
   // 7. продажи: выручка (J36) и себестоимость продаж в зал
-  var prices = _v64MenuPrices_(), st7 = _v64Tab_('Ж_Продажи'), wt = _v64Tab_('Продажи_Списание_V71'), v71 = {};
+  var prices = _v64MenuPrices_(), wt = _v64Tab_('Продажи_Списание_V71'), v71 = {};
   wt.rows.forEach(function (r) { var k = String(_v64G_(wt, r, 'SaleID', '')); if (k) v71[k] = r; });
   var ucFor = function (name, d) {
     var arr = (dishUnitCost[_v64Key_(name)] || []).filter(function (x) { return !d || !x.d || x.d <= d; });
@@ -303,48 +371,48 @@ function _v64Build_(rg) {
     if (arr.length) return { uc: arr[arr.length - 1].uc, how: 'NO_ISSUE_BATCH' };
     var n = _v64NormCost_(name); return n.cost > 0 ? { uc: n.cost, how: 'NORMATIVE_COST', missing: n.missing } : null;
   };
-  st7.rows.forEach(function (r, i) {
-    var dish = String(_v64G_(st7, r, 'Блюдо')); if (!dish) return;
-    var d = _v64Date_(_v64G_(st7, r, 'Внесено')) || _v64Date_(_v64G_(st7, r, 'Дата')), dd = _v64Date_(_v64G_(st7, r, 'Дата')) || d;
-    var q = _v64Num_(_v64G_(st7, r, 'Количество')), p = _v64G_(st7, r, 'Цена'), sum = _v64G_(st7, r, 'Сумма'), seller = String(_v64G_(st7, r, 'ФИО продавца'));
-    var m = /Выдача банкета\s+(\S+)/.exec(seller), ev4 = m ? m[1] : '', flags = [], trace = 'PASS', price = _v64Num_(p), amount = sum !== '' ? _v64Num_(sum) : q * price;
+  _mcSaleRows_().forEach(function (s) {
+    var dish = s.dish; if (!dish) return;
+    var d = s.entered || s.date, dd = s.date || d, sid = s.saleId, oid = s.id;
+    var q = s.qty, p = s.price, sum = s.sum, seller = s.seller;
+    var m = /Выдача банкета\s+(\S+)/.exec(seller), ev4 = m ? m[1] : '', flags = s.corrected ? ['JOURNAL_CORRECTED'] : [], trace = 'PASS', price = _v64Num_(p), amount = sum !== '' ? _v64Num_(sum) : q * price;
     if (!(price > 0) && !(amount > 0)) {
       var mp = _v64PriceFor_(prices, dish, ev4, dd);
       if (mp) { price = mp.price; amount = q * price; flags.push('PRICE_FROM_MENU'); }
       else { flags.push('MISSING_SALE_PRICE'); trace = 'REVIEW'; amount = 0; }
     }
     var dobj = _v64DishOf_(dish);
-    var sm = /\b(SL-\d{8}-[0-9A-F]{8})\b/.exec(String(_v64G_(st7, r, 'Источник записи', ''))), sid = sm ? sm[1] : '', wrow = sid ? v71[sid] : null;
-    push({ date: dd, stage: 'SALE', dir: 'IN', objType: 'SALE', objId: 'J36-' + (i + 2), event: ev4, product: dish, productId: dobj ? dobj.code : '', qty: q, unit: wrow ? String(_v64G_(wt, wrow, 'Ед.', 'порц.')) : 'порц.', price: price, amount: _v64R2_(amount),
-      source: 'Ж_Продажи', ref: 'строка ' + (i + 2), employee: seller, trace: trace, flags: flags, note: ev4 ? 'выручка банкета ' + ev4 : 'продажа в зал' });
+    var wrow = sid ? v71[sid] : null;
+    push({ date: dd, stage: 'SALE', dir: 'IN', objType: 'SALE', objId: oid, legacyId: s.legacyId, event: ev4, product: dish, productId: dobj ? dobj.code : '', qty: q, unit: wrow ? String(_v64G_(wt, wrow, 'Ед.', 'порц.')) : 'порц.', price: price, amount: _v64R2_(amount),
+      source: 'Ж_Продажи', ref: 'строка ' + s.rowNo, employee: seller, trace: trace, flags: flags, note: ev4 ? 'выручка банкета ' + ev4 : 'продажа в зал' });
     if (!ev4 && wrow) {   // V71: склад списан при продаже — себестоимость по списанным партиям (их цена, FEFO)
       (saleTl[sid] || []).forEach(function (x) {
         var bid = String(_v64G_(tl, x, 'FromID')), b = B[bid], q = _v64Num_(_v64G_(tl, x, 'Weight')), u = String(_v64G_(tl, x, 'Unit') || (b ? b.unit : ''));
         var qb = b ? _v64Conv_(q, u, b.unit) : null, pr = _v64EffPrice_(b), c = qb === null ? 0 : qb * pr, fl = [];
         if (!b) fl.push('NO_BATCH'); else if (!(b.price > 0)) fl.push('MISSING_PRICE');
         if (b && b.extra) fl.push('EXTRA_ALLOCATED');
-        push({ date: dd, stage: 'SALE', dir: 'OUT', objType: 'SALE', objId: 'J36-' + (i + 2), batch: bid, product: dish, productId: dobj ? dobj.code : '', qty: q, unit: u, price: pr, amount: _v64R2_(c),
+        push({ date: dd, stage: 'SALE', dir: 'OUT', objType: 'SALE', objId: oid, legacyId: s.legacyId, batch: bid, product: dish, productId: dobj ? dobj.code : '', qty: q, unit: u, price: pr, amount: _v64R2_(c),
           source: 'TRACE_LINKS', ref: sid, employee: seller, trace: !b ? 'MISSING_EVIDENCE' : (fl.indexOf('MISSING_PRICE') >= 0 ? 'REVIEW' : 'PASS'), flags: fl,
           note: 'себестоимость продажи в зал: ' + (b ? b.product : bid) + ', партия списана при продаже ' + sid + ' (FEFO)' });
       });
       var sf = []; try { sf = JSON.parse(String(_v64G_(wt, wrow, 'Не хватило (JSON)', '[]')) || '[]'); } catch (eSf) {}
       sf.forEach(function (x) {
         var est = _v64Num_(x.est), q = _v64Num_(x.qty);
-        push({ date: dd, stage: 'SALE', dir: 'OUT', objType: 'SALE', objId: 'J36-' + (i + 2), product: dish, productId: dobj ? dobj.code : '', qty: q, unit: String(x.unit || ''), price: q > 0 ? est / q : 0,
+        push({ date: dd, stage: 'SALE', dir: 'OUT', objType: 'SALE', objId: oid, legacyId: s.legacyId, product: dish, productId: dobj ? dobj.code : '', qty: q, unit: String(x.unit || ''), price: q > 0 ? est / q : 0,
           amount: _v64R2_(est), source: 'Продажи_Списание_V71', ref: sid, employee: seller, trace: 'REVIEW', flags: ['SALE_STOCK_SHORT'],
           note: 'не хватило на складе: ' + String(x.product || '') + ' ' + _v64R3_(q) + ' ' + String(x.unit || '') + ' — ' + String(x.reason || '') + (est > 0 ? '; оценка по средней цене' : '; цены нет — оценка 0') });
       });
       (pack[_v64Key_(dish)] || []).forEach(function (n) {
-        push({ date: dd, stage: 'PACKAGING', dir: 'OUT', objType: 'SALE', objId: 'J36-' + (i + 2), dish: dish, product: n.item, qty: _v64R3_(n.qty * q), unit: n.unit, price: n.price, amount: _v64R2_(n.qty * q * n.price),
+        push({ date: dd, stage: 'PACKAGING', dir: 'OUT', objType: 'SALE', objId: oid, legacyId: s.legacyId, dish: dish, product: n.item, qty: _v64R3_(n.qty * q), unit: n.unit, price: n.price, amount: _v64R2_(n.qty * q * n.price),
           source: 'Упаковка_Нормы', ref: n.id, trace: n.price > 0 ? 'PASS' : 'REVIEW', flags: n.price > 0 ? [] : ['MISSING_PRICE'], note: n.kind + ' к продаже «' + dish + '»' });
       });
     } else if (!ev4) {   // себестоимость продажи в зал: по последнему выпуску блюда, иначе по нормативу ТТК
       var c = ucFor(dish, dd), fl = [];
       if (c) fl.push(c.how); else fl.push('MISSING_PRICE');
-      push({ date: dd, stage: 'SALE', dir: 'OUT', objType: 'SALE', objId: 'J36-' + (i + 2), product: dish, productId: dobj ? dobj.code : '', qty: q, unit: 'порц.', price: c ? c.uc : 0, amount: _v64R2_(c ? c.uc * q : 0),
-        source: c && c.how === 'NORMATIVE_COST' ? 'ТТК (норматив)' : 'Производство', ref: 'строка ' + (i + 2), trace: 'REVIEW', flags: fl, note: 'себестоимость продажи в зал (нет выдачи по партии)' });
+      push({ date: dd, stage: 'SALE', dir: 'OUT', objType: 'SALE', objId: oid, legacyId: s.legacyId, product: dish, productId: dobj ? dobj.code : '', qty: q, unit: 'порц.', price: c ? c.uc : 0, amount: _v64R2_(c ? c.uc * q : 0),
+        source: c && c.how === 'NORMATIVE_COST' ? 'ТТК (норматив)' : 'Производство', ref: 'строка ' + s.rowNo, trace: 'REVIEW', flags: fl, note: 'себестоимость продажи в зал (нет выдачи по партии)' });
       (pack[_v64Key_(dish)] || []).forEach(function (n) {
-        push({ date: dd, stage: 'PACKAGING', dir: 'OUT', objType: 'SALE', objId: 'J36-' + (i + 2), dish: dish, product: n.item, qty: _v64R3_(n.qty * q), unit: n.unit, price: n.price, amount: _v64R2_(n.qty * q * n.price),
+        push({ date: dd, stage: 'PACKAGING', dir: 'OUT', objType: 'SALE', objId: oid, legacyId: s.legacyId, dish: dish, product: n.item, qty: _v64R3_(n.qty * q), unit: n.unit, price: n.price, amount: _v64R2_(n.qty * q * n.price),
           source: 'Упаковка_Нормы', ref: n.id, trace: n.price > 0 ? 'PASS' : 'REVIEW', flags: n.price > 0 ? [] : ['MISSING_PRICE'], note: n.kind + ' к продаже «' + dish + '»' });
       });
     }
@@ -374,6 +442,54 @@ function _v64Build_(rg) {
   });
   lines.sort(function (a, b) { return (a.date ? a.date.getTime() : 0) - (b.date ? b.date.getTime() : 0); });
   return { lines: lines, batches: B, production: prodUnit };
+}
+
+/* ---------------- общие правила (этап 1 «ЦЕХ Финансы и Экономика») ---------------- */
+function _v64Hex_(bytes) { return bytes.map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join(''); }
+/**
+ * Журнал продаж J36 в одном виде — для экономики и для статистики продаж (один источник выручки).
+ * id — постоянный: номер продажи SL-… из записи, иначе хеш содержимого строки и момента внесения (не номер строки:
+ * удаление или сортировка строк листа больше не меняют, к какой продаже относятся снимок и корректировка).
+ * legacyId — прежний «J36-номер строки», только чтобы найти снимки, сделанные до этапа 1.
+ * Утверждённые исправления журнала (лист «Корректировки», ТЗ §29) применяются: действующее значение — исправленное.
+ */
+function _mcSaleRows_() {
+  var t = _v64Tab_('Ж_Продажи'), corr = {};
+  try { var c = _v64Tab_('Корректировки');
+    c.rows.forEach(function (r) { if (String(_v64G_(c, r, 'JournalID')) !== 'J36' || String(_v64G_(c, r, 'Status')) !== 'APPROVED') return;
+      var o = {}; try { o = JSON.parse(String(_v64G_(c, r, 'CorrectedData')) || '{}'); } catch (e) {}
+      var k = Number(_v64G_(c, r, 'RowNumber')); corr[k] = Object.assign(corr[k] || {}, o); }); } catch (e) {}
+  return t.rows.map(function (r, i) {
+    var rowNo = t.rowNos ? t.rowNos[i] : i + 2, cx = corr[rowNo] || null;
+    var G = function (name) { return cx && Object.prototype.hasOwnProperty.call(cx, name) ? cx[name] : _v64G_(t, r, name); };
+    var src = String(_v64G_(t, r, 'Источник записи', '')), sm = /\b(SL-\d{8}-[0-9A-F]{8})\b/.exec(src);
+    var key = ['Дата', 'Время', 'Блюдо', 'Количество', 'Цена', 'Сумма', 'ФИО продавца', 'Внесено', '№'].map(function (n) { var v = _v64G_(t, r, n); return Object.prototype.toString.call(v) === '[object Date]' ? v.toISOString() : String(v); }).join('␟');
+    var id = sm ? sm[1] : 'J36-' + _v64Hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, key, Utilities.Charset.UTF_8)).slice(0, 12).toUpperCase();
+    var qty = _v64Num_(G('Количество')), price = G('Цена'), sum = G('Сумма');
+    if (cx && !Object.prototype.hasOwnProperty.call(cx, 'Сумма') && (Object.prototype.hasOwnProperty.call(cx, 'Количество') || Object.prototype.hasOwnProperty.call(cx, 'Цена'))) sum = '';   // сумма пересчитается из исправленных количества и цены
+    return { id: id, legacyId: 'J36-' + rowNo, rowNo: rowNo, saleId: sm ? sm[1] : '', date: _v64Date_(G('Дата')), entered: _v64Date_(_v64G_(t, r, 'Внесено')),
+      dish: String(G('Блюдо') || ''), qty: qty, price: price, sum: sum, seller: String(G('ФИО продавца') || ''), source: src, corrected: !!cx };
+  });
+}
+/** Сумма продажи по одному правилу: «Сумма» из записи, иначе количество × цена. */
+function _mcSaleAmount_(s) { return s.sum !== '' && s.sum !== null && s.sum !== undefined ? _v64Num_(s.sum) : _v64Num_(s.qty) * _v64Num_(s.price); }
+/**
+ * Единое правило цены расхода: стоимость списанного считается по цене партий, с которых оно ушло (FEFO);
+ * средняя цена остатка — только запасной вариант для части без партии или партии без цены, и помечается (priceSource).
+ * got — результат _fifoConsume_ ([{batchId, qty, unit, price}]), qty/unit — сколько требовалось списать.
+ */
+function _mcCostOfConsumed_(name, qty, unit, got) {
+  var total = 0, covered = 0, avgUsed = false, avg = null;
+  var avgOf = function () { if (avg === null) { try { avg = _currentAvgPrice_(name, unit) || 0; } catch (e) { avg = 0; } } return avg; };
+  (got || []).forEach(function (g) {
+    var inReq = _v64Conv_(_v64Num_(g.qty), g.unit || unit, unit); inReq = inReq === null ? 0 : inReq; covered += inReq;
+    if (_v64Num_(g.price) > 0) total += _v64Num_(g.qty) * _v64Num_(g.price);
+    else { total += inReq * avgOf(); avgUsed = true; }
+  });
+  var rest = (Number(qty) || 0) - covered;
+  if (rest > 0.0005) { total += rest * avgOf(); avgUsed = true; }
+  var q = Number(qty) || 0;
+  return { total: _v64R2_(total), price: q > 0 ? Math.round(total / q * 10000) / 10000 : 0, priceSource: avgUsed ? ((got || []).length ? 'BATCH+AVG' : 'AVG') : 'BATCH' };
 }
 
 /** Нормы упаковки и комплектующих: по ключу блюда. */
@@ -449,9 +565,13 @@ function _v64Snapshots_(lines, op) {
     return '';
   };
   var agg = {};
-  lines.forEach(function (l) { var t = typeOf(l); if (!t || !l.objId) return; var k = t + '|' + l.objId; (agg[k] = agg[k] || { t: t, id: l.objId, amount: 0, qty: 0, unit: l.unit, lines: [] }); agg[k].amount += Number(l.amount) || 0; agg[k].qty += Number(l.qty) || 0; agg[k].lines.push(l); });
+  lines.forEach(function (l) { var t = typeOf(l); if (!t || !l.objId) return; var k = t + '|' + l.objId; (agg[k] = agg[k] || { t: t, id: l.objId, legacy: l.legacyId || '', amount: 0, qty: 0, unit: l.unit, lines: [] }); agg[k].amount += Number(l.amount) || 0; agg[k].qty += Number(l.qty) || 0; agg[k].lines.push(l); });
   Object.keys(agg).forEach(function (k) {
     var a = agg[k], s = idx[k];
+    if (!s && a.legacy && idx[a.t + '|' + a.legacy]) {   // снимок до этапа 1 (продажа по номеру строки): переносится на постоянный ID с прежней суммой
+      s = idx[a.t + '|' + a.legacy];
+      rows.push(_v64SnapRow_(a.t, a.id, s.amount, a.qty, a.unit, { migratedFrom: s.id, legacyId: a.legacy, product: a.lines[0].product || '', source: a.lines[0].source }, op, null));
+    }
     if (!s) { rows.push(_v64SnapRow_(a.t, a.id, a.amount, a.qty, a.unit, { batch: a.lines[0].batch || '', product: a.lines[0].product || '', source: a.lines[0].source }, op, null)); return; }
     if (Math.abs(s.amount - _v64R2_(a.amount)) > 0.01) a.lines.forEach(function (l) { if (l.flags.indexOf('CHANGED_AFTER_SNAPSHOT') < 0) l.flags.push('CHANGED_AFTER_SNAPSHOT'); if (l.trace === 'PASS') l.trace = 'REVIEW'; l.note = (l.note ? l.note + ' · ' : '') + 'снимок ' + s.id + ': ' + s.amount; });
   });
@@ -462,7 +582,7 @@ function _v64Snapshots_(lines, op) {
 /* ---------------- итоги ---------------- */
 function _v64Totals_(lines) {
   var t = { purchases: 0, extraCosts: 0, consumption: 0, semiOutput: 0, dishOutput: 0, issueCost: 0, packaging: 0, revenue: 0, cogs: 0, wasteCost: 0, defrostLoss: 0, returnsCost: 0,
-    quarantineReturns: 0, processingWasteValue: 0, labCost: 0, corrections: 0, expenses: 0, missingPrice: 0, missingSalePrice: 0, review: 0, missingEvidence: 0, lines: lines.length };
+    quarantineReturns: 0, processingWasteValue: 0, labCost: 0, corrections: 0, expenses: 0, inventoryShortage: 0, inventorySurplus: 0, wasteByReason: {}, missingPrice: 0, missingSalePrice: 0, review: 0, missingEvidence: 0, lines: lines.length };
   lines.forEach(function (l) {
     var a = Number(l.amount) || 0;
     if (l.stage === 'PURCHASE' && l.dir === 'IN') { if (l.source === 'Финансы_Операции') t.extraCosts += a; else t.purchases += a; }
@@ -473,7 +593,9 @@ function _v64Totals_(lines) {
     if (l.stage === 'PACKAGING') t.packaging += a;
     if (l.stage === 'SALE' && l.dir === 'IN') t.revenue += a;
     if (l.stage === 'SALE' && l.dir === 'OUT') t.cogs += a;
-    if (l.stage === 'WASTE') t.wasteCost += a;
+    if (l.stage === 'WASTE') { t.wasteCost += a; var rk = l.reason || (l.objType === 'BANQUET' ? 'BANQUET' : 'OTHER'); t.wasteByReason[rk] = (t.wasteByReason[rk] || 0) + a; }
+    if (l.stage === 'INVENTORY' && l.dir === 'OUT') t.inventoryShortage += a;
+    if (l.stage === 'INVENTORY' && l.dir === 'IN') t.inventorySurplus += a;
     if (l.stage === 'DEFROST' && l.dir === 'OUT') t.defrostLoss += a;
     if (l.stage === 'RETURN' && l.dir === 'OUT') t.returnsCost += a;
     if (l.stage === 'RETURN' && l.dir === 'TRANSFER') t.quarantineReturns += a;
@@ -490,14 +612,15 @@ function _v64Totals_(lines) {
   t.cogsWithPackaging = _v64R2_(t.cogs + t.packaging);
   t.grossContribution = _v64R2_(t.revenue - t.cogsWithPackaging);
   t.marginPct = t.revenue > 0 ? Math.round(t.grossContribution / t.revenue * 1000) / 10 : null;
-  t.contributionAfterLosses = _v64R2_(t.grossContribution - t.wasteCost - t.defrostLoss - t.returnsCost);
+  Object.keys(t.wasteByReason).forEach(function (k) { t.wasteByReason[k] = _v64R2_(t.wasteByReason[k]); });
+  t.contributionAfterLosses = _v64R2_(t.grossContribution - t.wasteCost - t.defrostLoss - t.returnsCost - t.inventoryShortage + t.inventorySurplus);
   return t;
 }
 function _v64LineOut_(l) {
   return { date: l.date ? Utilities.formatDate(l.date, _mcTz_(), 'yyyy-MM-dd HH:mm') : '', stage: l.stage, stageRu: MC_V64_STAGE_RU[l.stage] || l.stage, dir: l.dir, objectType: l.objType || '', objectId: l.objId || '',
     batch: l.batch || '', parent: l.parent || '', production: l.production || '', event: l.event || '', dish: l.dish || '', productId: l.productId || '', product: l.product || '', qty: l.qty === undefined ? '' : _v64R3_(l.qty),
     unit: l.unit || '', unitPrice: l.price === '' || l.price === undefined ? '' : Math.round(Number(l.price) * 10000) / 10000, amount: _v64R2_(l.amount), source: l.source || '', ref: l.ref || '', employee: l.employee || '',
-    op: l.op || '', trace: l.trace || 'PASS', flags: l.flags || [], flagsRu: (l.flags || []).map(function (f) { return MC_V64_FLAG_RU[f] || f; }), note: l.note || '', wasteValue: l.wasteValue || '' };
+    op: l.op || '', reason: l.reason || '', reasonRu: l.reason ? (MC_V64_WASTE_REASON_RU[l.reason] || l.reason) : '', trace: l.trace || 'PASS', flags: l.flags || [], flagsRu: (l.flags || []).map(function (f) { return MC_V64_FLAG_RU[f] || f; }), note: l.note || '', wasteValue: l.wasteValue || '' };
 }
 
 /* ---------------- публичные функции (ТЗ §4.2) ---------------- */
