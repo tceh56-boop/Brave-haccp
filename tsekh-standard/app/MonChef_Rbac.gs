@@ -220,7 +220,7 @@ var MC_RB_UI_FN_ = { banqNew: 'banquets', banqScanPick: 'banquet_scan', dishNew:
 var MC_RB_MODULE_RU_ = { haccptoday: 'ХАССП — сегодня', income: 'Приёмка товара', supplydocs: 'Документы на сырьё и ВСД', staff: 'Сотрудники', backup: 'Резервные копии', processing: 'Обработка сырья',
   batch: 'Партия', orders: 'Заказы поставщикам', scheduler: 'Планировщик производства', ttkmaster: 'Мастер ТТК', revision: 'Ревизия', weekly: 'Диспетчер недели',
   fulfillment: 'Выдача банкета', closure: 'Закрытие банкета', ppkbuilder: 'Конструктор ППК', compliance: 'ХАССП: процессы и ККТ', normative: 'Нормативы', grants: 'Права сотрудников', ttkhistory: 'История ТТК',
-  myshift: 'Моя смена', kanban: 'Задания кухни', printqueue: 'Очередь печати этикеток', checklists: 'Шаблоны чек-листов', minstock: 'Норма запаса', nutrition: 'КБЖУ продуктов',
+  myshift: 'Моя смена', kanban: 'Задания кухни', printqueue: 'Очередь печати этикеток', checklists: 'Шаблоны чек-листов', minstock: 'Норма запаса', nutrition: 'Продукты: КБЖУ и обработка',
   wastenorms: 'Нормы отходов', lamps: 'Бактерицидные лампы', journaltriggers: 'Вопросы журналов', prices: 'Изменения закупочных цен', brakerage: 'Бракераж', haccpevents: 'События → контроли ХАССП', writeoff: 'Списание по акту', pfincome: 'Приход полуфабрикатов', checklistrun: 'Чек-листы: выполнить', stockops: 'Журнал склада', tasks: 'Задачи', labels: 'Этикетка вручную', haccpcontour: 'Контур ХАССП за 7 дней', sales: 'Журнал продаж', disinfectants: 'Дезсредства' };
 // ТЗ «Итоговая структура…»: новые экраны
 MC_RB_MODULE_RU_.finance = 'Экономика потока'; MC_RB_MODULE_RU_.ppk = 'ППК: версии, разделы, график'; MC_RB_MODULE_RU_.tu = 'Технические условия';

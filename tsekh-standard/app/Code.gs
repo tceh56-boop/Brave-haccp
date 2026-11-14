@@ -3666,6 +3666,7 @@ function recognizeProductLabel(dataUrl, token) {
     _labelOcrSheet_().appendRow([ocrId, _op.id, new Date(), who, p.name,
       best ? best.name : '', best ? best.confidence : '', p.expiration_date, p.manufactured_date,
       p.completeness, p.requires_review ? 'Требует проверки' : 'Черновик', JSON.stringify(p), '', '']);
+    if (typeof _v74LearnFromLabel_ === 'function') { try { p.product_card = _withLock_(function () { return _v74LearnFromLabel_(p, ocrId); }); } catch (lErr) {} }
     _audit_(_op, 'LABEL_OCR', 'Этикетка', ocrId, null,
       { name: p.name, matched: best && best.name, expiry: p.expiration_date, review: p.requires_review });
     _endOp_(_op);
@@ -8590,6 +8591,8 @@ function calculateKBZHU(code) {
     var totalKcal = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0, totalWeight = 0;
     var hasMissing = false;
     var perIngredient = [];
+    // V74: обработка сырья в карте — пищевая ценность считается на нетто, минус потери белков/жиров/углеводов
+    var losses = {}; try { if (typeof _v74DishLosses_ === 'function') losses = _v74DishLosses_(code); } catch (lErr) {}
 
     Object.keys(acc).forEach(function (k) {
       var sep = k.lastIndexOf('|');
@@ -8599,17 +8602,24 @@ function calculateKBZHU(code) {
 
       var nutr = _findNutrition_(name, nutritionData);
       if (nutr) {
-        var factor = qty / 100; // данные на 100 г
-        totalKcal += nutr.kcal * factor;
-        totalProtein += nutr.protein * factor;
-        totalFat += nutr.fat * factor;
-        totalCarbs += nutr.carbs * factor;
+        var ls = null; try { ls = losses[_v74Key_(_cleanProdName_(name))] || null; } catch (kErr) {}
+        var factor = qty / 100 * (ls ? ls.k : 1); // данные на 100 г
+        var kP = ls ? 1 - ls.lossP / 100 : 1, kF = ls ? 1 - ls.lossF / 100 : 1, kC = ls ? 1 - ls.lossC / 100 : 1;
+        var iP = nutr.protein * factor * kP, iF = nutr.fat * factor * kF, iC = nutr.carbs * factor * kC;
+        // калорийность пересчитывается пропорционально, если были потери веществ (4/9/4 ккал на 1 г)
+        var iK = nutr.kcal * factor;
+        if (ls && (ls.lossP || ls.lossF || ls.lossC)) { var e0 = (nutr.protein * 4 + nutr.fat * 9 + nutr.carbs * 4) * factor; if (e0 > 0) iK = iK * (iP * 4 + iF * 9 + iC * 4) / e0; }
+        totalKcal += iK;
+        totalProtein += iP;
+        totalFat += iF;
+        totalCarbs += iC;
         perIngredient.push({
           name: name, qty: Math.round(qty * 100) / 100, unit: unit,
-          kcal: Math.round(nutr.kcal * factor),
-          protein: Math.round(nutr.protein * factor * 10) / 10,
-          fat: Math.round(nutr.fat * factor * 10) / 10,
-          carbs: Math.round(nutr.carbs * factor * 10) / 10
+          kcal: Math.round(iK),
+          protein: Math.round(iP * 10) / 10,
+          fat: Math.round(iF * 10) / 10,
+          carbs: Math.round(iC * 10) / 10,
+          processing: ls ? ls.proc : undefined
         });
       } else {
         hasMissing = true;
@@ -12776,19 +12786,33 @@ function createDish(json, token) {
         var base = _toBaseUnitServer_(qty, unit);
         return [code, String(x.name).trim(), unit, qty, base.qty];
       });
+      // V74: вид обработки сырья в строке — нетто и выход по процентам потерь (колонки F, G «Состава»)
+      var procLines = lines.map(function (x, i) { return { name: rows[i][1], qtyBase: rows[i][4], proc: x.proc && x.proc.name ? x.proc : null }; });
+      var hasProc = typeof _v74Calc_ === 'function' && procLines.some(function (l) { return l.proc; });
+      if (hasProc) {
+        for (var pi = 0; pi < procLines.length; pi++) {
+          var pl = procLines[pi]; if (!pl.proc) continue;
+          var bad = _v74CheckProc_(pl.proc);
+          if (bad.length) { _endOp_(_op, 'FAILED'); return _fail_('VALIDATION', 'Обработка «' + pl.proc.name + '» у «' + pl.name + '»: проценты от 0 до 99,9', _op.id); }
+          var c = _v74Calc_(pl.qtyBase, pl.proc); rows[pi].push(c.netto, c.out);
+        }
+        rows.forEach(function (r) { while (r.length < 7) r.push(''); });
+      }
       var totalOut = parseFloat(String(d.yield || '').replace(',', '.')) || 0;
+      if (!totalOut && hasProc) totalOut = _v74Round_(rows.reduce(function (s, r) { return s + (r[6] !== '' ? r[6] : (r[4] || 0)); }, 0));  // выход = сумма выходов
       if (!totalOut) totalOut = rows.reduce(function (s, r) { return s + (r[4] || 0); }, 0);  // выход = сумма состава
       dsh.appendRow([code, name, d.category || 'Без категории', totalOut, rows.length,
         d.tech || '', '', '[]', d.workshop || '']);
-      ssh.getRange(ssh.getLastRow() + 1, 1, rows.length, 5).setValues(rows);
+      ssh.getRange(ssh.getLastRow() + 1, 1, rows.length, hasProc ? 7 : 5).setValues(rows);
+      if (hasProc) _v74SaveDishLines_(code, procLines);
       try { _dropCatalogCache_(); _ttkStampProductIds_([code], true); } catch (idErr) {}
       SpreadsheetApp.flush();
       var ver = 0;
       try { ver = _createTTKVersion_(code, { name: name, yield: totalOut, method: d.tech || '',
-        ingredients: rows.map(function (r) { return { name: r[1], brutto: r[4], unit: 'г' }; }) }, _op); } catch (e) {}
+        ingredients: rows.map(function (r, i) { var o = { name: r[1], brutto: r[4], unit: 'г' }; if (hasProc && procLines[i].proc) { o.netto = r[5]; o.output = r[6]; o.processing = procLines[i].proc.name; } return o; }) }, _op); } catch (e) {}
       _dropCatalogCache_();
       _ttkHist_(_op, code, name, ver, 'Создание ТТК', _ttkDiff_({}, { name: name, yield: totalOut, method: d.tech || '', ingredients: rows.map(function (r) { return { name: r[1], brutto: r[3], unit: r[2] }; }) }), '');
-      _audit_(_op, 'TTK_CREATE', 'ТТК', code, null, { название: name, позиций: rows.length, версия: ver, пф: !!d.isPf });
+      _audit_(_op, 'TTK_CREATE', 'ТТК', code, null, { название: name, позиций: rows.length, версия: ver, пф: !!d.isPf, обработок: hasProc ? procLines.filter(function (l) { return l.proc; }).length : 0 });
       _endOp_(_op);
       return _ok_({ code: code, name: name, версия_ттк: ver, позиций: rows.length }, _op.id);
     });

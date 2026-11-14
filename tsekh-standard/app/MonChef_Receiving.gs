@@ -371,6 +371,8 @@ function stockReceiveScanLabel(dataUrl, lineJson, token) {
       _mcRcvCapSheet_().appendRow([capId, op.id, new Date(), who, f.name || '', f.matched_product ? f.matched_product.name : '', out.match.score, f.expiration_date || '', f.manufactured_date || '',
         f.completeness || '', out.ocrError ? 'Ошибка OCR' : 'Требует проверки', JSON.stringify(out.fields || { raw_text: '', ocrError: out.ocrError }), '', '', 'LABEL', file.fileId, file.hash, '']);
     });
+    // V74: карточка продукта пополняется с этикетки (КБЖУ, состав, аллергены), ручные данные не трогаются
+    if (out.fields && typeof _v74LearnFromLabel_ === 'function') { try { out.productCard = _withLock_(function () { return _v74LearnFromLabel_(out.fields, capId); }); } catch (lErr) {} }
     _audit_(op, 'LABEL_SCAN', 'Приёмка', capId, null, { file: file.hash, line: line.name || '', match: out.match.status, expiry: f.expiration_date || '', error: out.ocrError });
     _endOp_(op);
     return _ok_(out, op.id);

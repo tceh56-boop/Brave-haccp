@@ -304,7 +304,7 @@ var _UI_BUILDERS_ = {
           rows: pending.map(function (p) { var w = p['ожидают'][p['ожидают'].length - 1] || {};
             return { name: p['название'] || p['код'], current: p['действующая'] || '—', version: w['версия'] || '', status: w['статус'] || '', author: w['автор'] || '' }; }) }
       ],
-      actions: (dbl.some(function (x) { return x.status === 'Состав задвоен'; }) ? [{ label: '✎ Исправить задвоенные карты', fn: 'ttkFixDoubled' }] : []).concat([{ label: '⟳ Синхронизировать с ttk', fn: 'syncTtk' }, { label: '+ Добавить блюдо', fn: 'dishNew' }, { label: '🖼 Фото блюд', fn: 'dpOpen' }, { label: 'Мастер ТТК', module: 'ttkmaster' }, { label: 'Аллергены', module: 'allergens' }, { label: 'КБЖУ продуктов', module: 'nutrition' }, { label: 'ТТК → ППК', module: 'ttkppk' }])
+      actions: (dbl.some(function (x) { return x.status === 'Состав задвоен'; }) ? [{ label: '✎ Исправить задвоенные карты', fn: 'ttkFixDoubled' }] : []).concat([{ label: '⟳ Синхронизировать с ttk', fn: 'syncTtk' }, { label: '+ Добавить блюдо', fn: 'dishNew' }, { label: '🖼 Фото блюд', fn: 'dpOpen' }, { label: 'Мастер ТТК', module: 'ttkmaster' }, { label: 'Аллергены', module: 'allergens' }, { label: 'Продукты: КБЖУ и обработка', module: 'nutrition' }, { label: 'ТТК → ППК', module: 'ttkppk' }])
     };
   },
 
