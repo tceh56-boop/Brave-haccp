@@ -27,7 +27,9 @@ function run(body) {
   });
 }
 const J = (s) => { const r = typeof s === 'string' ? JSON.parse(s) : s; if (!r.success) throw new Error(JSON.stringify(r.error)); return r.data; };
-const today = new Date(), pad = (n) => String(n).padStart(2, '0');
+// «сегодня» — в часовом поясе предприятия (Europe/Moscow), как его считает сервер, а не в поясе машины тестов
+const pad = (n) => String(n).padStart(2, '0'), msk = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
+const today = new Date(msk[0], msk[1] - 1, msk[2]);
 const day = `${pad(today.getDate())}.${pad(today.getMonth() + 1)}.${today.getFullYear()}`;
 
 test('подготовка: блюдо в ТТК и партии на складе', () => {
