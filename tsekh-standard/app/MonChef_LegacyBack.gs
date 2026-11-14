@@ -590,38 +590,47 @@ function mcSaleAdd(json, token) {
           _endOp_(op, 'FAILED'); return _fail_('DUPLICATE', 'Такая же продажа (' + dish + ' × ' + qty + ', ' + time + ') записана меньше 2 минут назад, строка ' + dup.row +
             '. Если это вторая продажа, нажмите «Записать» ещё раз.', op.id); }
       }
-      var saleId = 'SL-' + Utilities.formatDate(new Date(), _mcTz_(), 'yyyyMMdd') + '-' + Utilities.getUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
-      var row = j.columns.map(function (col) {
-        switch (col) {
-          case '№': return Math.max(0, sh.getLastRow() - 1) + 1;
-          case 'Дата': return date; case 'Время': return time; case 'Блюдо': return dish; case 'Количество': return qty; case 'Цена': return price; case 'Сумма': return sum;
-          case 'ФИО продавца': return seller.name; case 'Должность': return seller.position; default: return '';
-        }
-      });
-      _mcJournalAppendTo_(sh, op, 'вручную' + (d.check ? ' · чек ' + String(d.check) : '') + (item ? ' · ' + saleId : '') + (req ? ' · req:' + req : ''), row);
-      try { if (typeof _mcMirrorRow_ === 'function') _mcMirrorRow_('J36', sh.getLastRow()); } catch (er) {}
-      try { if (typeof _mcCreateFactInternal_ === 'function') _mcCreateFactInternal_({ factType: 'SALE', objectType: 'SALE', objectId: item ? saleId : 'SALE-' + Date.now(), operationType: 'SALE', dateTime: new Date(),
-        value: sum, unit: 'RUB', result: 'RECORDED', source: 'J36', employeeName: seller.name, description: 'Продажа (вручную) ' + dish + ' × ' + qty + ' ' + unitLbl, skipRules: true }, op.session); } catch (er) {}
-      // V71: списание склада по партиям и связь партий с продажей. Строка журнала уже записана — продажа состоялась;
-      // если списание сорвалось, операция уходит в очередь разбора, а не теряется молча.
-      var stock = null;
-      if (item) {
-        try {
-          var at = typeof _v71At_ === 'function' ? _v71At_(_mcDateOnly_(date), time) : new Date();
-          var wo = _v71Run_(item, qty, { at: at, saleId: saleId, note: 'Продажа в зал ' + saleId });
-          _v71Commit_(saleId, wo, { at: at, seller: seller.name, author: _author_(op).фио, opId: op.id });
-          stock = _v71Brief_(wo);
-        } catch (er) {
-          try { _cascadeMarkForRecovery_(op, 'продажа ' + saleId + ' записана, склад не списан: ' + er); } catch (er2) {}
-          stock = { status: 'ERROR', statusRu: 'склад не списан', error: String(er && er.message || er), lines: [], short: [], unreleased: [] };
-        }
-      }
-      _audit_(op, 'SALE_ENTRY', 'Журнал продаж', 'J36', null, { блюдо: dish, количество: qty, цена: price, сумма: sum, продавец: seller.name, дата: date, время: time, чек: d.check || '',
-        продажа: item ? saleId : '', склад: stock ? { статус: stock.statusRu, партий: stock.lines.length, не_хватило: stock.short.map(function (x) { return x.text; }) } : '' });
+      var w = _mcSaleWrite_(op, sh, j, { date: date, time: time, dish: dish, qty: qty, price: price, sum: sum, seller: seller, item: item, unitLbl: unitLbl,
+        source: 'вручную' + (d.check ? ' · чек ' + String(d.check) : ''), req: req, check: d.check || '', how: 'вручную' });
       _endOp_(op);
-      return _ok_({ dish: dish, qty: qty, unit: unitLbl, price: price, sum: sum, seller: seller.name, date: date, time: time, saleId: item ? saleId : '', stock: stock }, op.id);
+      return _ok_({ dish: dish, qty: qty, unit: unitLbl, price: price, sum: sum, seller: seller.name, date: date, time: time, saleId: w.saleId, stock: w.stock }, op.id);
     });
   } catch (e) { if (op) _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
+}
+
+/** Запись продажи (журнал J36, факт, списание склада V71). Вызывается под блокировкой. p: {date 'дд.мм.гггг', time, dish, qty, price, sum, seller {name, position},
+ *  item (_v71Resolve_ или null), unitLbl, source (метка источника строки), ext? (внешний ключ загрузки), req?, check?, how?, idx?}. Ручная продажа и загрузка из касс (V77). */
+function _mcSaleWrite_(op, sh, j, p) {
+  var date = p.date, time = p.time, dish = p.dish, qty = p.qty, price = p.price, sum = p.sum, seller = p.seller, item = p.item, unitLbl = p.unitLbl, req = p.req || '';
+  var saleId = 'SL-' + Utilities.formatDate(new Date(), _mcTz_(), 'yyyyMMdd') + '-' + Utilities.getUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
+  var row = j.columns.map(function (col) {
+    switch (col) {
+      case '№': return Math.max(0, sh.getLastRow() - 1) + 1;
+      case 'Дата': return date; case 'Время': return time; case 'Блюдо': return dish; case 'Количество': return qty; case 'Цена': return price; case 'Сумма': return sum;
+      case 'ФИО продавца': return seller.name; case 'Должность': return seller.position; default: return '';
+    }
+  });
+  _mcJournalAppendTo_(sh, op, p.source + (item ? ' · ' + saleId : '') + (p.ext ? ' · ext:' + p.ext : '') + (req ? ' · req:' + req : ''), row);
+  try { if (typeof _mcMirrorRow_ === 'function') _mcMirrorRow_('J36', sh.getLastRow()); } catch (er) {}
+  try { if (typeof _mcCreateFactInternal_ === 'function') _mcCreateFactInternal_({ factType: 'SALE', objectType: 'SALE', objectId: item ? saleId : 'SALE-' + Date.now(), operationType: 'SALE', dateTime: new Date(),
+    value: sum, unit: 'RUB', result: 'RECORDED', source: 'J36', employeeName: seller.name, description: 'Продажа (' + (p.how || 'вручную') + ') ' + dish + ' × ' + qty + ' ' + unitLbl, skipRules: true }, op.session); } catch (er) {}
+  // V71: списание склада по партиям и связь партий с продажей. Строка журнала уже записана — продажа состоялась;
+  // если списание сорвалось, операция уходит в очередь разбора, а не теряется молча.
+  var stock = null;
+  if (item) {
+    try {
+      var at = typeof _v71At_ === 'function' ? _v71At_(_mcDateOnly_(date), time) : new Date();
+      var wo = _v71Run_(item, qty, { at: at, saleId: saleId, note: 'Продажа в зал ' + saleId, idx: p.idx });
+      _v71Commit_(saleId, wo, { at: at, seller: seller.name, author: _author_(op).фио, opId: op.id });
+      stock = _v71Brief_(wo);
+    } catch (er) {
+      try { _cascadeMarkForRecovery_(op, 'продажа ' + saleId + ' записана, склад не списан: ' + er); } catch (er2) {}
+      stock = { status: 'ERROR', statusRu: 'склад не списан', error: String(er && er.message || er), lines: [], short: [], unreleased: [] };
+    }
+  }
+  _audit_(op, 'SALE_ENTRY', 'Журнал продаж', 'J36', null, { блюдо: dish, количество: qty, цена: price, сумма: sum, продавец: seller.name, дата: date, время: time, чек: p.check || '',
+    продажа: item ? saleId : '', склад: stock ? { статус: stock.statusRu, партий: stock.lines.length, не_хватило: stock.short.map(function (x) { return x.text; }) } : '' });
+  return { saleId: item ? saleId : '', stock: stock };
 }
 
 /** Повтор ручной продажи: {same} — уже записана с этим номером запроса; {similar} — такая же продажа внесена меньше 2 минут назад. */

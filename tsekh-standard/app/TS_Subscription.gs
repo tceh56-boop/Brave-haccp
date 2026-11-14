@@ -423,6 +423,10 @@ var TS_GATE_ = [
   { n: 'v76GetMenuEngineering', need: 'finance_view' },
   { n: 'v76GetProcurement', need: 'finance_view' },
   { n: 'v76GetForecast', need: 'finance_view' },
-  { n: 'v76CreateOrderRequests', need: 'procurement|stock', mut: true }
+  { n: 'v76CreateOrderRequests', need: 'procurement|stock', mut: true },
+  // интеграции с учётными системами (iiko, R-Keeper, 1С), этап 1: загрузка продаж из отчёта кассы, сопоставление позиций с ТТК и складом
+  { n: 'v77GetIntegrations', need: 'finance_view' },
+  { n: 'v77ImportSales', need: 'finance_edit', mut: true },
+  { n: 'v77SaveMapping', need: 'finance_edit', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();
