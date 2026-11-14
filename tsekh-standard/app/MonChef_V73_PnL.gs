@@ -17,9 +17,9 @@
  */
 var MC_V73_LABOR_CAT = 'Фонд оплаты труда';
 var MC_V73_DEPR_CAT = 'Амортизация оборудования';
-var MC_V73_TARGETS_DEFAULT = { foodCostPct: 32, laborPct: 30, primeCostPct: 62, lossPct: 3, minDishMarginPct: 60, priceRisePct: 10 };
+var MC_V73_TARGETS_DEFAULT = { foodCostPct: 32, laborPct: 30, primeCostPct: 62, lossPct: 3, minDishMarginPct: 60, priceRisePct: 0 };
 var MC_V73_TARGET_RU = { foodCostPct: 'Food cost, % выручки (не выше)', laborPct: 'Labor cost, % выручки (не выше)', primeCostPct: 'Prime cost, % выручки (не выше)',
-  lossPct: 'Потери, % выручки (не выше)', minDishMarginPct: 'Маржа блюда, % (не ниже)', priceRisePct: 'Рост цены закупки для сигнала, %' };
+  lossPct: 'Потери, % выручки (не выше)', minDishMarginPct: 'Маржа блюда, % (не ниже)', priceRisePct: 'Рост цены закупки для сигнала, % (0 — от 1 копейки)' };
 
 /* ---------------- служебное ---------------- */
 function _v73Targets_() {
@@ -167,7 +167,10 @@ function v73GetCeoDashboard(token, fromDate, toDate) {
     }
     // этап 6: рост цен закупки за период и возможная экономия у другого поставщика
     var buy = null; try { buy = typeof _v76Brief_ === 'function' ? _v76Brief_(rg.fromIso, rg.toIso) : null; } catch (e) {}
-    if (buy && buy.rises.length) signals.push({ level: 'gold', code: 'PRICE_UP', text: 'Рост цены закупки от ' + buy.threshold + '%: ' + buy.rises.slice(0, 3).map(function (x) { var c = Math.max(x.changePct || 0, x.vsAvg90Pct || 0); return x.product + ' +' + c + '% (' + x.lastPrice + ' ₽/' + x.unit + ')'; }).join('; ') + (buy.rises.length > 3 ? ' и ещё ' + (buy.rises.length - 3) : '') + '. Экономика → Закупки.' });
+    if (buy && buy.costEvents.length) { var cd = {}; buy.costEvents.forEach(function (e) { if (e.dish) cd[e.dish] = _v64R2_((cd[e.dish] || 0) + (Number(e.deltaPerPortion) || 0)); });
+      var cl = Object.keys(cd).sort(function (a, b) { return cd[b] - cd[a]; });
+      if (cl.length) signals.push({ level: 'gold', code: 'COST_UP', text: 'Себестоимость блюд выросла из-за подорожания продуктов: ' + cl.slice(0, 3).map(function (k) { return k + ' +' + cd[k] + ' ₽/порц.'; }).join('; ') + (cl.length > 3 ? ' и ещё ' + (cl.length - 3) : '') + '. Экономика → Закупки.' }); }
+    if (buy && buy.rises.length) signals.push({ level: 'gold', code: 'PRICE_UP', text: 'Рост цены закупки' + (buy.threshold ? ' от ' + buy.threshold + '%' : '') + ': ' + buy.rises.slice(0, 3).map(function (x) { var c = Math.max(x.changePct || 0, x.vsAvg90Pct || 0); return x.product + ' +' + c + '% (' + x.lastPrice + ' ₽/' + x.unit + ')'; }).join('; ') + (buy.rises.length > 3 ? ' и ещё ' + (buy.rises.length - 3) : '') + '. Экономика → Закупки.' });
     if (buy && buy.saving >= 1) signals.push({ level: 'gold', code: 'CHEAPER_SUPPLIER', text: 'Те же продукты были дешевле у другого поставщика: возможная экономия за период ' + buy.saving + ' ₽. Экономика → Закупки.' });
     var lossDays = S.byDay.filter(function (d) { return d.revenue > 0 && d.gross < 0; });
     if (lossDays.length) signals.push({ level: 'red', code: 'NEGATIVE_DAYS', text: 'Дней с отрицательной валовой прибылью: ' + lossDays.length + ' (' + lossDays.slice(0, 3).map(function (d) { return d.day; }).join(', ') + ')' });

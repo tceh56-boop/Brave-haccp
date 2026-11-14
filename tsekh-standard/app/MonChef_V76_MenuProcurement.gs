@@ -20,7 +20,10 @@
  *   Заявки создаются в тот же лист «Закупки_V21», дальше — обычный путь V21: заказ поставщику → приёмка. Повторная заявка
  *   на тот же продукт в тот же прогноз не создаётся.
  *
- * Порог сигнала о росте цены — ориентир priceRisePct (v73SetTargets), по умолчанию 10 %.
+ * Рост цены — от 1 копейки за кг / л / шт (решение 14.11.2026); ориентир priceRisePct (v73SetTargets) может поднять порог в процентах, по умолчанию 0.
+ * Сразу при приёмке партии с ценой выше предыдущей закупки (_createBatch_ → _v76OnPurchase_) пересчитывается себестоимость порции
+ * каждого блюда с этим продуктом в ТТК (по последним ценам закупки), событие пишется в «Фин_Себестоимость_События»,
+ * шеф-повар и директор получают уведомление.
  * Управленческий анализ, бухгалтерский учёт не заменяет. Точка = предприятие.
  */
 var MC_V76_CLASS_RU = { STAR: 'Звезда', PLOWHORSE: 'Рабочая лошадка', PUZZLE: 'Загадка', DOG: 'Собака' };
@@ -84,6 +87,12 @@ function _v76Purchases_() {
 }
 function _v76Wavg_(list) { var q = 0, s = 0; list.forEach(function (p) { q += p.qtyBase; s += p.qtyBase * p.priceBase; }); return q > 0 ? s / q : null; }
 
+/** Рост цены: не меньше 1 копейки за единицу показа (кг / л / шт) и не меньше ориентира priceRisePct в процентах. */
+function _v76IsRise_(priceBase, refBase, factor, T) {
+  if (refBase === null || refBase === undefined || !(refBase > 0)) return false;
+  var d = Math.round((priceBase - refBase) * factor * 100);   // в копейках за кг / л / шт
+  return d >= 1 && (priceBase - refBase) / refBase * 100 >= (T.priceRisePct || 0) - 1e-9;
+}
 /** Динамика цен по продуктам на дату rg.to. */
 function _v76PriceStats_(P, rg, T) {
   var by = {}; P.forEach(function (p) { if (p.date <= rg.to) (by[p.key] = by[p.key] || []).push(p); });
@@ -108,7 +117,7 @@ function _v76PriceStats_(P, rg, T) {
     // ориентир сравнения для влияния на блюда: средняя за 90 дней до периода, иначе предыдущая закупка
     var ref = baseAvg !== null ? baseAvg : prev ? prev.priceBase : null;
     x.refPriceBase = ref; x.deltaBase = ref === null ? 0 : last.priceBase - ref;
-    if ((x.changePct !== null && x.changePct >= T.priceRisePct) || (x.vsAvg90Pct !== null && x.vsAvg90Pct >= T.priceRisePct)) x.flags.push('PRICE_UP');
+    if (_v76IsRise_(last.priceBase, prev ? prev.priceBase : null, f, T) || _v76IsRise_(last.priceBase, baseAvg, f, T)) x.flags.push('PRICE_UP');
     if (best && best.supplier !== last.supplier && best.priceBase < last.priceBase * 0.97) {
       x.bestSupplier = best.supplier; x.bestPrice = _v64R2_(best.priceBase * f); x.bestDate = best.day;
       x.saving = _v64R2_(inP.reduce(function (s, p) { return s + p.qtyBase * Math.max(0, p.priceBase - best.priceBase); }, 0));
@@ -182,7 +191,8 @@ function _v76Procurement_(rg, T) {
     impact.sort(function (a, b) { return b.deltaPerPortion - a.deltaPerPortion; });
   }
   var rows = function (L) { return L.map(function (s) { var o = {}; Object.keys(s).forEach(function (k) { if (['refPriceBase', 'deltaBase', 'lastPriceBase', 'factor'].indexOf(k) < 0) o[k] = s[k]; }); o.flagsRu = s.flags.map(function (f) { return f === 'PRICE_UP' ? 'рост цены' : 'есть дешевле у другого поставщика'; }); return o; }); };
-  return { totals: { amount: _v64R2_(total), batches: inP.length, suppliers: suppliers.length, products: inPeriod.length, priceRises: rises.length, possibleSaving: _v64R2_(cheaper.reduce(function (s, x) { return s + x.saving; }, 0)) },
+  var costEvents = []; try { costEvents = _v76CostEvents_(rg); } catch (e) {}
+  return { costEvents: costEvents, totals: { amount: _v64R2_(total), batches: inP.length, suppliers: suppliers.length, products: inPeriod.length, priceRises: rises.length, possibleSaving: _v64R2_(cheaper.reduce(function (s, x) { return s + x.saving; }, 0)) },
     suppliers: suppliers, products: rows(inPeriod), rises: rows(rises), cheaper: rows(cheaper), impact: impact,
     purchases: inP.slice().reverse().slice(0, 300).map(function (p) { return { date: p.day, product: p.product, supplier: p.supplier, invoice: p.invoice, batchId: p.batchId, qty: _v64R3_(p.qtyBase / p.factor), unit: p.stdUnit, price: _v64R2_(p.priceBase * p.factor), amount: p.amount }; }) };
 }
@@ -252,7 +262,7 @@ function _v76Forecast_(opts) {
 function _v76Brief_(fromIso, toIso) {
   var T = _v73Targets_(), rg = _v64Range_(fromIso, toIso), st = _v76PriceStats_(_v76Purchases_(), rg, T).filter(function (s) { return s.purchases > 0; });
   return { rises: st.filter(function (s) { return s.flags.indexOf('PRICE_UP') >= 0; }).sort(function (a, b) { return Math.max(b.changePct || 0, b.vsAvg90Pct || 0) - Math.max(a.changePct || 0, a.vsAvg90Pct || 0); }),
-    saving: _v64R2_(st.reduce(function (s, x) { return s + (x.saving || 0); }, 0)), threshold: T.priceRisePct };
+    saving: _v64R2_(st.reduce(function (s, x) { return s + (x.saving || 0); }, 0)), threshold: T.priceRisePct, costEvents: (function () { try { return _v76CostEvents_(rg); } catch (e) { return []; } })() };
 }
 
 /* ---------------- публичные функции ---------------- */
@@ -277,7 +287,7 @@ function v76GetProcurement(token, fromDate, toDate) {
     _requireAuth_(token, 'finance_view');
     var rg = _v64Range_(fromDate, toDate), T = _v73Targets_(), R = _v76Procurement_(rg, T);
     return _ok_(Object.assign({ from: rg.fromIso, to: rg.toIso, threshold: T.priceRisePct,
-      note: 'Цены — по партиям приёмки (Склад_Партии и паспорт приёмки), приведены к кг / л / шт. Рост цены — от ' + T.priceRisePct + ' % к предыдущей закупке или к средней за 90 дней до периода. Влияние на блюдо — по действующей ТТК (сырьё по брутто).' }, R));
+      note: 'Цены — по партиям приёмки (Склад_Партии и паспорт приёмки), приведены к кг / л / шт. Рост цены — от 1 копейки за кг / л / шт' + (T.priceRisePct ? ' и от ' + T.priceRisePct + ' %' : '') + ' к предыдущей закупке или к средней за 90 дней до периода. Влияние на блюдо — по действующей ТТК (сырьё по брутто).' }, R));
   } catch (e) { return _failFrom_(e); }
 }
 /** Прогноз продаж и потребности в продуктах. json: {days: 7, weeks: 8, asOf?}. */
@@ -323,4 +333,78 @@ function v76CreateOrderRequests(json, token) {
     res.note = created.length ? 'Заявки созданы (' + created.length + '). Заказы поставщикам — кнопкой «Заказы поставщикам» или в разделе закупок.' : 'Новых заявок нет.';
     return _ok_(res, op.id);
   } catch (e) { _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
+}
+
+/* ---------------- подорожание при приёмке: пересчёт себестоимости блюд и уведомление ---------------- */
+var MC_V76_EV = ['Фин_Себестоимость_События', ['EventID', 'At', 'BatchID', 'Product', 'Unit', 'Supplier', 'PrevPrice', 'NewPrice', 'ChangePct', 'PrevDate', 'PrevSupplier',
+  'Dish', 'DishCode', 'NeedPerPortion', 'DeltaPerPortion', 'CostBefore', 'CostAfter', 'MenuPrice', 'FoodCostBefore', 'FoodCostAfter', 'NotificationID']];
+var _V76_RUN_ = null;   // кэш одного выполнения: индексы ТТК, раскладка блюд, последние цены, партии этого выполнения
+function _v76Run_() {
+  if (_V76_RUN_) return _V76_RUN_;
+  var P = _v76Purchases_(), last = {};
+  P.forEach(function (p) { last[p.key] = p; });
+  return (_V76_RUN_ = { idx: _v76Idx_(), memo: {}, P: P, last: last, fresh: [] });
+}
+/**
+ * Себестоимость порции блюда по последним ценам закупки: { cost, missing[] }.
+ * Сырьё — по ТТК (п/ф раскладываются до сырья); нет закупки — средняя цена склада.
+ */
+function _v76DishCostByLast_(R, d) {
+  var need = _v76Explode_(R.idx, d, 1, R.memo), cost = 0, missing = [];
+  Object.keys(need).forEach(function (k) { var p = R.last[k], pb = p ? p.priceBase : 0;
+    if (!(pb > 0)) { try { pb = _currentAvgPrice_(need[k].name, need[k].base) || 0; } catch (e) { pb = 0; } }
+    if (!(pb > 0)) missing.push(need[k].name); cost += need[k].qty * pb; });
+  return { cost: cost, missing: missing, need: need };
+}
+/**
+ * Хук приёмки (_createBatch_): новая закупочная партия. Если цена выше предыдущей закупки этого продукта хотя бы на 1 копейку
+ * за кг / л / шт — пересчитать себестоимость блюд с этим продуктом, записать событие и уведомить. Ошибка здесь приёмку не отменяет.
+ * price — цена за единицу партии (unit — единица партии).
+ */
+function _v76OnPurchase_(batchId, name, unit, price, qty, source, extra) {
+  extra = extra || {};
+  var src = String(source || '');
+  if (!(Number(price) > 0) || src === 'REVISION_FOUND' || /^(Производство|Выпуск|Зачистка|Разбор)\s/.test(src)) return null;
+  var R = _v76Run_(), key = _v76Pk_(name, unit), std = _v76Std_(unit), pb = _v76PerBase_(Number(price), unit), now = new Date(), T = _v73Targets_();
+  // предыдущая закупка: последняя партия этого продукта раньше этой (в том числе принятая в этом же выполнении)
+  var prev = null;
+  R.P.concat(R.fresh).forEach(function (p) { if (p.key === key && p.batchId !== batchId && (!prev || p.date >= prev.date)) prev = p; });
+  var mine = { batchId: String(batchId), date: now, day: _v76Iso_(now), product: String(name), key: key, base: std.base, stdUnit: std.unit, factor: std.factor,
+    supplier: String(extra.supplier || src || '—'), qtyBase: Number(qty) * _v76Base_(unit).qty, priceBase: pb, amount: _v64R2_(Number(qty) * Number(price)) };
+  R.fresh.push(mine);
+  if (!prev || !_v76IsRise_(pb, prev.priceBase, std.factor, T)) { R.last[key] = mine; return null; }
+  // себестоимость блюд до и после — по последним ценам закупки, меняется только этот продукт
+  var before = Object.assign({}, R.last); before[key] = prev; var after = Object.assign({}, R.last); after[key] = mine; R.last = after;
+  var prices = []; try { prices = _v64MenuPrices_(); } catch (e) {}
+  var dishes = [];
+  Object.keys(R.idx.dishByCode).forEach(function (c) {
+    var d = R.idx.dishByCode[c]; if (d.semi || !(d.ing || []).length) return;
+    var need = _v76Explode_(R.idx, d, 1, R.memo); if (!need[key]) return;
+    var cb = _v76DishCostByLast_({ idx: R.idx, memo: R.memo, last: before }, d).cost, ca = _v76DishCostByLast_({ idx: R.idx, memo: R.memo, last: after }, d).cost;
+    var delta = need[key].qty * (pb - prev.priceBase); if (!(delta > 0)) return;
+    var mp = null; try { mp = _v64PriceFor_(prices, d.name, '', now); } catch (e) {}
+    dishes.push({ dish: d.name, code: d.code, need: _v64R3_(need[key].qty), delta: delta >= 0.01 ? _v64R2_(delta) : Math.round(delta * 10000) / 10000,   // меньше копейки — до сотых копейки, чтобы не показать «+0»
+      before: _v64R2_(cb), after: _v64R2_(ca), menuPrice: mp ? mp.price : null,
+      fcBefore: mp ? Math.round(cb / mp.price * 1000) / 10 : null, fcAfter: mp ? Math.round(ca / mp.price * 1000) / 10 : null });
+  });
+  dishes.sort(function (a, b) { return b.delta - a.delta; });
+  var f = std.factor, np = _v64R2_(pb * f), op = _v64R2_(prev.priceBase * f), pct = Math.round((pb - prev.priceBase) / prev.priceBase * 1000) / 10, evId = 'CE-' + Utilities.getUuid().slice(0, 8).toUpperCase();
+  var title = 'Подорожание: ' + mine.product + ' ' + op + ' → ' + np + ' ₽/' + std.unit + ' (+' + _v64R2_(np - op) + ' ₽, +' + pct + '%)';
+  var text = 'Партия ' + batchId + (mine.supplier && mine.supplier !== '—' ? ', ' + mine.supplier : '') + '; прежняя цена ' + op + ' ₽ от ' + prev.day + (prev.supplier && prev.supplier !== '—' ? ' (' + prev.supplier + ')' : '') + '. ' +
+    (dishes.length ? 'Себестоимость порции выросла: ' + dishes.slice(0, 5).map(function (x) { return x.dish + ' +' + x.delta + ' ₽ (' + x.before + ' → ' + x.after + ' ₽' + (x.fcAfter !== null ? ', food cost ' + x.fcBefore + ' → ' + x.fcAfter + '%' : '') + ')'; }).join('; ') +
+      (dishes.length > 5 ? '; ещё блюд: ' + (dishes.length - 5) : '') + '. Экономика → Закупки.' : 'В действующих ТТК продукт не используется.');
+  var nid = null; try { nid = _notify_('cost_up', 'warning', title, text, 'Шеф-повар', 'cost_up|' + batchId, null); } catch (e) {}
+  var sh = _v64Sheet_(MC_V76_EV[0], MC_V76_EV[1]), H = MC_V76_EV[1], row = function (o) { return H.map(function (h) { return o[h] === undefined || o[h] === null ? '' : o[h]; }); };
+  var base = { EventID: evId, At: now, BatchID: String(batchId), Product: mine.product, Unit: std.unit, Supplier: mine.supplier, PrevPrice: op, NewPrice: np, ChangePct: pct, PrevDate: prev.day, PrevSupplier: prev.supplier, NotificationID: nid || '' };
+  (dishes.length ? dishes : [null]).forEach(function (x) { sh.appendRow(row(x ? Object.assign({}, base, { Dish: x.dish, DishCode: x.code, NeedPerPortion: x.need, DeltaPerPortion: x.delta, CostBefore: x.before, CostAfter: x.after,
+    MenuPrice: x.menuPrice, FoodCostBefore: x.fcBefore, FoodCostAfter: x.fcAfter }) : base)); });
+  _V64_TAB_ = {};
+  return { eventId: evId, product: mine.product, prevPrice: op, newPrice: np, changePct: pct, dishes: dishes, notificationId: nid };
+}
+/** События подорожания за период (для экрана «Закупки» и сводки руководителя). */
+function _v76CostEvents_(rg) {
+  var t = _v64Tab_(MC_V76_EV[0]), out = [];
+  t.rows.forEach(function (r) { var at = _v64Date_(_v64G_(t, r, 'At')); if (!at || !_v64In_(at, rg)) return; var o = { at: Utilities.formatDate(at, _mcTz_(), 'yyyy-MM-dd HH:mm') };
+    MC_V76_EV[1].forEach(function (h) { if (h !== 'At') o[h.charAt(0).toLowerCase() + h.slice(1)] = _v64G_(t, r, h); }); out.push(o); });
+  return out.reverse();
 }

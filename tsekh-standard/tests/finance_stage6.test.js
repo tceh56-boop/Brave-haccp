@@ -91,6 +91,10 @@ const HDAY = C.MC_V72.DAY[1], HDISH = C.MC_V72.DISH[1];
 const dayRow6 = (day, revenue, cogs) => HDAY.map(h => h === 'Day' ? day : h === 'LocationID' ? 'LOC-1' : h === 'revenue' ? revenue : h === 'cogs' ? cogs : /ByReason|ByCategory/.test(h) ? '{}' : h === 'Frozen' ? false : 0);
 const dishRow = (day, dish, qty, revenue, cost) => [day, 'LOC-1', dish, '', qty, revenue, cost, '', 'R'];
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const notes = []; let bno = 0;
+C._notify_ = (type, sev, title, text, role, key) => { if (notes.some(n => n.key === key)) return null; notes.push({ type, sev, title, text, role, key }); return 'NT' + notes.length; };
+C._stockBatchesSheet_ = () => sheets['Склад_Партии']; C._nextBatchId_ = () => 'NB' + (++bno);
+vm.runInContext(fn(code, '_createBatch_'), ctx);
 const fresh = () => G.PropertiesService.getScriptProperties().setProperty('MC_V72_LAST', JSON.stringify({ at: new Date().toISOString(), runId: 'T' }));
 
 function world() {
@@ -109,6 +113,7 @@ function world() {
   table('Фин_Итоги_День', HDAY, [dayRow6('2026-11-12', 70000, 26200)]);
   table('Фин_Итоги_Блюдо_День', HDISH, [dishRow('2026-11-12', 'Борщ', 100, 30000, 9000), dishRow('2026-11-12', 'Плов', 80, 36000, 16000), dishRow('2026-11-12', 'Салат', 10, 3000, 600), dishRow('2026-11-12', 'Компот', 10, 1000, 600)]);
   avg['говядина'] = 450; avg['свёкла'] = 50; avg['рис'] = 100; avg['лук'] = 40;
+  C._V76_RUN_ = null; notes.length = 0;
 }
 
 console.log('Финансы, этап 6: меню-инжиниринг, закупки, прогноз');
@@ -152,14 +157,14 @@ t('влияние цены на себестоимость блюда: по ТТ
   assert(/Говядина \+8/.test(d.impact[0].drivers));
 });
 
-t('порог роста цены — ориентир предприятия (v73SetTargets)', () => {
+t('порог роста цены: по умолчанию от 1 копейки, процент — ориентир предприятия (v73SetTargets)', () => {
   world();
   ok(R('v73SetTargets', { priceRisePct: 15 }));
   let d = ok(JSON.parse(C.v76GetProcurement('tok', '2026-11-01', '2026-11-30')));
   eq([d.threshold, d.rises.length], [15, 0]);
   ok(R('v73SetTargets', { priceRisePct: '' }));
   d = ok(JSON.parse(C.v76GetProcurement('tok', '2026-11-01', '2026-11-30')));
-  eq([d.threshold, d.rises.length], [10, 1]);
+  eq([d.threshold, d.rises.length], [0, 1], 'по умолчанию — от 1 копейки');
 });
 
 function forecastWorld() {
@@ -226,7 +231,7 @@ t('сводка руководителя: сигналы роста цен и в
   const up = d.signals.find(s => s.code === 'PRICE_UP'), ch = d.signals.find(s => s.code === 'CHEAPER_SUPPLIER');
   assert(up && /Говядина \+12\.5%/.test(up.text), JSON.stringify(d.signals));
   assert(ch && /1050/.test(ch.text));
-  eq(d.targets.priceRisePct, 10);
+  eq(d.targets.priceRisePct, 0);
 });
 
 t('сквозной путь: продажа → дневные итоги → меню-инжиниринг (себестоимость по партиям)', () => {
@@ -234,6 +239,45 @@ t('сквозной путь: продажа → дневные итоги → �
   const d = ok(JSON.parse(C.v76GetMenuEngineering('tok', '2026-11-01', '2026-11-30')));
   const b = d.items.find(x => x.dish === 'Борщ');
   eq([b.qty, b.revenue, b.cost], [2, 600, 120], 'себестоимость — 0,3 кг партии B1 по 400 ₽');
+});
+
+t('приёмка дороже прежней: себестоимость блюд пересчитана сразу, событие записано, шеф и директор уведомлены', () => {
+  world();
+  // говядина: прежняя закупка 450 ₽/кг (Фермер, 10.11) → новая 460 ₽/кг; партия в граммах, как пишет приход
+  const id = C._createBatch_('Говядина', 'г', 2000, new Date(2026, 10, 14), '2026-11-20', 0.46, 'Приход (Фермер)', { supplier: 'Фермер' });
+  eq(notes.length, 1);
+  assert(/Подорожание: Говядина 450 → 460 ₽\/кг \(\+10 ₽, \+2\.2%\)/.test(notes[0].title), notes[0].title);
+  assert(/Борщ \+1\.6 ₽ \(80\.3 → 81\.9 ₽, food cost 26\.8 → 27\.3%\)/.test(notes[0].text), notes[0].text);
+  assert(/Плов \+1\.5 ₽/.test(notes[0].text) && notes[0].role === 'Шеф-повар' && notes[0].key === 'cost_up|' + id);
+  const ev = C._v76CostEvents_(C._v64Range_('2026-11-01', '2026-12-31'));
+  eq(ev.map(e => [e.product, e.prevPrice, e.newPrice, e.dish, e.deltaPerPortion, e.costBefore, e.costAfter]), [['Говядина', 450, 460, 'Плов', 1.5, 77.5, 79], ['Говядина', 450, 460, 'Борщ', 1.6, 80.3, 81.9]]);
+  // та же цена ещё раз — не подорожание; выпуск своего п/ф — не закупка
+  C._createBatch_('Говядина', 'г', 1000, new Date(2026, 10, 14), '', 0.46, 'Приход (Фермер)', { supplier: 'Фермер' });
+  C._createBatch_('Говядина', 'г', 1000, new Date(2026, 10, 14), '', 0.9, 'Производство PR-9', {});
+  eq(notes.length, 1);
+  // экран «Закупки» и сводка руководителя видят событие
+  const d = ok(JSON.parse(C.v76GetProcurement('tok', '2026-11-01', '2026-12-31')));
+  eq(d.costEvents.length, 2);
+  const ceo = ok(JSON.parse(C.v73GetCeoDashboard('tok', '2026-11-01', '2026-12-31')));
+  assert(ceo.signals.some(s => s.code === 'COST_UP' && /Борщ \+1\.6 ₽\/порц\./.test(s.text)), JSON.stringify(ceo.signals));
+});
+
+t('порог — 1 копейка за кг: +1 коп. — подорожание, меньше — нет; ориентир в процентах поднимает порог', () => {
+  world();
+  assert(C._v76OnPurchase_('X1', 'Говядина', 'кг', 450.004, 1, 'Фермер', {}) === null, 'меньше копейки — не подорожание');
+  const r = C._v76OnPurchase_('X2', 'Говядина', 'кг', 450.014, 1, 'Фермер', {});
+  assert(r && r.newPrice === 450.01 && r.dishes.length === 2 && r.dishes[0].delta === 0.0016, JSON.stringify(r));
+  world(); ok(R('v73SetTargets', { priceRisePct: 5 }));
+  assert(C._v76OnPurchase_('X3', 'Говядина', 'кг', 470, 1, 'Фермер', {}) === null, '+4,4 % при ориентире 5 % — без уведомления');
+  assert(C._v76OnPurchase_('X4', 'Говядина', 'кг', 500, 1, 'Фермер', {}) !== null, '+6,4 % к 470 — уведомление');
+  ok(R('v73SetTargets', { priceRisePct: '' }));
+});
+
+t('ошибка пересчёта не мешает приёмке', () => {
+  world(); const keep = C._v76OnPurchase_; C._v76OnPurchase_ = () => { throw new Error('сбой'); };
+  const id = C._createBatch_('Говядина', 'г', 1000, new Date(2026, 10, 14), '', 0.5, 'Приход', {});
+  C._v76OnPurchase_ = keep;
+  assert(sheets['Склад_Партии'].data.some(r => r[0] === id), 'партия создана');
 });
 
 console.log('Все проверки этапа 6 пройдены: ' + n);

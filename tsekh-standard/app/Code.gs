@@ -6598,6 +6598,8 @@ function _createBatch_(name, unit, qty, receivedDate, expiryDate, price, source,
   sh.appendRow(row);
   // связи по ID: ProductID и SupplierID (MonChef_MasterData.gs)
   if (typeof _mdStampBatch_ === 'function') _mdStampBatch_(sh, sh.getLastRow(), row[1], extra.supplier || '');
+  // «Финансы», этап 6: закупка дороже предыдущей — сразу пересчитать себестоимость блюд и уведомить (ошибка приёмку не отменяет)
+  if (typeof _v76OnPurchase_ === 'function') { try { _v76OnPurchase_(id, row[1], row[2], row[6], q, source, extra); } catch (e) { try { _log_('WARN', 'V76: пересчёт себестоимости после приёмки: ' + e); } catch (e2) {} } }
   return id;
 }
 

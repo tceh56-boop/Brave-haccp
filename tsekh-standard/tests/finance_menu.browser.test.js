@@ -14,7 +14,7 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
       items: [{ dish: 'Плов', cls: 'STAR', clsRu: 'Звезда', qty: 80, mixPct: 44.4, avgPrice: 450, costPerPortion: 200, normCost: 190, cmPerPortion: 250, gross: 20000, foodCostPct: 44.4, marginPct: 55.6, flagsRu: ['маржа ниже ориентира'] },
         { dish: 'Борщ', cls: 'PLOWHORSE', clsRu: 'Рабочая лошадка', qty: 100, mixPct: 55.6, avgPrice: 300, costPerPortion: 90, normCost: 85, cmPerPortion: 210, gross: 21000, foodCostPct: 30, marginPct: 70, flagsRu: [] }],
       unsold: [{ dish: 'Окрошка', code: '', menuPrice: 350 }], note: 'Матрица Kasavana–Smith' };
-    const P = { from: '2026-11-01', to: '2026-11-30', threshold: 10, totals: { amount: 8550, batches: 5, suppliers: 3, products: 3, priceRises: 1, possibleSaving: 1050 },
+    const P = { from: '2026-11-01', to: '2026-11-30', threshold: 0, costEvents: [{ at: '2026-11-14 14:05', product: 'Говядина', prevPrice: 450, newPrice: 460, unit: 'кг', changePct: 2.2, supplier: 'Фермер', dish: 'Борщ', deltaPerPortion: 1.6, costBefore: 80.3, costAfter: 81.9, foodCostAfter: 27.3 }], totals: { amount: 8550, batches: 5, suppliers: 3, products: 3, priceRises: 1, possibleSaving: 1050 },
       rises: [{ product: 'Говядина', unit: 'кг', lastPrice: 450, lastDate: '2026-11-10', lastSupplier: 'Фермер', prevPrice: 480, changePct: -6.2, avg90: 400, vsAvg90Pct: 12.5, flagsRu: ['рост цены'] }],
       impact: [{ dish: 'Борщ', deltaPerPortion: 8, deltaPctOfPrice: 2.7, normCost: 85, menuPrice: 300, foodCostPct: 28.3, drivers: 'Говядина +8 ₽' }],
       cheaper: [{ product: 'Говядина', unit: 'кг', lastSupplier: 'Фермер', lastPrice: 450, bestSupplier: 'ООО Мясо', bestPrice: 400, bestDate: '2026-10-20', saving: 1050 }],
@@ -46,7 +46,7 @@ const { chromium } = require('playwright'), path = require('path'), assert = req
   assert(/v76GetMenuEngineering:\["","2026-10-01"/.test(await calls()), 'период меню уходит на сервер');
   await p.evaluate(() => { openView('finance', 'buy'); }); await p.waitForTimeout(500);
   t = await txt();
-  ['Рост цен', 'Говядина', 'Как рост цен меняет себестоимость блюд', 'Говядина +8', 'Дешевле у другого поставщика', 'ООО Мясо', 'Возможная экономия', 'Поставщики', 'Партии'].forEach(s => assert(t.includes(s), 'закупки: ' + s));
+  ['Подорожание при приёмке', '81.9', 'Подорожало продуктов', 'Рост цен', 'Говядина', 'Как рост цен меняет себестоимость блюд', 'Говядина +8', 'Дешевле у другого поставщика', 'ООО Мясо', 'Возможная экономия', 'Поставщики', 'Партии'].forEach(s => assert(t.includes(s), 'закупки: ' + s));
   await p.evaluate(() => { openView('finance', 'fc'); }); await p.waitForTimeout(500);
   t = await txt();
   ['К заказу', 'Говядина', 'Уже заказано', 'По дням', 'по 8 таким же дням недели', 'Нет техкарты', 'Вся потребность'].forEach(s => assert(t.includes(s), 'прогноз: ' + s));
