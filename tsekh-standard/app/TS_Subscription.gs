@@ -385,6 +385,12 @@ var TS_GATE_ = [
   { n: 'ts2GenCard', need: '*', f: 'ppk' },
   { n: 'ts2GenApply', need: 'ppk_edit|ttk_edit', mut: true, f: 'ppk' },
   { n: 'ts2GenApprove', need: 'ppk_approve|haccp_approve', mut: true, f: 'ppk' },
-  { n: 'ts2GenResolveIssue', need: 'ppk_edit|haccp_approve', mut: true, f: 'ppk' }
+  { n: 'ts2GenResolveIssue', need: 'ppk_edit|haccp_approve', mut: true, f: 'ppk' },
+  // «ЦЕХ Финансы и Экономика», этап 2: реестр операций и дневные итоги (раздел «Экономика» — во всех тарифах).
+  // v72SyncNow пишет только служебные итоги (не первичные данные), операция, аудит и блокировка — внутри функции.
+  { n: 'v72SyncNow', need: 'finance_view' },
+  { n: 'v72GetSummary', need: 'finance_view' },
+  { n: 'v72GetRegistry', need: 'finance_view' },
+  { n: 'v72GetOperationHistory', need: 'finance_view' }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();
