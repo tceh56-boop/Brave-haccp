@@ -8,11 +8,17 @@
  * Переходы проверяются: полнота карточки, проверяющий — не разработчик, лабораторное подтверждение обязательных показателей
  * (протоколы со ссылкой на ТУ), утверждение — с правом tu_approve и выпуском PDF с реквизитами и хешем.
  * Действующая версия создаёт строки лабораторного плана по своим показателям (связь ТУ → показатель → лабплан, §18).
+ *
+ * Автосборка (v66Generate, а также сразу при создании ТУ): карточка и строки заполняются из данных программы — ТТК (состав,
+ * выход, условия хранения и срок из действующей версии карты), лабораторного плана (показатели, методы, лаборатория),
+ * базы нормативов (утверждённые нормы микробиологии и маркировки, температура сырья при приёмке), реквизитов организации.
+ * Как и ППК, генератор НИЧЕГО НЕ ПРИДУМЫВАЕТ: чего нет в данных — поле остаётся пустым и попадает в список «что заполнить».
+ * Строки автосборки помечены «Авто:» и при повторной сборке заменяются; строки и поля, которые человек изменил, не трогаются.
  */
 var MC_V66 = {
   DOC: ['ТУ_Документы', ['TUID', 'Number', 'ProductName', 'Scope', 'ProductCode', 'Purpose', 'ProductIDs', 'TTKCodes', 'Status', 'CurrentVersion', 'ActiveVersion', 'Developer', 'Approver', 'CreatedAt', 'CreatedBy', 'Notes']],
   VER: ['ТУ_Версии', ['VersionID', 'TUID', 'Version', 'Status', 'DateFrom', 'DateTo', 'RawRequirements', 'IngredientRequirements', 'Organoleptic', 'StorageConditions', 'ShelfLife', 'Transport',
-    'AcceptanceRules', 'SamplingRules', 'SupplierDocs', 'NonconformingDisposal', 'Developer', 'Approver', 'ApprovedAt', 'FileID', 'Hash', 'ChangeReason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy']],
+    'AcceptanceRules', 'SamplingRules', 'SupplierDocs', 'NonconformingDisposal', 'Developer', 'Approver', 'ApprovedAt', 'FileID', 'Hash', 'ChangeReason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy', 'AutoFields']],
   IND: ['ТУ_Показатели', ['IndicatorID', 'TUID', 'VersionID', 'Group', 'Indicator', 'NormMin', 'NormMax', 'NormText', 'Unit', 'MethodID', 'Mandatory', 'LabFrequencyDays', 'Notes']],
   MET: ['ТУ_МетодыКонтроля', ['MethodID', 'TUID', 'VersionID', 'Name', 'StandardRef', 'Laboratory', 'Notes']],
   RAW: ['ТУ_Сырье', ['LineID', 'TUID', 'VersionID', 'Material', 'ProductID', 'Requirements', 'SupplierDocs', 'Notes']],
@@ -63,8 +69,9 @@ function v66CreateTu(json, token) {
       var v = { VersionID: vid, TUID: id, Version: 1, Status: 'PROJECT', DateFrom: '', DateTo: '', Developer: d.developer || w.name, Approver: d.approver || '', ChangeReason: 'первая редакция', CreatedAt: new Date(), CreatedBy: w.name };
       MC_V66_CARD.forEach(function (f) { v[f[0]] = d[f[0].charAt(0).toLowerCase() + f[0].slice(1)] || ''; });
       _v66Add_('VER', v); _v66Apr_(id, vid, 'Создание', 'PROJECT', '', op);
-      _audit_(op, 'V66_CREATE', 'ТУ', id, null, { number: num, product: name, ttk: ttk }); _endOp_(op);
-      return _ok_({ tuId: id, versionId: vid, status: 'PROJECT' }, op.id);
+      var auto = null; if (d.autoFill !== false) { try { auto = _v66AutoFill_(vid, op); } catch (e) { _log_('WARN', 'автосборка ТУ: ' + e.message); } }
+      _audit_(op, 'V66_CREATE', 'ТУ', id, null, { number: num, product: name, ttk: ttk, auto: auto ? auto.summary : null }); _endOp_(op);
+      return _ok_({ tuId: id, versionId: vid, status: 'PROJECT', auto: auto }, op.id);
     });
   } catch (e) { _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
 }
@@ -84,7 +91,7 @@ function v66SaveLine(json, token) {
   try { var d = _v64Json_(json), k = String(d.kind || '').toUpperCase();
     if (['IND', 'MET', 'RAW', 'PKL', 'REF'].indexOf(k) < 0) return _v66Fail_(op, 'VALIDATION', 'Вид строки: IND, MET, RAW, PKL, REF');
     return _withLock_(function () { var v = _v66Ver_(d.versionId); if (!_v66Editable_(v)) return _v66Fail_(op, 'VALIDATION', 'Состав меняется только в статусе «Проект» или «Пересмотр»');
-      var row = { TUID: v.TUID, VersionID: v.VersionID, Notes: d.notes || '' };
+      var row = { TUID: v.TUID, VersionID: v.VersionID, Notes: String(d.notes || '').replace(/^Авто:\s*/, '') };   // сохранено человеком — строка больше не автоматическая
       if (k === 'IND') { if (!MC_V66_GROUPS[d.group]) return _v66Fail_(op, 'VALIDATION', 'Группа показателя: ' + Object.keys(MC_V66_GROUPS).join(', ')); if (!String(d.indicator || '').trim()) return _v66Fail_(op, 'VALIDATION', 'Укажите показатель');
         var mn = d.normMin === '' || d.normMin === undefined ? '' : _v64Num_(d.normMin), mx = d.normMax === '' || d.normMax === undefined ? '' : _v64Num_(d.normMax);
         if (mn === '' && mx === '' && !String(d.normText || '').trim()) return _v66Fail_(op, 'VALIDATION', 'Укажите норматив: границы или текст («не допускается в 25 г»)');
@@ -233,4 +240,140 @@ function _v66ActiveFor_(nameOrCode) {
   var dsh = _v64DishOf_(nameOrCode), key = _v64Key_(nameOrCode);
   var d = _v66Objs_('DOC', function (x) { return x.ActiveVersion && x.Status !== 'ARCHIVED' && ((dsh && String(x.TTKCodes).split(',').indexOf(String(dsh.code)) >= 0) || _v64Key_(x.ProductName) === key); })[0];
   if (!d) return null; var v = _v66Ver_(d.ActiveVersion); return v ? { tuId: d.TUID, versionId: v.VersionID, version: v.Version, number: d.Number } : null;
+}
+
+/* ---------------- автосборка ТУ из данных программы ---------------- */
+var MC_V66_AUTO_ = 'Авто: ';
+var MC_V66_HINT_ = {   // куда идти, чтобы заполнить пробел (для списка «что заполнить»)
+  RawRequirements: 'ТТК: состав карты', IngredientRequirements: 'вручную в карточке (полуфабрикаты из ТТК подставляются сами)', Organoleptic: 'вручную в карточке',
+  StorageConditions: 'ТТК → версия карты → «Условия хранения»', ShelfLife: 'ТТК: срок реализации или таблица сроков в базе нормативов', Transport: 'вручную в карточке',
+  AcceptanceRules: 'вручную в карточке', SamplingRules: 'вручную в карточке', SupplierDocs: 'вручную в карточке', NonconformingDisposal: 'вручную в карточке'
+};
+function _v66IsAuto_(x) { return String(x.Notes || '').indexOf(MC_V66_AUTO_) === 0; }
+function _v66Txt_(x) { return String(x === undefined || x === null ? '' : x).trim(); }
+/** Группа показателя по названию (для строк лабораторного плана, где группы нет). */
+function _v66GroupOf_(name) {
+  var s = String(name || '').toLowerCase().replace(/ё/g, 'е');
+  if (/органолепт|внешн|вкус|запах|цвет|консистенц|на разрезе/.test(s)) return 'ORGANOLEPTIC';
+  if (/свинец|кадми|ртут|мышьяк|токсичн|пестицид|радионукл|цези|стронци|афлатоксин|нитрат|нитрит|гистамин|бенз.?а.?пирен|антибиотик|меламин|диоксин/.test(s)) return 'SAFETY';
+  if (/кмафанм|бгкп|колиформ|патоген|сальмонел|листери|стафилокок|staphyl|e\.?\s*coli|кишечн|протей|proteus|плесен|дрожж|bacillus|бацилл|сульфитредуц|клостри|энтерокок|микроб|мезофил/.test(s)) return 'MICRO';
+  return 'PHYSCHEM';
+}
+/** Данные программы для ТУ: ТТК, лабораторный план, база нормативов, реквизиты. Только чтение. */
+function _v66AutoData_(doc) {
+  var D = { dishes: [], lab: [], micro: [], label: [], org: {}, notes: [] };
+  var codes = String(doc.TTKCodes || '').split(',').map(function (c) { return c.trim(); }).filter(String);
+  if (!codes.length) { var g = null; try { g = _v64DishOf_(doc.ProductName); } catch (e) {} if (g) { codes = [String(g.code)]; D.notes.push('ТТК найдена по названию продукции: ' + g.code); } }
+  codes.forEach(function (c) {
+    var dish = null; try { dish = _v64DishOf_(c); } catch (e) {} if (!dish) return;
+    var x = { code: String(dish.code), name: String(dish.name || ''), cat: String(dish.cat || ''), semi: !!dish.semi, ing: dish.ing || [], yieldBase: Number(dish.yieldBase) || 0, yieldUnit: dish.yieldUnit || '', version: 0, storage: '', shelf: '', shelfSrc: '' };
+    try { x.version = typeof _effectiveTTKVersion_ === 'function' ? _effectiveTTKVersion_(x.code) : 0;
+      if (x.version) { var fv = _ttkFindVersion_(_ttkVersionsSheet_(), x.code, x.version); if (fv) { x.storage = _v66Txt_(fv.data[10]); x.shelf = _v66Txt_(fv.data[11]); if (x.shelf) x.shelfSrc = 'ТТК ' + x.code + ', версия ' + x.version; } } } catch (e) {}
+    if (!x.shelf) { try { var sl = typeof _shelfLifeFor_ === 'function' ? _shelfLifeFor_(x.code) : null;   // срок «по категории» — расчёт системы, а не документ: в ТУ не берётся
+      if (sl && sl['часы'] > 0 && sl['источник'] !== 'категория') { x.shelf = sl['часы'] + ' ч'; x.shelfSrc = sl['источник'] === 'карта' ? 'карта ТТК ' + x.code : sl['источник']; } } catch (e) {} }
+    D.dishes.push(x);
+  });
+  var keys = {}; keys[_v64Key_(doc.ProductName)] = 1; D.dishes.forEach(function (x) { keys[_v64Key_(x.name)] = 1; keys[x.code] = 1; });
+  try { D.lab = _v65Rows_('Лаборатория_План').filter(function (r) {
+      var on = r['Активен'] === undefined ? r.Active : r['Активен']; if (!_v65On_(on)) return false;
+      if (String(r.TUID || '') === String(doc.TUID)) return false;   // строки, созданные самой ТУ, — не источник для неё же
+      return keys[_v64Key_(r.ObjectName || r['Объект контроля'])] || (r.ProductID && keys[String(r.ProductID)]); }); } catch (e) {}
+  var all = []; try { all = _v70Objs_('NORMS').filter(function (n) { return n.Status === 'APPROVED'; }); } catch (e) {}
+  var nm = D.dishes.map(function (x) { return _v70Norm_(x.name); }).concat([_v70Norm_(doc.ProductName)]).filter(String), cats = D.dishes.map(function (x) { return _v70Norm_(x.cat); }).filter(String);
+  var mic = all.filter(function (n) { return n.Domain === 'MICRO'; }), own = mic.filter(function (n) { var o = _v70Norm_(n.Object); return o && (nm.some(function (k) { return k.indexOf(o) >= 0 || o.indexOf(k) >= 0; }) || cats.indexOf(o) >= 0); });
+  if (own.length) D.micro = own;
+  else if (D.dishes.length) { D.micro = mic.filter(function (n) { return /общественного питания|кулинарн/i.test(String(n.Object)); }); if (D.micro.length) D.notes.push('микробиологические нормы подобраны по группе «' + D.micro[0].Object + '» — проверьте, что продукция к ней относится'); }
+  D.label = all.filter(function (n) { return n.Domain === 'LABEL'; });
+  try { D.org = _mcOrg_() || {}; } catch (e) {}
+  return D;
+}
+/** Перезаписать строки листа без автоматических строк этой версии. Возвращает ручные строки версии. */
+function _v66DropAuto_(k, vid, keepIds) {
+  var sh = _v66Sh_(k), w = MC_V66[k][1].length, last = sh.getLastRow(); if (last < 2) return [];
+  var v = sh.getRange(1, 1, last, w).getValues(), h = v[0].map(String), iv = h.indexOf('VersionID'), inn = h.indexOf('Notes');
+  var keep = v.slice(1).filter(function (r) { return r[0] !== '' && !(String(r[iv]) === String(vid) && String(r[inn] || '').indexOf(MC_V66_AUTO_) === 0 && !(keepIds && keepIds[r[0]])); });
+  if (keep.length === last - 1) return _v66Objs_(k, function (x) { return x.VersionID === vid; });
+  sh.getRange(2, 1, last - 1, w).clearContent(); if (keep.length) sh.getRange(2, 1, keep.length, w).setValues(keep);
+  return _v66Objs_(k, function (x) { return x.VersionID === vid; });
+}
+/** Собрать карточку и строки версии из данных программы. Вызывается внутри блокировки и операции. */
+function _v66AutoFill_(versionId, op) {
+  var v = _v66Ver_(versionId); if (!_v66Editable_(v)) throw new Error('Собирать можно версию в статусе «Проект» или «Пересмотр»');
+  var doc = _v66Doc_(v.TUID), D = _v66AutoData_(doc), vid = v.VersionID, filled = [], kept = [], lines = { IND: 0, MET: 0, RAW: 0, PKL: 0, REF: 0 };
+  var prev = {}; try { prev = JSON.parse(v.AutoFields || '{}') || {}; } catch (e) {}
+  // 1. карточка: поле заполняется, если оно пустое или в нём то, что записала прошлая автосборка (правку человека не трогаем)
+  var raw = [], semi = [], seen = {};
+  D.dishes.forEach(function (x) { x.ing.forEach(function (g) { var n = _v66Txt_(g[0]), k = _v64Key_(n); if (!n || seen[k]) return; seen[k] = 1; var sd = null; try { sd = _v64DishOf_(n); } catch (e) {}
+    if (sd && String(sd.code) !== x.code) semi.push({ name: n, code: String(sd.code), from: x.code }); else raw.push({ name: n, from: x.code }); }); });
+  var ttkRef = D.dishes.map(function (x) { return 'ТТК ' + x.code + ' «' + x.name + '»' + (x.version ? ', версия ' + x.version : ''); }).join('; ');
+  var val = {};
+  if (raw.length) val.RawRequirements = 'Сырьё — по составу ' + ttkRef + ': ' + raw.map(function (r) { return r.name; }).join(', ') + '.\nКаждая партия сырья принимается с документами, подтверждающими безопасность, по результатам входного контроля; требования по видам сырья — в таблице «Требования к сырью».';
+  if (semi.length) val.IngredientRequirements = semi.map(function (r) { return 'Полуфабрикат «' + r.name + '» — изготавливается по ТТК ' + r.code; }).join('\n');
+  var st = D.dishes.filter(function (x) { return x.storage; }), sl = D.dishes.filter(function (x) { return x.shelf; });
+  if (st.length) val.StorageConditions = st.map(function (x) { return (D.dishes.length > 1 ? x.name + ': ' : '') + x.storage + ' (ТТК ' + x.code + (x.version ? ', версия ' + x.version : '') + ')'; }).join('\n');
+  if (sl.length) val.ShelfLife = sl.map(function (x) { return (D.dishes.length > 1 ? x.name + ': ' : '') + x.shelf + ' (' + x.shelfSrc + ')'; }).join('\n');
+  var auto = {};
+  MC_V66_CARD.forEach(function (f) { var k = f[0], cur = _v66Txt_(v[k]); if (!val[k]) { if (prev[k] !== undefined && cur === _v66Txt_(prev[k])) { _v66Set_('VER', v._row, k, ''); } return; }
+    if (!cur || (prev[k] !== undefined && cur === _v66Txt_(prev[k]))) { if (cur !== val[k]) _v66Set_('VER', v._row, k, val[k]); auto[k] = val[k]; filled.push(f[1]); } else kept.push(f[1]); });
+  _v66Set_('VER', v._row, 'AutoFields', JSON.stringify(auto));
+  if (!_v66Txt_(v.Approver) && !_v66Txt_(doc.Approver) && D.org.directorName) { var ap = D.org.directorName + (D.org.directorPosition ? ', ' + D.org.directorPosition : ''); _v66Set_('VER', v._row, 'Approver', ap); _v66Set_('DOC', doc._row, 'Approver', ap); filled.push('Утверждающий'); }
+  if (!_v66Txt_(doc.Scope) && D.org.name) { _v66Set_('DOC', doc._row, 'Scope', 'Настоящие технические условия распространяются на продукцию «' + doc.ProductName + '», изготавливаемую ' + D.org.name +
+    (D.org.objectName ? ' (' + D.org.objectName + ')' : '') + (D.org.actualAddress ? ' по адресу: ' + D.org.actualAddress : '') + '.'); filled.push('Область применения'); }
+  if (!_v66Txt_(doc.TTKCodes) && D.dishes.length) _v66Set_('DOC', doc._row, 'TTKCodes', D.dishes.map(function (x) { return x.code; }).join(','));
+  // 2. строки: автоматические прошлой сборки заменяются, ручные остаются и не дублируются
+  var man = {}; ['IND', 'RAW', 'PKL', 'REF'].forEach(function (k) { man[k] = _v66DropAuto_(k, vid); });
+  var used = {}; man.IND.forEach(function (x) { if (x.MethodID) used[x.MethodID] = 1; }); man.MET = _v66DropAuto_('MET', vid, used);   // метод, на который ссылается ручной показатель, остаётся
+  var has = function (k, col, text) { var key = _v64Key_(text); return man[k].some(function (x) { return _v64Key_(x[col]) === key; }); };
+  var add = function (k, o) { o.TUID = v.TUID; o.VersionID = vid; o.Notes = MC_V66_AUTO_ + (o.Notes || ''); _v66Add_(k, o); man[k].push(o); lines[k]++; return o; };
+  var metOf = function (name, lab, src) { if (!_v66Txt_(name)) return ''; var key = _v64Key_(name), m = man.MET.filter(function (x) { return _v64Key_(x.Name) === key; })[0];
+    if (m) return m.MethodID; var sr = /\(([^)]*(ГОСТ|МУК|ISO|ИСО|СТБ|МУ)[^)]*)\)/i.exec(name); return add('MET', { MethodID: _v66Id_('TUM'), Name: name, StandardRef: sr ? sr[1] : '', Laboratory: lab || '', Notes: src }).MethodID; };
+  D.lab.forEach(function (r) {
+    var ind = _v66Txt_(r.Indicator || r['Вид исследования']); if (!ind || has('IND', 'Indicator', ind)) return;
+    var mn = r.NormMin === undefined ? '' : r.NormMin, mx = r.NormMax === undefined ? '' : r.NormMax, nt = _v66Txt_(r.NormText) || ((mn === '' && mx === '') ? _v66Txt_(r.Normative || r['Норматив']) : '');
+    if (mn === '' && mx === '' && !nt) return;   // без норматива показатель в ТУ не ставим — его нет в данных
+    var lab = _v66Txt_(r.Laboratory || r['Лаборатория']);
+    add('IND', { IndicatorID: _v66Id_('TUI'), Group: _v66GroupOf_(ind), Indicator: ind, NormMin: mn, NormMax: mx, NormText: nt, Unit: _v66Txt_(r.Unit), MethodID: metOf(r.Method, lab, 'лабораторный план'),
+      Mandatory: true, LabFrequencyDays: Number(r.FrequencyDays || r['Периодичность, дней']) || '', Notes: 'лабораторный план ' + _v66Txt_(r.PlanID || r.ID) });
+  });
+  D.micro.forEach(function (n) {
+    var ind = _v66Txt_(n.Parameter).split(':')[0]; if (!ind || has('IND', 'Indicator', ind)) return;
+    var vt = _v70ValueText_(n), nt = _v66Txt_(n.Parameter).indexOf(':') >= 0 ? _v66Txt_(n.Parameter).split(':').slice(1).join(':').trim() + (vt ? ' (' + vt + ')' : '') : vt;
+    add('IND', { IndicatorID: _v66Id_('TUI'), Group: _v66GroupOf_(ind) === 'SAFETY' ? 'SAFETY' : 'MICRO', Indicator: ind, NormMin: '', NormMax: '', NormText: nt || _v66Txt_(n.Parameter), Unit: '', MethodID: '', Mandatory: true, LabFrequencyDays: '',
+      Notes: 'база нормативов: ' + _v70Source_(n) });
+  });
+  D.dishes.forEach(function (x) { if (!(x.yieldBase > 0)) return; var nmY = 'Масса (выход)' + (D.dishes.length > 1 ? ' «' + x.name + '»' : ''); if (has('IND', 'Indicator', nmY)) return;
+    add('IND', { IndicatorID: _v66Id_('TUI'), Group: 'PHYSCHEM', Indicator: nmY, NormMin: '', NormMax: '', NormText: x.yieldBase + ' ' + x.yieldUnit + ' по ТТК ' + x.code + ' (допустимое отклонение не задано)', Unit: x.yieldUnit, MethodID: '', Mandatory: false, LabFrequencyDays: '', Notes: 'ТТК ' + x.code }); });
+  raw.forEach(function (r) { if (has('RAW', 'Material', r.name)) return; var inc = null; try { inc = typeof _v70IncomingFor_ === 'function' ? _v70IncomingFor_(r.name) : null; } catch (e) {}
+    var req = inc ? [inc.chilled, inc.frozen].filter(Boolean).map(function (z) { return z.label + ' (' + z.source + ')'; }).join('; ') : '';
+    add('RAW', { LineID: _v66Id_('TUR'), Material: r.name, ProductID: '', Requirements: req, SupplierDocs: '', Notes: 'ТТК ' + r.from }); });
+  D.label.forEach(function (n) { var t = _v66Txt_(n.Object) + ': ' + _v66Txt_(n.Parameter) + (_v70ValueText_(n) ? ' ' + _v70ValueText_(n) : '') + ' (' + _v70Source_(n) + ')'; if (has('PKL', 'Requirement', t)) return;
+    add('PKL', { LineID: _v66Id_('TUP'), Kind: 'LABELING', Requirement: t, Notes: 'база нормативов' }); });
+  var docs = {}; D.micro.concat(D.label).forEach(function (n) { if (!n.DocID) return; var a = docs[n.DocID] = docs[n.DocID] || []; if (n.Ref && a.indexOf(n.Ref) < 0) a.push(n.Ref); });
+  Object.keys(docs).forEach(function (id) { var num = _v70DocNum_(id); if (has('REF', 'Number', num)) return; var c = (typeof MC_V70_CATALOG_ !== 'undefined' ? MC_V70_CATALOG_ : []).filter(function (x) { return x.id === id; })[0];
+    add('REF', { RefID: _v66Id_('TUN'), DocID: id, Number: num, Title: c ? c.title : '', Clause: docs[id].join('; '), Notes: 'база нормативов' }); });
+  D.dishes.forEach(function (x) { var num = 'ТТК ' + x.code; if (has('REF', 'Number', num)) return; add('REF', { RefID: _v66Id_('TUN'), DocID: '', Number: num, Title: 'Технико-технологическая карта «' + x.name + '»', Clause: x.version ? 'версия ' + x.version : '', Notes: 'ТТК' }); });
+  // 3. что осталось заполнить людям
+  var nv = _v66Ver_(vid), gaps = _v66Completeness_(nv), todo = [];
+  MC_V66_CARD.forEach(function (f) { if (!_v66Txt_(nv[f[0]])) todo.push(f[1] + ' — ' + MC_V66_HINT_[f[0]]); });
+  if (!D.dishes.length) todo.unshift('ТТК не указаны и не найдены по названию — укажите коды ТТК, чтобы взять состав, выход, хранение и срок');
+  if (!D.micro.length) todo.push('Микробиологические показатели — база нормативов: утвердите нормы раздела «Микробиология» или добавьте исследования в лабораторный план');
+  if (man.IND.some(function (x) { return !x.MethodID; })) todo.push('Методы контроля — лабораторный план (колонка «Метод») или вручную: у показателей без метода ТУ дальше не пройдёт');
+  if (!man.PKL.some(function (x) { return x.Kind === 'PACKAGING'; })) todo.push('Требования к упаковке — вручную (в данных программы их нет)');
+  if (!man.PKL.some(function (x) { return x.Kind === 'LABELING'; })) todo.push('Требования к маркировке — база нормативов: нормы раздела «Маркировка», или вручную');
+  if (!_v66Txt_(_v66Doc_(v.TUID).ProductCode)) todo.push('Код продукции — вручную (ОКПД 2 / ТН ВЭД), система его не подбирает');
+  if (!_v66Txt_(_v66Doc_(v.TUID).Purpose)) todo.push('Назначение — вручную');
+  var summary = { filled: filled, kept: kept, lines: lines, ttk: D.dishes.map(function (x) { return x.code; }), notes: D.notes, gaps: gaps.length, todo: todo };
+  _v66Apr_(v.TUID, vid, 'Автосборка', gaps.length ? 'GAPS' : 'COMPLETE', 'заполнено: ' + (filled.join(', ') || '—') + '; строк: ' + Object.keys(lines).map(function (k) { return k + ' ' + lines[k]; }).join(', ') + (gaps.length ? '; не заполнено: ' + gaps.length : ''), op);
+  return { summary: summary, completeness: gaps };
+}
+/** Собрать ТУ из данных программы (ТТК, лабораторный план, база нормативов, реквизиты). Пустое остаётся пустым и попадает в «что заполнить». */
+function v66Generate(json, token) {
+  var op = null; try { op = _beginOp_(token, 'tu_edit', 'V66_GENERATE', 'ТУ', null, null); } catch (e) { return _failFrom_(e); }
+  try { var d = _v64Json_(typeof json === 'string' && !/^\s*\{/.test(json) ? JSON.stringify({ versionId: json }) : json);
+    return _withLock_(function () { var v = _v66Ver_(d.versionId); if (!v) return _v66Fail_(op, 'NOT_FOUND', 'Версия ТУ не найдена');
+      if (!_v66Editable_(v)) return _v66Fail_(op, 'VALIDATION', 'Собирать можно версию в статусе «Проект» или «Пересмотр» (сейчас «' + (MC_V66_ST_RU[v.Status] || v.Status) + '»)');
+      var r = _v66AutoFill_(v.VersionID, op); var w = _v65Who_(op); _v66Set_('VER', v._row, 'UpdatedAt', new Date()); _v66Set_('VER', v._row, 'UpdatedBy', w.name);
+      _audit_(op, 'V66_GENERATE', 'ТУ', v.TUID, null, { version: v.Version, filled: r.summary.filled, lines: r.summary.lines, gaps: r.summary.gaps }); _endOp_(op);
+      return _ok_(Object.assign({ versionId: v.VersionID }, r.summary, { completeness: r.completeness }), op.id); });
+  } catch (e) { _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
 }
