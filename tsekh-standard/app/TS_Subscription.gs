@@ -331,6 +331,7 @@ var TS_GATE_ = [
   { n: 'tsOpPrice', need: 'finance_view|finance_edit|stock_view|stock|documents|prod_manage|reports', f: 'economics' },
   { n: 'tsOpCreate', need: 'finance_edit|stock|documents|prod_manage', mut: true, f: 'economics' },
   { n: 'tsOpGet', need: 'finance_view|finance_edit|stock_view|stock|documents_view|documents|prod_manage|reports', f: 'economics' },
+  { n: 'tsOpCatalog', need: 'finance_view|finance_edit|stock_view|stock|documents_view|documents|prod_manage|reports', f: 'economics' },
   { n: 'tsOpPdf', need: 'finance_view|finance_edit|stock_view|stock|documents_view|documents|prod_manage|reports', mut: true, f: 'economics' },
   { n: 'tsContractsList', need: 'documents_view|documents', f: 'contracts' },
   { n: 'tsContractSave', need: 'documents', mut: true, f: 'contracts' },
