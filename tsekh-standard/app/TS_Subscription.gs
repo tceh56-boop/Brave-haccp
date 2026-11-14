@@ -411,6 +411,11 @@ var TS_GATE_ = [
   { n: 'v75AddMove', need: 'finance_edit', mut: true },
   { n: 'v75ImportStatement', need: 'finance_edit', mut: true },
   { n: 'v75SetCategory', need: 'finance_edit', mut: true },
-  { n: 'v75CancelMove', need: 'finance_edit', mut: true }
+  { n: 'v75CancelMove', need: 'finance_edit', mut: true },
+  // этап 6: меню-инжиниринг, закупки (цены поставщиков), прогноз продаж и заявки на закупку по прогнозу (в лист V21)
+  { n: 'v76GetMenuEngineering', need: 'finance_view' },
+  { n: 'v76GetProcurement', need: 'finance_view' },
+  { n: 'v76GetForecast', need: 'finance_view' },
+  { n: 'v76CreateOrderRequests', need: 'procurement|stock', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();
