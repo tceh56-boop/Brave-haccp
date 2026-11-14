@@ -366,6 +366,13 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .ef label{display:block;font-size:12px;color:var(--muted);margin:8px 0}
 .ef input,.ef textarea,.erow input,.erow select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:8px 9px;font:inherit;background:#fff;color:var(--ink)}
 .erow{display:grid;grid-template-columns:1fr 58px 70px 70px 30px;gap:6px;margin:6px 0}
+.nrow{border-bottom:1px dashed var(--line,#e3e3e3);padding-bottom:6px;margin-bottom:4px}
+.nproc{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px}.nproc select{flex:1 1 240px;min-width:0;font-size:12.5px}.nproc span{color:var(--muted,#8a7b6a)}
+.procEd{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0;padding:8px;border:1px solid var(--line,#e3e3e3);border-radius:8px;font-size:12px}
+.procEd>input[data-k=name]{grid-column:1/-1}.procEd label{display:flex;flex-direction:column;gap:2px}.procEd .chk{grid-column:1/-1;flex-direction:row;align-items:center;gap:6px}.procEd .chk input{width:auto}.procEd .ebar{grid-column:1/-1;margin:0}
+.nsum{font-size:13px;margin:6px 0}
+.mvhint{font-size:12.5px;color:var(--muted,#8a7b6a);margin:4px 0 8px}.v74pt input{padding:4px 6px;font-size:13px}.v74pt td{padding:3px 4px}
+@media (max-width:560px){.procEd{grid-template-columns:1fr 1fr}}
 .erow button{border:0;background:none;font-size:20px;color:var(--muted)}
 .ebar{display:flex;gap:8px;margin:12px 0 6px}
 .kpi.clk{cursor:pointer;position:relative;transition:transform .12s,box-shadow .12s}
@@ -1823,24 +1830,76 @@ function dishNew() {
       '<div class="ef"><label>Название *<input id="nName"></label><label>Категория<input id="nCat"></label>' +
       '<label style="display:flex;gap:8px;align-items:center"><input id="nPf" type="checkbox" style="width:auto"> Полуфабрикат (п/ф)</label>' +
       '<label>Выход, г/мл (пусто — сумма состава)<input id="nYield" type="number" step="any"></label><label>Описание приготовления<textarea id="nTech" rows="3"></textarea></label></div>' +
-      '<div class="lblrow"><span>Состав</span><span class="lblr">ингредиент или п/ф · брутто · ед.</span></div><datalist id="nIngL">' + (DISHES || []).filter(function (d) { return d.semi; }).map(function (d) { return '<option value="' + esc(d.name) + '">'; }).join('') + '</datalist><div id="nRows"></div>' +
-      '<button class="btn" onclick="NEWD.rows.push({name:\'\',qty:\'\',unit:\'г\'});nDraw()">+ Ингредиент</button>' +
+      '<div class="lblrow"><span>Состав</span><span class="lblr">ингредиент или п/ф · брутто · ед. · вид обработки</span></div><datalist id="nIngL">' + (DISHES || []).filter(function (d) { return d.semi; }).map(function (d) { return '<option value="' + esc(d.name) + '">'; }).join('') + '</datalist><div id="nRows"></div>' +
+      '<button class="btn" onclick="NEWD.rows.push({name:\'\',qty:\'\',unit:\'г\',proc:null});nDraw()">+ Ингредиент</button>' +
       '<div class="ebar"><button class="btn pri" onclick="dishNewSave(this)">💾 Создать карточку</button><button class="btn" onclick="closeMdl()">Отмена</button></div><div class="bqmsg" id="nMsg"></div>';
     var mdl = document.getElementById('mdl'); mdl.classList.add('on', 'dish'); document.getElementById('mdlBox').innerHTML = h; nDraw();
   };
   if (typeof bqLoadDishes === 'function') bqLoadDishes(go); else go();
 }
+// V74: вид обработки сырья в строке состава — нетто и выход считаются по процентам потерь из карточки продукта
+var NPROC = {};
+function nBase(x) { var q = parseFloat(String(x.qty).replace(',', '.')) || 0; return x.unit === 'кг' || x.unit === 'л' ? q * 1000 : x.unit === 'г' || x.unit === 'мл' ? q : null; }
+function nCalc(x) { var b = nBase(x), p = x.proc; if (b === null || !p) return null; var n = b * (1 - (+p.cold || 0) / 100), o = n * (1 - (+p.thermal || 0) / 100) * (1 - (+p.final || 0) / 100); return { n: Math.round(n * 10) / 10, o: Math.round(o * 10) / 10 }; }
+function nLoadProc(i) {
+  var x = NEWD.rows[i], nm = (x.name || '').trim(); if (!nm) { x.proc = null; nUpd(i); return; }
+  var apply = function () { var l = NPROC[nm] || []; if (!x.proc || !l.some(function (p) { return p.name === x.proc.name; })) x.proc = l.filter(function (p) { return p.isDefault; })[0] || null; nUpd(i); };
+  if (NPROC[nm]) return apply();
+  run('v74ProcessingFor', [JSON.stringify([nm]), TOKEN], function (r) { var j = pj(r); NPROC[nm] = j && j.success !== false && j.data ? (j.data[nm] || []) : []; apply(); }, function () { NPROC[nm] = []; apply(); });
+}
+function nPick(i, v) {
+  var x = NEWD.rows[i], l = NPROC[(x.name || '').trim()] || [];
+  if (v === '+') { x.edit = { name: '', cold: '', thermal: '', final: '', lossP: '', lossF: '', lossC: '', save: true }; nUpd(i); return; }
+  x.edit = null; x.proc = v === '' ? null : l[+v] || null; nUpd(i);
+}
+function nProcSave(i, btn) {
+  var x = NEWD.rows[i], e = x.edit, box = document.getElementById('nPe' + i);
+  ['name', 'cold', 'thermal', 'final', 'lossP', 'lossF', 'lossC'].forEach(function (k) { var el = box.querySelector('[data-k="' + k + '"]'); if (el) e[k] = el.value; });
+  e.save = box.querySelector('[data-k="save"]').checked;
+  if (!e.name.trim()) { alert('Назовите обработку, например «Очистка, варка»'); return; }
+  var bad = ['cold', 'thermal', 'final', 'lossP', 'lossF', 'lossC'].filter(function (k) { var v = String(e[k]).trim(); if (!v) return false; v = parseFloat(v.replace(',', '.')); return !(v >= 0 && v < 100); });
+  if (bad.length) { alert('Проценты — от 0 до 99,9'); return; }
+  var p = { name: e.name.trim() }; ['cold', 'thermal', 'final', 'lossP', 'lossF', 'lossC'].forEach(function (k) { p[k] = parseFloat(String(e[k]).replace(',', '.')) || 0; });
+  var nm = x.name.trim();
+  if (!e.save) { x.proc = p; x.edit = null; nUpd(i); return; }
+  btn.disabled = true;
+  run('v74AddProcessing', [JSON.stringify({ product: nm, proc: p }), TOKEN], function (r) {
+    btn.disabled = false; var j = pj(r); if (!j || j.success === false) { alert('Не сохранено: ' + jerr(j, r)); return; }
+    NPROC[nm] = j.data.processing || []; x.proc = NPROC[nm].filter(function (q) { return q.name === p.name; })[0] || p; x.edit = null;
+    NEWD.rows.forEach(function (o, k) { if ((o.name || '').trim() === nm) nUpd(k); });
+  }, function () { btn.disabled = false; alert('Нет связи'); });
+}
+function nProcHtml(i) {
+  var x = NEWD.rows[i], nm = (x.name || '').trim(), l = NPROC[nm], c = nCalc(x), sel = -1;
+  if (x.proc && l) l.forEach(function (p, k) { if (p.name === x.proc.name) sel = k; });
+  var opts = '<option value="">' + (nm ? 'без обработки (нетто = брутто)' : '— выберите ингредиент —') + '</option>' + (l || []).map(function (p, k) {
+    return '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + esc(p.name) + ' · ' + [p.cold ? 'хол. ' + p.cold + '%' : '', p.thermal ? 'тепл. ' + p.thermal + '%' : '', p.final ? 'оконч. ' + p.final + '%' : ''].filter(Boolean).join(', ') + '</option>';
+  }).join('') + (x.proc && sel < 0 ? '<option value="" selected>' + esc(x.proc.name) + ' (только в этой карте)</option>' : '') + (nm ? '<option value="+">＋ Новая обработка…</option>' : '');
+  var info = !x.proc ? '' : c ? 'нетто <b>' + c.n + '</b> г · выход <b>' + c.o + '</b> г' : 'нетто и выход — укажите вес в г/кг/мл/л';
+  var ed = x.edit ? '<div class="procEd" id="nPe' + i + '"><input data-k="name" placeholder="Обработка, например «Очистка, варка»" value="' + esc(x.edit.name) + '">' +
+    [['cold', 'Холодная, %'], ['thermal', 'Тепловая, %'], ['final', 'Окончательная, %'], ['lossP', 'Потери белков, %'], ['lossF', 'Потери жиров, %'], ['lossC', 'Потери углеводов, %']].map(function (f) {
+      return '<label>' + f[1] + '<input data-k="' + f[0] + '" type="number" step="any" min="0" max="99.9" value="' + esc(x.edit[f[0]]) + '"></label>'; }).join('') +
+    '<label class="chk"><input data-k="save" type="checkbox"' + (x.edit.save ? ' checked' : '') + '> Сохранить в карточку продукта «' + esc(nm) + '»</label>' +
+    '<div class="ebar"><button class="btn pri" onclick="nProcSave(' + i + ',this)">Применить</button><button class="btn" onclick="NEWD.rows[' + i + '].edit=null;nUpd(' + i + ')">Отмена</button></div></div>' : '';
+  return '<div class="nproc"><select onchange="nPick(' + i + ',this.value)"' + (nm ? '' : ' disabled') + '>' + opts + '</select><span>' + info + '</span></div>' + ed;
+}
+function nSumHtml() {
+  var tot = 0, cnt = 0; NEWD.rows.forEach(function (x) { var c = nCalc(x); if (c) { tot += c.o; cnt++; } });
+  return cnt ? 'Выход по обработкам: <b>' + Math.round(tot * 10) / 10 + '</b> г' + (cnt < NEWD.rows.length ? ' (по строкам с обработкой; остальные — по брутто)' : '') : '';
+}
+// обновить только обработку строки и итог: поля ввода не перерисовываются, фокус не теряется
+function nUpd(i) { var b = document.getElementById('nPx' + i), s = document.getElementById('nSum'); if (!b) return nDraw(); b.innerHTML = nProcHtml(i); if (s) s.innerHTML = nSumHtml(); }
 function nDraw() {
   document.getElementById('nRows').innerHTML = NEWD.rows.map(function (x, i) {
-    return '<div class="erow" style="grid-template-columns:1fr 80px 64px 30px"><input list="nIngL" value="' + esc(x.name) + '" placeholder="Ингредиент" onchange="NEWD.rows[' + i + '].name=this.value">' +
-      '<input type="number" step="any" value="' + esc(x.qty) + '" placeholder="брутто" onchange="NEWD.rows[' + i + '].qty=this.value">' +
-      '<select onchange="NEWD.rows[' + i + '].unit=this.value">' + ['г', 'кг', 'мл', 'л', 'шт'].map(function (u) { return '<option' + (u === x.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select>' +
-      '<button onclick="NEWD.rows.splice(' + i + ',1);nDraw()">×</button></div>';
-  }).join('');
+    return '<div class="nrow"><div class="erow" style="grid-template-columns:1fr 80px 64px 30px"><input list="nIngL" value="' + esc(x.name) + '" placeholder="Ингредиент" onchange="NEWD.rows[' + i + '].name=this.value;nLoadProc(' + i + ')">' +
+      '<input type="number" step="any" value="' + esc(x.qty) + '" placeholder="брутто" oninput="NEWD.rows[' + i + '].qty=this.value;nUpd(' + i + ')">' +
+      '<select onchange="NEWD.rows[' + i + '].unit=this.value;nUpd(' + i + ')">' + ['г', 'кг', 'мл', 'л', 'шт'].map(function (u) { return '<option' + (u === x.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select>' +
+      '<button onclick="NEWD.rows.splice(' + i + ',1);nDraw()">×</button></div><div id="nPx' + i + '">' + nProcHtml(i) + '</div></div>';
+  }).join('') + '<div class="nsum" id="nSum">' + nSumHtml() + '</div>';
 }
 function dishNewSave(btn) {
   var m = document.getElementById('nMsg'), name = document.getElementById('nName').value.trim();
-  var ing = NEWD.rows.filter(function (x) { return x.name.trim() && parseFloat(x.qty) > 0; }).map(function (x) { return { name: x.name.trim(), qty: x.qty, unit: x.unit }; });
+  var ing = NEWD.rows.filter(function (x) { return x.name.trim() && parseFloat(x.qty) > 0; }).map(function (x) { var o = { name: x.name.trim(), qty: x.qty, unit: x.unit }; if (x.proc) o.proc = x.proc; return o; });
   if (!name) { m.className = 'bqmsg err'; m.textContent = 'Укажите название'; return; }
   if (!ing.length) { m.className = 'bqmsg err'; m.textContent = 'Добавьте ингредиенты с количеством'; return; }
   btn.disabled = true;
@@ -3152,29 +3211,78 @@ VIEWS.minstock = {
   }
 };
 
-/* ---------- КБЖУ продуктов (для расчёта КБЖУ блюд) ---------- */
+/* ---------- Карточка продукта: КБЖУ, виды обработки, состав; заполнение с этикетки (V74) ---------- */
 VIEWS.nutrition = {
-  fns: { save: 'setNutritionItem' },
-  title: 'КБЖУ продуктов', sub: 'Значения на 100 г — по данным производителя или справочника. По ним считается КБЖУ блюд в карточке.',
-  open: function () { this.h.load(); },
+  fns: { save: 'v74SaveProduct', label: 'v74LabelToProduct' },
+  title: 'Продукты: КБЖУ и обработка', sub: 'Карточка продукта: пищевая ценность на 100 г, виды обработки с потерями массы и веществ, состав и аллергены. Фото этикетки заполняет карточку — проверьте и сохраните. По этим данным считаются нетто, выход и КБЖУ в ТТК.',
+  open: function () { this._p = this._p || null; this.h.load(); },
+  pf: [['cold', 'Холодная'], ['thermal', 'Тепловая'], ['final', 'Окончат.'], ['lossP', 'Б'], ['lossF', 'Ж'], ['lossC', 'У']],
+  draw: function () {
+    var V = VIEWS.nutrition, p = V._p || { name: '', processing: [] }, a = V._a || [], q = String(V._q || '').toLowerCase();
+    var rows = q ? a.filter(function (x) { return String(x.name).toLowerCase().indexOf(q) >= 0; }) : a;
+    var canLbl = !window.__mcOkFn || window.__mcOkFn('v74LabelToProduct');
+    var lbl = canLbl ? '<label class="btn"><input type="file" accept="image/*,application/pdf,.pdf" capture="environment" style="display:none" onchange="VIEWS.nutrition.h.label(this)">📷 Распознать этикетку</label>' : '';
+    var meta = p.exists ? '<div class="mvhint">' + (p.source ? 'Источник: ' + esc(p.source) : '') + (p.updated ? ' · обновлено ' + esc(p.updated) : '') + '</div>' : (p.name ? '<div class="mvhint">Новый продукт — карточки ещё нет</div>' : '');
+    var warn = (p.warnings || []).length ? '<div class="warn">' + p.warnings.map(esc).join('<br>') + '</div>' : '';
+    var lab = p.labelName ? '<div class="mvhint">На этикетке: «' + esc(p.labelName) + '»' + (p.name && p.name !== p.labelName ? ' → в номенклатуре: «' + esc(p.name) + '»' : ' — продукт в номенклатуре не найден, проверьте название') + '</div>' : '';
+    vBody(vCard(p.name ? 'Карточка продукта' : 'Новый продукт', '<div class="mvbar" style="margin:0 0 8px">' + lbl + (p.name ? vBtn('Очистить форму', 'clear') : '') + '</div>' + lab + warn + meta +
+        vForm([['nn', 'Продукт *', 'text', p.name], ['nk', 'Ккал на 100 г', 'number', p.kcal], ['np', 'Белки, г', 'number', p.protein], ['nf', 'Жиры, г', 'number', p.fat], ['nc', 'Углеводы, г', 'number', p.carbs],
+          ['nm', 'Производитель', 'text', p.manufacturer], ['na', 'Аллергены', 'text', p.allergens], ['ns', 'Продукт содержит (состав)', 'textarea', p.composition, '', 2], ['nr', 'Комментарий', 'textarea', p.comment, '', 2]]) +
+        '<div class="lblrow" style="margin-top:12px"><span>Виды обработок продукта и потери массы и пищевых веществ, %</span></div><div id="v74proc"></div>' +
+        (p.wasteNorm ? '<div class="mvhint">Норма разбора: «' + esc(p.wasteNorm.name) + '» — отходы не более ' + esc(p.wasteNorm.maxWastePercent) + '%. Если своих обработок нет, в ТТК она предлагается как холодная обработка.</div>' : '') +
+        '<div class="mvbar">' + vBtn('+ Обработка', 'padd') + vBtn('Сохранить карточку', 'save', '', true) + '</div>') +
+      vCard('Продукты (' + a.length + ')', vForm([['nq', 'Поиск', 'text', V._q || '']]) + '<div class="mvbar">' + vBtn('Найти', 'find') + '</div>' +
+        vTable([{ k: 'name', l: 'Продукт' }, { k: 'kcal', l: 'Ккал', t: 'num' }, { k: 'protein', l: 'Б', t: 'num' }, { k: 'fat', l: 'Ж', t: 'num' }, { k: 'carbs', l: 'У', t: 'num' }, { k: 'processing', l: 'Обработок', t: 'num' }, { k: 'composition', l: 'Состав' }, { k: 'source', l: 'Источник' }], rows, function (x) { return vBtn('Открыть', 'pick', x.name); }, 'Нет данных')));
+    V.drawProc();
+  },
+  drawProc: function () {
+    var V = VIEWS.nutrition, l = (V._p && V._p.processing) || [], box = document.getElementById('v74proc'); if (!box) return;
+    if (!l.length) { box.innerHTML = '<div class="empty">Обработок нет. Добавьте, например: «Очистка, варка» — холодная 25%, тепловая 3%.</div>'; return; }
+    box.innerHTML = '<div class="tw"><table class="v74pt"><thead><tr><th>Наименование</th><th>Холодная</th><th>Тепловая</th><th>Окончат.</th><th>Потери Б</th><th>Потери Ж</th><th>Потери У</th><th>По умолч.</th><th></th></tr></thead><tbody>' + l.map(function (x, i) {
+      var inp = function (k, w) { return '<input data-i="' + i + '" data-k="' + k + '" ' + (k === 'name' ? '' : 'type="number" step="any" min="0" max="99.9" ') + 'value="' + esc(x[k] === 0 && k !== 'name' ? '' : x[k]) + '" style="width:' + w + '" onchange="VIEWS.nutrition.h.pset(this)">'; };
+      return '<tr><td>' + inp('name', '100%') + '</td>' + V.pf.map(function (f) { return '<td>' + inp(f[0], '64px') + '</td>'; }).join('') +
+        '<td style="text-align:center"><input type="radio" name="v74def"' + (x.isDefault ? ' checked' : '') + ' onchange="VIEWS.nutrition.h.pdef(' + i + ')"></td><td><button class="btn" onclick="VIEWS.nutrition.h.pdel(' + i + ')">×</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+  },
+  keep: function () { var V = VIEWS.nutrition; if (!V._p) V._p = { processing: [] }; [['nn', 'name'], ['nk', 'kcal'], ['np', 'protein'], ['nf', 'fat'], ['nc', 'carbs'], ['nm', 'manufacturer'], ['na', 'allergens'], ['ns', 'composition'], ['nr', 'comment']].forEach(function (f) { if (document.getElementById('mvf_' + f[0])) V._p[f[1]] = vV(f[0]); }); },
   h: {
-    load: function () {
-      vLoading();
-      vCall('getNutritionData', []).then(function (r) {
-        var o = vData(r) || {}, a = Object.keys(o).map(function (k) { return o[k]; }).sort(function (x, y) { return String(x.name).localeCompare(String(y.name), 'ru'); });
-        VIEWS.nutrition._a = a; var q = String(VIEWS.nutrition._q || '').toLowerCase();
-        var rows = q ? a.filter(function (x) { return String(x.name).toLowerCase().indexOf(q) >= 0; }) : a;
-        vBody(vCard('Добавить или изменить', vForm([['nn', 'Продукт *', 'text', VIEWS.nutrition._pre || ''], ['nk', 'Ккал', 'number'], ['np', 'Белки, г', 'number'], ['nf', 'Жиры, г', 'number'], ['nc', 'Углеводы, г', 'number']]) +
-            '<div class="mvbar">' + vBtn('Сохранить', 'save', '', true) + '</div>') +
-          vCard('Справочник (' + a.length + ')', vForm([['nq', 'Поиск', 'text', VIEWS.nutrition._q || '']]) + '<div class="mvbar">' + vBtn('Найти', 'find') + '</div>' +
-            vTable([{ k: 'name', l: 'Продукт' }, { k: 'kcal', l: 'Ккал', t: 'num' }, { k: 'protein', l: 'Б', t: 'num' }, { k: 'fat', l: 'Ж', t: 'num' }, { k: 'carbs', l: 'У', t: 'num' }], rows, function (x) { return vBtn('Изменить', 'pick', x.name); }, 'Нет данных')));
-      });
+    load: function (after) {
+      if (!after) vLoading();
+      vCall('v74ProductList', []).then(function (r) { var d = m9Ok(r); if (!d) { vBody(''); return; } VIEWS.nutrition._a = d.items || []; if (typeof after === 'function') after(); else VIEWS.nutrition.draw(); });
     },
-    find: function () { VIEWS.nutrition._q = vV('nq'); VIEWS.nutrition.h.load(); },
-    pick: function (name) { var x = (VIEWS.nutrition._a || []).filter(function (y) { return y.name === name; })[0]; if (!x) return; document.getElementById('mvf_nn').value = x.name; document.getElementById('mvf_nk').value = x.kcal; document.getElementById('mvf_np').value = x.protein; document.getElementById('mvf_nf').value = x.fat; document.getElementById('mvf_nc').value = x.carbs; window.scrollTo(0, 0); },
+    find: function () { VIEWS.nutrition.keep(); VIEWS.nutrition._q = vV('nq'); VIEWS.nutrition.draw(); },
+    clear: function () { VIEWS.nutrition._p = null; VIEWS.nutrition.draw(); },
+    pick: function (name) { vMsg('Открываю…'); vCall('v74ProductCard', [name]).then(function (r) { var d = m9Ok(r); if (!d) return; vMsg(''); VIEWS.nutrition._p = d; VIEWS.nutrition.draw(); window.scrollTo(0, 0); }); },
+    padd: function () { var V = VIEWS.nutrition; V.keep(); V._p.processing = V._p.processing || []; V._p.processing.push({ name: '', cold: '', thermal: '', final: '', lossP: '', lossF: '', lossC: '', isDefault: !V._p.processing.length }); V.drawProc(); },
+    pset: function (el) { var x = VIEWS.nutrition._p.processing[+el.getAttribute('data-i')]; if (x) x[el.getAttribute('data-k')] = el.value; },
+    pdef: function (i) { VIEWS.nutrition._p.processing.forEach(function (x, k) { x.isDefault = k === i; }); },
+    pdel: function (i) { VIEWS.nutrition._p.processing.splice(i, 1); VIEWS.nutrition.drawProc(); },
+    label: function (inp) {
+      var f = inp.files && inp.files[0]; if (!f) return; var V = VIEWS.nutrition; V.keep(); vMsg('Распознаю этикетку…');
+      dsRead(f, function (url, err) {
+        if (err) { vMsg(err, 'err'); return; }
+        vCall('v74LabelToProduct', [url]).then(function (r) {
+          var e = vErr(r); if (e) { vMsg('Не распознано: ' + e, 'err'); return; }
+          var d = vData(r), cur = V._p || { processing: [] };
+          var go = function (card) {
+            var b = card || cur, n = {}; Object.keys(b).forEach(function (k) { n[k] = b[k]; });
+            ['kcal', 'protein', 'fat', 'carbs', 'composition', 'allergens', 'manufacturer'].forEach(function (k) { n[k] = d[k] !== '' && d[k] !== null && d[k] !== undefined ? d[k] : n[k]; });
+            n.name = d.name || cur.name || ''; n.labelName = d.labelName; n.warnings = d.warnings; n.source = 'этикетка (проверено вручную)'; n.processing = n.processing || [];
+            V._p = n; V.draw(); vMsg('Этикетка распознана — проверьте значения и нажмите «Сохранить карточку»', 'ok');
+          };
+          if (d.name && d.name !== cur.name) vCall('v74ProductCard', [d.name]).then(function (r2) { var c = vData(r2); go(c && c.name ? c : null); }, function () { go(null); }); else go(null);
+        }, function (e) { vMsg('Нет связи: ' + e, 'err'); });
+      });
+      inp.value = '';
+    },
     save: function (a, btn) {
-      if (!vV('nn') || vV('nk') === '' || vV('np') === '' || vV('nf') === '' || vV('nc') === '') { vMsg('Нужны продукт и все четыре значения на 100 г', 'err'); return; }
-      vDo(btn, 'setNutritionItem', [JSON.stringify({ name: vV('nn'), kcal: vV('nk'), protein: vV('np'), fat: vV('nf'), carbs: vV('nc') })], function (d) { return 'Сохранено: ' + ((d && d.name) || vV('nn')); }, function () { VIEWS.nutrition._pre = ''; VIEWS.nutrition.h.load(); });
+      var V = VIEWS.nutrition; V.keep(); var p = V._p;
+      if (!p.name) { vMsg('Укажите продукт', 'err'); return; }
+      var nut = ['kcal', 'protein', 'fat', 'carbs'].filter(function (k) { return String(p[k] === undefined || p[k] === null ? '' : p[k]).trim() !== ''; }).length;
+      if (nut && nut < 4) { vMsg('Пищевая ценность: заполните все четыре значения на 100 г или оставьте их пустыми', 'err'); return; }
+      var procs = (p.processing || []).filter(function (x) { return String(x.name || '').trim(); });
+      vDo(btn, 'v74SaveProduct', [JSON.stringify({ name: p.name, kcal: p.kcal, protein: p.protein, fat: p.fat, carbs: p.carbs, composition: p.composition, allergens: p.allergens, manufacturer: p.manufacturer, comment: p.comment, source: p.source === 'этикетка (проверено вручную)' ? p.source : '', processing: procs })],
+        function (d) { return 'Сохранено: ' + d.name + (d.processing ? ' · обработок ' + d.processing : ''); }, function () { var nm = p.name; VIEWS.nutrition.h.load(function () { VIEWS.nutrition.h.pick(nm); }); });
     }
   }
 };
