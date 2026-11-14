@@ -282,7 +282,7 @@ function v64ClosePeriod(json, token) {
     // этап 1 «Финансы»: сегодняшний день не закрывается — склад, производство, списания и продажи сегодня ещё идут
     // и записываются текущей датой; так ни одна текущая операция не попадает в закрытый период.
     if (rg.toIso >= _v64Day_(new Date())) return _v64Fail_(op, 'VALIDATION', 'Закрыть можно только период, который закончился до сегодняшнего дня: операции сегодняшнего дня ещё идут');
-    return _withLock_(function () {
+    var out = _withLock_(function () {
       _V64_TAB_ = {};
       var clash = _v64Periods_().filter(function (p) { return p.status === 'CLOSED' && p.from <= rg.toIso && p.to >= rg.fromIso; });
       if (clash.length) return _v64Fail_(op, 'VALIDATION', 'Период пересекается с закрытым ' + clash[0].from + ' — ' + clash[0].to + ' (' + clash[0].id + ')');
@@ -307,6 +307,9 @@ function v64ClosePeriod(json, token) {
       return _ok_({ periodId: pid, from: rg.fromIso, to: rg.toIso, totals: t, snapshotId: snap[0], hash: hash,
         note: 'Период закрыт: историческая себестоимость не меняется; исправления — корректировкой с подтверждением.' }, op.id);
     });
+    // этап 2 «Финансы»: сверить реестр операций и заморозить дневные итоги закрытого периода (ошибка закрытие не отменяет)
+    try { if (JSON.parse(out).success && typeof _v72AfterClose_ === 'function') _v72AfterClose_(rg.fromIso, rg.toIso, op); } catch (e2) {}
+    return out;
   } catch (e) { _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
 }
 /** Корректировка закрытого периода: создаёт автор с причиной; действует после подтверждения другим сотрудником с правом закрытия. */

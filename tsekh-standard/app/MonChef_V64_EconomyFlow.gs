@@ -608,14 +608,22 @@ function _v64Totals_(lines) {
     if (l.trace === 'REVIEW') t.review++;
     if (l.trace === 'MISSING_EVIDENCE') t.missingEvidence++;
   });
-  Object.keys(t).forEach(function (k) { if (typeof t[k] === 'number' && !/^(missing|review|lines)/.test(k)) t[k] = _v64R2_(t[k]); });
+  return _v64Derive_(t);
+}
+/** Округление и производные показатели итогов (общие для журнала и дневных итогов V72: сумма дней = итог периода). */
+function _v64Derive_(t) {
+  Object.keys(t).forEach(function (k) { if (typeof t[k] === 'number' && !/^(missing|review|lines|marginPct)/.test(k)) t[k] = _v64R2_(t[k]); });
   t.cogsWithPackaging = _v64R2_(t.cogs + t.packaging);
   t.grossContribution = _v64R2_(t.revenue - t.cogsWithPackaging);
   t.marginPct = t.revenue > 0 ? Math.round(t.grossContribution / t.revenue * 1000) / 10 : null;
+  t.wasteByReason = t.wasteByReason || {};
   Object.keys(t.wasteByReason).forEach(function (k) { t.wasteByReason[k] = _v64R2_(t.wasteByReason[k]); });
   t.contributionAfterLosses = _v64R2_(t.grossContribution - t.wasteCost - t.defrostLoss - t.returnsCost - t.inventoryShortage + t.inventorySurplus);
   return t;
 }
+/** Слагаемые итогов (без производных) — их хранят дневные итоги V72. */
+var MC_V64_SUM_KEYS = ['purchases', 'extraCosts', 'consumption', 'semiOutput', 'dishOutput', 'issueCost', 'packaging', 'revenue', 'cogs', 'wasteCost', 'defrostLoss', 'returnsCost',
+  'quarantineReturns', 'processingWasteValue', 'labCost', 'corrections', 'expenses', 'inventoryShortage', 'inventorySurplus', 'missingPrice', 'missingSalePrice', 'review', 'missingEvidence', 'lines'];
 function _v64LineOut_(l) {
   return { date: l.date ? Utilities.formatDate(l.date, _mcTz_(), 'yyyy-MM-dd HH:mm') : '', stage: l.stage, stageRu: MC_V64_STAGE_RU[l.stage] || l.stage, dir: l.dir, objectType: l.objType || '', objectId: l.objId || '',
     batch: l.batch || '', parent: l.parent || '', production: l.production || '', event: l.event || '', dish: l.dish || '', productId: l.productId || '', product: l.product || '', qty: l.qty === undefined ? '' : _v64R3_(l.qty),
