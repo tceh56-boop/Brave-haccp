@@ -268,9 +268,10 @@ A.ppcApprove = function () {
 A.ppcNewVersion = function () { call('programs.newVersion', { program_id: S.data.program.program_id }).then(function (r) { toast('Создан черновик v' + r.program.version, 'ok'); go('ppcdoc', { program_id: r.program.program_id }); }, function (e) { if (e.details && e.details.program_id) return go('ppcdoc', { program_id: e.details.program_id }); showErr(e); }); };
 
 /* ---------- Технические условия ---------- */
-function tuProfileFields(groups, okpo) {
+function tuProfileFields(groups, okpo, cats) {
+  var gopts = (cats && cats.length ? cats.map(function (c) { return { group: c.name, items: c.groups.map(function (g) { return [g, g]; }) }; }) : groups.map(function (g) { return [g, g]; }));
   return [{ name: 'product_name', label: 'Наименование продукции', required: true, full: true, placeholder: 'Котлеты «Домашние» из говядины и свинины' },
-    { name: 'product_group', label: 'Группа продукции (определяет показатели безопасности и маркировку)', type: 'select', required: true, full: true, empty: 'Выберите группу', options: groups.map(function (g) { return [g, g]; }).concat([['__other', 'Другая группа — ввести ниже']]) },
+    { name: 'product_group', label: 'Группа продукции (определяет показатели безопасности и маркировку)', type: 'select', required: true, full: true, empty: 'Выберите группу', options: gopts.concat([['__other', 'Другая группа — ввести ниже']]), hint: 'Группы разбиты по категориям: блюда, мясо, птица и яйца, рыба, хлебобулочные, кондитерские, плодоовощные.' },
     { name: 'product_group_other', label: 'Другая группа продукции', full: true, hint: 'Для групп, которых нет в базе (например, роллы и суши), микробиологические нормативы внесите в «Нормативной базе».' },
     { name: 'okpd2', label: 'Код ОКПД2', placeholder: '10.13.14', hint: 'Первые три группы цифр войдут в обозначение ТУ' }, { name: 'okpo', label: 'Код ОКПО разработчика', value: okpo || '', placeholder: '8 цифр' },
     { name: 'purpose', label: 'Назначение / область применения', full: true },
@@ -300,7 +301,7 @@ A.tuNew = function () {
   var d = S.data;
   openForm({ title: 'Новые технические условия', wide: true, okText: 'Собрать ТУ',
     intro: '<div class="alert small">Разделы ТУ — по ГОСТ Р 51740-2016 «Технические условия на пищевую продукцию» (п. 4.1.3). Микробиологические показатели, маркировка и методы контроля подставляются из нормативной базы по группе продукции. Обозначение: ТУ ОКПД2-номер-ОКПО-год.</div>',
-    fields: [ttkField(), { name: 'client_id', label: 'Клиент (изготовитель)', type: 'select', required: true, full: true, options: (S.lk.clients || []).map(function (c) { return [c.id, c.name]; }) }].concat(tuProfileFields(d.groups, d.okpo)), values: { head_position: 'Директор', okpo: d.okpo },
+    fields: [ttkField(), { name: 'client_id', label: 'Клиент (изготовитель)', type: 'select', required: true, full: true, options: (S.lk.clients || []).map(function (c) { return [c.id, c.name]; }) }].concat(tuProfileFields(d.groups, d.okpo, d.cats)), values: { head_position: 'Директор', okpo: d.okpo },
     submit: function (v, api) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } var cl = v.client_id; delete v.client_id; return call('specs.build', { client_id: cl, profile: v, ttk: api.el._ttk || null }); },
     done: function (r) { toast('ТУ собраны: ' + r.spec.designation, 'ok'); go('tudoc', { spec_id: r.spec.spec_id }); } });
 };
@@ -334,7 +335,7 @@ A.tuProfile = function () {
   var d = S.data, vals = JSON.parse(JSON.stringify(d.profile));
   if (vals.product_group && d.groups.indexOf(vals.product_group) < 0) { vals.product_group_other = vals.product_group; vals.product_group = '__other'; }
   openForm({ title: 'Данные продукции', wide: true, okText: 'Сохранить и пересобрать', intro: '<div class="alert small">Обозначение ТУ не меняется. После сохранения ТУ будут собраны заново; ручные правки будут потеряны.</div>',
-    fields: [ttkField()].concat(tuProfileFields(d.groups, '')), values: vals,
+    fields: [ttkField()].concat(tuProfileFields(d.groups, '', d.cats)), values: vals,
     submit: function (v, api) { try { tuReadGroup(v); } catch (e) { return Promise.reject(e); } return call('specs.build', { spec_id: d.spec.spec_id, profile: v, ttk: api.el._ttk || null }); }, done: function () { S.dirty = {}; toast('ТУ пересобраны', 'ok'); render(true); } });
 };
 A.tuApprove = function () {

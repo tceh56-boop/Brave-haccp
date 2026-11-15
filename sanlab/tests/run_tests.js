@@ -376,6 +376,13 @@ test('AT-18', 'ТУ: показатели по группе продукции, 
   assert(!lab2.rows.some(function (r) { return /мясной продукции/.test(r.c[0]); }) && !micro2.rows.some(function (r) { return /КМАФАнМ/.test(r.c[0]); }) && micro2.rows.some(function (r) { return /сальмонеллы/.test(r.c[0]) && /25/.test(r.c[1]) && r.v; }), 'для роллов не подставлены нормы мяса, патогенные — по ТР ТС 021');
   var r3 = ok(call(COORD, 'specs.build', { client_id: cl.client_id, profile: { product_name: 'Плов с говядиной', product_group: 'Блюда общественного питания: из мяса, птицы, рыбы, яиц и творога (отварные, жареные, тушёные, запечённые; пловы, пельмени, блинчики, изделия из рубленого мяса), гарниры без заправки, пицца готовая', okpd2: '56.10.11', okpo: '87654321' } }), 'build plov');
   var m3 = r3.content.sections.filter(function (x) { return x.key === 'micro'; })[0];
+  var sl = ok(call(COORD, 'specs.list', {}), 'specs.list');
+  var cn = sl.cats.map(function (c) { return c.name; });
+  ['Блюда общественного питания', 'Мясные полуфабрикаты, кулинарные изделия и блюда', 'Птица и яйца', 'Рыба и морепродукты', 'Хлебобулочные изделия', 'Кондитерские изделия', 'Плодоовощная продукция'].forEach(function (c) { assert(cn.indexOf(c) >= 0, 'категория ' + c); });
+  assert(sl.cats.reduce(function (n, c) { return n + c.groups.length; }, 0) === sl.groups.length && sl.groups.length >= 50, 'все группы распределены по категориям: ' + sl.groups.length);
+  var r4 = ok(call(COORD, 'specs.build', { client_id: cl.client_id, profile: { product_name: 'Пирожки с капустой', product_group: 'Хлебобулочные изделия с начинками (пирожки, булочки, беляши и т. п.)', okpd2: '10.71.12', okpo: '87654321' } }), 'build pies');
+  var m4 = r4.content.sections.filter(function (x) { return x.key === 'micro'; })[0];
+  assert(m4.rows.some(function (r) { return /КМАФАнМ/.test(r.c[0]) && /1×10³/.test(r.c[1]) && r.v; }) && m4.rows.some(function (r) { return /Proteus/.test(r.c[0]); }), 'нормативы хлебобулочных изделий с начинками (ТР ТС 021, р. 1.3)');
   assert(m3.rows.some(function (r) { return /КМАФАнМ/.test(r.c[0]) && /1×10³/.test(r.c[1]) && r.v && /Приложение 2, р. 1.8/.test(r.ref); }) && m3.rows.some(function (r) { return /Proteus/.test(r.c[0]) && /0,1/.test(r.c[1]); }), 'нормативы блюд общепита из ТР ТС 021, р. 1.8');
   expectErr(call(QC, 'specs.approve', { spec_id: t.spec.spec_id }), 'UNVERIFIED', 'ТУ с несверенным');
   var ap = ok(call(OWNER, 'specs.approve', { spec_id: t.spec.spec_id, accept_unverified: true, reason: 'Проект для согласования с заказчиком' }), 'approve');

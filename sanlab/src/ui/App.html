@@ -70,7 +70,10 @@ function lsGet(k) { try { return JSON.parse(localStorage.getItem('sanlab_' + k))
 function lsSet(k, v) { try { localStorage.setItem('sanlab_' + k, JSON.stringify(v)); } catch (e) { } }
 function opt(list, val, empty) {
   var h = empty !== undefined ? '<option value="">' + esc(empty) + '</option>' : '';
-  for (var i = 0; i < list.length; i++) h += '<option value="' + esc(list[i][0]) + '"' + (String(list[i][0]) === String(val) ? ' selected' : '') + '>' + esc(list[i][1]) + '</option>';
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && list[i].group) { h += '<optgroup label="' + esc(list[i].group) + '">' + opt(list[i].items || [], val) + '</optgroup>'; continue; }
+    h += '<option value="' + esc(list[i][0]) + '"' + (String(list[i][0]) === String(val) ? ' selected' : '') + '>' + esc(list[i][1]) + '</option>';
+  }
   return h;
 }
 function dictOpts(d) { return Object.keys(d).map(function (k) { return [k, d[k]]; }); }

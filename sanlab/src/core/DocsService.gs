@@ -407,6 +407,22 @@ var Programs = {
 /* ---------- Технические условия ---------- */
 var Specs = {
   SECTIONS: ['TU_TEXT', 'MICRO', 'TOX', 'METHOD', 'LABEL'],
+  /* Категории групп продукции (порядок проверки важен): по разделам приложения 2 ТР ТС 021/2011 и ТР ТС 034/2013 */
+  CATS: [
+    ['Блюда общественного питания', /^Блюда общественного питания|^Салаты и винегреты из варёных|^Салаты из сырых овощей и фруктов без|^Салаты с заправками|^Студни из говядины|^Супы холодные|^Гамбургеры/],
+    ['Мясные полуфабрикаты, кулинарные изделия и блюда', /^Полуфабрикаты мясн|^Полуфабрикаты мясокостн|^Фарш мясн|^Кулинарные изделия мяс|^Мясные блюда/],
+    ['Птица и яйца', /птиц|^Яйц/i],
+    ['Рыба и морепродукты', /рыб|Нерыбные объекты/i],
+    ['Хлебобулочные изделия', /^Хлебобулочн/],
+    ['Кондитерские изделия', /^Торты|^Рулеты|^Кексы|^Пасты, кремы|^Печенье/],
+    ['Плодоовощная продукция', /овощ|картофел|^Джемы|плодово-ягодн/i]
+  ],
+  category: function (g) { for (var i = 0; i < Specs.CATS.length; i++) if (Specs.CATS[i][1].test(g)) return Specs.CATS[i][0]; return 'Прочие группы'; },
+  categories: function () {
+    var by = {}, order = Specs.CATS.map(function (c) { return c[0]; }).concat(['Прочие группы']);
+    Specs.groups().forEach(function (g) { var c = Specs.category(g); (by[c] = by[c] || []).push(g); });
+    return order.filter(function (c) { return by[c]; }).map(function (c) { return { name: c, groups: by[c] }; });
+  },
   groups: function () {
     var g = {};
     Store.all('NormItems').forEach(function (i) { var pg = V.str(i.product_group); if (V.bool(i.active) && (i.section === 'MICRO' || i.section === 'TOX') && pg && pg !== 'all' && pg.charAt(0) !== '~') g[pg] = true; });
@@ -532,7 +548,7 @@ var Specs = {
     var content = DocContent.load(rec), warn = [];
     (content.norms || []).forEach(function (id) { var d = Repo.get('NormDocs', id); if (d && !Norms.inForce(d, ctx.now)) warn.push(d.code + ' больше не действует — пересоберите ТУ.'); });
     if (/ХХ/.test(rec.designation)) warn.push('В обозначении ТУ не заполнены код ОКПД2 или ОКПО — укажите их в данных продукции и пересоберите черновик (для нового обозначения создайте ТУ заново).');
-    return { spec: Specs.enrich(rec), row_version: rec.row_version, profile: safeJson(rec.profile_json, {}), content: content, warnings: warn, groups: Specs.groups(),
+    return { spec: Specs.enrich(rec), row_version: rec.row_version, profile: safeJson(rec.profile_json, {}), content: content, warnings: warn, groups: Specs.groups(), cats: Specs.categories(),
       history: sortBy(Repo.where('TechSpecs', function (x) { return x.designation === rec.designation; }), 'version', true).map(Specs.enrich) };
   },
   save: function (ctx, p) {
