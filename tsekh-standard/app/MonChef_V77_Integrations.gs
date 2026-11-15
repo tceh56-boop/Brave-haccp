@@ -15,7 +15,8 @@
  *
  * После сопоставления позиции все её ждущие строки проводятся сразу. Возвраты (количество ≤ 0) не проводятся — оформляются вручную.
  * Записи в закрытом финансовом периоде и в подписанном журнале продаж не проводятся (статус «закрытый период»).
- * Источник продаж — общий (_v77Ingest_): файл сейчас, API iiko / R-Keeper на следующих этапах кладут строки туда же.
+ * Источник продаж — общий (_v77Ingest_): файл и API iiko (MonChef_V77_Iiko.gs). Один день одной системы — один источник: если день уже
+ *   загружен файлом, API его не дублирует, и наоборот (строки считаются повторами, в ответе — otherSourceDays).
  */
 var MC_V77 = {
   MAP: ['Инт_Сопоставление', ['MapID', 'System', 'ExtID', 'ExtName', 'Kind', 'Target', 'Unit', 'Factor', 'Status', 'Auto', 'CreatedAt', 'CreatedBy', 'OperationID']],
@@ -211,12 +212,18 @@ function _v77Ctx_(op, system) {
  */
 function _v77Ingest_(op, system, lines, meta) {
   meta = meta || {};
-  var have = {}; _v77Read_('SALE').forEach(function (x) { have[String(x.ExtKey)] = true; });
-  var ctx = _v77Ctx_(op, system), impId = _v64Id_('INT'), now = new Date(), occ = {}, cnt = { RECORDED: 0, PENDING: 0, SKIPPED: 0, CLOSED: 0, ERROR: 0 }, dups = 0, from = null, to = null, pending = {};
+  // один день — один источник (файл или API): отчёт по чекам из файла и сгруппированный OLAP из API дают разные ключи одних и тех же продаж
+  var src = meta.source === 'API' ? 'API' : 'FILE', impSrc = {}, daySrc = {}, have = {};
+  _v77Read_('IMP').forEach(function (x) { impSrc[String(x.ImportID)] = String(x.Source) === 'API' ? 'API' : 'FILE'; });
+  _v77Read_('SALE').forEach(function (x) { have[String(x.ExtKey)] = true; if (String(x.System) === system) daySrc[_v72DayStr_(x.Date)] = impSrc[String(x.ImportID)] || 'FILE'; });
+  var ctx = _v77Ctx_(op, system), impId = _v64Id_('INT'), now = new Date(), occ = {}, cnt = { RECORDED: 0, PENDING: 0, SKIPPED: 0, CLOSED: 0, ERROR: 0 }, dups = 0, other = {}, from = null, to = null, pending = {};
   lines.forEach(function (l) {
     var base = _v77Key_(system, l, 0); occ[base] = (occ[base] || 0) + 1;
     l.key = l.extLineId ? base : base.replace(/#0$/, '#' + occ[base]);
     if (have[l.key]) { dups++; return; }
+    var dIso = _v77DayIso_(l.day);
+    if (daySrc[dIso] && daySrc[dIso] !== src) { other[dIso] = (other[dIso] || 0) + 1; return; }
+    daySrc[dIso] = src;
     have[l.key] = true;
     if (!from || l.day < from) from = l.day; if (!to || l.day > to) to = l.day;
     var res;
@@ -229,10 +236,11 @@ function _v77Ingest_(op, system, lines, meta) {
   _v77Append_('MAP', ctx.newMaps);
   var errors = (meta.errors || []).length + cnt.ERROR;
   _v77Append_('IMP', [_v77Row_('IMP', { ImportID: impId, System: system, Source: meta.source || 'FILE', FileName: meta.fileName || '', PeriodFrom: from ? _v77DayIso_(from) : '', PeriodTo: to ? _v77DayIso_(to) : '',
-    Lines: lines.length, Recorded: cnt.RECORDED, Duplicates: dups, Pending: cnt.PENDING, Skipped: cnt.SKIPPED, ClosedSkipped: cnt.CLOSED, Errors: errors, At: now, By: _v64Who_(op), OperationID: op.id })]);
+    Lines: lines.length, Recorded: cnt.RECORDED, Duplicates: dups + Object.keys(other).reduce(function (a, k) { return a + other[k]; }, 0), Pending: cnt.PENDING, Skipped: cnt.SKIPPED, ClosedSkipped: cnt.CLOSED, Errors: errors, At: now, By: _v64Who_(op), OperationID: op.id })]);
   _audit_(op, 'V77_IMPORT', MC_V77.IMP[0], impId, null, { система: MC_V77_SYSTEMS[system], файл: meta.fileName || '', строк: lines.length, проведено: cnt.RECORDED, повторов: dups, ждут: cnt.PENDING });
   return { importId: impId, system: system, systemRu: MC_V77_SYSTEMS[system], lines: lines.length, recorded: cnt.RECORDED, duplicates: dups, pending: cnt.PENDING, skipped: cnt.SKIPPED, closedSkipped: cnt.CLOSED,
-    errors: cnt.ERROR, autoMapped: ctx.newMaps.length, from: from ? _v77DayIso_(from) : '', to: to ? _v77DayIso_(to) : '',
+    errors: cnt.ERROR, autoMapped: ctx.newMaps.length, otherSource: Object.keys(other).reduce(function (a, k) { return a + other[k]; }, 0),
+    otherSourceDays: Object.keys(other).sort().map(function (k) { return { day: k, lines: other[k], loadedBy: src === 'API' ? 'файлом' : 'по API' }; }), from: from ? _v77DayIso_(from) : '', to: to ? _v77DayIso_(to) : '',
     pendingItems: Object.keys(pending).map(function (k) { return pending[k]; }) };
 }
 
@@ -343,7 +351,7 @@ function v77GetIntegrations(token) {
     var idx = _buildDishIndexes_(), dishes = Object.keys(idx.dishByCode).map(function (c) { return idx.dishByCode[c]; }).filter(function (d) { return !d.semi; }).map(function (d) { return String(d.name); })
       .sort(function (a, b) { return a.localeCompare(b, 'ru'); });
     var goods = []; try { goods = _v71GoodsList_(idx).map(function (g) { return { name: g.name, unit: g.unit }; }); } catch (e) {}
-    return _ok_({ systems: Object.keys(MC_V77_SYSTEMS).map(function (k) { return { id: k, name: MC_V77_SYSTEMS[k] }; }), counts: st,
+    return _ok_({ iiko: typeof _v77IikoPublic_ === 'function' ? _v77IikoPublic_(_v77IikoCfg_()) : null, systems: Object.keys(MC_V77_SYSTEMS).map(function (k) { return { id: k, name: MC_V77_SYSTEMS[k] }; }), counts: st,
       pending: Object.keys(pend).map(function (k) { return pend[k]; }).sort(function (a, b) { return b.sum - a.sum; }), mappings: maps, imports: imports, problems: problems, dishes: dishes, goods: goods,
       note: 'Продажи из кассы проводятся как обычные продажи: журнал продаж, списание склада по партиям, экономика. Повторная загрузка того же отчёта ничего не задваивает. ' +
         'Позиция без сопоставления не списывается наугад — она ждёт, пока вы укажете блюдо по ТТК или товар; после этого её продажи проводятся сразу. Возвраты оформляются вручную.' });

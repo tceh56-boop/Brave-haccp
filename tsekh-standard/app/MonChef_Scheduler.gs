@@ -26,7 +26,8 @@ var MC_SCHEDULE = [
   { fn: 'runMonChefHaccpControlCycleSystem', everyMin: 15 },
   { fn: 'runMonChefFullControlCycleSystem', everyMin: 30 },
   { fn: 'ts2SensorWatchSystem', everyMin: 15 },
-  { fn: 'v72FinSyncSystem', everyMin: 15 },      // «Финансы» этап 2: реестр операций и дневные итоги   // датчик молчит больше часа — уведомление
+  { fn: 'v72FinSyncSystem', everyMin: 15 },
+  { fn: 'v77IikoSyncSystem', everyMin: 30 },     // интеграции, этап 2: продажи из iiko по API (если включена автозагрузка)      // «Финансы» этап 2: реестр операций и дневные итоги   // датчик молчит больше часа — уведомление
   // ежечасно
   { fn: 'runMonChefControlCycleSystem', everyMin: 60 },
   { fn: 'mcSwitchWatchSystem', everyMin: 60 },
