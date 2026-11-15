@@ -149,9 +149,9 @@ function v77IikoInvoices(json, token) {
   } catch (e) { _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
 }
 function _v77InvNo_(s) { return String(s || '').toLowerCase().replace(/[^0-9a-zа-я]/g, '').replace(/^0+/, ''); }
-/** Сверка накладных iiko за период с приёмкой ЦЕХ по номеру накладной (входящему или внутреннему) и поставщику. */
-function _v77InvRecon_(fromIso, toIso) {
-  var inv = {}, sh = _book_().getSheetByName(MC_V77_INV[0]);
+/** Сверка накладных iiko (или поступлений 1С — sheetName) за период с приёмкой ЦЕХ по номеру накладной (входящему или внутреннему) и поставщику. */
+function _v77InvRecon_(fromIso, toIso, sheetName) {
+  var inv = {}, sh = _book_().getSheetByName(sheetName || MC_V77_INV[0]);
   if (sh && sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, MC_V77_INV[1].length).getValues().forEach(function (r) {
     var o = {}; MC_V77_INV[1].forEach(function (h, j) { o[h] = r[j]; });
     var day = _v72DayStr_(o.Date); if (day < fromIso || day > toIso) return;

@@ -434,6 +434,11 @@ var TS_GATE_ = [
   { n: 'v77IikoDisconnect', need: 'finance_edit', mut: true },
   // этап 2б: техкарты iiko — сверка с ТТК (только чтение); приходные накладные iiko — сохранение и сверка с приёмкой ЦЕХ
   { n: 'v77IikoCharts', need: 'finance_view|catalog|ttk_edit' },
-  { n: 'v77IikoInvoices', need: 'finance_edit|receiving|procurement', mut: true }
+  { n: 'v77IikoInvoices', need: 'finance_edit|receiving|procurement', mut: true },
+  // этап 3: 1С — выгрузка CSV (продажи/списания/поступления); OData: подключение, загрузка поступлений и сверка с приёмкой, отключение
+  { n: 'v77Export1C', need: 'finance_view' },
+  { n: 'v77OneCSave', need: 'finance_edit', mut: true },
+  { n: 'v77OneCPull', need: 'finance_edit|receiving|procurement', mut: true },
+  { n: 'v77OneCDisconnect', need: 'finance_edit', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();
