@@ -17,7 +17,7 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
     window.__calls = []; window.confirm = () => true;
     const st = { mode: 'READY_TO_WORK', enterpriseType: 'RESTAURANT', types: { RESTAURANT: 'Ресторан' }, org: { name: 'Тест', inn: '', address: '', responsible: '', complete: false }, timezone: 'Europe/Moscow', employees: 1, dishes: 1,
       workshops: [], objects: [], summary: { created: 1, requiresDecision: 0, numericObjects: 0, blockers: 0 } };
-    const I = { iiko: { configured: true, url: 'https://kafe.iiko.it', login: 'api', auto: true, lastSync: '2026-11-14T15:00:00.000Z', lastError: '', lastResult: { recorded: 7, pending: 1, otherSource: 0 } }, onec: { configured: true, url: 'https://srv/buh', login: 'Бухгалтер', lastSync: '', lastError: '' }, systems: [{ id: 'iiko', name: 'iiko' }, { id: 'rkeeper', name: 'R-Keeper' }, { id: '1c', name: '1С' }, { id: 'other', name: 'Другая касса' }], counts: { RECORDED: 5, PENDING: 3, SKIPPED: 1, CLOSED: 0, ERROR: 0 },
+    const I = { iiko: { configured: true, url: 'https://kafe.iiko.it', login: 'api', auto: true, lastSync: '2026-11-14T15:00:00.000Z', lastError: '', lastResult: { recorded: 7, pending: 1, otherSource: 0 } }, onec: { configured: true, url: 'https://srv/buh', login: 'Бухгалтер', lastSync: '', lastError: '' }, rkeeper: { configured: false }, systems: [{ id: 'iiko', name: 'iiko' }, { id: 'rkeeper', name: 'R-Keeper' }, { id: '1c', name: '1С' }, { id: 'other', name: 'Другая касса' }], counts: { RECORDED: 5, PENDING: 3, SKIPPED: 1, CLOSED: 0, ERROR: 0 },
       pending: [{ system: 'iiko', systemRu: 'iiko', extId: '77', name: 'Компот домашний', lines: 1, qty: 3, sum: 450, note: 'нет в ТТК и на складе под таким названием — сопоставьте позицию' }],
       mappings: [{ id: 'MAP-1', system: 'iiko', systemRu: 'iiko', extId: '', name: 'Борщ', kind: 'DISH', kindRu: 'блюдо по ТТК', target: 'Борщ', unit: '', factor: 1, auto: 'точное совпадение названия' }],
       imports: [{ id: 'INT-1', systemRu: 'iiko', source: 'файл', fileName: 'olap.xlsx', from: '2026-11-14', to: '2026-11-14', lines: 6, recorded: 5, duplicates: 0, pending: 1, skipped: 1, closed: 0, errors: 0, at: '14.11.2026 20:00', by: 'Директор' }],
@@ -35,6 +35,7 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
       v77Export1C: (j) => JSON.stringify({ success: true, data: { kind: JSON.parse(j).kind, fileName: 'tsekh_1c_writeoffs_2026-11-14_2026-11-14.csv', csv: 'Дата;Номенклатура\r\n14.11.2026;Борщ\r\n', lines: 1, total: 900, doc: '«Отчёт о розничных продажах»', head: ['Дата', 'Номенклатура'], sample: [['14.11.2026', 'Борщ']] } }),
       v77OneCSave: () => JSON.stringify({ success: true, data: { settings: {}, check: { ok: true, message: 'Доступ к 1С есть' } } }),
       v77OneCPull: () => JSON.stringify({ success: true, data: { invoices: 1, loaded: { documents: 1, newLines: 1 }, notReceived: [{ date: '2026-11-13', number: 'ВХ-9', supplier: 'ООО Хлеб', lines: 1, sum: 120 }], matched: [] } }),
+      v77RkSave: () => JSON.stringify({ success: true, data: { settings: {}, check: { ok: true, message: 'Доступ к R-Keeper есть, закрытых заказов в смене: 2' } } }),
       v77SaveMapping: () => JSON.stringify({ success: true, data: { applied: 1, recorded: 1, skipped: 0, closed: 0 } }) };
     function mk(s) { s = s || {}; return new Proxy({}, { get(t, k) {
       if (k === 'withSuccessHandler') return f => mk(Object.assign({}, s, { ok: f })); if (k === 'withFailureHandler') return f => mk(Object.assign({}, s, { fl: f })); if (k === 'withUserObject') return u => mk(Object.assign({}, s, { uo: u }));
@@ -97,7 +98,14 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
   assert.deepStrictEqual(JSON.parse(JSON.parse(c.slice('v77OneCSave:'.length))[0]), { url: 'https://srv/buh', login: 'Бухгалтер', password: 'пароль' });
   await p.waitForTimeout(400); await p.click('button[data-mv="onePull"]'); await p.waitForTimeout(500);
   t = await txt(); assert(t.includes('ВХ-9') && t.includes('ООО Хлеб'), 'сверка поступлений 1С показана');
+  // R-Keeper: подключение по XML-интерфейсу
+  t = await txt(); assert(t.includes('R-Keeper по сети (XML-интерфейс)') && t.includes('Не подключено.'), 'карточка R-Keeper');
+  assert.strictEqual(await p.isChecked('#mvf_rauto'), true, 'автозагрузка по умолчанию включена');
+  await p.fill('#mvf_rurl', 'kafe.example.ru:4545'); await p.fill('#mvf_rlogin', 'xml'); await p.fill('#mvf_rpass', 'секрет'); await p.check('#mvf_rins');
+  await p.click('button[data-mv="rkSave"]'); await p.waitForTimeout(500);
+  c = (await calls()).filter(x => x.startsWith('v77RkSave:')).pop();
+  assert.deepStrictEqual(JSON.parse(JSON.parse(c.slice('v77RkSave:'.length))[0]), { url: 'kafe.example.ru:4545', login: 'xml', password: 'секрет', auto: true, insecure: true });
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
   await b.close(); web.close(); fs.rmSync(dir, { recursive: true, force: true });
-  console.log('OK: Экономика → Кассы и 1С — Excel и CSV, проверка без записи, загрузка, сопоставление, iiko по API: кнопки вызывают сервер');
+  console.log('OK: Экономика → Кассы и 1С — Excel и CSV, проверка без записи, загрузка, сопоставление, iiko по API, 1С, R-Keeper: кнопки вызывают сервер');
 })().catch(e => { console.error(e); process.exit(1); });

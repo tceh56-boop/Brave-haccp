@@ -4328,7 +4328,7 @@ VIEWS.finance = {
     op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk',
     payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus',
     cashAcc: 'v75SaveAccount', cashMove: 'v75AddMove', cashImport: 'v75ImportStatement', cashCat: 'v75SetCategory', cashCancel: 'v75CancelMove',
-    fcOrder: 'v76CreateOrderRequests', intCheck: 'v77ImportSales', intImport: 'v77ImportSales', intMap: 'v77SaveMapping', iikoSave: 'v77IikoSave', iikoPull: 'v77IikoPull', iikoOff: 'v77IikoDisconnect', iikoCharts: 'v77IikoCharts', iikoInv: 'v77IikoInvoices', oneExp: 'v77Export1C', oneSave: 'v77OneCSave', onePull: 'v77OneCPull', oneOff: 'v77OneCDisconnect' },
+    fcOrder: 'v76CreateOrderRequests', intCheck: 'v77ImportSales', intImport: 'v77ImportSales', intMap: 'v77SaveMapping', iikoSave: 'v77IikoSave', iikoPull: 'v77IikoPull', iikoOff: 'v77IikoDisconnect', iikoCharts: 'v77IikoCharts', iikoInv: 'v77IikoInvoices', oneExp: 'v77Export1C', oneSave: 'v77OneCSave', onePull: 'v77OneCPull', oneOff: 'v77OneCDisconnect', rkSave: 'v77RkSave', rkPull: 'v77RkPull', rkOff: 'v77RkDisconnect' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
@@ -4422,6 +4422,18 @@ VIEWS.finance = {
                   vCard('Приходные накладные iiko — сверка с приёмкой', vForm([['vfrom', 'С', 'date'], ['vto', 'по', 'date']]) + '<div class="mvbar">' + vBtn('Загрузить и сверить', 'iikoInv', '', true) + '</div>' +
                   '<small style="color:var(--muted)">Накладная есть в iiko, а приёмки в ЦЕХ нет — товар не прошёл входной контроль. Партии сами не создаются.</small><div id="m9iikoinv"></div>') : '');
             })(d.iiko) +
+            (function (rk) {
+              rk = rk || {}; var lr = rk.lastResult;
+              var stat = !rk.configured ? 'Не подключено.' : 'Подключено: ' + rk.url + ', пользователь ' + rk.login + '. Автозагрузка ' + (rk.auto ? 'каждые 30 минут' : 'выключена') + '.' +
+                (rk.lastSync ? ' Последний обмен ' + vRu(rk.lastSync) + (rk.lastError ? ' — ошибка: ' + rk.lastError : lr ? ': заказов в смене ' + lr.orders + ', новых ' + lr.newOrders + ', проведено ' + lr.recorded + ', ждут ' + lr.pending : '') + '.' : '');
+              return vCard('R-Keeper по сети (XML-интерфейс)', '<div class="bqmsg' + (rk.lastError ? ' err' : '') + '">' + esc(stat) + '</div>' +
+                vForm([['rurl', 'Адрес XML-интерфейса (даёт дилер R-Keeper) *', 'text', rk.url || '', 'https://kafe.example.ru:4545'], ['rlogin', 'Пользователь XML-интерфейса *', 'text', rk.login || ''],
+                  ['rpass', rk.configured ? 'Пароль (пусто — прежний)' : 'Пароль', 'password'], ['rauto', 'Загружать закрытые заказы автоматически каждые 30 минут', 'check', rk.configured ? !!rk.auto : true],
+                  ['rins', 'У сервера самоподписанный сертификат (обычно так и есть)', 'check', !!rk.insecure]]) +
+                '<div class="mvbar">' + vBtn('Сохранить и проверить доступ', 'rkSave', '', true) + (rk.configured ? vBtn('Загрузить смену сейчас', 'rkPull', '', true) + vBtn('Отключить', 'rkOff', '') : '') + '</div>' +
+                '<small style="color:var(--muted)">Нужны лицензия на XML-интерфейс R-Keeper 7 и доступ к кассовому серверу из интернета — это настраивает дилер R-Keeper. ' +
+                'Кассовый сервер отдаёт только текущую смену, поэтому держите автозагрузку включённой; прошлые дни загрузите отчётом R-Keeper из файла (карточка выше). Один день загружается одним способом — без задвоения.</small>');
+            })(d.rkeeper) +
             vCard('1С: выгрузка для бухгалтерии', vForm([['ekind', 'Что выгрузить', 'select', V._oneKind || 'sales', [['sales', 'Продажи по дням и блюдам'], ['writeoffs', 'Списания (по себестоимости партий)'], ['purchases', 'Поступления (приёмка ЦЕХ)']]],
                 ['efrom', 'С', 'date'], ['eto', 'по', 'date']]) + '<div class="mvbar">' + vBtn('Скачать файл для 1С', 'oneExp', '', true) + '</div>' +
               '<small style="color:var(--muted)">Таблица CSV (Excel откроет её как обычную таблицу). В 1С: документ «Отчёт о розничных продажах», «Списание товаров» или «Поступление товаров» → табличная часть → «Загрузить из файла» ' +
@@ -4582,6 +4594,11 @@ VIEWS.finance = {
     iikoInv: function (a, btn) { vDo(btn, 'v77IikoInvoices', [JSON.stringify({ from: vV('vfrom'), to: vV('vto') })], function (d) { return 'Накладных iiko: ' + d.invoices + ', без приёмки в ЦЕХ: ' + d.notReceived.length + ' (новых позиций загружено ' + d.loaded.newLines + ').'; },
       function (d) { var o = document.getElementById('m9iikoinv'), C = [{ k: 'date', l: 'Дата', t: 'date' }, { k: 'number', l: 'Накладная' }, { k: 'supplier', l: 'Поставщик' }, { k: 'lines', l: 'Позиций', t: 'num' }, { k: 'sum', l: 'Сумма, ₽', t: 'num' }];
         if (o) o.innerHTML = '<h4>Нет приёмки в ЦЕХ</h4>' + vTable(C, d.notReceived, null, 'Все накладные приняты') + '<h4>Приняты</h4>' + vTable(C.concat([{ k: 'cehSum', l: 'В приёмке ЦЕХ, ₽', t: 'num' }, { k: 'diff', l: 'Разница, ₽', t: 'num' }]), d.matched, null, 'Нет'); }); },
+    rkSave: function (a, btn) { vDo(btn, 'v77RkSave', [JSON.stringify({ url: vV('rurl'), login: vV('rlogin'), password: vV('rpass'), auto: vV('rauto'), insecure: vV('rins') })],
+      function (d) { return d.check.ok ? 'Сохранено. ' + d.check.message : 'Сохранено, но доступа нет: ' + d.check.message; }, function () { VIEWS.finance.h.tab('int'); }); },
+    rkPull: function (a, btn) { vDo(btn, 'v77RkPull', [''], function (d) { return 'R-Keeper: закрытых заказов в смене ' + d.orders + ', новых ' + d.newOrders + '; проведено ' + d.recorded + ', ждут сопоставления ' + d.pending +
+      (d.otherSource ? ', день уже загружен файлом' : '') + '.'; }, function () { VIEWS.finance.h.tab('int'); }); },
+    rkOff: function (a, btn) { if (!confirm('Отключить R-Keeper? Адрес, пользователь и пароль будут удалены, загруженные продажи останутся.')) return; vDo(btn, 'v77RkDisconnect', [''], 'R-Keeper отключён', function () { VIEWS.finance.h.tab('int'); }); },
     oneExp: function (a, btn) { VIEWS.finance._oneKind = vV('ekind'); vDo(btn, 'v77Export1C', [JSON.stringify({ kind: vV('ekind'), from: vV('efrom'), to: vV('eto') })],
       function (d) { return d.lines ? 'Файл ' + d.fileName + ': строк ' + d.lines + ', сумма ' + d.total + ' ₽.' : 'За период нет данных — файл пустой.'; },
       function (d) {

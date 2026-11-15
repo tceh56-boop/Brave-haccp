@@ -439,6 +439,10 @@ var TS_GATE_ = [
   { n: 'v77Export1C', need: 'finance_view' },
   { n: 'v77OneCSave', need: 'finance_edit', mut: true },
   { n: 'v77OneCPull', need: 'finance_edit|receiving|procurement', mut: true },
-  { n: 'v77OneCDisconnect', need: 'finance_edit', mut: true }
+  { n: 'v77OneCDisconnect', need: 'finance_edit', mut: true },
+  // этап 4: R-Keeper 7 — XML-интерфейс кассового сервера: подключение, загрузка закрытых заказов смены, отключение
+  { n: 'v77RkSave', need: 'finance_edit', mut: true },
+  { n: 'v77RkPull', need: 'finance_edit', mut: true },
+  { n: 'v77RkDisconnect', need: 'finance_edit', mut: true }
 ];
 var TS_GATE_FEATURE_ = (function () { var m = {}; TS_GATE_.forEach(function (g) { if (g.f) m[g.n] = g.f; }); return m; })();

@@ -351,7 +351,7 @@ function v77GetIntegrations(token) {
     var idx = _buildDishIndexes_(), dishes = Object.keys(idx.dishByCode).map(function (c) { return idx.dishByCode[c]; }).filter(function (d) { return !d.semi; }).map(function (d) { return String(d.name); })
       .sort(function (a, b) { return a.localeCompare(b, 'ru'); });
     var goods = []; try { goods = _v71GoodsList_(idx).map(function (g) { return { name: g.name, unit: g.unit }; }); } catch (e) {}
-    return _ok_({ iiko: typeof _v77IikoPublic_ === 'function' ? _v77IikoPublic_(_v77IikoCfg_()) : null, onec: typeof _v77OneCPublic_ === 'function' ? _v77OneCPublic_(_v77OneCCfg_()) : null, systems: Object.keys(MC_V77_SYSTEMS).map(function (k) { return { id: k, name: MC_V77_SYSTEMS[k] }; }), counts: st,
+    return _ok_({ iiko: typeof _v77IikoPublic_ === 'function' ? _v77IikoPublic_(_v77IikoCfg_()) : null, onec: typeof _v77OneCPublic_ === 'function' ? _v77OneCPublic_(_v77OneCCfg_()) : null, rkeeper: typeof _v77RkPublic_ === 'function' ? _v77RkPublic_(_v77RkCfg_()) : null, systems: Object.keys(MC_V77_SYSTEMS).map(function (k) { return { id: k, name: MC_V77_SYSTEMS[k] }; }), counts: st,
       pending: Object.keys(pend).map(function (k) { return pend[k]; }).sort(function (a, b) { return b.sum - a.sum; }), mappings: maps, imports: imports, problems: problems, dishes: dishes, goods: goods,
       note: 'Продажи из кассы проводятся как обычные продажи: журнал продаж, списание склада по партиям, экономика. Повторная загрузка того же отчёта ничего не задваивает. ' +
         'Позиция без сопоставления не списывается наугад — она ждёт, пока вы укажете блюдо по ТТК или товар; после этого её продажи проводятся сразу. Возвраты оформляются вручную.' });
