@@ -4328,7 +4328,7 @@ VIEWS.finance = {
     op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk',
     payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus',
     cashAcc: 'v75SaveAccount', cashMove: 'v75AddMove', cashImport: 'v75ImportStatement', cashCat: 'v75SetCategory', cashCancel: 'v75CancelMove',
-    fcOrder: 'v76CreateOrderRequests', intCheck: 'v77ImportSales', intImport: 'v77ImportSales', intMap: 'v77SaveMapping', iikoSave: 'v77IikoSave', iikoPull: 'v77IikoPull', iikoOff: 'v77IikoDisconnect' },
+    fcOrder: 'v76CreateOrderRequests', intCheck: 'v77ImportSales', intImport: 'v77ImportSales', intMap: 'v77SaveMapping', iikoSave: 'v77IikoSave', iikoPull: 'v77IikoPull', iikoOff: 'v77IikoDisconnect', iikoCharts: 'v77IikoCharts', iikoInv: 'v77IikoInvoices' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
@@ -4416,7 +4416,11 @@ VIEWS.finance = {
                 '<div class="mvbar">' + vBtn('Сохранить и проверить вход', 'iikoSave', '', true) + (ik.configured ? vBtn('Отключить', 'iikoOff', '') : '') + '</div>' +
                 (ik.configured ? vForm([['ifrom', 'Загрузить продажи с', 'date'], ['ito', 'по', 'date']]) + '<div class="mvbar">' + vBtn('Загрузить из iiko', 'iikoPull', '', true) + '</div>' : '') +
                 '<small style="color:var(--muted)">Нужен пользователь iiko с правом работы с API; на сервере iiko должна быть лицензия API (уточните у дилера iiko). Пароль не хранится — только его отпечаток, который требует iiko. ' +
-                'Один день загружается одним способом: если день уже загружен файлом, iiko его не задвоит.</small>');
+                'Один день загружается одним способом: если день уже загружен файлом, iiko его не задвоит.</small>') +
+                (ik.configured ? vCard('Техкарты iiko — сверка с ТТК', vForm([['cdate', 'На дату', 'date']]) + '<div class="mvbar">' + vBtn('Сверить техкарты', 'iikoCharts', '', true) + '</div>' +
+                  '<small style="color:var(--muted)">Техкарты iiko сравниваются с ТТК ЦЕХ по брутто на порцию. ТТК ЦЕХ не меняются.</small><div id="m9iikoch"></div>') +
+                  vCard('Приходные накладные iiko — сверка с приёмкой', vForm([['vfrom', 'С', 'date'], ['vto', 'по', 'date']]) + '<div class="mvbar">' + vBtn('Загрузить и сверить', 'iikoInv', '', true) + '</div>' +
+                  '<small style="color:var(--muted)">Накладная есть в iiko, а приёмки в ЦЕХ нет — товар не прошёл входной контроль. Партии сами не создаются.</small><div id="m9iikoinv"></div>') : '');
             })(d.iiko) +
             vCard('Ждут сопоставления', vTable([{ k: 'systemRu', l: 'Система' }, { k: 'name', l: 'Позиция кассы' }, { k: 'extId', l: 'Код' }, { k: 'lines', l: 'Строк', t: 'num' }, { k: 'qty', l: 'Кол-во', t: 'num' }, { k: 'sum', l: 'Сумма, ₽', t: 'num' }, { k: 'note', l: 'Почему' }], d.pending,
               function (x, i) { return vBtn('Сопоставить', 'intPick', String(d.pending.indexOf(x))); }, 'Всё сопоставлено')) +
@@ -4558,6 +4562,11 @@ VIEWS.finance = {
     iikoPull: function (a, btn) { vDo(btn, 'v77IikoPull', [JSON.stringify({ from: vV('ifrom'), to: vV('ito') })], function (d) {
       return 'iiko: строк ' + d.lines + ', проведено ' + d.recorded + ', повторов ' + d.duplicates + ', ждут сопоставления ' + d.pending + (d.otherSource ? ', дни уже загружены файлом: ' + d.otherSourceDays.map(function (x) { return x.day; }).join(', ') : '') + '.'; }, function () { VIEWS.finance.h.tab('int'); }); },
     iikoOff: function (a, btn) { if (!confirm('Отключить iiko? Логин и пароль будут удалены, загруженные продажи останутся.')) return; vDo(btn, 'v77IikoDisconnect', [''], 'iiko отключено', function () { VIEWS.finance.h.tab('int'); }); },
+    iikoCharts: function (a, btn) { vDo(btn, 'v77IikoCharts', [JSON.stringify({ date: vV('cdate') })], function (d) { return 'Техкарт ' + d.totals.charts + ': совпадают ' + d.totals.same + ', расходятся ' + d.totals.diff + ', нет в ТТК ' + d.totals.missing + '.'; },
+      function (d) { var o = document.getElementById('m9iikoch'); if (o) o.innerHTML = vTable([{ k: 'dish', l: 'Блюдо iiko' }, { k: 'cehDish', l: 'ТТК ЦЕХ' }, { k: 'items', l: 'Ингредиентов', t: 'num' }, { k: 'issues', l: 'Расхождения', f: function (x) { return x.issues.length ? x.issues.join('; ') : 'совпадает'; } }], d.charts, null, 'Техкарт нет') + '<small style="color:var(--muted)">' + esc(d.note) + '</small>'; }); },
+    iikoInv: function (a, btn) { vDo(btn, 'v77IikoInvoices', [JSON.stringify({ from: vV('vfrom'), to: vV('vto') })], function (d) { return 'Накладных iiko: ' + d.invoices + ', без приёмки в ЦЕХ: ' + d.notReceived.length + ' (новых позиций загружено ' + d.loaded.newLines + ').'; },
+      function (d) { var o = document.getElementById('m9iikoinv'), C = [{ k: 'date', l: 'Дата', t: 'date' }, { k: 'number', l: 'Накладная' }, { k: 'supplier', l: 'Поставщик' }, { k: 'lines', l: 'Позиций', t: 'num' }, { k: 'sum', l: 'Сумма, ₽', t: 'num' }];
+        if (o) o.innerHTML = '<h4>Нет приёмки в ЦЕХ</h4>' + vTable(C, d.notReceived, null, 'Все накладные приняты') + '<h4>Приняты</h4>' + vTable(C.concat([{ k: 'cehSum', l: 'В приёмке ЦЕХ, ₽', t: 'num' }, { k: 'diff', l: 'Разница, ₽', t: 'num' }]), d.matched, null, 'Нет'); }); },
     intCheck: function (a, btn) { VIEWS.finance.h.intSend(btn, true); },
     intImport: function (a, btn) { VIEWS.finance.h.intSend(btn, false); },
     intSend: function (btn, dry) {
