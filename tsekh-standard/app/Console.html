@@ -2283,6 +2283,43 @@ function vField(f) {
   if (t === 'check') return '<div><label class="mvchk"><input type="checkbox" id="' + id + '"' + (v ? ' checked' : '') + '> ' + esc(f[1]) + '</label></div>';
   return '<div><label>' + esc(f[1]) + '</label><input id="' + id + '" type="' + esc(t) + '" value="' + esc(v) + '"' + (t === 'number' ? ' step="any"' : '') + ' placeholder="' + esc(f[4] || '') + '"></div>';
 }
+/** Первый лист .xlsx → строки (массив массивов). Без библиотек: zip читается по центральному каталогу, сжатие — DecompressionStream. */
+function m9Xlsx(buf) {
+  var u8 = new Uint8Array(buf), dv = new DataView(buf), td = new TextDecoder('utf-8');
+  var eocd = -1; for (var i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) return Promise.reject(new Error('это не файл .xlsx'));
+  var n = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), ents = {};
+  for (var k = 0; k < n; k++) {
+    var meth = dv.getUint16(p + 10, true), csz = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    ents[td.decode(u8.subarray(p + 46, p + 46 + nl))] = { meth: meth, csz: csz, off: off }; p += 46 + nl + xl + cl;
+  }
+  var read = function (name) {
+    var e = ents[name]; if (!e) return Promise.resolve('');
+    var h = e.off, data = u8.subarray(h + 30 + dv.getUint16(h + 26, true) + dv.getUint16(h + 28, true)).subarray(0, e.csz);
+    if (e.meth === 0) return Promise.resolve(td.decode(data));
+    if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('браузер устарел'));
+    return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  };
+  var sheet = Object.keys(ents).filter(function (x) { return /^xl\/worksheets\/sheet\d+\.xml$/.test(x); }).sort(function (a, b) { return parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10); })[0];
+  if (!sheet) return Promise.reject(new Error('в файле нет листов'));
+  return Promise.all([read('xl/sharedStrings.xml'), read(sheet)]).then(function (x) {
+    var P = new DOMParser(), ss = [], tx = function (el) { return Array.prototype.map.call(el.getElementsByTagName('t'), function (t) { return t.textContent; }).join(''); };
+    if (x[0]) Array.prototype.forEach.call(P.parseFromString(x[0], 'application/xml').getElementsByTagName('si'), function (si) { ss.push(tx(si)); });
+    var rows = [];
+    Array.prototype.forEach.call(P.parseFromString(x[1], 'application/xml').getElementsByTagName('row'), function (r) {
+      var ri = (parseInt(r.getAttribute('r'), 10) || rows.length + 1) - 1, row = rows[ri] = [];
+      Array.prototype.forEach.call(r.getElementsByTagName('c'), function (c) {
+        var ref = String(c.getAttribute('r') || ''), col = 0, m = /^[A-Z]+/.exec(ref);
+        if (m) { for (var j = 0; j < m[0].length; j++) col = col * 26 + (m[0].charCodeAt(j) - 64); col--; } else col = row.length;
+        var t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], val = v ? v.textContent : '';
+        if (t === 's') val = ss[+val] || ''; else if (t === 'inlineStr') val = tx(c); else if (t !== 'str' && t !== 'b' && t !== 'e' && val !== '' && !isNaN(+val)) val = +val;
+        row[col] = val;
+      });
+    });
+    for (var q = 0; q < rows.length; q++) { rows[q] = rows[q] || []; for (var z = 0; z < rows[q].length; z++) if (rows[q][z] === undefined) rows[q][z] = ''; }
+    return rows;
+  });
+}
 function vForm(fields) { return '<div class="bqf mvf">' + fields.map(vField).join('') + '</div>'; }
 function vV(id) { var e = document.getElementById('mvf_' + id); if (!e) return ''; return e.type === 'checkbox' ? e.checked : String(e.value || '').trim(); }
 function vBtn(label, act, arg, pri) {
@@ -4291,14 +4328,14 @@ VIEWS.finance = {
     op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk',
     payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus',
     cashAcc: 'v75SaveAccount', cashMove: 'v75AddMove', cashImport: 'v75ImportStatement', cashCat: 'v75SetCategory', cashCancel: 'v75CancelMove',
-    fcOrder: 'v76CreateOrderRequests' },
+    fcOrder: 'v76CreateOrderRequests', intCheck: 'v77ImportSales', intImport: 'v77ImportSales', intMap: 'v77SaveMapping' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
   h: {
     tab: function (k) {
       var V = VIEWS.finance; V._tab = k;
-      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'], ['pay', 'ФОТ'], ['cash', 'Деньги'], ['menu', 'Меню'], ['buy', 'Закупки'], ['fc', 'Прогноз'],
+      var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'], ['pay', 'ФОТ'], ['cash', 'Деньги'], ['int', 'Кассы и 1С'], ['menu', 'Меню'], ['buy', 'Закупки'], ['fc', 'Прогноз'],
         ['exp', 'Расходы и распределение'], ['ops', 'Финансовые операции'], ['close', 'Закрытие периода']], k);
       var per = vForm([['from', 'Период с', 'date', V._from || ''], ['to', 'по', 'date', V._to || '']]);
       var need = function (cb) { if (V._set && !V._dirty) { cb(V._set); return; } vCall('v64GetFinanceSettings', []).then(function (r) { var d = m9Ok(r); if (d) { V._set = d; V._dirty = false; cb(d); } }); };
@@ -4355,6 +4392,31 @@ VIEWS.finance = {
               function (x) { return vBtn('Статья', 'cashPick', x.id) + vBtn('Отменить', 'cashCancel', x.id); }, 'Нет')) +
             vCard('Загрузки выписок', vTable([{ k: 'At', l: 'Когда' }, { k: 'FileName', l: 'Файл' }, { k: 'PeriodFrom', l: 'С', t: 'date' }, { k: 'PeriodTo', l: 'По', t: 'date' }, { k: 'Added', l: 'Добавлено', t: 'num' }, { k: 'Duplicates', l: 'Повторов', t: 'num' }, { k: 'ClosedSkipped', l: 'Закрытый период', t: 'num' }, { k: 'By', l: 'Кто' }], d.imports, null, 'Нет')) +
             '<small style="color:var(--muted)">' + esc(d.note) + '</small>');
+        });
+      } else if (k === 'int') {
+        // интеграции с учётными системами, этап 1: продажи из отчёта кассы (iiko, R-Keeper, другая касса), сопоставление позиций с ТТК и складом
+        vCall('v77GetIntegrations', ['']).then(function (r) {
+          var d = m9Ok(r); if (!d) { box(''); return; } V._int = d; var c = d.counts;
+          var sys = d.systems.filter(function (x) { return x.id !== '1c'; }).map(function (x) { return [x.id, x.name]; });
+          var targets = [['SKIP|', 'не учитывать (обслуживание, доставка, модификатор)']].concat(d.dishes.map(function (n) { return ['DISH|' + n, 'Блюдо по ТТК: ' + n]; }))
+            .concat(d.goods.map(function (g) { return ['GOODS|' + g.name, 'Товар со склада: ' + g.name + ' (' + g.unit + ')']; }));
+          box(vKpis([['Проведено строк', c.RECORDED || 0, 'green'], ['Ждут сопоставления', c.PENDING || 0, c.PENDING ? 'gold' : 'green'], ['Не учитываются', c.SKIPPED || 0], ['Закрытый период', c.CLOSED || 0, c.CLOSED ? 'gold' : ''], ['Ошибки', c.ERROR || 0, c.ERROR ? 'red' : 'green']]) +
+            vCard('Загрузить продажи из кассы', vForm([['isys', 'Учётная система', 'select', V._intSys || 'iiko', sys], ['ifile', 'Отчёт о продажах (Excel .xlsx или CSV)', 'file'], ['idate', 'Дата продаж (если в отчёте нет колонки с датой)', 'date']]) +
+              '<div class="mvbar">' + vBtn('Проверить файл', 'intCheck', '') + vBtn('Загрузить', 'intImport', '', true) + '</div>' +
+              '<small style="color:var(--muted)">В iiko: отчёт по продажам (OLAP) с колонками «Учетный день», «Номер чека», «Блюдо», «Количество блюд», «Сумма со скидкой» → «Экспорт в Excel». ' +
+              'В R-Keeper: отчёт по блюдам/чекам → Excel. Нужны колонки «Блюдо» (или «Наименование»), «Количество» и «Сумма» (или «Цена»); дата, время, чек, код и официант — если есть. ' +
+              'Повторная загрузка того же отчёта ничего не задваивает.</small><div id="m9intres"></div>') +
+            vCard('Ждут сопоставления', vTable([{ k: 'systemRu', l: 'Система' }, { k: 'name', l: 'Позиция кассы' }, { k: 'extId', l: 'Код' }, { k: 'lines', l: 'Строк', t: 'num' }, { k: 'qty', l: 'Кол-во', t: 'num' }, { k: 'sum', l: 'Сумма, ₽', t: 'num' }, { k: 'note', l: 'Почему' }], d.pending,
+              function (x, i) { return vBtn('Сопоставить', 'intPick', String(d.pending.indexOf(x))); }, 'Всё сопоставлено')) +
+            vCard('Сопоставить позицию', vForm([['msys', 'Система', 'select', 'iiko', sys], ['mname', 'Позиция кассы (как в отчёте) *', 'text'], ['mext', 'Код в кассе', 'text'], ['mtarget', 'Что это в ЦЕХ *', 'select', '', targets],
+              ['mfactor', 'Сколько единиц ЦЕХ в 1 продаже кассы', 'number', '1']]) + '<div class="mvbar">' + vBtn('Сохранить и провести', 'intMap', '', true) + '</div>' +
+              '<small style="color:var(--muted)">Например, «Борщ 0,5 порции» → Борщ, коэффициент 0,5. После сохранения все ждущие продажи этой позиции проводятся сразу.</small>') +
+            vCard('Сопоставления', vTable([{ k: 'systemRu', l: 'Система' }, { k: 'name', l: 'Позиция кассы' }, { k: 'extId', l: 'Код' }, { k: 'kindRu', l: 'Вид' }, { k: 'target', l: 'В ЦЕХ' }, { k: 'factor', l: 'Коэфф.', t: 'num' }, { k: 'auto', l: 'Как' }], d.mappings,
+              function (x) { return vBtn('Изменить', 'intPickMap', x.id); }, 'Нет')) +
+            vCard('Проведено с замечаниями', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'check', l: 'Чек' }, { k: 'name', l: 'Позиция' }, { k: 'qty', l: 'Кол-во', t: 'num' }, { k: 'statusRu', l: 'Статус' }, { k: 'note', l: 'Замечание' }], d.problems, null, 'Нет')) +
+            vCard('Загрузки', vTable([{ k: 'at', l: 'Когда' }, { k: 'systemRu', l: 'Система' }, { k: 'fileName', l: 'Файл' }, { k: 'from', l: 'С', t: 'date' }, { k: 'to', l: 'По', t: 'date' }, { k: 'recorded', l: 'Проведено', t: 'num' }, { k: 'duplicates', l: 'Повторов', t: 'num' },
+              { k: 'pending', l: 'Ждут', t: 'num' }, { k: 'skipped', l: 'Не учтено', t: 'num' }, { k: 'closed', l: 'Закрытый период', t: 'num' }, { k: 'by', l: 'Кто' }], d.imports, null, 'Нет')) +
+            '<small style="color:var(--muted)">' + esc(d.note) + ' Подключение iiko по API (без выгрузки файлов) — следующий этап.</small>');
         });
       } else if (k === 'menu') {
         // этап 6 «Финансы»: меню-инжиниринг (Kasavana–Smith) — из дневных итогов продаж и себестоимости по партиям
@@ -4479,6 +4541,42 @@ VIEWS.finance = {
     cashMove: function (a, btn) { vDo(btn, 'v75AddMove', [JSON.stringify({ accountId: vV('macc'), date: vV('mdate'), direction: vV('mdir'), amount: vV('mamount'), category: vV('mcat'), counterparty: vV('mwho'), inn: vV('minn'), purpose: vV('mpurpose'), toAccountId: vV('mto') })], 'Записано', function () { VIEWS.finance.h.tab('cash'); }); },
     cashAcc: function (a, btn) { vDo(btn, 'v75SaveAccount', [JSON.stringify({ name: vV('aname'), type: vV('atype'), bankAccount: vV('ano'), openingBalance: vV('aopen'), openingDate: vV('adate') })], 'Счёт заведён', function () { VIEWS.finance.h.tab('cash'); }); },
     cashCancel: function (id, btn) { var why = prompt('Причина отмены'); if (!why) return; vDo(btn, 'v75CancelMove', [JSON.stringify({ moveId: id, reason: why })], 'Отменено', function () { VIEWS.finance.h.tab('cash'); }); },
+    intCheck: function (a, btn) { VIEWS.finance.h.intSend(btn, true); },
+    intImport: function (a, btn) { VIEWS.finance.h.intSend(btn, false); },
+    intSend: function (btn, dry) {
+      var f = document.getElementById('mvf_ifile'), file = f && f.files && f.files[0]; if (!file) { vMsg('Выберите файл отчёта', 'err'); return; }
+      var V = VIEWS.finance, sysId = vV('isys'), date = vV('idate'); V._intSys = sysId;
+      var out = function (h) { var o = document.getElementById('m9intres'); if (o) o.innerHTML = h; };
+      var go = function (payload) {
+        payload.system = sysId; payload.fileName = file.name; if (date) payload.date = date; if (dry) payload.dry = true;
+        vDo(btn, 'v77ImportSales', [JSON.stringify(payload)], function (d) {
+          if (d.dry) return 'В файле ' + d.lines + ' строк продаж за ' + d.from + (d.to !== d.from ? ' — ' + d.to : '') + ' на ' + vNum(d.sum, 2) + ' ₽; позиций ' + d.items + ', без сопоставления ' + d.unmatched.length + (d.errors.length ? '; не прочитано строк: ' + d.errors.length : '') + '.';
+          return 'Проведено ' + d.recorded + ', повторов ' + d.duplicates + ', ждут сопоставления ' + d.pending + (d.skipped ? ', не учтено ' + d.skipped : '') + (d.closedSkipped ? ', в закрытом периоде ' + d.closedSkipped : '') + (d.errors ? ', ошибок ' + d.errors : '') + '.';
+        }, function (d) {
+          if (d && d.dry) out(vTable([{ k: 'name', l: 'Позиция кассы' }, { k: 'lines', l: 'Строк', t: 'num' }, { k: 'match', l: 'Что это в ЦЕХ' }], d.unmatched, null, 'Все позиции сопоставлены') +
+            (d.errors.length ? '<div class="bqmsg err">' + d.errors.map(esc).join('<br>') + '</div>' : '') + '<small style="color:var(--muted)">Колонки: ' + esc(Object.keys(d.columns).map(function (k) { return d.columns[k]; }).join(', ')) + '</small>');
+          else VIEWS.finance.h.tab('int');
+        });
+      };
+      var rd = new FileReader();
+      rd.onload = function () {
+        var buf = rd.result;
+        if (/\.xlsx$/i.test(file.name)) { m9Xlsx(buf).then(function (rows) { go({ rows: rows }); }, function (e) { vMsg('Не удалось прочитать Excel: ' + (e && e.message || e) + '. Сохраните отчёт как CSV и загрузите его.', 'err'); }); return; }
+        if (/\.xls$/i.test(file.name)) { vMsg('Старый формат .xls не читается — сохраните отчёт как .xlsx или CSV', 'err'); return; }
+        var text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (e) { text = new TextDecoder('windows-1251').decode(buf); }
+        go({ text: text });
+      };
+      rd.readAsArrayBuffer(file);
+    },
+    intPick: function (i) { var p = (VIEWS.finance._int.pending || [])[+i]; if (!p) return; var set = function (id, v) { var e = document.getElementById('mvf_' + id); if (e) e.value = v; };
+      set('msys', p.system); set('mname', p.name); set('mext', p.extId); set('mfactor', '1'); var e = document.getElementById('mvf_mtarget'); if (e) e.scrollIntoView({ block: 'center' }); },
+    intPickMap: function (id) { var m = (VIEWS.finance._int.mappings || []).filter(function (x) { return x.id === id; })[0]; if (!m) return; var set = function (k, v) { var e = document.getElementById('mvf_' + k); if (e) e.value = v; };
+      set('msys', m.system); set('mname', m.name); set('mext', m.extId); set('mtarget', m.kind + '|' + m.target); set('mfactor', m.factor); var e = document.getElementById('mvf_mtarget'); if (e) e.scrollIntoView({ block: 'center' }); },
+    intMap: function (a, btn) {
+      var t = String(vV('mtarget') || ''), sep = t.indexOf('|');
+      vDo(btn, 'v77SaveMapping', [JSON.stringify({ system: vV('msys'), name: vV('mname'), extId: vV('mext'), kind: t.slice(0, sep), target: t.slice(sep + 1), factor: vV('mfactor') })],
+        function (d) { return 'Сохранено' + (d.applied ? ': проведено ' + d.recorded + (d.skipped ? ', не учтено ' + d.skipped : '') + (d.closed ? ', в закрытом периоде ' + d.closed : '') : ''); }, function () { VIEWS.finance.h.tab('int'); });
+    },
     menuPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('menu'); },
     buyPeriod: function () { VIEWS.finance._from = vV('from'); VIEWS.finance._to = vV('to'); VIEWS.finance.h.tab('buy'); },
     fcRun: function () { var V = VIEWS.finance; V._fcDays = vV('fdays') || 7; V._fcWeeks = vV('fweeks') || 8; V.h.tab('fc'); },
