@@ -4328,7 +4328,7 @@ VIEWS.finance = {
     op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk',
     payRate: 'v74SaveRate', payHours: 'v74AddHours', payFix: 'v74CorrectHours', payCancel: 'v74CancelRecord', payBonus: 'v74AddBonus', payOk: 'v74DecideBonus', payNo: 'v74DecideBonus',
     cashAcc: 'v75SaveAccount', cashMove: 'v75AddMove', cashImport: 'v75ImportStatement', cashCat: 'v75SetCategory', cashCancel: 'v75CancelMove',
-    fcOrder: 'v76CreateOrderRequests', intCheck: 'v77ImportSales', intImport: 'v77ImportSales', intMap: 'v77SaveMapping', iikoSave: 'v77IikoSave', iikoPull: 'v77IikoPull', iikoOff: 'v77IikoDisconnect', iikoCharts: 'v77IikoCharts', iikoInv: 'v77IikoInvoices' },
+    fcOrder: 'v76CreateOrderRequests', intCheck: 'v77ImportSales', intImport: 'v77ImportSales', intMap: 'v77SaveMapping', iikoSave: 'v77IikoSave', iikoPull: 'v77IikoPull', iikoOff: 'v77IikoDisconnect', iikoCharts: 'v77IikoCharts', iikoInv: 'v77IikoInvoices', oneExp: 'v77Export1C', oneSave: 'v77OneCSave', onePull: 'v77OneCPull', oneOff: 'v77OneCDisconnect' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
@@ -4422,6 +4422,21 @@ VIEWS.finance = {
                   vCard('Приходные накладные iiko — сверка с приёмкой', vForm([['vfrom', 'С', 'date'], ['vto', 'по', 'date']]) + '<div class="mvbar">' + vBtn('Загрузить и сверить', 'iikoInv', '', true) + '</div>' +
                   '<small style="color:var(--muted)">Накладная есть в iiko, а приёмки в ЦЕХ нет — товар не прошёл входной контроль. Партии сами не создаются.</small><div id="m9iikoinv"></div>') : '');
             })(d.iiko) +
+            vCard('1С: выгрузка для бухгалтерии', vForm([['ekind', 'Что выгрузить', 'select', V._oneKind || 'sales', [['sales', 'Продажи по дням и блюдам'], ['writeoffs', 'Списания (по себестоимости партий)'], ['purchases', 'Поступления (приёмка ЦЕХ)']]],
+                ['efrom', 'С', 'date'], ['eto', 'по', 'date']]) + '<div class="mvbar">' + vBtn('Скачать файл для 1С', 'oneExp', '', true) + '</div>' +
+              '<small style="color:var(--muted)">Таблица CSV (Excel откроет её как обычную таблицу). В 1С: документ «Отчёт о розничных продажах», «Списание товаров» или «Поступление товаров» → табличная часть → «Загрузить из файла» ' +
+              '(или обработка «Загрузка данных из табличного документа»). Повторная выгрузка того же периода даёт тот же файл — проверяйте, не загружен ли он в 1С раньше.</small><div id="m9oneexp"></div>') +
+            (function (oc) {
+              oc = oc || {};
+              var stat = !oc.configured ? 'Не подключено.' : 'Подключено: ' + oc.url + ', пользователь ' + oc.login + '.' + (oc.lastSync ? ' Последний обмен ' + vRu(oc.lastSync) + (oc.lastError ? ' — ошибка: ' + oc.lastError : '') + '.' : '');
+              return vCard('1С: поступления товаров по сети', '<div class="bqmsg' + (oc.lastError ? ' err' : '') + '">' + esc(stat) + '</div>' +
+                vForm([['ourl', 'Адрес публикации базы 1С *', 'text', oc.url || '', 'https://server/buh'], ['ologin', 'Пользователь 1С *', 'text', oc.login || ''],
+                  ['opass', oc.configured ? 'Пароль (пусто — прежний)' : 'Пароль', 'password']]) +
+                '<div class="mvbar">' + vBtn('Сохранить и проверить доступ', 'oneSave', '', true) + (oc.configured ? vBtn('Отключить', 'oneOff', '') : '') + '</div>' +
+                (oc.configured ? vForm([['ofrom', 'Поступления с', 'date'], ['oto', 'по', 'date']]) + '<div class="mvbar">' + vBtn('Загрузить и сверить с приёмкой', 'onePull', '', true) + '</div><div id="m9oneinv"></div>' : '') +
+                '<small style="color:var(--muted)">База 1С должна быть опубликована на веб-сервере с включённым «Стандартным интерфейсом OData» (это делает программист 1С или ваш франчайзи). ' +
+                'Берутся проведённые «Поступления товаров и услуг»; поступление есть в 1С, а приёмки в ЦЕХ нет — товар не прошёл входной контроль. Партии сами не создаются, данные 1С не меняются.</small>');
+            })(d.onec) +
             vCard('Ждут сопоставления', vTable([{ k: 'systemRu', l: 'Система' }, { k: 'name', l: 'Позиция кассы' }, { k: 'extId', l: 'Код' }, { k: 'lines', l: 'Строк', t: 'num' }, { k: 'qty', l: 'Кол-во', t: 'num' }, { k: 'sum', l: 'Сумма, ₽', t: 'num' }, { k: 'note', l: 'Почему' }], d.pending,
               function (x, i) { return vBtn('Сопоставить', 'intPick', String(d.pending.indexOf(x))); }, 'Всё сопоставлено')) +
             vCard('Сопоставить позицию', vForm([['msys', 'Система', 'select', 'iiko', sys], ['mname', 'Позиция кассы (как в отчёте) *', 'text'], ['mext', 'Код в кассе', 'text'], ['mtarget', 'Что это в ЦЕХ *', 'select', '', targets],
@@ -4567,6 +4582,18 @@ VIEWS.finance = {
     iikoInv: function (a, btn) { vDo(btn, 'v77IikoInvoices', [JSON.stringify({ from: vV('vfrom'), to: vV('vto') })], function (d) { return 'Накладных iiko: ' + d.invoices + ', без приёмки в ЦЕХ: ' + d.notReceived.length + ' (новых позиций загружено ' + d.loaded.newLines + ').'; },
       function (d) { var o = document.getElementById('m9iikoinv'), C = [{ k: 'date', l: 'Дата', t: 'date' }, { k: 'number', l: 'Накладная' }, { k: 'supplier', l: 'Поставщик' }, { k: 'lines', l: 'Позиций', t: 'num' }, { k: 'sum', l: 'Сумма, ₽', t: 'num' }];
         if (o) o.innerHTML = '<h4>Нет приёмки в ЦЕХ</h4>' + vTable(C, d.notReceived, null, 'Все накладные приняты') + '<h4>Приняты</h4>' + vTable(C.concat([{ k: 'cehSum', l: 'В приёмке ЦЕХ, ₽', t: 'num' }, { k: 'diff', l: 'Разница, ₽', t: 'num' }]), d.matched, null, 'Нет'); }); },
+    oneExp: function (a, btn) { VIEWS.finance._oneKind = vV('ekind'); vDo(btn, 'v77Export1C', [JSON.stringify({ kind: vV('ekind'), from: vV('efrom'), to: vV('eto') })],
+      function (d) { return d.lines ? 'Файл ' + d.fileName + ': строк ' + d.lines + ', сумма ' + d.total + ' ₽.' : 'За период нет данных — файл пустой.'; },
+      function (d) {
+        try { var b = new Blob(['\uFEFF' + d.csv], { type: 'text/csv;charset=utf-8' }), u = URL.createObjectURL(b), l = document.createElement('a'); l.href = u; l.download = d.fileName; document.body.appendChild(l); l.click(); setTimeout(function () { URL.revokeObjectURL(u); l.remove(); }, 1000); } catch (e) {}
+        var o = document.getElementById('m9oneexp'); if (o) o.innerHTML = '<small style="color:var(--muted)">Документ в 1С: ' + esc(d.doc) + '. Первые строки:</small>' +
+          vTable(d.head.map(function (h, i) { return { k: 'c' + i, l: h }; }), d.sample.map(function (r) { var x = {}; r.forEach(function (v, i) { x['c' + i] = v; }); return x; }), null, 'Нет строк'); }); },
+    oneSave: function (a, btn) { vDo(btn, 'v77OneCSave', [JSON.stringify({ url: vV('ourl'), login: vV('ologin'), password: vV('opass') })],
+      function (d) { return d.check.ok ? 'Сохранено. ' + d.check.message : 'Сохранено, но доступа нет: ' + d.check.message; }, function () { VIEWS.finance.h.tab('int'); }); },
+    oneOff: function (a, btn) { if (!confirm('Отключить 1С? Адрес, пользователь и пароль будут удалены, загруженные поступления останутся.')) return; vDo(btn, 'v77OneCDisconnect', [''], '1С отключена', function () { VIEWS.finance.h.tab('int'); }); },
+    onePull: function (a, btn) { vDo(btn, 'v77OneCPull', [JSON.stringify({ from: vV('ofrom'), to: vV('oto') })], function (d) { return 'Поступлений в 1С: ' + d.invoices + ', без приёмки в ЦЕХ: ' + d.notReceived.length + ' (новых позиций загружено ' + d.loaded.newLines + ').'; },
+      function (d) { var o = document.getElementById('m9oneinv'), C = [{ k: 'date', l: 'Дата', t: 'date' }, { k: 'number', l: 'Накладная' }, { k: 'supplier', l: 'Поставщик' }, { k: 'lines', l: 'Позиций', t: 'num' }, { k: 'sum', l: 'Сумма, ₽', t: 'num' }];
+        if (o) o.innerHTML = '<h4>Нет приёмки в ЦЕХ</h4>' + vTable(C, d.notReceived, null, 'Все поступления приняты') + '<h4>Приняты</h4>' + vTable(C.concat([{ k: 'cehSum', l: 'В приёмке ЦЕХ, ₽', t: 'num' }, { k: 'diff', l: 'Разница, ₽', t: 'num' }]), d.matched, null, 'Нет'); }); },
     intCheck: function (a, btn) { VIEWS.finance.h.intSend(btn, true); },
     intImport: function (a, btn) { VIEWS.finance.h.intSend(btn, false); },
     intSend: function (btn, dry) {

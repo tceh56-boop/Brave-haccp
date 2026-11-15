@@ -17,7 +17,7 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
     window.__calls = []; window.confirm = () => true;
     const st = { mode: 'READY_TO_WORK', enterpriseType: 'RESTAURANT', types: { RESTAURANT: 'Ресторан' }, org: { name: 'Тест', inn: '', address: '', responsible: '', complete: false }, timezone: 'Europe/Moscow', employees: 1, dishes: 1,
       workshops: [], objects: [], summary: { created: 1, requiresDecision: 0, numericObjects: 0, blockers: 0 } };
-    const I = { iiko: { configured: true, url: 'https://kafe.iiko.it', login: 'api', auto: true, lastSync: '2026-11-14T15:00:00.000Z', lastError: '', lastResult: { recorded: 7, pending: 1, otherSource: 0 } }, systems: [{ id: 'iiko', name: 'iiko' }, { id: 'rkeeper', name: 'R-Keeper' }, { id: '1c', name: '1С' }, { id: 'other', name: 'Другая касса' }], counts: { RECORDED: 5, PENDING: 3, SKIPPED: 1, CLOSED: 0, ERROR: 0 },
+    const I = { iiko: { configured: true, url: 'https://kafe.iiko.it', login: 'api', auto: true, lastSync: '2026-11-14T15:00:00.000Z', lastError: '', lastResult: { recorded: 7, pending: 1, otherSource: 0 } }, onec: { configured: true, url: 'https://srv/buh', login: 'Бухгалтер', lastSync: '', lastError: '' }, systems: [{ id: 'iiko', name: 'iiko' }, { id: 'rkeeper', name: 'R-Keeper' }, { id: '1c', name: '1С' }, { id: 'other', name: 'Другая касса' }], counts: { RECORDED: 5, PENDING: 3, SKIPPED: 1, CLOSED: 0, ERROR: 0 },
       pending: [{ system: 'iiko', systemRu: 'iiko', extId: '77', name: 'Компот домашний', lines: 1, qty: 3, sum: 450, note: 'нет в ТТК и на складе под таким названием — сопоставьте позицию' }],
       mappings: [{ id: 'MAP-1', system: 'iiko', systemRu: 'iiko', extId: '', name: 'Борщ', kind: 'DISH', kindRu: 'блюдо по ТТК', target: 'Борщ', unit: '', factor: 1, auto: 'точное совпадение названия' }],
       imports: [{ id: 'INT-1', systemRu: 'iiko', source: 'файл', fileName: 'olap.xlsx', from: '2026-11-14', to: '2026-11-14', lines: 6, recorded: 5, duplicates: 0, pending: 1, skipped: 1, closed: 0, errors: 0, at: '14.11.2026 20:00', by: 'Директор' }],
@@ -32,13 +32,19 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
       v77IikoPull: () => JSON.stringify({ success: true, data: { lines: 3, recorded: 2, duplicates: 0, pending: 1, otherSource: 1, otherSourceDays: [{ day: '2026-11-11' }] } }),
       v77IikoCharts: () => JSON.stringify({ success: true, data: { totals: { charts: 2, same: 0, diff: 1, missing: 1 }, charts: [{ dish: 'Борщ', cehDish: 'Борщ', items: 2, issues: ['Свёкла: брутто iiko 200 г, ЦЕХ 250 г (-20 %)'] }, { dish: 'Плов', cehDish: '', items: 1, issues: ['нет в ТТК ЦЕХ'] }], note: 'ТТК ЦЕХ не меняются' } }),
       v77IikoInvoices: () => JSON.stringify({ success: true, data: { invoices: 2, loaded: { newLines: 3 }, notReceived: [{ date: '2026-11-13', number: '000077', supplier: 'ООО Мясо', lines: 1, sum: 75 }], matched: [{ date: '2026-11-12', number: 'УПД-15', supplier: 'Овощная база', lines: 2, sum: 550, cehSum: 540, diff: -10 }] } }),
+      v77Export1C: (j) => JSON.stringify({ success: true, data: { kind: JSON.parse(j).kind, fileName: 'tsekh_1c_writeoffs_2026-11-14_2026-11-14.csv', csv: 'Дата;Номенклатура\r\n14.11.2026;Борщ\r\n', lines: 1, total: 900, doc: '«Отчёт о розничных продажах»', head: ['Дата', 'Номенклатура'], sample: [['14.11.2026', 'Борщ']] } }),
+      v77OneCSave: () => JSON.stringify({ success: true, data: { settings: {}, check: { ok: true, message: 'Доступ к 1С есть' } } }),
+      v77OneCPull: () => JSON.stringify({ success: true, data: { invoices: 1, loaded: { documents: 1, newLines: 1 }, notReceived: [{ date: '2026-11-13', number: 'ВХ-9', supplier: 'ООО Хлеб', lines: 1, sum: 120 }], matched: [] } }),
       v77SaveMapping: () => JSON.stringify({ success: true, data: { applied: 1, recorded: 1, skipped: 0, closed: 0 } }) };
     function mk(s) { s = s || {}; return new Proxy({}, { get(t, k) {
       if (k === 'withSuccessHandler') return f => mk(Object.assign({}, s, { ok: f })); if (k === 'withFailureHandler') return f => mk(Object.assign({}, s, { fl: f })); if (k === 'withUserObject') return u => mk(Object.assign({}, s, { uo: u }));
       return (...a) => setTimeout(() => { window.__calls.push(k + ':' + JSON.stringify(a)); try { (s.ok || (() => {}))(D[k] ? D[k](...a) : { ok: true, data: [] }, s.uo); } catch (e) { (s.fl || (() => {}))(e, s.uo); } }, 5); } }); }
     window.google = { script: { run: mk() } };
   });
-  await p.goto('file://' + path.join(__dirname, '..', 'app', 'Console.html'));
+  // страница с http (как на сервере ЦЕХ): с file:// браузер не берёт имя скачиваемого файла
+  const http = require('http'), html = fs.readFileSync(path.join(__dirname, '..', 'app', 'Console.html'));
+  const web = http.createServer((q, r) => { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); }); await new Promise(ok => web.listen(0, '127.0.0.1', ok));
+  await p.goto('http://127.0.0.1:' + web.address().port + '/');
   await p.evaluate(() => { localStorage.setItem('mc_token', 'x'); TOKEN = 'x'; start(null); }); await p.waitForTimeout(400);
   const calls = () => p.evaluate(() => window.__calls.filter(c => /^v77/.test(c))), txt = async () => (await p.textContent('#vbody')).replace(/\s+/g, ' ');
   await p.evaluate(() => { openView('finance', 'int'); }); await p.waitForTimeout(500);
@@ -78,7 +84,20 @@ const ExcelJS = require(path.join(__dirname, '..', 'cloud', 'node_modules', 'exc
   assert(/v77IikoCharts:\["\{\\"date\\":\\"2026-11-14\\"\}"/.test((await calls()).join('\n')), 'дата техкарт уходит на сервер');
   await p.click('button[data-mv="iikoInv"]'); await p.waitForTimeout(500);
   t = await txt(); assert(t.includes('Нет приёмки в ЦЕХ') && t.includes('000077') && t.includes('УПД-15'), 'сверка накладных показана');
+  // 1С: выгрузка файлом и поступления по OData
+  t = await txt(); ['1С: выгрузка для бухгалтерии', '1С: поступления товаров по сети', 'Подключено: https://srv/buh'].forEach(s => assert(t.includes(s), '1С: ' + s));
+  await p.selectOption('#mvf_ekind', 'writeoffs'); await p.fill('#mvf_efrom', '2026-11-14'); await p.fill('#mvf_eto', '2026-11-14');
+  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('button[data-mv="oneExp"]')]);
+  assert.strictEqual(dl.suggestedFilename(), 'tsekh_1c_writeoffs_2026-11-14_2026-11-14.csv');
+  const body = fs.readFileSync(await dl.path()); assert.deepStrictEqual([...body.slice(0, 3)], [0xEF, 0xBB, 0xBF], 'файл с BOM — Excel и 1С читают кириллицу');
+  assert(/v77Export1C:\["\{\\"kind\\":\\"writeoffs\\",\\"from\\":\\"2026-11-14\\",\\"to\\":\\"2026-11-14\\"\}"/.test((await calls()).join('\n')), 'вид и период выгрузки уходят на сервер');
+  await p.waitForTimeout(300); t = await txt(); assert(t.includes('Отчёт о розничных продажах'), 'показан документ 1С');
+  await p.fill('#mvf_opass', 'пароль'); await p.click('button[data-mv="oneSave"]'); await p.waitForTimeout(500);
+  c = (await calls()).filter(x => x.startsWith('v77OneCSave:')).pop();
+  assert.deepStrictEqual(JSON.parse(JSON.parse(c.slice('v77OneCSave:'.length))[0]), { url: 'https://srv/buh', login: 'Бухгалтер', password: 'пароль' });
+  await p.waitForTimeout(400); await p.click('button[data-mv="onePull"]'); await p.waitForTimeout(500);
+  t = await txt(); assert(t.includes('ВХ-9') && t.includes('ООО Хлеб'), 'сверка поступлений 1С показана');
   assert.strictEqual(errs.length, 0, 'ошибки страницы: ' + errs.join('; '));
-  await b.close(); fs.rmSync(dir, { recursive: true, force: true });
+  await b.close(); web.close(); fs.rmSync(dir, { recursive: true, force: true });
   console.log('OK: Экономика → Кассы и 1С — Excel и CSV, проверка без записи, загрузка, сопоставление, iiko по API: кнопки вызывают сервер');
 })().catch(e => { console.error(e); process.exit(1); });
