@@ -20,6 +20,8 @@ test.before(() => {
 // Сессия директора заводится настоящей функцией входа (_createSession_) с правами роли; проверка прав — настоящая.
 let TOKEN = '';
 function run(body) {
+  // защита шлюза от двойного нажатия (тот же вызов за 15 с) в тестах не нужна: повторы здесь — отдельные загрузки
+  T.store.db.prepare("delete from cache where k like 'mc_gate_%'").run();
   return T.execute((res) => () => {
     if (!TOKEN) TOKEN = res('_createSession_')({ id: 'E1', fullName: 'Директор Иванова', position: 'Директор', role: 'Директор' }, res('_mcRbEffective_')('Директор', 'E1')).token;
     const R = (n) => { if (/^\w+$/.test(n)) return res(n); return undefined; };

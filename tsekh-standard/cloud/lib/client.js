@@ -26,7 +26,11 @@ function clientShim(rpcUrl, params) {
   }
   function call(st, name, args) {
     prep(args).then(function (a) {
-      return fetch(RPC, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fn: name, args: a }) });
+      // ключ сессии страницы ЦЕХ (localStorage mc_token) — серверу для cookie, по которой открываются файлы предприятия
+      var h = { 'content-type': 'application/json' }, tk = '';
+      try { tk = window.__MC_TOKEN || localStorage.getItem('mc_token') || ''; } catch (e) {}
+      if (tk && /^[\x21-\x7e]{16,200}$/.test(tk)) h['x-ts-session'] = tk;
+      return fetch(RPC, { method: 'POST', credentials: 'same-origin', headers: h, body: JSON.stringify({ fn: name, args: a }) });
     }).then(function (r) { return r.json(); }).then(function (j) {
       if (j && j.ok) { if (st.ok) st.ok(j.value, st.uo); }
       else { var e = new Error((j && j.error && j.error.message) || 'Ошибка сервера'); e.name = (j && j.error && j.error.name) || 'ScriptError'; if (st.fail) st.fail(e, st.uo); else console.error(e); }

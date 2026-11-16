@@ -62,7 +62,8 @@ function run(body) {
   });
 }
 const J = (s) => { const r = typeof s === 'string' ? JSON.parse(s) : s; if (!r.success) throw new Error(JSON.stringify(r.error)); return r.data; };
-const call = (fn, ...a) => run((res) => JSON.parse(res(fn)(...a, TOKEN)));
+// защита шлюза от двойного нажатия (тот же вызов за 15 с) в тестах не нужна: повторы здесь — отдельные загрузки
+const call = (fn, ...a) => { T.store.db.prepare("delete from cache where k like 'mc_gate_%'").run(); return run((res) => JSON.parse(res(fn)(...a, TOKEN))); };
 const log = () => fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const parse = (csv) => csv.trim().split('\r\n').map((l) => l.split(';'));
 
@@ -87,7 +88,13 @@ test('подготовка: ТТК, склад, продажи из кассы, 
   });
   const d = J(call('v77ImportSales', JSON.stringify({ system: 'iiko', text: csv, fileName: 'olap.csv' })));
   assert.strictEqual(d.recorded, 3, JSON.stringify(d));
-  const w = run((res) => res('stockWriteOff')('Свёкла', 1, 'кг', 'испорчена', TOKEN));
+  // списание — право stock (по матрице ролей оно у шеф-повара, не у директора); шлюз проверяет право
+  const w = run((res) => {
+    // проверка медкнижки шлюзом в этом наборе не проверяется (её штатный выключатель)
+    T.store.setProp(res('MC_MED_GATE_PROP_'), 'off');
+    const chef = res('_createSession_')({ id: 'E2', fullName: 'Шеф Петров', position: 'Шеф-повар', role: 'Шеф-повар' }, res('_mcRbEffective_')('Шеф-повар', 'E2')).token;
+    return res('stockWriteOff')('Свёкла', 1, 'кг', 'испорчена', chef);
+  });
   assert.ok(!/ошиб|нет прав|error/i.test(String(w)), String(w));
 });
 

@@ -437,6 +437,10 @@ function resolveLocationScope_(session, locationId) {
  * только для сущностей, прямо затронутых в этом раунде (WORKSHOPS, EQUIPMENT,
  * JOURNAL_DEFINITIONS) — остальные ~9 действий с тем же паттерном НЕ проверены и НЕ
  * исправлены в этом раунде (см. честный список в CHANGELOG).
+ *
+ * Аудит 16.11.2026, C-03: закрыто для ВСЕХ действий в одном месте — updateRow_ (Database.gs) больше не меняет
+ * уже заполненные organization_id/location_id (FORBIDDEN_SCOPE). _stripProtectedFields_ остаётся для прочих
+ * защищённых полей конкретных сущностей (статусы, хэши, авторы).
  */
 function _stripProtectedFields_(patch, protectedFields) {
   var safe = {};

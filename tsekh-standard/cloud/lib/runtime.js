@@ -36,12 +36,19 @@ function loadProject(dir) {
     line += 2 + text.split('\n').length;
   }
   // Резолвер имён — прямой eval в той же области видимости: так находятся функции для google.script.run и триггеров.
-  const wrapped = `(function (${SERVICES.join(', ')}) {\n'use cloud';${src}\n` +
+  // Резолвер создаётся до кода проекта: шлюз (zzz_MonChef_Gate.gs) уже при загрузке обращается к функциям через `this`.
+  const wrapped = `(function (${SERVICES.join(', ')}) {\n'use cloud';__cloud.resolve = function (__n) { if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(__n)) return undefined; try { return eval(__n); } catch (e) { return undefined; } };${src}\n` +
     `;if (typeof TS_TENANT_CONFIG_ !== 'undefined' && __tenantConfig) TS_TENANT_CONFIG_ = __tenantConfig;\n` +
     `return function (__n) { if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(__n)) return undefined; try { return eval(__n); } catch (e) { return undefined; } };\n})`;
   const script = new vm.Script(wrapped, { filename: path.basename(dir) + '.gs.js' });
   const factory = script.runInThisContext();
-  const p = { dir, files, factory, map };
+  // Имена функций верхнего уровня. В Apps Script они — свойства глобального объекта (`this`): шлюз
+  // zzz_MonChef_Gate.gs перебирает Object.keys(this) и подменяет каждую функцию обёрткой с проверкой сессии.
+  // Без этого списка шлюз в облаке не видел ни одной функции и не работал (аудит 16.11.2026, C-02).
+  const globals = [];
+  const seen = new Set();
+  src.replace(/^function\s+([A-Za-z$][A-Za-z0-9_$]*)\s*\(/gm, (m, n) => { if (!seen.has(n)) { seen.add(n); globals.push(n); } return m; });
+  const p = { dir, files, factory, map, globals };
   projects.set(dir, p);
   return p;
 }
@@ -73,7 +80,7 @@ class Tenant {
     this.execUrl = `${this.baseUrl}/exec`;
     this._ss = null;
   }
-  user() { const e = this.cfg.ownerEmail || ''; return { getEmail: () => e, getUsername: () => e.split('@')[0], getUserLoginId: () => e, toString: () => e }; }
+  user(email) { const e = email === undefined ? (this.cfg.ownerEmail || '') : String(email); return { getEmail: () => e, getUsername: () => e.split('@')[0], getUserLoginId: () => e, toString: () => e }; }
   timeZone() { return this.store.prop('MC_TZ') || this.cfg.timeZone || process.env.TZ_DEFAULT || 'Asia/Yekaterinburg'; }
   mailName() { return this.cfg.mailName || 'ЦЕХ Стандарт'; }
   mainBookId() { return this.store.prop('TS_TENANT_SHEET_ID') || this.store.prop('SHEET_ID') || null; }
@@ -90,6 +97,9 @@ class Tenant {
   /**
    * Одно выполнение: свежая область видимости проекта, вызов функции, запись изменений.
    * fn — функция (получает resolve) или имя функции проекта; args — аргументы.
+   * opts.web — вызов пришёл из браузера (страница, google.script.run, файл). Как у анонимного посетителя
+   * веб-приложения Google, Session.getActiveUser() тогда пустой: иначе шлюз принял бы любой запрос
+   * из интернета за «владельца в редакторе» и пропустил бы его без сессии.
    */
   execute(fn, args = [], opts = {}) {
     const project = loadProject(this.appDir);
@@ -100,28 +110,41 @@ class Tenant {
     const drive = makeDrive(this);
     const lock = S.makeLock(store);
     let resolve = null;
-    const lookup = (n) => (resolve ? resolve(n) : undefined);
+    const cloud = { slug: this.slug, baseUrl: this.baseUrl, execUrl: this.execUrl, resolve: null };
+    const lookup = (n) => (resolve ? resolve(n) : cloud.resolve ? cloud.resolve(n) : undefined);
     const docs = S.makeDocumentApp(this, drive);
     this._docs = docs;
     const services = {
       SpreadsheetApp: ss, DriveApp: drive, PropertiesService: S.makeProperties(store, this), CacheService: S.makeCache(store), LockService: lock.service,
-      Session: S.makeSession(this), MailApp: S.makeMail(store, this), GmailApp: unsupported('GmailApp'), ScriptApp: S.makeScriptApp(store, this),
+      Session: S.makeSession(this, opts.web ? '' : undefined), MailApp: S.makeMail(store, this), GmailApp: unsupported('GmailApp'), ScriptApp: S.makeScriptApp(store, this),
       HtmlService: S.makeHtml(this, lookup), ContentService: S.makeContent(), UrlFetchApp: makeUrlFetch(this), Utilities: makeUtilities(), Logger: makeLogger(store),
       DocumentApp: docs, XmlService: unsupported('XmlService'), Drive: unsupported('Drive (расширенная служба)'), Sheets: unsupported('Sheets (расширенная служба)'),
       Charts: unsupported('Charts'), CalendarApp: unsupported('CalendarApp'), FormApp: unsupported('FormApp'), SlidesApp: unsupported('SlidesApp'),
-      __tenantConfig: this.tenantConfig(), __cloud: { slug: this.slug, baseUrl: this.baseUrl, execUrl: this.execUrl, docs },
+      __tenantConfig: this.tenantConfig(), __cloud: Object.assign(cloud, { docs }),
     };
     // как в Apps Script: new Date(), getHours() и т.п. работают в часовом поясе проекта
     process.env.TZ = this.timeZone();
     const started = Date.now();
     try {
       // `this` на верхнем уровне проекта — глобальный объект Apps Script (MC_GLOBAL_ = this; MC_GLOBAL_[имя]): отдаём функции проекта
-      const globalThisProxy = new Proxy({}, {
-        get: (o, k) => (typeof k === 'string' ? (k in o ? o[k] : lookup(k)) : undefined),
-        has: (o, k) => typeof k === 'string' && (k in o || lookup(k) !== undefined),
+      // Функции верхнего уровня видны как свойства (Object.keys(this)), а то, что код записал в `this`
+      // (обёртки шлюза), имеет приоритет над исходным объявлением — как в Apps Script.
+      const own = {};
+      const rawLookup = (n) => (cloud.resolve ? cloud.resolve(n) : undefined);
+      const has = (k) => Object.prototype.hasOwnProperty.call(own, k);
+      const globalThisProxy = new Proxy(own, {
+        get: (o, k) => (typeof k === 'string' ? (has(k) ? o[k] : rawLookup(k)) : undefined),
+        has: (o, k) => typeof k === 'string' && (has(k) || rawLookup(k) !== undefined),
         set: (o, k, v) => { o[k] = v; return true; },
+        ownKeys: (o) => Array.from(new Set([...project.globals, ...Reflect.ownKeys(o)])),
+        getOwnPropertyDescriptor: (o, k) => {
+          if (has(k)) return Reflect.getOwnPropertyDescriptor(o, k);
+          if (typeof k === 'string' && project.globals.includes(k)) return { value: rawLookup(k), writable: true, enumerable: true, configurable: true };
+          return undefined;
+        },
       });
-      resolve = project.factory.apply(globalThisProxy, SERVICES.map((k) => services[k]));
+      const raw = project.factory.apply(globalThisProxy, SERVICES.map((k) => services[k]));
+      resolve = (n) => (has(n) ? own[n] : raw(n));
       const f = typeof fn === 'function' ? fn(resolve) : resolve(String(fn));
       if (typeof f !== 'function') throw new Error(`Функция не найдена: ${fn}`);
       return f(...args);
