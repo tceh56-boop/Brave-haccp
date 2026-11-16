@@ -37,6 +37,7 @@ const code = fs.readFileSync(path.join(app, 'Code.gs'), 'utf8');
 const fn = name => { const i = code.indexOf('function ' + name + '('); assert(i >= 0, name); let d = 0, j = code.indexOf('{', i); for (; j < code.length; j++) { if (code[j] === '{') d++; else if (code[j] === '}' && --d === 0) break; } return code.slice(i, j + 1); };
 vm.runInContext(['createDish', 'calculateKBZHU', 'getNutritionData', '_findNutrition_', '_nutritionSheet_', '_cleanProdName_', '_toBaseUnitServer_'].map(fn).join('\n'), ctx);
 vm.runInContext(fs.readFileSync(path.join(app, 'MonChef_V74_Processing.gs'), 'utf8'), ctx, { filename: 'MonChef_V74_Processing.gs' });
+vm.runInContext(fs.readFileSync(path.join(app, 'MonChef_V75_RefNorms.gs'), 'utf8'), ctx, { filename: 'MonChef_V75_RefNorms.gs' });
 const C = ctx, J = s => { const r = JSON.parse(s); if (!r.success) throw new Error(r.error.message); return r.data; }, F = s => JSON.parse(s);
 table('Блюда', ['Код', 'Название'], []); table('Состав', ['Код', 'Ингредиент', 'Ед', 'Брутто', 'Брутто, г', 'Нетто', 'Выход', 'Ед. выхода', 'Нетто на порцию'], []);
 table('Справочник_Пищевая_Ценность', ['Продукт', 'Ккал', 'Белки', 'Жиры', 'Углеводы'], [['Морковь', 35, 1.3, 0.1, 6.9], ['Картофель', 77, 2, 0.4, 16.3]]);
@@ -137,6 +138,38 @@ t('Gate и роли: новые функции зарегистрированы'
   const [cl, mut, perm, need] = [arr(25), arr(26), arr(30), arr(31)];
   ['v74ProcessingFor', 'v74ProductCard', 'v74ProductList', 'v74SaveProduct', 'v74LabelToProduct', 'v74AddProcessing'].forEach(f => { assert(cl.includes(f), f); assert(need[f], f); });
   ['v74SaveProduct', 'v74LabelToProduct', 'v74AddProcessing'].forEach(f => { assert(mut.includes(f), f); assert(perm[f], f); });
+  assert(cl.includes('v75ImportRefNorms') && mut.includes('v75ImportRefNorms') && perm.v75ImportRefNorms === 'catalog' && need.v75ImportRefNorms === 'catalog');
+});
+
+t('V75: нормы справочника — варианты в форме ТТК без «по умолчанию», с источником; свои обработки и норма разбора важнее', () => {
+  const d = J(C.v74ProcessingFor(JSON.stringify(['Картофель', 'Свёкла столовая', 'Соль', 'Курица-гриль'])));
+  const k = d['Картофель'];
+  assert(k[0].fromWasteNorm && k[0].isDefault, 'норма разбора первой и по умолчанию');
+  const ref = k.filter(p => p.fromReference);
+  assert(ref.length >= 2 && ref.every(p => !p.isDefault && /Скурихин|Сборник/.test(p.source)), 'варианты из справочника');
+  ref.forEach(p => ['cold', 'thermal', 'lossP', 'lossF', 'lossC'].forEach(f => assert(p[f] >= 0 && p[f] <= 99.9, f)));
+  assert(d['Свёкла столовая'].length && d['Свёкла столовая'].every(p => p.fromReference && p.product === 'Свекла'));
+  assert.strictEqual(d['Соль'].length, 0, 'нет в справочнике — пусто');
+  const own = J(C.v74ProcessingFor(JSON.stringify(['Морковь'])))['Морковь'];
+  assert(own.length && own.every(p => !p.fromReference), 'свои обработки — без справочника');
+  assert(J(C.v74ProductCard('Морковь')).reference.length > 0, 'в карточке справочник показан для сравнения');
+  for (const r of C.MC_V75_REF) { assert(r[2] && r[8]); for (const i of [3, 4, 5, 6, 7]) assert(typeof r[i] === 'number' && r[i] >= 0 && r[i] <= 99.9, r[0] + ' ' + r[2]); }
+});
+
+t('V75: «нормы всем продуктам» дописывает только продуктам без своих обработок; повтор ничего не дублирует', () => {
+  const N = sheets['Справочник_Пищевая_Ценность']; N.data.push(['Свёкла столовая', 40, 1.5, 0.1, 8.8], ['Соль поваренная', 0, 0, 0, 0]);
+  const P = sheets['Продукты_Обработка'], before = P.data.length, carrot = P.data.filter(r => r[0] === 'Морковь').map(r => r.join('|'));
+  const r = J(C.v75ImportRefNorms(JSON.stringify({})));
+  assert(r.products >= 2 && r.rows > r.products && r.skipped >= 1 && r.notFound >= 1, JSON.stringify(r));
+  assert(r.names.includes('Свёкла столовая') && r.names.includes('Картофель') && !r.names.includes('Морковь'));
+  assert.deepStrictEqual(P.data.filter(x => x[0] === 'Морковь').map(x => x.join('|')), carrot, 'свои строки не тронуты');
+  const beet = P.data.filter(x => x[0] === 'Свёкла столовая');
+  assert.strictEqual(beet.filter(x => x[8] === true).length, 1, 'одна по умолчанию'); assert(beet.every(x => /^справочник/.test(x[9])));
+  assert.strictEqual(P.data.length, before + r.rows);
+  const again = J(C.v75ImportRefNorms(JSON.stringify({}))); assert.strictEqual(again.rows, 0);
+  const tf = J(C.v74ProcessingFor(JSON.stringify(['Свёкла столовая'])))['Свёкла столовая'];
+  assert(tf.length === beet.length && !tf.some(p => p.fromReference) && tf.filter(p => p.isDefault).length === 1, 'после загрузки — свои строки');
+  assert(audits.some(a => a[1] === 'V75_REF_IMPORT'));
 });
 
 console.log('ttk_processing: ' + n + ' проверок пройдено');

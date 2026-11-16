@@ -1873,7 +1873,7 @@ function nProcHtml(i) {
   var x = NEWD.rows[i], nm = (x.name || '').trim(), l = NPROC[nm], c = nCalc(x), sel = -1;
   if (x.proc && l) l.forEach(function (p, k) { if (p.name === x.proc.name) sel = k; });
   var opts = '<option value="">' + (nm ? 'без обработки (нетто = брутто)' : '— выберите ингредиент —') + '</option>' + (l || []).map(function (p, k) {
-    return '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + esc(p.name) + ' · ' + [p.cold ? 'хол. ' + p.cold + '%' : '', p.thermal ? 'тепл. ' + p.thermal + '%' : '', p.final ? 'оконч. ' + p.final + '%' : ''].filter(Boolean).join(', ') + '</option>';
+    return '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + esc(p.name) + ' · ' + [p.cold ? 'хол. ' + p.cold + '%' : '', p.thermal ? 'тепл. ' + p.thermal + '%' : '', p.final ? 'оконч. ' + p.final + '%' : ''].filter(Boolean).join(', ') + (p.fromReference ? ' · справочник' : '') + '</option>';
   }).join('') + (x.proc && sel < 0 ? '<option value="" selected>' + esc(x.proc.name) + ' (только в этой карте)</option>' : '') + (nm ? '<option value="+">＋ Новая обработка…</option>' : '');
   var info = !x.proc ? '' : c ? 'нетто <b>' + c.n + '</b> г · выход <b>' + c.o + '</b> г' : 'нетто и выход — укажите вес в г/кг/мл/л';
   var ed = x.edit ? '<div class="procEd" id="nPe' + i + '"><input data-k="name" placeholder="Обработка, например «Очистка, варка»" value="' + esc(x.edit.name) + '">' +
@@ -3250,7 +3250,7 @@ VIEWS.minstock = {
 
 /* ---------- Карточка продукта: КБЖУ, виды обработки, состав; заполнение с этикетки (V74) ---------- */
 VIEWS.nutrition = {
-  fns: { save: 'v74SaveProduct', label: 'v74LabelToProduct' },
+  fns: { save: 'v74SaveProduct', label: 'v74LabelToProduct', importRef: 'v75ImportRefNorms' },
   title: 'Продукты: КБЖУ и обработка', sub: 'Карточка продукта: пищевая ценность на 100 г, виды обработки с потерями массы и веществ, состав и аллергены. Фото этикетки заполняет карточку — проверьте и сохраните. По этим данным считаются нетто, выход и КБЖУ в ТТК.',
   open: function () { this._p = this._p || null; this.h.load(); },
   pf: [['cold', 'Холодная'], ['thermal', 'Тепловая'], ['final', 'Окончат.'], ['lossP', 'Б'], ['lossF', 'Ж'], ['lossC', 'У']],
@@ -3267,8 +3267,11 @@ VIEWS.nutrition = {
           ['nm', 'Производитель', 'text', p.manufacturer], ['na', 'Аллергены', 'text', p.allergens], ['ns', 'Продукт содержит (состав)', 'textarea', p.composition, '', 2], ['nr', 'Комментарий', 'textarea', p.comment, '', 2]]) +
         '<div class="lblrow" style="margin-top:12px"><span>Виды обработок продукта и потери массы и пищевых веществ, %</span></div><div id="v74proc"></div>' +
         (p.wasteNorm ? '<div class="mvhint">Норма разбора: «' + esc(p.wasteNorm.name) + '» — отходы не более ' + esc(p.wasteNorm.maxWastePercent) + '%. Если своих обработок нет, в ТТК она предлагается как холодная обработка.</div>' : '') +
+        ((p.reference || []).length ? '<div class="lblrow" style="margin-top:12px"><span>Нормы из справочников (Скурихин–Тутельян 2002, табл. 13; Сборник рецептур 2022) — проверьте и возьмите в карточку</span></div>' +
+          vTable([{ k: 'name', l: 'Обработка' }, { k: 'cold', l: 'Холодная %', t: 'num' }, { k: 'thermal', l: 'Тепловая %', t: 'num' }, { k: 'lossP', l: 'Потери Б %', t: 'num' }, { k: 'lossF', l: 'Потери Ж %', t: 'num' }, { k: 'lossC', l: 'Потери У %', t: 'num' }, { k: 'source', l: 'Источник' }], p.reference, function (x, i) { return vBtn('Взять', 'ref', String(i)); }, '') +
+          '<div class="mvbar">' + vBtn('Взять все', 'ref', 'all') + '</div>' : '') +
         '<div class="mvbar">' + vBtn('+ Обработка', 'padd') + vBtn('Сохранить карточку', 'save', '', true) + '</div>') +
-      vCard('Продукты (' + a.length + ')', vForm([['nq', 'Поиск', 'text', V._q || '']]) + '<div class="mvbar">' + vBtn('Найти', 'find') + '</div>' +
+      vCard('Продукты (' + a.length + ')', vForm([['nq', 'Поиск', 'text', V._q || '']]) + '<div class="mvbar">' + vBtn('Найти', 'find') + vBtn('Нормы обработки из справочника — всем продуктам без обработок', 'importRef') + '</div>' +
         vTable([{ k: 'name', l: 'Продукт' }, { k: 'kcal', l: 'Ккал', t: 'num' }, { k: 'protein', l: 'Б', t: 'num' }, { k: 'fat', l: 'Ж', t: 'num' }, { k: 'carbs', l: 'У', t: 'num' }, { k: 'processing', l: 'Обработок', t: 'num' }, { k: 'composition', l: 'Состав' }, { k: 'source', l: 'Источник' }], rows, function (x) { return vBtn('Открыть', 'pick', x.name); }, 'Нет данных')));
     V.drawProc();
   },
@@ -3294,6 +3297,20 @@ VIEWS.nutrition = {
     pset: function (el) { var x = VIEWS.nutrition._p.processing[+el.getAttribute('data-i')]; if (x) x[el.getAttribute('data-k')] = el.value; },
     pdef: function (i) { VIEWS.nutrition._p.processing.forEach(function (x, k) { x.isDefault = k === i; }); },
     pdel: function (i) { VIEWS.nutrition._p.processing.splice(i, 1); VIEWS.nutrition.drawProc(); },
+    // V75: взять норму из справочника в карточку (сохраняется кнопкой «Сохранить карточку»)
+    ref: function (a) {
+      var V = VIEWS.nutrition; V.keep(); var p = V._p; p.processing = p.processing || [];
+      var src = p.reference || [], pick = a === 'all' ? src : [src[+a]];
+      pick.forEach(function (r) {
+        if (!r || p.processing.some(function (x) { return String(x.name || '').trim() === r.name; })) return;
+        p.processing.push({ name: r.name, cold: r.cold, thermal: r.thermal, final: r.final || '', lossP: r.lossP, lossF: r.lossF, lossC: r.lossC, isDefault: !p.processing.length, source: 'справочник (СТ 2002 + Сборник 2022): ' + (r.source || '') });
+      });
+      V.drawProc(); vMsg('Добавлено в карточку — проверьте и нажмите «Сохранить карточку»', 'ok');
+    },
+    importRef: function (a, btn) {
+      if (!confirm('Добавить нормы обработки из справочников (СТ 2002 табл. 13 + Сборник рецептур 2022) всем продуктам, у которых обработок ещё нет? Продукты с вашими обработками не меняются.')) return;
+      vDo(btn, 'v75ImportRefNorms', [JSON.stringify({})], function (d) { return 'Добавлено: продуктов ' + d.products + ', строк ' + d.rows + (d.skipped ? ' · пропущено (уже есть свои) ' + d.skipped : ''); }, function () { VIEWS.nutrition.h.load(); });
+    },
     label: function (inp) {
       var f = inp.files && inp.files[0]; if (!f) return; var V = VIEWS.nutrition; V.keep(); vMsg('Распознаю этикетку…');
       dsRead(f, function (url, err) {

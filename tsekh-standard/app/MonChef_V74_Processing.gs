@@ -8,6 +8,7 @@
  *    выбирается обработка — нетто и выход считаются: нетто = брутто × (1 − холодная %), выход = нетто × (1 − тепловая %) ×
  *    (1 − окончательная %). Выбор сохраняется (лист «ТТК_Обработка»), КБЖУ блюда считается с учётом потерь.
  *    Если для продукта есть только норма разбора («Нормы_Разбора»), она предлагается как холодная обработка.
+ *    Если своих обработок нет — предлагаются нормы из справочников с источником (V75, MonChef_V75_RefNorms.gs).
  *    Проценты система не придумывает: их вносит технолог (или источник, который он указал).
  * 2) Пищевая ценность, состав, аллергены и производитель продукта — в справочнике «Справочник_Пищевая_Ценность»
  *    (колонки дописаны справа). Кнопка «Распознать этикетку» заполняет форму из фото (Yandex Vision), человек проверяет
@@ -44,8 +45,11 @@ function _v74ProcFor_(name, all) {
   var k = _v74Key_(name), kc = ''; try { kc = _v74Key_(_cleanProdName_(name)); } catch (e) {}
   var own = (all || _v74Rows_(MC_V74_PROC)).filter(function (r) { var p = _v74Key_(r[0]); return p === k || (kc && p === kc); }).map(_v74Proc_);
   if (own.length) return own;
-  try { var wn = JSON.parse(getWasteNorm(name) || 'null'); if (wn && wn.maxWastePercent > 0) return [{ product: wn.name, name: 'Холодная обработка (норма разбора)', cold: wn.maxWastePercent, thermal: 0, final: 0, lossP: 0, lossF: 0, lossC: 0, isDefault: true, source: 'Нормы разбора: «' + wn.name + '»', fromWasteNorm: true }]; } catch (e) {}
-  return [];
+  var out = [];
+  try { var wn = JSON.parse(getWasteNorm(name) || 'null'); if (wn && wn.maxWastePercent > 0) out.push({ product: wn.name, name: 'Холодная обработка (норма разбора)', cold: wn.maxWastePercent, thermal: 0, final: 0, lossP: 0, lossF: 0, lossC: 0, isDefault: true, source: 'Нормы разбора: «' + wn.name + '»', fromWasteNorm: true }); } catch (e) {}
+  // V75: нормы из справочников (СТ 2002 табл. 13 + Сборник рецептур 2022) — как варианты, без «по умолчанию»
+  try { if (typeof _v75RefFor_ === 'function') out = out.concat(_v75RefFor_(name)); } catch (e) {}
+  return out;
 }
 /** Нетто и выход строки по обработке. qtyBase — брутто в г/мл. */
 function _v74Calc_(qtyBase, p) {
@@ -114,7 +118,8 @@ function v74ProductCard(name, token) {
     return _ok_({ name: r ? String(r.v[0]) : name, exists: !!r, kcal: r ? r.v[1] : '', protein: r ? r.v[2] : '', fat: r ? r.v[3] : '', carbs: r ? r.v[4] : '',
       composition: g('Состав'), allergens: g('Аллергены'), manufacturer: g('Производитель'), source: g('Источник'), comment: g('Комментарий'),
       updated: g('Обновлено') ? Utilities.formatDate(new Date(g('Обновлено')), _mcTz_(), 'dd.MM.yyyy') : '',
-      processing: _v74Rows_(MC_V74_PROC).filter(function (x) { return _v74Key_(x[0]) === _v74Key_(name); }).map(_v74Proc_), wasteNorm: wn && wn.maxWastePercent ? wn : null });
+      processing: _v74Rows_(MC_V74_PROC).filter(function (x) { return _v74Key_(x[0]) === _v74Key_(name); }).map(_v74Proc_), wasteNorm: wn && wn.maxWastePercent ? wn : null,
+      reference: (function () { try { return typeof _v75RefFor_ === 'function' ? _v75RefFor_(name) : []; } catch (e) { return []; } })() });
   } catch (e) { return _failFrom_(e); }
 }
 /** Записать КБЖУ и описание продукта. force=false — не трогать данные, внесённые вручную (для автонаполнения). */
