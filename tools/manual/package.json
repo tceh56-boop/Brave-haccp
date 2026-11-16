@@ -1,0 +1,11 @@
+{
+  "name": "tsekh-staff-manual",
+  "private": true,
+  "description": "Инструкция ЦЕХ для персонала: стенд в эмуляторе Apps Script, снимки экранов, вёрстка PDF",
+  "scripts": {
+    "shots": "node tour.js",
+    "pdf": "node build.js ../../docs/ЦЕХ_инструкция_для_персонала.pdf",
+    "manual": "node tour.js && node build.js ../../docs/ЦЕХ_инструкция_для_персонала.pdf"
+  },
+  "dependencies": { "playwright": "^1.48.0", "qrcode": "1.5.4" }
+}

@@ -52,7 +52,20 @@ function createBatchMarking_(data, session) {
 function _getMarking_(markingId,session){var m=findOne_('MARKINGS','marking_id',markingId); if(!m) throw new Error('Маркировка не найдена: '+markingId); if(session&&m.organization_id!==session.organization_id) _denyScope_(session,'MARKINGS:'+markingId,'organization'); return m;}
 function getMarkingJournal_(data,session){
   var rows=findRows_('MARKING_JOURNAL',function(r){return r.organization_id===session.organization_id && (!data.batchId||r.batch_id===data.batchId) && (!data.markingId||r.marking_id===data.markingId) && (!data.operation||r.operation===data.operation);});
-  return rows.sort(function(a,b){return new Date(b.timestamp)-new Date(a.timestamp);});
+  var names={},users={};
+  return rows.sort(function(a,b){return new Date(b.timestamp)-new Date(a.timestamp);}).map(function(r){var o={};Object.keys(r).forEach(function(k){o[k]=r[k];});
+    var p=names[r.product_id]||(names[r.product_id]=getProductById_(r.product_id)||findOne_('SEMI_FINISHED','pf_id',r.product_id)||{});var u=users[r.operator_id]||(users[r.operator_id]=findOne_('USERS','user_id',r.operator_id)||{});
+    o.product_name=p.название||'';o.operator_name=u.имя||'';return o;});
+}
+/** Партии точки с остатком — для выбора на экране «Маркировка» (номер партии вручную не вводится). */
+function getMarkingBatches_(session){
+  var prod={};
+  return findRows_('BATCHES',function(b){return b.location_id===session.location_id;}).map(function(b){
+    var rest=getBatchRemaining_(b); if(!(rest>0)) return null;
+    var p=prod[b.product_id]||(prod[b.product_id]=getProductById_(b.product_id)||findOne_('SEMI_FINISHED','pf_id',b.product_id)||{});
+    if(p.organization_id&&p.organization_id!==session.organization_id) return null;
+    return {batch_id:b.batch_id,product:p.название||b.product_id,remaining:Math.round(rest*1000)/1000,unit:p.единица||'',expiry:String(b.срок_годности||'').slice(0,10),status:b.статус||'',received:String(b.дата_прихода||b.created_at||'').slice(0,10)};
+  }).filter(Boolean).sort(function(a,b){return a.product.localeCompare(b.product)||a.expiry.localeCompare(b.expiry);});
 }
 function createLabelPrintJob_(data,session){
   var batch=_markingAssertBatch_(data.batchId,session); var m=null;

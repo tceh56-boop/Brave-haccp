@@ -19,6 +19,12 @@
  * необязательный session — обратная совместимость сохранена (session отсутствует → как
  * раньше, пустой cascade_id).
  */
+/** Открытая инвентаризация точки — чтобы её видели все участники, а не только устройство, на котором её начали. */
+function getOpenInventory_(locationId) {
+  return findRows_('INVENTORIES', function (r) { return r.location_id === locationId && !r.закрыто; })
+    .sort(function (a, b) { return String(b.создано).localeCompare(String(a.создано)); })[0] || null;
+}
+
 function startInventory_(locationId, userId, session) {
   var inv = {
     inventory_id: generateId_('INVENTORIES'),

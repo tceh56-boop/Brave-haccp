@@ -173,11 +173,11 @@ function _completeProduction_(task, userId, session) {
   if (task.parent_type === 'PF') {
     shelfLife = _resolveShelfLife_(parentObj);
   } else {
-    var ttk = typeof getCurrentTtk_ === 'function' ? getCurrentTtk_(task.parent_id, session) : null;
-    ttkVersionId = ttk ? ttk.ttk_version_id : '';
-    if (ttk) {
-      storage = ttk.условия_хранения || '';
-      var parsed = _parseShelfLifeTextHours_(ttk.срок_реализации);
+    var currentTtk = typeof getCurrentTtk_ === 'function' ? getCurrentTtk_(task.parent_id, session) : null;
+    ttkVersionId = currentTtk ? currentTtk.ttk_version_id : '';
+    if (currentTtk) {
+      storage = currentTtk.условия_хранения || '';
+      var parsed = _parseShelfLifeTextHours_(currentTtk.срок_реализации);
       if (parsed) {
         shelfLife = { срок_годности: new Date(Date.now() + parsed * 3600000).toISOString(), требует_подтверждения: false, сообщение: '' };
       } else {
@@ -206,6 +206,8 @@ function _completeProduction_(task, userId, session) {
   insertRow_('BATCHES', batch);
   batchId = batch.batch_id;
   требуетПодтверждения = shelfLife.требует_подтверждения;
+  // Журналы ККТ «по партии» (температура в толще, охлаждение ПФ…) ждут измерения по этой партии.
+  var ccpPending = typeof createCcpBatchPending_ === 'function' ? createCcpBatchPending_(task, batch, session) : [];
   if (typeof createBatchMarking_ === 'function') {
     createBatchMarking_({ batchId: batchId, markingType: task.parent_type === 'PF' ? 'SEMI_FINISHED' : 'DISH', ttkVersionId: ttkVersionId, productionId: task.production_id, storage: storage, shelfLifeConfirmed: !требуетПодтверждения }, session);
   }
@@ -214,5 +216,5 @@ function _completeProduction_(task, userId, session) {
       'Партия "' + (parentObj ? parentObj.название : task.parent_id) + '" (№' + batch.партия_номер + ') выпущена БЕЗ автоматически рассчитанного срока годности. ' + shelfLife.сообщение,
       'shelf_life_missing|' + batchId, session ? session.cascade_id : '');
   }
-  return { batch_id: batchId, требует_подтверждения_срока: требуетПодтверждения, ingredient_usage: usageResults, waste: usageResults.map(function(x){return x.waste;}).filter(Boolean) };
+  return { batch_id: batchId, требует_подтверждения_срока: требуетПодтверждения, ccp_pending: ccpPending.map(function (p) { return p.pending_id; }), ingredient_usage: usageResults, waste: usageResults.map(function(x){return x.waste;}).filter(Boolean) };
 }

@@ -54,7 +54,6 @@ function createCascade_(session, action, operationId) {
     event_id: '',
     failure_class: '',
     recovery_id: '',
-    начато: nowIso_(),
     завершено: '',
     обновлено: nowIso_()
   });

@@ -22,7 +22,7 @@ var UAT_ORG_NAME_ = 'UAT ЦЕХ';
 
 /** Единый список обработчиков триггеров — используют installTriggers() и deployPreflight(). */
 function getExpectedTriggerHandlers_() {
-  return ['dailyBackupTrigger_', 'dailyAutoJournalTrigger_', 'journalReminderTrigger_',
+  return ['mercurySyncPendingTrigger_', 'ttkDriveSyncTrigger_', 'dailyBackupTrigger_', 'dailyAutoJournalTrigger_', 'journalReminderTrigger_',
     'overdueJournalTrigger_', 'expiryCheckTrigger_', 'criticalStockTrigger_', 'labScheduleTrigger_',
     'declarationExpiryTrigger_', 'safetyDeadlinesTrigger_', 'managementEconomicsTrigger_', 'demandPlanningTrigger_', 'financeStage22Trigger_', 'controlTowerStage23Trigger_', 'runAutomationDecisionTrigger_', 'eventAutomationStage26Trigger_', 'automationWorkflowSlaStage27Trigger_', 'periodClosingStage33Trigger_', 'capaStage37Trigger_', 'complianceMatrixStage38Trigger_', 'complianceCockpitStage39Trigger_', 'enterpriseBoardPackStage40Trigger_', 'kpiTargetsStage41Trigger_', 'enterpriseExecutionStage42to50Trigger_', 'digitalFactoryStage51to60Trigger_', 'digitalIntelligenceStage61to70Trigger_', 'autonomousPlanningStage71to80Trigger_', 'autonomousOperationsStage81to90Trigger_', 'core100FinalStage91to100Trigger_'];
 }
@@ -37,6 +37,18 @@ function runAllMigrations() {
   report.p22 = migrateP22Schema_();
   report.p22_3 = migrateP22_3EmployeeSafetySchema_();
   report.batchProductionDate = migrateBatchProductionDateSchema_();
+  report.techSpec = migrateTechSpecSchema_();
+  report.techNorms = migrateTechNormsSchema_();
+  report.ttkImport = migrateTtkImportSchema_();
+  report.pfTech = migratePfTechSchema_();
+  report.ccpJournals = migrateCcpJournalsSchema_();
+  report.invoiceRecognition = migrateInvoiceRecognitionSchema_();
+  report.ttkDrive = migrateTtkDriveSchema_();
+  report.mercury = migrateMercurySchema_();
+  report.fiscalQr = migrateFiscalQrSchema_();
+  report.receiptCorrections = migrateReceiptCorrectionSchema_();
+  report.banquetOcr = migrateBanquetOcrSchema_();
+  report.ppkWizard = migratePpkWizardSchema_();
   Logger.log('runAllMigrations: готово. Запустите deployPreflight() для проверки.');
   return report;
 }

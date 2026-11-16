@@ -13,7 +13,7 @@
 
 var TRIGGER_SCHEDULE_ = {
   tick15m_: ['journalReminderTrigger_', 'eventAutomationStage26Trigger_', 'automationWorkflowSlaStage27Trigger_'],
-  tickHourly_: ['dailyAutoJournalTrigger_', 'overdueJournalTrigger_'],
+  tickHourly_: ['dailyAutoJournalTrigger_', 'overdueJournalTrigger_', 'mercurySyncPendingTrigger_'],
   tick2hA_: ['criticalStockTrigger_', 'controlTowerStage23Trigger_', 'runAutomationDecisionTrigger_'],
   tick2hB_: ['enterpriseExecutionStage42to50Trigger_', 'digitalFactoryStage51to60Trigger_', 'autonomousOperationsStage81to90Trigger_'],
   tick4h_: ['digitalIntelligenceStage61to70Trigger_', 'autonomousPlanningStage71to80Trigger_'],
@@ -27,6 +27,7 @@ var DAILY_TRIGGER_HOURS_ = {
   complianceMatrixStage38Trigger_: 3,
   complianceCockpitStage39Trigger_: 4,
   enterpriseBoardPackStage40Trigger_: 5,
+  ttkDriveSyncTrigger_: 5,
   labScheduleTrigger_: 6,
   kpiTargetsStage41Trigger_: 6,
   expiryCheckTrigger_: 7,

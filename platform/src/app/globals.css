@@ -1,0 +1,179 @@
+/* Оформление прежней системы ЦЕХ (Apps Script): жёлтый, тёмно-коричневый, бежевый фон, белые карточки с тенью. */
+:root {
+  --yellow: #F5A623; --brown: #3B2A20; --beige: #F1E6D8; --burgundy: #7A1F2B; --black: #1A1410;
+  --bg: var(--beige); --surface: #ffffff; --ink: var(--black); --muted: #8a7a6a; --line: #e6dccf;
+  --brand: var(--brown); --accent: var(--yellow); --accent-ink: var(--black);
+  --ok: #16A344; --ok-bg: #e4f5ea; --info: #388276; --warn: #F59E08; --warn-ink: #8a5300; --warn-bg: #fff3dc;
+  --crit: #DC2626; --crit-bg: #fde8e8;
+  --radius: 14px; --tap: 46px; --shadow: 0 1px 4px rgba(0,0,0,.08);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body { font: 15px/1.45 -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+a { color: inherit; }
+h1 { font-size: 22px; margin: 0 0 12px; color: var(--brown); }
+h2 { font-size: 16px; margin: 0 0 10px; }
+h3 { font-size: 15px; margin: 0 0 8px; }
+.wrap { max-width: 720px; margin: 0 auto; padding: 12px 12px 24px; }
+.narrow { max-width: 400px; margin: 0 auto; padding: 28px 16px; }
+.card { background: var(--surface); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 5px; color: var(--brown); }
+input, select, textarea { width: 100%; min-height: var(--tap); padding: 10px 11px; font: inherit; font-size: 15px; color: var(--ink); background: var(--surface);
+  border: 1px solid #ddd; border-radius: 10px; }
+input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: var(--tap); padding: 0 16px; border-radius: 10px;
+  border: 0; font-family: inherit; font-size: 15px; font-weight: 700; line-height: 1.1; cursor: pointer; background: var(--yellow); color: var(--black); text-decoration: none; }
+.btn.block { width: 100%; margin-top: 14px; }
+.btn.secondary { background: var(--surface); color: var(--brown); border: 1px solid var(--brown); }
+.btn.danger { background: var(--burgundy); color: #fff; }
+.btn.small { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.btn:disabled { opacity: .55; cursor: default; }
+.err { color: var(--crit); background: var(--crit-bg); border-radius: 10px; padding: 10px 12px; margin-top: 12px; }
+.note { background: var(--warn-bg); color: var(--ink); border-left: 3px solid var(--warn); border-radius: 10px; padding: 10px 12px; margin: 12px 0; }
+.okbox { background: var(--ok-bg); border-left: 3px solid var(--ok); border-radius: 10px; padding: 10px 12px; margin: 12px 0; }
+.badge { display: inline-block; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; background: var(--beige); color: var(--brown); }
+.badge.ok { background: var(--ok); color: #fff; } .badge.warn { background: var(--warn); color: #fff; } .badge.crit { background: var(--crit); color: #fff; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.between { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: 1fr; gap: 0 10px; }
+@media (min-width: 560px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+
+/* Шапка: ☰, логотип, справа имя и роль (нажатие — выход) */
+.topbar { position: sticky; top: 0; z-index: 15; background: var(--brown); color: #fff; display: flex; align-items: center; gap: 10px;
+  padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left)); }
+.topbar .logo { color: var(--yellow); flex: 1; display: flex; }
+.hamburger { background: none; border: 0; color: var(--yellow); font-size: 24px; line-height: 1; padding: 4px 8px 4px 0; cursor: pointer; min-height: 40px; }
+.who { background: none; border: 0; color: #fff; font: inherit; font-size: 12px; text-align: right; cursor: pointer; display: flex; flex-direction: column; opacity: .9; padding: 2px 0; }
+.who .role { color: #cdbba8; font-size: 11px; }
+
+/* Выдвижное меню разделов */
+.menu-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.menu-overlay.open { opacity: 1; pointer-events: auto; }
+.sidemenu { position: fixed; top: 0; left: 0; bottom: 0; width: 78%; max-width: 300px; background: var(--surface); z-index: 21; overflow-y: auto;
+  transform: translateX(-100%); visibility: hidden; transition: transform .25s, visibility 0s .25s; padding: 16px 0 calc(16px + env(safe-area-inset-bottom)); }
+.sidemenu.open { transform: translateX(0); visibility: visible; transition: transform .25s; box-shadow: 4px 0 18px rgba(0,0,0,.18); }
+.menu-head { color: var(--brown); padding: 0 16px 12px; border-bottom: 1px solid #eee; margin-bottom: 6px; display: flex; flex-direction: column; gap: 6px; }
+.menu-head .small { color: var(--muted); }
+.menu-group { padding: 10px 16px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #a99783; }
+.menu-item { display: block; padding: 12px 16px; font-size: 15px; color: var(--black); text-decoration: none; }
+.menu-item[aria-current="page"] { background: var(--beige); color: var(--brown); font-weight: 700; }
+
+/* Вход: логотип на белой плашке, маскот подпрыгивает и моргает */
+.brandblock { color: var(--brand); display: flex; justify-content: center; margin: 8px 0 18px; }
+.plate { background: #fff; border-radius: 14px; box-shadow: 0 10px 24px -12px rgba(0,0,0,.35); padding: 18px 24px; color: var(--brown); }
+.ceh-anim .ceh-mascot { animation: cehBounce 1.5s ease-in-out infinite; transform-origin: 232px 300px; }
+.ceh-anim .ceh-eye { animation: cehBlink 3.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+.ceh-anim .ceh-letter { opacity: 0; animation: cehLetterIn .5s cubic-bezier(.2,.8,.3,1) forwards; }
+.ceh-anim .ceh-letter.e { animation-delay: .5s; } .ceh-anim .ceh-letter.h { animation-delay: .75s; }
+@keyframes cehBounce { 0%,100% { transform: translateY(0) scaleY(1); } 30% { transform: translateY(-14px) scaleY(1.05); } 55% { transform: translateY(0) scaleY(.93); } 75% { transform: translateY(-4px) scaleY(1.02); } }
+@keyframes cehBlink { 0%,90%,100% { transform: scaleY(1); } 94% { transform: scaleY(.12); } }
+@keyframes cehLetterIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .ceh-anim .ceh-mascot, .ceh-anim .ceh-eye { animation: none; } .ceh-anim .ceh-letter { animation: none; opacity: 1; } }
+.tabs { display: flex; gap: 6px; overflow-x: auto; margin: 4px 0 14px; padding-bottom: 2px; }
+.tabs button { flex: none; min-height: 38px; padding: 0 14px; border-radius: 20px; border: 1px solid #ddd; background: var(--surface); color: var(--brown); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--brown); color: #fff; border-color: var(--brown); }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { padding: 12px 0; border-top: 1px solid var(--line); }
+.list li:first-child { border-top: 0; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl th, .tbl td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.tbl th { font-size: 12px; color: var(--muted); font-weight: 600; border-top: 0; }
+.scroll { overflow-x: auto; }
+.center { text-align: center; }
+.linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
+
+/* ───── Этап 2: экран сотрудника ───── */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.tile { display: flex; flex-direction: column; justify-content: space-between; min-height: 100px; padding: 14px; border-radius: var(--radius);
+  background: var(--surface); border: 1.5px solid transparent; box-shadow: var(--shadow); text-decoration: none; color: var(--ink); font-weight: 700; font-size: 17px; }
+.tile .sub { font-size: 13px; font-weight: 500; color: var(--muted); }
+.tile.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tile.primary .sub { color: var(--accent-ink); opacity: .8; }
+.tile.alert { border-color: var(--crit); }
+.tile.alert .sub { color: var(--crit); font-weight: 700; }
+.objrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+.objrow:first-child { border-top: 0; }
+.big-input { font-size: 32px; font-weight: 700; text-align: center; min-height: 64px; }
+.prob { border-left: 6px solid var(--line); }
+.prob.crit { border-left-color: var(--crit); }
+.prob.warn { border-left-color: var(--accent); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 14px; margin: 8px 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.chips button { min-height: 34px; padding: 0 12px; border-radius: 20px; border: 1px solid #ddd; background: var(--surface); color: var(--brown); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.chips button[aria-pressed="true"] { background: var(--brown); color: #fff; border-color: var(--brown); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.seg button { min-height: 44px; border-radius: 10px; border: 1px solid #ddd; background: var(--surface); color: var(--ink); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.seg button[aria-pressed="true"].yes { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.seg button[aria-pressed="true"].no { background: var(--crit-bg); border-color: var(--crit); color: var(--crit); }
+.timeline { list-style: none; padding: 0; margin: 0; border-left: 2px solid var(--line); }
+.timeline li { padding: 4px 0 10px 12px; position: relative; font-size: 14px; }
+.timeline li::before { content: ''; position: absolute; left: -6px; top: 9px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); }
+
+/* ───── Этап 9: этикетки (термоэтикетка 58×40 / 58×30 мм, лист A4 70×37 мм) ───── */
+.lb-sheet { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.lb { background: #fff; color: #000; display: flex; gap: 2mm; padding: 2mm; overflow: hidden; font: 8.5pt/1.2 Arial, sans-serif; border: 1px dashed #bbb; }
+.f-58x40 .lb { width: 58mm; height: 40mm; }
+.f-58x30 .lb { width: 58mm; height: 30mm; font-size: 7.5pt; }
+.f-a4 .lb { width: 70mm; height: 37mm; }
+.lb-left { width: 19mm; flex: none; text-align: center; }
+.f-58x30 .lb-left { width: 16mm; }
+.lb-qr svg { width: 100%; height: auto; display: block; }
+.lb-code { font: bold 6.5pt monospace; margin-top: 1mm; letter-spacing: .4px; }
+.lb-body { min-width: 0; flex: 1; }
+.lb-name { font-weight: 700; font-size: 9.5pt; line-height: 1.1; margin-bottom: 1mm; max-height: 2.25em; overflow: hidden; }
+.lb-exp b { font-size: 9.5pt; }
+.lb-warn { background: #000; color: #fff; font-weight: 700; padding: .8mm 1mm; margin: .8mm 0; font-size: 7.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.lb-small { font-size: 6.5pt; color: #333; }
+/* Потребительская этикетка (ТР ТС 022/2011): 58×60 и 100×70 мм */
+.cl { background: #fff; color: #000; padding: 2mm; overflow: hidden; font: 6.3pt/1.18 Arial, sans-serif; border: 1px dashed #bbb; position: relative; }
+.f-58x60 .cl { width: 58mm; height: 60mm; }
+.f-100x70 .cl { width: 100mm; height: 70mm; font-size: 7.6pt; }
+.cl-name { font-weight: 700; font-size: 1.45em; line-height: 1.1; margin-bottom: .8mm; }
+.cl-group { font-size: .95em; margin-bottom: .8mm; }
+.cl-eac { display: inline-block; border: .4mm solid #000; padding: 0 1.2mm; letter-spacing: .5mm; }
+.cl p { margin: 0 0 .6mm; }
+.cl-al { font-weight: 700; }
+.cl-dates { display: flex; justify-content: space-between; gap: 2mm; font-weight: 700; border-top: .3mm solid #000; border-bottom: .3mm solid #000; padding: .5mm 0; margin: .6mm 0; }
+.cl-foot { display: flex; gap: 2mm; align-items: flex-end; }
+.cl-foot .lb-qr { width: 13mm; flex: none; }
+.f-100x70 .cl-foot .lb-qr { width: 16mm; }
+@media print {
+  html, body { background: #fff; }
+  .topbar, .sidemenu, .menu-overlay, .noprint { display: none !important; }
+  .cl { border: 0; break-after: page; }
+  .wrap { max-width: none; padding: 0; margin: 0; }
+  .lb-sheet { gap: 0; margin: 0; }
+  .lb { border: 0; break-inside: avoid; }
+  .f-58x40 .lb, .f-58x30 .lb { break-after: page; }
+}
+
+/* ───── Этап 11: документ ТУ (A4) ───── */
+.tu-doc { background: #fff; color: #111; padding: 16px; border-radius: var(--radius); box-shadow: var(--shadow); font: 10pt/1.45 Arial, sans-serif; }
+.tu-doc h1 { font-size: 15pt; text-align: center; margin: 16px 0 4px; color: #111; }
+.tu-doc h2 { font-size: 11pt; margin: 14px 0 5px; border-bottom: 1px solid #777; }
+.tu-doc table { width: 100%; border-collapse: collapse; margin: 5px 0 10px; font-size: 9pt; }
+.tu-doc th, .tu-doc td { border: 1px solid #888; padding: 3px 5px; vertical-align: top; text-align: left; }
+.tu-doc th { background: #f2f2f2; }
+.tu-right { text-align: right; } .tu-center { text-align: center; }
+.tu-stamp { display: inline-block; border: 2px solid #a00; color: #a00; padding: 1px 8px; font-weight: 700; }
+.tu-warn { border: 1px solid #c80; background: #fff7e6; padding: 6px 10px; margin: 10px 0; }
+.tu-small { font-size: 8pt; color: #555; }
+@media print { .tu-doc { box-shadow: none; padding: 0; border-radius: 0; } @page { size: A4; margin: 15mm; } }
+.op1-head td { padding: 2px 5px; }
+.op1-code { width: 110px; border: 1px solid #111 !important; text-align: center; }
+
+/* ───── Декларация о соответствии (решение Коллегии ЕЭК N 293, A4) ───── */
+.dc { font: 11pt/1.4 'Times New Roman', serif; }
+.dc-head { text-align: center; font-weight: 700; font-size: 13pt; margin: 8px 0; }
+.dc-eac { margin: 0 0 10px; }
+.eac-mark { display: inline-block; vertical-align: middle; }
+.dc-row { margin: 6px 0; }
+.dc-l { font-weight: 700; margin-right: 6px; }
+.dc-v { white-space: pre-wrap; }
+.dc-sign { display: grid; grid-template-columns: 1fr 60px 2fr; gap: 12px; align-items: end; margin: 22px 0 14px; }
+.dc-line { border-bottom: 1px solid #111; min-height: 20px; text-align: center; }

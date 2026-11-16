@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Контроль партий</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+</style></head><body><div class="wrap">
+<h1>Контроль партий</h1>
+<div class="sub">Партия от поставщика доступна для производства только после входного контроля. Решение вычисляется из ваших измерений: система не подставляет температуру и оценку.</div>
+<div class="tabs" id="tabs"></div>
+<div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', DATA = null, TAB = 'quarantine', EQ = [];
+var TABS = [['quarantine', 'Входной контроль'], ['recheck', 'Повторный контроль'], ['blocked', 'Брак'], ['expired', 'Просрочка']];
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ ok: String(x).indexOf('err') !== 0, raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || (r && r.raw) || 'ошибка'; }
+function load() {
+  call('mcGetEquipment', [TOKEN]).then(function (r) { EQ = ((r && r.data && r.data.items) || []).filter(function (e) { return e.measuring; }); if (DATA) draw(); }, function () {});
+  call('mcGetBatchControl', [TOKEN]).then(function (r) {
+    if (!r || r.success === false || r.ok === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; }
+    DATA = r.data; draw();
+  }, function (e) { document.getElementById('list').innerHTML = '<div class="empty">Нет связи: ' + esc(e.message || e) + '</div>'; });
+}
+function draw() {
+  document.getElementById('tabs').innerHTML = TABS.map(function (t) { return '<button class="' + (t[0] === TAB ? 'on' : '') + '" onclick="TAB=\'' + t[0] + '\';draw()">' + t[1] + '<b>' + (DATA[t[0]] || []).length + '</b></button>'; }).join('');
+  var a = DATA[TAB] || [];
+  document.getElementById('list').innerHTML = a.length ? a.map(card).join('') : '<div class="empty">' + ({ quarantine: 'Нет партий, ожидающих входного контроля', recheck: 'Нет партий на повторном контроле', blocked: 'Бракованных партий с остатком нет', expired: 'Просроченных партий нет' })[TAB] + '</div>';
+}
+function chip(x) {
+  if (TAB === 'quarantine') return x.last && x.last.decision === 'QUARANTINE' ? '<span class="chip r">Карантин</span>' : '<span class="chip a">Ждёт контроля</span>';
+  if (TAB === 'recheck') return '<span class="chip a">Повторный контроль</span>';
+  if (TAB === 'blocked') return '<span class="chip r">Брак</span>';
+  return '<span class="chip r">Просрочена</span>';
+}
+function card(x, i) {
+  var id = esc(x.batchId), h = '<div class="card" id="c' + i + '"><div class="row" onclick="toggle(' + i + ')"><div><div class="nm">' + esc(x.product) + '</div>' +
+    '<div class="meta">' + esc(x.qty) + ' ' + esc(x.unit) + ' · получено ' + esc(x.received) + (x.expiry ? ' · годен до ' + esc(x.expiry) : '') + ' · ' + esc(x.source || '') + '</div>' +
+    '<div class="meta">Партия ' + id + (x.docRef ? ' · документ: ' + esc(x.docRef) : ' · <b style="color:var(--red)">документ не указан</b>') + '</div>' +
+    (x.last && x.last.reasons ? '<div class="meta" style="color:var(--red)">Причина карантина: ' + esc(x.last.reasons) + '</div>' : '') + '</div>' + chip(x) + '</div>';
+  if (TAB === 'quarantine' || TAB === 'recheck') {
+    var q = TAB === 'quarantine' && x.last && x.last.decision === 'QUARANTINE';
+    h += '<div class="form">' + (q ? '<label>Корректирующее действие</label><textarea id="ca' + i + '" placeholder="Например: партия охлаждена до +2 °C, поставщик заменил упаковку"></textarea>' +
+      '<div class="acts"><button class="btn pri" onclick="recheck(' + i + ')">Отправить на повторный контроль</button><button class="btn bad" onclick="reject(' + i + ')">Брак</button></div>' :
+      (EQ.length ? '<div style="margin-bottom:8px"><label>Термометр (из реестра приборов)</label><select id="eq' + i + '"><option value="">— выберите прибор —</option>' + EQ.map(function (e) { return '<option value="' + esc(e.id) + '"' + (e.effective !== 'ACTIVE' ? ' disabled' : '') + '>' + esc(e.name) + (e.serial ? ' № ' + esc(e.serial) : '') + (e.effective !== 'ACTIVE' ? ' — ' + esc(e.reason || 'недоступен') : ' · поверка до ' + esc(e.nextCalibration)) + '</option>'; }).join('') + '</select></div>' : '') +
+      '<div class="grid"><div><label>Измеренная t°, °C</label><input id="t' + i + '" inputmode="decimal" placeholder="напр. 3.5"></div>' +
+      '<div><label>Допустимо от, °C</label><input id="mn' + i + '" inputmode="decimal" value="' + (/мяс|рыб|птиц|кур|молоч|сыр|сливк|творог|кост/i.test(x.product) ? '0' : '') + '"></div>' +
+      '<div><label>до, °C</label><input id="mx' + i + '" inputmode="decimal" value="' + (/мяс|рыб|птиц|кур|молоч|сыр|сливк|творог|кост/i.test(x.product) ? '6' : '') + '"></div></div>' +
+      '<label class="chk" style="margin-top:8px"><input type="checkbox" id="nt' + i + '" onchange="document.getElementById(\'ntr' + i + '\').style.display=this.checked?\'block\':\'none\'">Температура для этого товара не измеряется</label>' +
+      '<input id="ntr' + i + '" style="display:none;margin-top:6px" placeholder="Причина: например, бакалея при комнатной температуре">' +
+      '<div class="grid" style="margin-top:10px"><div><label>Органолептика</label><select id="o' + i + '"><option value="">— выберите —</option><option value="PASS">соответствует</option><option value="FAIL">не соответствует</option></select></div>' +
+      '<div><label>Упаковка и маркировка</label><select id="p' + i + '"><option value="">— выберите —</option><option value="PASS">соответствует</option><option value="FAIL">не соответствует</option></select></div>' +
+      '<div><label>Документ (накладная, декларация)</label><input id="d' + i + '" value="' + esc(x.docRef) + '"></div></div>' +
+      (TAB === 'recheck' ? '<label style="margin-top:10px">Что сделано (корректирующее действие)</label><textarea id="ca' + i + '"></textarea>' : '') +
+      '<div class="acts"><button class="btn pri" onclick="control(' + i + ')">Записать контроль</button><button class="btn bad" onclick="reject(' + i + ')">Брак</button></div>' +
+      '<div class="note">Если хоть один показатель не соответствует — партия уходит в карантин и открывается отклонение.</div>') +
+      '<div class="msg" id="m' + i + '"></div></div>';
+  }
+  return h + '</div>';
+}
+function toggle(i) { var c = document.getElementById('c' + i); if (c) c.classList.toggle('open'); }
+function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function msg(i, t, ok) { var m = document.getElementById('m' + i); if (m) { m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; } }
+function busy(i, b) { document.querySelectorAll('#c' + i + ' button').forEach(function (x) { x.disabled = b; }); }
+function control(i) {
+  var x = DATA[TAB][i], nt = document.getElementById('nt' + i).checked;
+  var p = { batchId: x.batchId, temperature: nt ? '' : v('t' + i), tMin: v('mn' + i), tMax: v('mx' + i), tempNotRequired: nt, tempReason: v('ntr' + i),
+    organoleptic: v('o' + i), packaging: v('p' + i), docRef: v('d' + i), correctiveAction: v('ca' + i), equipmentId: v('eq' + i) };
+  busy(i, true);
+  call('mcRecordIncomingControl', [JSON.stringify(p), TOKEN]).then(function (r) {
+    busy(i, false);
+    if (!r || r.success === false || r.ok === false) return msg(i, errText(r));
+    var d = r.data || {};
+    msg(i, d.decision === 'RELEASED' ? 'Партия допущена к использованию' : 'Партия в карантине: ' + (d.reasons || []).join('; '), d.decision === 'RELEASED');
+    setTimeout(load, 1200);
+  }, function (e) { busy(i, false); msg(i, 'Нет связи — контроль не записан. Повторите, когда появится интернет.'); });
+}
+function recheck(i) {
+  var x = DATA[TAB][i]; busy(i, true);
+  call('mcSendBatchToRecheck', [JSON.stringify({ batchId: x.batchId, correctiveAction: v('ca' + i) }), TOKEN]).then(function (r) {
+    busy(i, false); if (!r || r.success === false || r.ok === false) return msg(i, errText(r));
+    msg(i, 'Отправлено на повторный контроль', true); setTimeout(load, 1000);
+  }, function () { busy(i, false); msg(i, 'Нет связи'); });
+}
+function reject(i) {
+  var x = DATA[TAB][i], reason = prompt('Причина брака партии «' + x.product + '»:'); if (!reason) return;
+  busy(i, true);
+  call('mcRejectBatch', [JSON.stringify({ batchId: x.batchId, reason: reason }), TOKEN]).then(function (r) {
+    busy(i, false); if (!r || r.success === false || r.ok === false) return msg(i, errText(r));
+    msg(i, 'Партия заблокирована как брак', true); setTimeout(load, 1000);
+  }, function () { busy(i, false); msg(i, 'Нет связи'); });
+}
+load();
+</script></body></html>

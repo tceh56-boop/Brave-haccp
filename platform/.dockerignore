@@ -1,0 +1,7 @@
+node_modules
+.next
+backups
+tools/manual/shots
+tools/manual/manual.html
+*.tsbuildinfo
+.env*

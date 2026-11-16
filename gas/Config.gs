@@ -42,6 +42,22 @@ var CONFIG = {
     TTK_VERSIONS: 'TTK_VERSIONS',
     TTK_HACCP_LINKS: 'TTK_HACCP_LINKS',
     TTK_SANPIN_LINKS: 'TTK_SANPIN_LINKS',
+    TECH_NORMS: 'TECH_NORMS',
+    TTK_CCP_PROPOSALS: 'TTK_CCP_PROPOSALS',
+    TTK_IMPORT_BATCHES: 'TTK_IMPORT_BATCHES',
+    PF_TECH_CARDS: 'PF_TECH_CARDS',
+    OCR_ALIASES: 'OCR_ALIASES',
+    TTK_IMPORT_ROWS: 'TTK_IMPORT_ROWS',
+    TTK_DRIVE_SOURCES: 'TTK_DRIVE_SOURCES',
+    TTK_DRIVE_FILES: 'TTK_DRIVE_FILES',
+    VET_DOCUMENTS: 'VET_DOCUMENTS',
+    MERCURY_EXCHANGE_LOG: 'MERCURY_EXCHANGE_LOG',
+    MERCURY_SUPPLIER_MAP: 'MERCURY_SUPPLIER_MAP',
+    FISCAL_QR_EVIDENCE: 'FISCAL_QR_EVIDENCE',
+    RECEIPT_CORRECTIONS: 'RECEIPT_CORRECTIONS',
+    BANQUET_SCANS: 'BANQUET_SCANS',
+    BANQUET_ALIASES: 'BANQUET_ALIASES',
+    PPK_ENTERPRISE: 'PPK_ENTERPRISE', PREMISES: 'PREMISES', INVENTORY_ITEMS: 'INVENTORY_ITEMS', DISINFECTANTS: 'DISINFECTANTS', DISINFECTION_PLANS: 'DISINFECTION_PLANS',
     BREAKDOWN_PLANS: 'BREAKDOWN_PLANS',
     BREAKDOWN_PLAN_OUTPUTS: 'BREAKDOWN_PLAN_OUTPUTS',
     BREAKDOWN_PLAN_STEPS: 'BREAKDOWN_PLAN_STEPS',
@@ -255,7 +271,7 @@ var CONFIG = {
 
     RECIPES: ['recipe_id', 'parent_type', 'parent_id', 'product_id', 'брутто', 'нетто', 'единица', 'потери_процент'],
     TECH_CARDS: ['ttk_id', 'dish_id', 'технология', 'фото_url', 'version', 'created_at', 'created_by', 'status'],
-    TTK_VERSIONS: ['ttk_version_id','dish_id','organization_id','version','status','источник','область_применения','технология','условия_хранения','срок_реализации','показатели_качества','пищевая_ценность','аллергенная_информация','технологические_этапы_json','ppk_id','recipe_snapshot_json','cost_snapshot','food_cost_snapshot','created_at','created_by','submitted_at','submitted_by','approved_at','approved_by','archived_at','archived_by'],
+    TTK_VERSIONS: ['ttk_version_id','dish_id','organization_id','version','status','источник','область_применения','технология','условия_хранения','срок_реализации','показатели_качества','пищевая_ценность','аллергенная_информация','технологические_этапы_json','ppk_id','recipe_snapshot_json','cost_snapshot','food_cost_snapshot','created_at','created_by','submitted_at','submitted_by','approved_at','approved_by','archived_at','archived_by','tech_spec_snapshot_json','режим_подачи'],
     TTK_HACCP_LINKS: ['link_id','organization_id','ttk_version_id','ppk_id','hazard_id','control_id','stage_id','control_type','critical_limit_id','status','created_at','created_by'],
     BREAKDOWN_PLANS: ['plan_id','organization_id','название','input_product_id','input_unit','input_basis_qty','thaw_loss_pct','trim_loss_pct','status','version','workshop_id','created_at','created_by','approved_at','approved_by'],
     BREAKDOWN_PLAN_OUTPUTS: ['output_id','plan_id','organization_id','step_no','output_type','output_id_ref','название','planned_qty','единица','доля_распределения','приоритет','task_title','status','created_at'],
@@ -264,6 +280,32 @@ var CONFIG = {
     BREAKDOWN_TASKS: ['task_id','act_id','organization_id','location_id','workshop_id','batch_id','step_id','output_type','output_id','название','planned_qty','единица','статус','приоритет','task_title','production_id','created_at','completed_at','cascade_id'],
     BREAKDOWN_PLAN_STEPS: ['step_id','plan_id','organization_id','step_no','stage_type','название','описание','equipment','temperature_min','temperature_max','time_minutes','input_basis_qty','expected_loss_pct','expected_output_qty','output_unit','haccp_control_id','required_confirmation','status','created_at'],
     TTK_SANPIN_LINKS: ['link_id','organization_id','ttk_version_id','requirement_id','clause','source_document','status','created_at','created_by'],
+    // Справочник нормативов ТТК (TechNormsCore.gs): organization_id='' — базовая запись
+    // платформы (НЕ_ПРОВЕРЕНО), запись организации — сверенная технологом (ПРОВЕРЕНО).
+    TECH_NORMS: ['norm_id','organization_id','kind','code','group_name','parameter','min_value','max_value','unit','duration','duration_unit','storage_temp_min','storage_temp_max','source_document','clause','note','status','verified_by','verified_at','created_at'],
+    // Предложения ККТ по этапам ТТК. В ППК попадают только после решения технолога и только в черновик.
+    // Импорт архива ТТК (TtkImportCore.gs): строка = карта архива до/после подтверждения технологом.
+    TTK_IMPORT_BATCHES: ['import_id','organization_id','source_name','status','total','created_by','created_at','source_type','source_id'],
+    TTK_IMPORT_ROWS: ['row_id','import_id','organization_id','source_path','category','name','norm_name','fingerprint','kind','yield_g','yield_source','basis','serving_mode','card_json','steps_json','mapping_json','warnings_json','status','duplicate_of','link_existing','entity_id','ttk_version_id','result_json','decided_by','decided_at','created_at','drive_file_id','change_kind','diff_json'],
+    VET_DOCUMENTS: ['vsd_id','organization_id','location_id','uuid','number_text','issue_date','product_name','volume','unit','unit_guid','consignor_be','consignor_ent','consignor_name','consignee_ent','consignee_name','producers','country','mfr_batches','production_date','expiry_date','waybill_json','refs_json','mercury_status','status','supplier_id','product_id','batch_ids','draft_id','line_no','check_json','confirm_json','raw_xml','raw_ns_json','application_id','attempt','sending_at','sending_by','utilized_at','utilized_by','stock_entry','result','error','updated_at','created_at','created_by'],
+    MERCURY_EXCHANGE_LOG: ['log_id','organization_id','at','kind','vsd_id','application_id','http','app_status','code','message','raw_fragment','user_id'],
+    FISCAL_QR_EVIDENCE: ['evidence_id','organization_id','draft_id','qr_raw','fiscal_datetime','total','fn','fd','fp','operation','fiscal_key','match_status','warnings_json','created_at','created_by'],
+    BANQUET_SCANS: ['scan_id','organization_id','location_id','status','mode','meta_json','items_json','warnings_json','completeness_json','event_id','created_by','created_at','updated_at'],
+    PPK_ENTERPRISE: ['enterprise_id','organization_id','location_id','template_code','format','service_type','seats','meals_per_day','shifts','work_hours','staff_count','area_m2','water_source','sewage','ventilation','waste_contractor','pest_contractor','lab_contractor','laundry','medical_org','notes','responsible_json','status','created_by','created_at','updated_at'],
+    PREMISES: ['premise_id','organization_id','location_id','code','name','zone_class','workshop_id','area_m2','walls_m2','height_m','floor','description','status','created_by','created_at','updated_at'],
+    INVENTORY_ITEMS: ['item_id','organization_id','location_id','premise_id','code','category','name','marking','color','material','quantity','unit','purpose','status','created_by','created_at','updated_at'],
+    DISINFECTANTS: ['disinfectant_id','organization_id','name','form','active_substance','purpose','concentration_pct','rate_ml_m2','exposure_min','tablet_liters','instruction_ref','registration','status','created_by','created_at','updated_at'],
+    DISINFECTION_PLANS: ['plan_id','organization_id','location_id','premise_id','regimen','disinfectant_id','times_per_month','include_walls','include_equipment','responsible_role','calc_json','status','created_by','created_at','updated_at'],
+    BANQUET_ALIASES: ['alias_id','organization_id','alias_key','raw_name','dish_id','hits','active','created_by','created_at','updated_at'],
+    RECEIPT_CORRECTIONS: ['correction_id','organization_id','location_id','batch_id','draft_id','document_number','supplier_id','product_id','field','before','after','unit','reason','status','created_by','created_at','decided_by','decided_at','decision_comment','applied_json'],
+    MERCURY_SUPPLIER_MAP: ['map_id','organization_id','be_guid','ent_guid','name_in_vsd','supplier_id','created_by','created_at'],
+    TTK_DRIVE_SOURCES: ['source_id','organization_id','folder_id','folder_name','active','last_sync_at','last_status','last_result_json','created_by','created_at'],
+    TTK_DRIVE_FILES: ['file_id','organization_id','source_id','path','name','mime','kind','modified_at','parse_status','parse_error','card_name','fingerprint','sync_state','import_row_id','entity_type','entity_id','first_seen_at','last_seen_at','removed_at'],
+    TTK_CCP_PROPOSALS: ['proposal_id','organization_id','dish_id','ttk_version_id','step_no','step_type','step','hazard_type','hazard','point_type','control_name','parameter','min_value','max_value','unit','norm_code','norm_status','source_document','clause','monitoring_method','frequency','corrective_action','status','decided_by','decided_at','ppk_id','ppk_control_id','ppk_limit_id','created_at','parent_type','pf_tech_id'],
+    // Техкарта полуфабриката (PfTechCore.gs): технология, типизированные этапы, хранение; версии как у ТТК.
+    // Подтверждённые человеком соответствия «строка документа поставщика → продукт» (InvoiceRecognitionCore.gs).
+    OCR_ALIASES: ['alias_id','organization_id','raw_norm','raw_text','product_id','supplier_key','hits','created_by','created_at','last_used_at','active'],
+    PF_TECH_CARDS: ['pf_tech_id','pf_id','organization_id','version','status','источник','технология','технологические_этапы_json','условия_хранения','срок_хранения_часов','created_at','created_by','approved_at','approved_by','archived_at'],
 
     // P0.3 (ТЗ §8) — добавлено api_operation_id: id КОНКРЕТНОГО вызова processOperation()
     // (P0.2, Idempotency.gs), который породил эту складскую проводку — НЕ путать с
@@ -324,7 +366,7 @@ var CONFIG = {
     AUTO_JOURNAL_PENDING: ['pending_id', 'organization_id', 'location_id', 'workshop_id', 'journal_type', 'definition_id', 'date', 'slot_time', 'статус', 'dedup_key', 'trigger_id', 'тип_ответа', 'текст_вопроса', 'ожидаемый_ответ', 'уровень_при_нет'],
     // v2, новое (ТЗ §14/§18/§19): пределы конкретного журнала/оборудования/продукта.
     // Пределы НЕ зашиты в код — заводятся администратором для каждого предприятия.
-    JOURNAL_DEFINITIONS: ['definition_id', 'organization_id', 'location_id', 'workshop_id', 'journal_type', 'название', 'периодичность', 'роль_ответственная', 'equipment_id', 'мин_норма', 'макс_норма', 'мин_предупреждение', 'макс_предупреждение', 'единица', 'source_type', 'source_document', 'обязательность', 'статус', 'ppk_id', 'ppk_version', 'тип_ответа', 'текст_вопроса', 'ожидаемый_ответ', 'уровень_при_нет', 'напомнить_за_минут'],
+    JOURNAL_DEFINITIONS: ['definition_id', 'organization_id', 'location_id', 'workshop_id', 'journal_type', 'название', 'периодичность', 'роль_ответственная', 'equipment_id', 'мин_норма', 'макс_норма', 'мин_предупреждение', 'макс_предупреждение', 'единица', 'source_type', 'source_document', 'обязательность', 'статус', 'ppk_id', 'ppk_version', 'тип_ответа', 'текст_вопроса', 'ожидаемый_ответ', 'уровень_при_нет', 'напомнить_за_минут', 'parent_type', 'parent_id', 'ccp_proposal_id'],
     JOURNAL_TRIGGERS: ['trigger_id', 'organization_id', 'location_id', 'workshop_id', 'definition_id', 'journal_type', 'название', 'режим', 'время', 'интервал_минут', 'смещение_минут', 'активен', 'тип_ответа', 'текст_вопроса', 'ожидаемый_ответ', 'уровень_при_нет'],
     // v2, новое: фиксирует сам факт отклонения (не подменяет запись журнала, а ссылается на неё)
     JOURNAL_DEVIATIONS: ['deviation_id', 'journal_id', 'definition_id', 'уровень', 'значение', 'предел_нарушен', 'дата', 'статус', 'corrective_action_id'],
@@ -381,11 +423,11 @@ var CONFIG = {
     // с точкой или организацией (ТЗ §8: организация/точка/цех — разные сущности)
     WORKSHOPS: ['workshop_id', 'location_id', 'название', 'тип', 'цвет', 'статус', 'описание', 'ответственный_id', 'создано', 'обновлено'],
     // v2, новое (ТЗ §53): оборудование с температурным диапазоном, привязанное к цеху; QR ведёт на него
-    EQUIPMENT: ['equipment_id', 'location_id', 'workshop_id', 'название', 'тип', 'номер', 'мин_температура', 'макс_температура', 'статус', 'дата_проверки', 'следующая_проверка', 'ответственный_id', 'manufacturer', 'model', 'serial_number', 'inventory_number', 'risk_level', 'instruction_required', 'training_required', 'test_required', 'maintenance_schedule', 'calibration_required', 'active', 'created_at', 'updated_at'],
+    EQUIPMENT: ['equipment_id', 'location_id', 'workshop_id', 'название', 'тип', 'номер', 'мин_температура', 'макс_температура', 'статус', 'дата_проверки', 'следующая_проверка', 'ответственный_id', 'manufacturer', 'model', 'serial_number', 'inventory_number', 'risk_level', 'instruction_required', 'training_required', 'test_required', 'maintenance_schedule', 'calibration_required', 'active', 'created_at', 'updated_at', 'category', 'premise_id', 'kind_code', 'surface_m2'],
 
     // v2, новое: банкетный/событийный модуль «План-меню» (см. PlanMenu.gs)
     PLAN_MENU_EVENTS: ['event_id', 'organization_id', 'location_id', 'название', 'дата', 'время', 'гостей', 'статус', 'ответственный_id', 'создано'],
-    PLAN_MENU_ITEMS: ['item_id', 'event_id', 'dish_id', 'порций_на_гостя', 'порций_итого'],
+    PLAN_MENU_ITEMS: ['item_id', 'event_id', 'dish_id', 'порций_на_гостя', 'порций_итого', 'примечание', 'источник'],
 
     // P0.2, новое (ТЗ §7) — идемпотентность: один operation_id = максимум одно реальное
     // исполнение. результат_json хранит уже готовый ответ (envelope), чтобы повтор с тем
@@ -721,7 +763,7 @@ var CONFIG = {
   ID_PREFIXES: {
     ORGANIZATIONS: 'ORG', LOCATIONS: 'LOC', USERS: 'USR',
     PRODUCTS: 'PROD', PRICE_HISTORY: 'PRH', DISHES: 'DISH', SEMI_FINISHED: 'PF',
-    RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL',
+    RECIPES: 'REC', TECH_CARDS: 'TTK', TTK_VERSIONS: 'TTKV', TTK_HACCP_LINKS: 'THL', TTK_SANPIN_LINKS: 'TSL', TECH_NORMS: 'TNORM', TTK_CCP_PROPOSALS: 'TCCP', TTK_IMPORT_BATCHES: 'TIMP', TTK_IMPORT_ROWS: 'TIMR', TTK_DRIVE_SOURCES: 'TDS', TTK_DRIVE_FILES: 'TDF', VET_DOCUMENTS: 'VSD', MERCURY_EXCHANGE_LOG: 'MXL', MERCURY_SUPPLIER_MAP: 'MSM', FISCAL_QR_EVIDENCE: 'FQR', RECEIPT_CORRECTIONS: 'RCOR', BANQUET_SCANS: 'BQS', BANQUET_ALIASES: 'BQA', PPK_ENTERPRISE: 'PPKE', PREMISES: 'PREM', INVENTORY_ITEMS: 'INVI', DISINFECTANTS: 'DSF', DISINFECTION_PLANS: 'DSP', PF_TECH_CARDS: 'PFTC', OCR_ALIASES: 'OCRA',
     WAREHOUSE_OPS: 'WOP', BATCHES: 'BATCH', MARKINGS: 'MRK', MARKING_JOURNAL: 'MRKJ', LABEL_PRINT_JOBS: 'LPJ', LABEL_PRINT_ITEMS: 'LPI',
     PRODUCTION: 'PRD', PRODUCTION_INGREDIENT_USAGE: 'PIU', SALE_INGREDIENT_USAGE: 'SIU', WASTE_RECORDS: 'WST', DEFECTS: 'DEF',
     WRITE_OFFS: 'WR', PURCHASE_REQUESTS: 'REQ', BUDGET_PLANS: 'BUD', CASH_TRANSACTIONS: 'CASH', AUTOMATION_DECISIONS: 'AUTO', AUTOMATION_RULES: 'ARULE', AUTOMATION_EVENT_DISPATCH: 'AED', AUTOMATION_WORKFLOWS: 'AWF', AUTOMATION_WORKFLOW_STEPS: 'AWFS', CONFIGURATION_VERSIONS: 'CFG', CONFIGURATION_VALUES: 'CFGV', MASTER_DATA_REGISTRY: 'MD', MASTER_DATA_ALIASES: 'MDA', DATA_RECONCILIATIONS: 'DQR', TRACEABILITY_RUNS: 'TRUN', TRACEABILITY_FINDINGS: 'TFND', PERIOD_CLOSURES: 'PCLOSE', PERIOD_CLOSURE_FINDINGS: 'PCF', PERIOD_REOPEN_REQUESTS: 'PRR', AUDIT_EVIDENCE_VAULT: 'AEV', AUDIT_EVIDENCE_CHECKPOINTS: 'AEC', COMPLIANCE_EVIDENCE_PACKS: 'EPK', COMPLIANCE_EVIDENCE_ITEMS: 'EPI', CAPA_CASES: 'CAPA', CAPA_ACTIONS: 'CAPAA', CAPA_VERIFICATIONS: 'CAPAV', BOARD_PACKS: 'BPK', KPI_TARGETS: 'KPI', KPI_VARIANCES: 'KPIV', KPI_ACTIONS: 'KPIA', COMPLIANCE_CONTROLS: 'CTRL', COMPLIANCE_CONTROL_LINKS: 'CLNK', MANAGEMENT_ACTION_BACKLOG: 'MAB', WORKFORCE_PLANS: 'WFP', SUPPLIER_SCORECARDS: 'SSC', PROCUREMENT_ACTIONS: 'PRA', INVENTORY_POLICIES: 'INVP', CAPACITY_PLANS: 'CAPP', SCENARIOS: 'SCN', EXECUTION_PLANS: 'EXPL', EXECUTION_ITEMS: 'EXI', SHIFT_PLANS: 'SHP', SHIFT_ASSIGNMENTS: 'SHA', PRODUCTION_CALENDARS: 'PCAL', PRODUCTION_CALENDAR_ITEMS: 'PCALI', DEMAND_SENSING_PLANS: 'DSEN', MRP_RUNS: 'MRP', CUSTOMER_CHANNEL_ANALYTICS: 'CCA', CHANNEL_MARGIN_SNAPSHOTS: 'CMS', LABOR_FORECASTS: 'LFR', DIGITAL_TWIN_V2_SNAPSHOTS: 'DTV2', PLANNING_RUNS: 'PLANRUN', PLANNING_PROPOSALS: 'PLANPROP', APPROVAL_GATES: 'APG', EXECUTION_OUTCOMES: 'EXOUT', EXECUTION_REQUESTS: 'EXREQ',
@@ -915,7 +957,7 @@ var CONFIG = {
     GET_PRODUCTION_DISPATCH_PLAN: 'production', CREATE_PRODUCTION_DISPATCH_PLAN: 'production', APPROVE_PRODUCTION_DISPATCH_PLAN: 'production', SET_PRODUCTION_DISPATCH_CONFIG: 'production',
     GET_BATCH_PASSPORT: 'warehouse_view', GENERATE_PPK_INSPECTION_PACKET: 'ppk', GET_PPK_INSPECTION_PACKET: 'ppk', GET_PRODUCTION_ENTERPRISE_DASHBOARD: 'dashboard',
     GET_CRITICAL_INCIDENTS: 'critical_incidents', CREATE_CRITICAL_INCIDENT: 'critical_incidents', RESOLVE_CRITICAL_INCIDENT: 'critical_incidents', GET_QUARANTINE_CASES: 'critical_incidents', RELEASE_QUARANTINE: 'critical_incidents', GET_CRITICAL_INCIDENT_DASHBOARD: 'dashboard',
-    START_INVENTORY: 'inventory', SUBMIT_INVENTORY_LINE: 'inventory', CLOSE_INVENTORY: 'inventory', GET_INVENTORY: 'inventory', CREATE_ADJUSTMENT_FROM_INVENTORY: 'inventory',
+    START_INVENTORY: 'inventory', SUBMIT_INVENTORY_LINE: 'inventory', CLOSE_INVENTORY: 'inventory', GET_INVENTORY: 'inventory', GET_OPEN_INVENTORY: 'inventory', CREATE_ADJUSTMENT_FROM_INVENTORY: 'inventory',
 
     ADD_JOURNAL_ENTRY: 'journals', GET_JOURNALS: 'journals',
     CONFIRM_AUTO_JOURNAL: 'journals', GET_PENDING_JOURNALS: 'journals', SUBMIT_JOURNAL_VALUE: 'journals',
@@ -924,7 +966,7 @@ var CONFIG = {
     GET_WORKSHOPS: 'workshops_use', CREATE_WORKSHOP: 'workshops_manage', UPDATE_WORKSHOP: 'workshops_manage',
     GET_EQUIPMENT: 'equipment', CREATE_EQUIPMENT: 'equipment', UPDATE_EQUIPMENT: 'equipment',
     GENERATE_LABEL: 'marking', GET_LABEL: 'marking', GET_BATCH_BY_QR: 'warehouse_view',
-    GET_MARKING_JOURNAL: 'marking', CREATE_LABEL_PRINT_JOB: 'marking', VERIFY_LABEL_PRINT: 'marking', OPEN_CONTAINER: 'marking',
+    GET_MARKING_JOURNAL: 'marking', GET_MARKING_BATCHES: 'marking', CREATE_LABEL_PRINT_JOB: 'marking', VERIFY_LABEL_PRINT: 'marking', OPEN_CONTAINER: 'marking',
     CONFIRM_BATCH_SHELF_LIFE: 'warehouse_receive',
 
     GET_ECONOMICS: 'economics',
@@ -1046,9 +1088,20 @@ var CONFIG = {
     GET_CASCADE: 'recovery', GET_RECOVERY_CASCADES: 'recovery',
     GET_P22_COVERAGE: 'recovery', GET_P22_FINAL_GATE: 'recovery', GET_P22_RECOVERY: 'recovery', RETRY_P22_RECOVERY: 'recovery', GET_PRODUCTION_READINESS: 'recovery',
     GET_P21_JOURNAL_MAP: 'recovery', GET_P21_AUTOMATION_CONTRACT: 'recovery', GET_P21_COVERAGE: 'recovery', GET_P21_FINAL_GATE: 'recovery',
-    SCAN_AND_RECEIVE_INVOICE: 'warehouse_receive', SCAN_INVOICE_PREVIEW:'warehouse_receive', GET_INVOICE_INTAKE_DRAFT:'warehouse_view', CONFIRM_INVOICE_RECEIPT:'warehouse_receive', RESOLVE_INVOICE_INTAKE_LINE:'warehouse_receive', APPEND_INVOICE_INTAKE_PAGE:'warehouse_receive', GET_DOCUMENT_INTEGRITY_DASHBOARD:'warehouse_view',
+    SCAN_AND_RECEIVE_INVOICE: 'warehouse_receive', SCAN_INVOICE_PREVIEW:'warehouse_receive', UPDATE_INVOICE_DRAFT:'warehouse_receive', SCAN_INVOICE_LINE_LABEL:'warehouse_receive', GET_INVOICE_DRAFTS:'warehouse_view', GET_INVOICE_INTAKE_DRAFT:'warehouse_view', CONFIRM_INVOICE_RECEIPT:'warehouse_receive', RESOLVE_INVOICE_INTAKE_LINE:'warehouse_receive', APPEND_INVOICE_INTAKE_PAGE:'warehouse_receive', GET_DOCUMENT_INTEGRITY_DASHBOARD:'warehouse_view',
     CHECK_DOCUMENT_INTEGRITY:'warehouse_receive', RUN_HACCP_DECISION_ENGINE:'ppk', GET_HACCP_DECISIONS:'ppk',
-    GET_EMERGENCY_CENTER:'dashboard', GENERATE_TTK_A4_PDF:'recipes', GENERATE_PPK_INSPECTION_A4_PDF:'ppk',
+    GET_EMERGENCY_CENTER:'dashboard', GENERATE_TTK_A4_PDF:'recipes', GET_TECH_SPEC:'recipes', GET_TECH_SPEC_DOCUMENT:'recipes',
+    // Сопоставление сырья с базой КБЖУ (NutritionMatchCore.gs).
+    GET_NUTRITION_MATCHES:'recipes', APPLY_NUTRITION_MATCHES:'recipes',
+    GET_TTK_NORMS_CONTEXT:'recipes', GET_TECH_NORMS:'recipes', GET_TTK_CCP_PROPOSALS:'recipes', VERIFY_TECH_NORM:'ppk', RESET_TECH_NORM:'ppk', GENERATE_TTK_CCP_PROPOSALS:'ppk', DECIDE_TTK_CCP_PROPOSAL:'ppk', TRANSFER_TTK_CCP_TO_PPK:'ppk',
+    GET_PPK_WIZARD:'ppk', SAVE_PPK_ENTERPRISE:'ppk', PROPOSE_PPK_PREMISES:'ppk', SAVE_PPK_PREMISES:'ppk', UPDATE_PPK_PREMISE:'ppk', ARCHIVE_PPK_PREMISE:'ppk', PROPOSE_PPK_EQUIPMENT:'ppk', ADD_PPK_EQUIPMENT:'ppk', BIND_PPK_EQUIPMENT:'ppk', UPDATE_PPK_EQUIPMENT:'ppk', ARCHIVE_PPK_EQUIPMENT:'ppk', PROPOSE_PPK_INVENTORY:'ppk', ADD_PPK_INVENTORY:'ppk', UPDATE_PPK_INVENTORY:'ppk', REMOVE_PPK_INVENTORY:'ppk', SAVE_PPK_DISINFECTANT:'ppk', ARCHIVE_PPK_DISINFECTANT:'ppk', SAVE_PPK_DISINFECTION_PLAN:'ppk', REMOVE_PPK_DISINFECTION_PLAN:'ppk', CREATE_PPK_EQUIPMENT_JOURNALS:'ppk', GET_PPK_DOCUMENT_VIEW:'ppk', PRINT_PPK_DOCUMENT:'ppk',
+    SCAN_BANQUET_BLANK:'plan_menu', GET_BANQUET_SCAN:'plan_menu', GET_BANQUET_SCANS:'plan_menu', UPDATE_BANQUET_SCAN:'plan_menu', CREATE_EVENT_FROM_BANQUET_SCAN:'plan_menu',
+    ATTACH_FISCAL_QR:'warehouse_receive', CREATE_RECEIPT_CORRECTION:'warehouse_receive', GET_RECEIPT_BATCHES:'warehouse_view', GET_RECEIPT_CORRECTIONS:'warehouse_view', DECIDE_RECEIPT_CORRECTION:'audit_admin',
+    FETCH_VSD:'warehouse_receive', LINK_VSD_TO_DRAFT_LINE:'warehouse_receive', LINK_VSD_TO_BATCHES:'warehouse_receive', REJECT_VSD:'warehouse_receive', MAP_MERCURY_SUPPLIER:'warehouse_receive',
+    GET_VSD_LIST:'warehouse_view', CHECK_VSD:'warehouse_view', SYNC_VSD:'warehouse_view', GET_MERCURY_CONFIG:'warehouse_view', CANCEL_VSD:'ppk', SAVE_MERCURY_CONFIG:'configuration_admin', TEST_MERCURY_CONNECTION:'configuration_admin',
+    SEARCH_TTK:'recipes', GET_TTK_HISTORY:'recipes', COMPARE_TTK_VERSIONS:'recipes', RESTORE_TTK_VERSION:'recipes', GET_TTK_DRIVE_STATUS:'recipes', SET_TTK_DRIVE_SOURCE:'recipes', SYNC_TTK_DRIVE:'recipes',
+    PREVIEW_TTK_IMPORT:'recipes', GET_TTK_IMPORTS:'recipes', GET_TTK_IMPORT:'recipes', GET_TTK_IMPORT_ROW:'recipes', UPDATE_TTK_IMPORT_ROW:'recipes', SKIP_TTK_IMPORT_ROW:'recipes', CONFIRM_TTK_IMPORT_ROWS:'recipes',
+    GET_PF_TECH_CONTEXT:'recipes', GET_PF_TECH_LIST:'recipes', GENERATE_CCP_JOURNALS:'ppk', GET_CCP_JOURNALS:'recipes', SAVE_PF_TECH_DRAFT:'recipes', APPROVE_PF_TECH:'recipes', GENERATE_PF_CCP_PROPOSALS:'ppk', GENERATE_PPK_INSPECTION_A4_PDF:'ppk',
     ENQUEUE_OFFLINE_OPERATION:'offline', SYNC_OFFLINE_QUEUE:'offline', GET_RECURSIVE_BATCH_COST_TRACE:'warehouse_view',
     RELEASE_SEMI_FINISHED_QUALITY:'production', GET_DEPLOYMENT_READINESS:'dashboard', GET_OPERATIONAL_READINESS_STAGE12:'dashboard', GET_OPERATIONAL_READINESS_STAGE13:'dashboard', RUN_ENTERPRISE_E2E_TEST: 'recovery', GET_HACCP_DASHBOARD: 'ppk', GET_PPK_FINAL_GATE: 'ppk',
 
@@ -1229,16 +1282,15 @@ var CONFIG = {
   // Точечные запреты поверх ROLE_MODULES. Нужны там, где роль должна читать
   // технологический/стоимостной контур, но не иметь права менять мастер-данные.
   ROLE_ACTION_DENY: {
-    'ПОВАР': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP'],
-    'КЛАДОВЩИК': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE'],
-    // КАЛЬКУЛЯТОР меняет калькуляцию/рецептуру, но не утверждает технологию или HACCP/ППК.
-    'КАЛЬКУЛЯТОР': ['APPROVE_TTK_VERSION','SUBMIT_TTK_FOR_APPROVAL','APPROVE_BREAKDOWN_PLAN','APPROVE_PRODUCTION_PLAN','CREATE_TTK_HACCP_LINK','CREATE_TTK_SANPIN_LINK','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION'],
     // ПОВАР работает с утверждёнными технологическими данными и своим производством.
-    'ПОВАР': ['RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION','GET_ECONOMICS','GET_PNL','GET_ABC_ANALYSIS'],
+    'ПОВАР': ['APPLY_NUTRITION_MATCHES','CANCEL_VSD','RESTORE_TTK_VERSION','SET_TTK_DRIVE_SOURCE','SYNC_TTK_DRIVE','SAVE_PF_TECH_DRAFT','APPROVE_PF_TECH','PREVIEW_TTK_IMPORT','UPDATE_TTK_IMPORT_ROW','SKIP_TTK_IMPORT_ROW','CONFIRM_TTK_IMPORT_ROWS','RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION','GET_ECONOMICS','GET_PNL','GET_ABC_ANALYSIS'],
+    // Кладовщик не меняет цену номенклатуры (закупочная цена формируется приходом/калькуляцией)
+    // и не снимает карантин/не закрывает критические инциденты — как и повар.
+    'КЛАДОВЩИК': ['APPLY_NUTRITION_MATCHES','CANCEL_VSD','RESTORE_TTK_VERSION','SET_TTK_DRIVE_SOURCE','SYNC_TTK_DRIVE','SAVE_PF_TECH_DRAFT','APPROVE_PF_TECH','PREVIEW_TTK_IMPORT','UPDATE_TTK_IMPORT_ROW','SKIP_TTK_IMPORT_ROW','CONFIRM_TTK_IMPORT_ROWS','RELEASE_SEMI_FINISHED_QUALITY','RESOLVE_CRITICAL_INCIDENT','RELEASE_QUARANTINE','CREATE_PRODUCT','UPDATE_PRODUCT_PRICE','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE'],
+    // КАЛЬКУЛЯТОР меняет калькуляцию/рецептуру, но не утверждает технологию или HACCP/ППК.
+    'КАЛЬКУЛЯТОР': ['SAVE_PPK_ENTERPRISE','SAVE_PPK_PREMISES','UPDATE_PPK_PREMISE','ARCHIVE_PPK_PREMISE','ADD_PPK_EQUIPMENT','BIND_PPK_EQUIPMENT','UPDATE_PPK_EQUIPMENT','ARCHIVE_PPK_EQUIPMENT','ADD_PPK_INVENTORY','UPDATE_PPK_INVENTORY','REMOVE_PPK_INVENTORY','SAVE_PPK_DISINFECTANT','ARCHIVE_PPK_DISINFECTANT','SAVE_PPK_DISINFECTION_PLAN','REMOVE_PPK_DISINFECTION_PLAN','CREATE_PPK_EQUIPMENT_JOURNALS','SET_TTK_DRIVE_SOURCE','GENERATE_CCP_JOURNALS','APPROVE_PF_TECH','GENERATE_PF_CCP_PROPOSALS','VERIFY_TECH_NORM','RESET_TECH_NORM','GENERATE_TTK_CCP_PROPOSALS','DECIDE_TTK_CCP_PROPOSAL','TRANSFER_TTK_CCP_TO_PPK','APPROVE_TTK_VERSION','SUBMIT_TTK_FOR_APPROVAL','APPROVE_BREAKDOWN_PLAN','APPROVE_PRODUCTION_PLAN','CREATE_TTK_HACCP_LINK','CREATE_TTK_SANPIN_LINK','CREATE_PPK_VERSION','UPDATE_PPK_VERSION','APPROVE_PPK_VERSION'],
     // Технолог/HACCP управляет ТТК + ППК/HACCP, но не финансами и не пользователями.
     'ТЕХНОЛОГ_HACCP': ['UPDATE_PRODUCT_PRICE','CREATE_GLOBAL_PRODUCT','UPDATE_GLOBAL_PRODUCT','CREATE_EXPENSE','GET_ECONOMICS','GET_PNL','GET_ABC_ANALYSIS','CREATE_USER','UPDATE_EMPLOYEE_PROFILE','DEACTIVATE_USER','ACTIVATE_USER','APPROVE_PRODUCTION_PLAN','CREATE_PRODUCTION_PLAN'],
-    // Кладовщик не меняет цену номенклатуры: закупочная цена формируется приходом/калькуляцией.
-    'КЛАДОВЩИК': ['UPDATE_PRODUCT_PRICE','CREATE_PRODUCT','UPDATE_RECIPE','CREATE_DISH','UPDATE_DISH','ADD_RECIPE_LINE','CREATE_TECH_CARD','CREATE_TTK_VERSION','UPDATE_TTK_DRAFT','SUBMIT_TTK_FOR_APPROVAL','APPROVE_TTK_VERSION','CREATE_SEMI_FINISHED','CREATE_BREAKDOWN_PLAN','APPROVE_BREAKDOWN_PLAN','CREATE_BREAKDOWN_PLAN_STEP','CREATE_PURCHASE_REQUEST','UPDATE_PURCHASE_REQUEST_STATUS','CREATE_WRITEOFF','CREATE_PRODUCTION_TASK','ADVANCE_PRODUCTION','CREATE_RECALL_CASE','CLOSE_RECALL_CASE']
   },
 
   // ТЗ §9 — типы цехов (преднастройка, список расширяем при необходимости)

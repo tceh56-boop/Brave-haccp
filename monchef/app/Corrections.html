@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Исправления журналов</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.kv{display:grid;grid-template-columns:minmax(120px,1fr) 1fr 1fr;gap:6px 10px;align-items:center;font-size:14px}.kv .h{font-size:12px;color:var(--mut)}.kv .o{color:var(--mut)}.diff{font-size:13px;margin-top:6px}.diff s{color:var(--red)}.diff b{color:var(--green)}
+</style></head><body><div class="wrap">
+<h1>Исправления журналов</h1>
+<div class="sub">Подписанную или ошибочную запись нельзя переписать. Исправление оформляется запросом: что было, что должно быть и почему. Утверждает ответственный за HACCP — не автор запроса. Исходная запись остаётся без изменений, а утверждённое исправление видно в журнале, пакете проверки и журнале аудита.</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div>
+<div id="form"></div><div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '', L = [], J = [], TAB = 'OPEN', CUR = null;
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' ? JSON.parse(x) : x); } catch (e) { ok({ raw: x }); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function errText(r) { return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dt(v) { var d = new Date(v); return isNaN(d) ? String(v || '') : d.toLocaleString('ru-RU').slice(0, 17); }
+var ST = { OPEN: ['a', 'На согласовании'], APPROVED: ['g', 'Утверждено'], REJECTED: ['r', 'Отклонено'] };
+function load() { call('getJournalCorrections', ['', TOKEN]).then(function (r) { if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; } L = (r.data || []).reverse(); draw(); }, function () { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function setTab(t) { TAB = t; draw(); }
+function parse(x) { try { return JSON.parse(x); } catch (e) { return x; } }
+function draw() {
+  var c = { OPEN: 0, APPROVED: 0, REJECTED: 0 }; L.forEach(function (x) { c[x.status] = (c[x.status] || 0) + 1; });
+  document.getElementById('tabs').innerHTML = ['OPEN', 'APPROVED', 'REJECTED'].map(function (k) { return '<button class="' + (TAB === k ? 'on' : '') + '" onclick="setTab(\'' + k + '\')">' + ST[k][1] + '<b>' + (c[k] || 0) + '</b></button>'; }).join('') + '<button onclick="newReq()">+ Запрос на исправление</button>';
+  var rows = L.filter(function (x) { return x.status === TAB; });
+  document.getElementById('list').innerHTML = rows.length ? rows.map(function (x) {
+    var corr = parse(x.correctedData) || {}, orig = parse(x.originalData) || [];
+    var diff = Object.keys(corr).map(function (k) { return '<div class="diff">' + esc(k) + ': <s>' + esc(x._cols && x._cols[k] !== undefined ? x._cols[k] : '') + '</s> → <b>' + esc(corr[k]) + '</b></div>'; }).join('');
+    return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(x.journalName) + ' · строка ' + esc(x.rowNumber) + '</div><div class="meta">Запросил ' + esc(x.createdByName) + ' (' + esc(x.createdByRole) + '), ' + esc(dt(x.createdAt)) + '</div>' +
+      '<div class="meta">Причина: ' + esc(x.reason) + '</div>' + Object.keys(corr).map(function (k) { return '<div class="diff">' + esc(k) + ' → <b>' + esc(corr[k]) + '</b></div>'; }).join('') +
+      (x.decidedBy ? '<div class="meta">Решение: ' + esc(x.decidedBy) + ' (' + esc(x.decidedByRole) + '), ' + esc(dt(x.decidedAt)) + (x.decisionComment ? ' — ' + esc(x.decisionComment) : '') + '</div>' : '') + '</div><span class="chip ' + ST[x.status][0] + '">' + ST[x.status][1] + '</span></div>' +
+      (x.status === 'OPEN' ? '<div class="acts"><input id="cm_' + esc(x.correctionId) + '" placeholder="Комментарий (обязателен для отклонения)" style="flex:1;min-width:200px"><button class="btn pri" onclick="decide(\'' + esc(x.correctionId) + '\',\'APPROVED\',this)">Утвердить</button><button class="btn bad" onclick="decide(\'' + esc(x.correctionId) + '\',\'REJECTED\',this)">Отклонить</button></div>' : '') + '</div>';
+  }).join('') : '<div class="empty">Нет запросов</div>';
+}
+function decide(id, d, btn) {
+  btn.disabled = true;
+  call('decideJournalCorrection', [id, d, document.getElementById('cm_' + id).value, TOKEN]).then(function (r) {
+    btn.disabled = false; var m = document.getElementById('msg');
+    if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    m.className = 'msg ok'; m.textContent = d === 'APPROVED' ? 'Исправление утверждено' : 'Запрос отклонён'; load();
+  }, function () { btn.disabled = false; });
+}
+function newReq() {
+  var go = function () {
+    document.getElementById('form').innerHTML = '<div class="card open"><div class="nm">Запрос на исправление</div><div class="form" style="display:block"><div class="grid">' +
+      '<div style="grid-column:span 2"><label>Журнал</label><select id="jj">' + J.map(function (j) { return '<option value="' + esc(j.id) + '">' + esc(j.name) + ' (' + j.rows + ')</option>'; }).join('') + '</select></div>' +
+      '<div><label>Номер строки в журнале</label><input id="jr" type="number" min="2"></div></div><div class="acts"><button class="btn" onclick="loadRow()">Открыть запись</button></div><div id="rowbox"></div><div class="msg" id="fm"></div></div></div>';
+    window.scrollTo(0, 0);
+  };
+  if (J.length) go(); else call('getJournalList', [TOKEN]).then(function (r) { J = (r && r.data) || []; go(); });
+}
+function loadRow() {
+  var m = document.getElementById('fm'); m.textContent = '';
+  call('getJournalRowForCorrection', [document.getElementById('jj').value, document.getElementById('jr').value, TOKEN]).then(function (r) {
+    if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    CUR = r.data;
+    document.getElementById('rowbox').innerHTML = '<div class="kv" style="margin-top:12px"><div class="h">Поле</div><div class="h">Сейчас в журнале</div><div class="h">Должно быть (только меняемые)</div>' +
+      CUR.columns.map(function (c, i) { return '<div>' + esc(c) + '</div><div class="o">' + esc(CUR.values[i]) + '</div><div><input data-ci="' + i + '"></div>'; }).join('') + '</div>' +
+      '<label style="margin-top:10px">Причина исправления *</label><textarea id="rsn"></textarea><div class="acts"><button class="btn pri" onclick="sendReq(this)">Отправить на утверждение</button><button class="btn" onclick="document.getElementById(\'form\').innerHTML=\'\'">Отмена</button></div>';
+  });
+}
+function sendReq(btn) {
+  var corr = {}; [].forEach.call(document.querySelectorAll('[data-ci]'), function (e) { if (e.value.trim() !== '') corr[CUR.columns[+e.getAttribute('data-ci')]] = e.value.trim(); });
+  var m = document.getElementById('fm');
+  if (!Object.keys(corr).length) { m.className = 'msg err'; m.textContent = 'Заполните хотя бы одно исправляемое поле'; return; }
+  btn.disabled = true;
+  call('createJournalCorrection', [CUR.journalId, CUR.rowNumber, JSON.stringify(corr), document.getElementById('rsn').value, TOKEN]).then(function (r) {
+    btn.disabled = false; if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    document.getElementById('form').innerHTML = ''; var g = document.getElementById('msg'); g.className = 'msg ok'; g.textContent = 'Запрос отправлен на утверждение'; TAB = 'OPEN'; load();
+  }, function () { btn.disabled = false; });
+}
+load();
+</script></body></html>

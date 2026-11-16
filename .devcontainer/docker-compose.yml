@@ -1,0 +1,30 @@
+# Окружение Codespaces: рабочий контейнер (Node 22) в одной сети с PostgreSQL; Mailpit ловит письма стенда.
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/javascript-node:22-bookworm
+    command: sleep infinity
+    volumes: ["../..:/workspaces:cached"]
+    network_mode: service:db
+    environment:
+      DATABASE_URL: postgres://ceh:ceh@localhost:5432/ceh
+      SMTP_URL: smtp://mail:1025
+      MAIL_FROM: ЦЕХ <no-reply@ceh.local>
+      DEMO: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ceh
+      POSTGRES_PASSWORD: ceh
+      POSTGRES_DB: ceh
+    volumes: [dbdata:/var/lib/postgresql/data]
+
+  mail:
+    image: axllent/mailpit:v1.31
+    restart: unless-stopped
+
+volumes:
+  dbdata:

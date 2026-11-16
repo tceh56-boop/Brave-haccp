@@ -1,0 +1,496 @@
+import { z } from 'zod';
+import { assertSnapshotIntact } from './integrity';
+import { MICRO_GROUPS } from '../norms/micro';
+const MicroGroupCode = z.string().refine((c) => c === 'custom' || MICRO_GROUPS.some((g) => g.code === c), 'Нет такой группы ТР ТС 021.').nullable().optional();
+import type { Tx } from '../db/pool';
+import { audit } from '../audit/audit';
+import { Errors } from '../http/errors';
+import { inOrg, parse, optText, closeTasksFor, orgToday } from './common';
+import { convertUnits } from './recipes';
+import { semiGrams } from './bom';
+import { effectiveParams } from './dishgroups';
+import { versionSteps } from './processing';
+import { retention, stages } from '../recipes/chain';
+import { MICRO_INDICATORS, resolveMicro, microGroup } from '../norms/micro';
+import { meatProfile } from './declarations';
+import { DOCS } from '../norms/library';
+
+/**
+ * Технические условия (этап 11; перенос TechSpecCore.gs прежнего ЦЕХ, Stage 106; MON CHEF 9–10).
+ * Расчётные показатели ТУ — из утверждённой ТТК так же, как себестоимость:
+ *  - пищевая ценность: Σ(нетто × нутриент/100) × (1 − потери) / выход × 100; потери при тепловой обработке
+ *    Б/Ж/У — только по нормам обработки сырья с основанием (типовых процентов без источника система не применяет); энергия Б×4 + Ж×9 + У×4 ккал и Б×17 + Ж×37 + У×17 кДж (ТР ТС 022/2011, прил. 4);
+ *    п/ф раскладывается до сырья; данные — пищевая ценность товара по документу, иначе справочник MON CHEF;
+ *  - физико-химия «не менее / не более» с допуском (по умолчанию 10 %); рецептура на выход, 1 кг и 100 кг;
+ *  - аллергены — объединение профилей товаров (вводит человек по документу), включая п/ф;
+ *  - микробиологические нормы и срок годности система не придумывает: их вносит технолог.
+ * Статус «ПРОЕКТ», пока не всё подтверждено; «Готов к испытаниям» — когда данные полные и проверенные;
+ * утверждает человек с протоколом испытаний аккредитованной лаборатории — неизменяемый снимок.
+ */
+
+export const ALLERGENS: Record<string, { label: string; stems: string[] }> = {
+  peanut: { label: 'арахис', stems: ['арахис'] }, aspartame: { label: 'аспартам и аспартам-ацесульфамная соль', stems: ['аспартам'] },
+  mustard: { label: 'горчица', stems: ['горчиц'] }, sulphites: { label: 'диоксид серы и сульфиты', stems: ['сульфит', 'диоксид серы'] },
+  gluten: { label: 'злаки, содержащие глютен', stems: ['глютен', 'клейковин', 'пшениц', 'мук', 'хлеб', 'рож', 'ячмен', 'овёс', 'овес', 'макарон', 'манк'] },
+  sesame: { label: 'кунжут', stems: ['кунжут'] }, lupin: { label: 'люпин', stems: ['люпин'] }, molluscs: { label: 'моллюски', stems: ['моллюск', 'мидии', 'кальмар', 'осьминог'] },
+  milk: { label: 'молоко и продукты его переработки', stems: ['молок', 'молоч', 'лактоз', 'сливк', 'сыр', 'творог', 'масло слив', 'кефир', 'сметан', 'йогурт'] },
+  nuts: { label: 'орехи', stems: ['орех', 'миндал', 'фундук', 'кешью', 'фисташ'] }, crustaceans: { label: 'ракообразные', stems: ['ракообраз', 'креветк', 'краб', 'рак', 'лангуст'] },
+  fish: { label: 'рыба', stems: ['рыб', 'лосос', 'семг', 'треск', 'тунец', 'сельд', 'анчоус'] }, celery: { label: 'сельдерей', stems: ['сельдере'] },
+  soy: { label: 'соя', stems: ['соя', 'соев'] }, egg: { label: 'яйца и продукты их переработки', stems: ['яйц', 'яичн', 'меланж', 'майонез'] },
+};
+const ALLERGEN_CODES = Object.keys(ALLERGENS) as [string, ...string[]];
+
+const ENERGY = { protein: 4, fat: 9, carbs: 4 }, ENERGY_KJ = { protein: 17, fat: 37, carbs: 17 };
+/**
+ * Потери пищевых веществ при тепловой обработке берутся только из норм обработки сырья (processing_norms) с основанием.
+ * «Типовых» процентов без документа-источника система не применяет: нет нормы — расчёт без потерь, с пометкой.
+ */
+const NO_LOSS = { protein: 0, fat: 0, carbs: 0 };
+const THERMAL = /(варить|варят|отвар|жар|обжар|туш|запек|запеч|пассер|бланшир|кипят|кипяч|выпек|томит|припуск|фритюр|гриль|коптит|пасте(р|ур)из|\b(6\d|[7-9]\d|1\d\d|2\d\d)\s*°?\s*c\b)/i;
+
+/** Показатели микробиологии (см. norms/micro.ts — нормативы по группам ТР ТС 021). */
+export const MICRO = MICRO_INDICATORS.map(({ code, name, method }) => ({ code, name, method }));
+
+/**
+ * Ссылочные документы ТУ (ГОСТ Р 51740-2016, 5.8): полные наименования; порядок — по 4.7.3.1 (технические регламенты,
+ * ГОСТ Р, ГОСТ, санитарные правила, затем организационно-методические документы), внутри группы — по номеру.
+ * Состояние каждого — по встроенной нормативной базе (действует ли, загружен ли текст).
+ */
+const NORMATIVE = [
+  { code: 'ТР ТС 005/2011', title: 'Технический регламент Таможенного союза «О безопасности упаковки»', use: 'упаковка' },
+  { code: 'ТР ТС 021/2011', title: 'Технический регламент Таможенного союза «О безопасности пищевой продукции»', use: 'показатели безопасности, микробиология' },
+  { code: 'ТР ТС 022/2011', title: 'Технический регламент Таможенного союза «Пищевая продукция в части ее маркировки»', use: 'маркировка, энергетические коэффициенты, аллергены' },
+  { code: 'ТР ТС 034/2013', title: 'Технический регламент Таможенного союза «О безопасности мяса и мясной продукции»', use: 'мясная продукция: микробиология (прил. 1), маркировка группы и вида', reg: 'trts034' },
+  { code: 'ТР ЕАЭС 051/2021', title: 'Технический регламент Евразийского экономического союза «О безопасности мяса птицы и продукции его переработки»', use: 'продукция из мяса птицы: микробиология (прил. 1), маркировка', reg: 'trts051' },
+  { code: 'ТР ТС 029/2012', title: 'Технический регламент Таможенного союза «Требования безопасности пищевых добавок, ароматизаторов и технологических вспомогательных средств»', use: 'пищевые добавки' },
+  { code: 'ГОСТ Р 1.3-2018', title: 'Стандартизация в Российской Федерации. Технические условия на продукцию. Общие требования к содержанию, оформлению, обозначению и обновлению', use: 'лист регистрации изменений (прил. Б)' },
+  { code: 'ГОСТ Р 51740-2016', title: 'Технические условия на пищевую продукцию. Общие требования к разработке и оформлению', use: 'построение, титульный лист, обозначение, разделы ТУ' },
+  { code: 'ГОСТ 10444.12-2013', title: 'Микробиология пищевых продуктов и кормов для животных. Методы выявления и подсчета количества дрожжей и плесневых грибов', use: 'дрожжи, плесени', micro: ['YEAST', 'MOLD'] },
+  { code: 'ГОСТ 10444.15-94', title: 'Продукты пищевые. Методы определения количества мезофильных аэробных и факультативно-анаэробных микроорганизмов', use: 'КМАФАнМ', micro: ['KMAFANM'] },
+  { code: 'ГОСТ 14192-96', title: 'Маркировка грузов', use: 'маркировка транспортной упаковки' },
+  { code: 'ГОСТ 28566-90', title: 'Продукты пищевые. Метод выявления и определения количества энтерококков', use: 'Enterococcus', micro: ['ENTEROCOCCUS'] },
+  { code: 'ГОСТ 28560-90', title: 'Продукты пищевые. Метод выявления бактерий родов Proteus, Morganella, Providencia', use: 'Proteus', micro: ['PROTEUS'] },
+  { code: 'ГОСТ 29185-2014', title: 'Микробиология пищевых продуктов и кормов для животных. Методы выявления и подсчета сульфитредуцирующих бактерий, растущих в анаэробных условиях', use: 'сульфитредуцирующие клостридии', micro: ['CLOSTRIDIA'] },
+  { code: 'ГОСТ 30390-2013', title: 'Услуги общественного питания. Продукция общественного питания, реализуемая населению. Общие технические условия', use: 'общие требования, приёмка, хранение' },
+  { code: 'ГОСТ 30726-2001', title: 'Продукты пищевые. Методы выявления и определения количества бактерий вида Escherichia coli', use: 'E. coli', micro: ['ECOLI'] },
+  { code: 'ГОСТ 31659-2012', title: 'Продукты пищевые. Метод выявления бактерий рода Salmonella', use: 'патогенные, в т. ч. сальмонеллы', micro: ['SALMONELLA'] },
+  { code: 'ГОСТ 31746-2012', title: 'Продукты пищевые. Методы выявления и определения количества коагулазоположительных стафилококков и Staphylococcus aureus', use: 'S. aureus', micro: ['SAUREUS'] },
+  { code: 'ГОСТ 31747-2012', title: 'Продукты пищевые. Методы выявления и определения количества бактерий группы кишечных палочек (колиформных бактерий)', use: 'БГКП', micro: ['BGKP'] },
+  { code: 'ГОСТ 31986-2012', title: 'Услуги общественного питания. Метод органолептической оценки качества продукции общественного питания', use: 'органолептика, приёмка' },
+  { code: 'ГОСТ 31987-2012', title: 'Услуги общественного питания. Технологические документы на продукцию общественного питания. Общие требования к оформлению, построению и содержанию', use: 'ТТК предприятия' },
+  { code: 'ГОСТ 31988-2012', title: 'Услуги общественного питания. Метод расчета отходов и потерь сырья и пищевых продуктов при производстве продукции общественного питания', use: 'брутто, нетто, потери' },
+  { code: 'ГОСТ 32031-2022', title: 'Продукция пищевая. Методы выявления бактерий Listeria monocytogenes и других видов Listeria (Listeria spp.)', use: 'L. monocytogenes', micro: ['LISTERIA'] },
+  { code: 'МУК 4.2.1847-04', title: 'Санитарно-эпидемиологическая оценка обоснования сроков годности и условий хранения пищевых продуктов', use: 'срок годности сверх установленного' },
+] as { code: string; title: string; use: string; micro?: string[] }[];
+
+const r1 = (n: number) => Math.round(n * 10) / 10, r2 = (n: number) => Math.round(n * 100) / 100;
+
+interface Agg {
+  input_g: number; protein: number; fat: number; carbs: number; data_g: number; verified_g: number; salt_g: number;
+  lp: number; lf: number; lc: number;                       // Б/Ж/У с потерями (по нормам обработки или по режиму)
+  byNorms_g: number; fallback: Set<string>;                 // масса, посчитанная по нормам; строки, где потерь нутриентов нет в норме
+  missing: Set<string>; unverified: Set<string>; allergens: Map<string, Set<string>>; noProfile: Set<string>; suggest: Map<string, Set<string>>; warnings: string[];
+}
+const emptyAgg = (): Agg => ({ input_g: 0, protein: 0, fat: 0, carbs: 0, data_g: 0, verified_g: 0, salt_g: 0, lp: 0, lf: 0, lc: 0, byNorms_g: 0, fallback: new Set(), missing: new Set(), unverified: new Set(), allergens: new Map(), noProfile: new Set(), suggest: new Map(), warnings: [] });
+
+/** Данные пищевой ценности товара: по документу (подтверждено) или справочник (статус справочника). */
+export async function nutritionOf(tx: Tx, productId: string) {
+  const own = (await tx.query(`select kcal_100, protein_100, fat_100, carbs_100, basis, dry_matter_100, sucrose_100, fat_mass_100 from product_nutrition where product_id = $1 order by created_at desc limit 1`, [productId])).rows[0];
+  const opt = (x: unknown) => (x === null || x === undefined ? null : Number(x));
+  if (own) return { protein: Number(own.protein_100), fat: Number(own.fat_100), carbs: Number(own.carbs_100), verified: true, source: own.basis as string,
+    dry_matter: opt(own.dry_matter_100), sucrose: opt(own.sucrose_100), fat_mass: opt(own.fat_mass_100) };
+  const ref = (await tx.query(`select r.protein_100, r.fat_100, r.carbs_100, r.kcal_100, r.verification_status, r.code from products p join reference_products r on r.id = p.reference_product_id where p.id = $1`, [productId])).rows[0];
+  if (ref && ref.kcal_100 !== null) return { protein: Number(ref.protein_100 || 0), fat: Number(ref.fat_100 || 0), carbs: Number(ref.carbs_100 || 0), verified: ref.verification_status === 'VERIFIED', source: `справочник MON CHEF ${ref.code}`,
+    dry_matter: null, sucrose: null, fat_mass: null };
+  return null;
+}
+
+export async function allergenProfile(tx: Tx, productId: string): Promise<string[] | null> {
+  const r = (await tx.query(`select allergens from product_allergens where product_id = $1 order by created_at desc limit 1`, [productId])).rows[0];
+  return r ? r.allergens : null;
+}
+
+export function suggestAllergens(name: string): string[] {
+  const n = name.toLowerCase();
+  return Object.entries(ALLERGENS).filter(([, a]) => a.stems.some((s) => n.includes(s))).map(([k]) => k);
+}
+
+const merge = (into: Map<string, Set<string>>, code: string, src: string) => { if (!into.has(code)) into.set(code, new Set()); into.get(code)!.add(src); };
+
+/** Раскладка утверждённой ТТК до сырья с учётом п/ф: массы, нутриенты, покрытие данными, соль, аллергены. */
+/**
+ * Потери нутриентов: если в карте есть шаги обработки — по каждой строке по нормам (потери Б/Ж/У тепловых шагов,
+ * отходы после тепловой обработки); тепловой шаг без потерь нутриентов в норме — без потерь (отмечается);
+ * строка без шагов в такой карте — без потерь. Карта без шагов при тепловой обработке — без потерь (отмечается).
+ */
+async function aggregate(tx: Tx, orgId: string, dishId: string, scale: number, path: string, depth: number, acc: Agg, stack: Set<string>, mode: { protein: number; fat: number; carbs: number }) {
+  if (depth > 5 || stack.has(dishId)) { acc.warnings.push(`${path}: циклическая или слишком глубокая вложенность п/ф.`); return; }
+  const v = (await tx.query(`select id, yield_g from ttk_versions where dish_id = $1 and organization_id = $2 and status = 'approved'`, [dishId, orgId])).rows[0];
+  if (!v) { acc.warnings.push(`${path}: нет утверждённой ТТК.`); return; }
+  const lines = (await tx.query(`select l.*, p.name as product_name from ttk_lines l left join products p on p.id = l.product_id where l.version_id = $1 and l.kind = 'item' order by l.position`, [v.id])).rows;
+  const steps = await versionSteps(tx, v.id);
+  const withSteps = steps.size > 0;
+  for (const l of lines) {
+    const net = Number(l.netto ?? l.brutto ?? 0);
+    if (l.product_id) {
+      const g = await convertUnits(tx, l.product_id, net, l.unit, 'г');
+      if (g === null) { acc.warnings.push(`${l.product_name}: нет пересчёта «${l.unit} → г» — строка не учтена в расчёте.`); continue; }
+      const sg = g * scale;
+      acc.input_g += sg;
+      const nu = await nutritionOf(tx, l.product_id);
+      if (nu) {
+        acc.protein += sg * nu.protein / 100; acc.fat += sg * nu.fat / 100; acc.carbs += sg * nu.carbs / 100; acc.data_g += sg;
+        let keep = { protein: 1 - mode.protein, fat: 1 - mode.fat, carbs: 1 - mode.carbs }, after = 1;
+        if (withSteps) {
+          const ls = steps.get(l.id) || [];
+          const thermal = ls.some((x) => x.kind === 'thermal');
+          const r = thermal ? retention(ls as any) : { protein: 1, fat: 1, carbs: 1 };
+          if (r) keep = r; else { keep = { protein: 1, fat: 1, carbs: 1 }; acc.fallback.add(l.product_name); }
+          if (ls.length) { const st = stages(ls as any, 100); after = st.thermal > 0 ? st.ready / st.thermal : 1; }
+          acc.byNorms_g += sg;
+        }
+        acc.lp += sg * nu.protein / 100 * keep.protein * after; acc.lf += sg * nu.fat / 100 * keep.fat * after; acc.lc += sg * nu.carbs / 100 * keep.carbs * after;
+        if (nu.verified) acc.verified_g += sg; else acc.unverified.add(l.product_name);
+      } else acc.missing.add(l.product_name);
+      if (/(^|[^а-яё])соль([^а-яё]|$)/i.test(l.product_name)) acc.salt_g += sg;
+      const prof = await allergenProfile(tx, l.product_id);
+      if (prof === null) {
+        acc.noProfile.add(l.product_name);
+        for (const code of suggestAllergens(l.product_name)) merge(acc.suggest, code, l.product_name);
+      } else for (const code of prof) merge(acc.allergens, code, path === '' ? l.product_name : `${l.product_name} (в ${path})`);
+    } else if (l.sub_dish_id) {
+      const sub = (await tx.query(`select d.name, v.yield_g from dishes d left join ttk_versions v on v.dish_id = d.id and v.status = 'approved' where d.id = $1`, [l.sub_dish_id])).rows[0];
+      const g = await semiGrams(tx, l.sub_dish_id, net, l.unit);
+      if (g === null || !sub?.yield_g) { acc.warnings.push(`${sub?.name || l.name_raw}: не определить массу п/ф — строка не учтена.`); continue; }
+      await aggregate(tx, orgId, l.sub_dish_id, scale * g / Number(sub.yield_g), sub.name, depth + 1, acc, new Set([...stack, dishId]), mode);
+    } else acc.warnings.push(`${l.name_raw}: не сопоставлено с товаром — строка не учтена.`);
+  }
+}
+
+export interface TuParams {
+  processing?: 'thermal' | 'raw' | null; tolerance?: number | null; microGroup?: string | null; micro?: Record<string, string>;
+  physNormed?: { dry?: boolean; fat?: boolean; sugar?: boolean; salt?: boolean }; gerberPct?: number | null; saltMaxPct?: number | null; dryCoef?: number | null; sugarCoef?: number | null;
+  physBasis?: string | null; microIndex?: string | null; microNote?: string | null; microGroupCode?: string | null;
+  tiGroup?: string | null; tiOks?: string | null; tiSeq?: string | null; tiCity?: string | null; tiPackaging?: string | null; tiSafety?: string | null; tiEnvironment?: string | null;
+  tiEquipment?: string | null; rawDocs?: Record<string, string>;
+  organoleptic?: string | null; channel?: string | null; okpd2?: string | null; seq?: string | null; okpo?: string | null;
+  // ГОСТ Р 51740-2016: назначение (5.1.2), ОКС/КГС (4.2.9), замена (4.2.6), дата введения (4.2.7), разработчик (4.2.12), местонахождение (4.2.13)
+  tuPurpose?: string | null; tuOks?: string | null; tuReplaces?: string | null; tuIntroDate?: string | null; tuDeveloper?: string | null; tuLocation?: string | null;
+}
+
+/** Расчёт ТУ по утверждённой ТТК и параметрам. */
+export async function calcTechSpec(tx: Tx, orgId: string, dishId: string, params: TuParams) {
+  const dish = (await tx.query(`select id, name, kind from dishes where id = $1 and organization_id = $2`, [dishId, orgId])).rows[0];
+  if (!dish) throw Errors.notFound('Блюдо не найдено.');
+  const v = (await tx.query(`select * from ttk_versions where dish_id = $1 and organization_id = $2 and status = 'approved'`, [dishId, orgId])).rows[0];
+  if (!v) throw Errors.conflict(`У «${dish.name}» нет утверждённой ТТК — ТУ рассчитываются по утверждённой карте.`);
+  const auto = THERMAL.test(v.technology || '') ? 'thermal' : 'raw';
+  const processing = params.processing || auto;
+  const loss = NO_LOSS;
+  const acc = emptyAgg();
+  await aggregate(tx, orgId, dishId, 1, '', 0, acc, new Set(), loss);
+  const warnings = [...acc.warnings];
+  /** Ошибки — данные, с которыми ТУ выпускать нельзя: документ не печатается как действующий и не утверждается. */
+  const errors: string[] = acc.warnings.filter((w) => /пересч[её]т|не учтена/.test(w));
+  const yieldG = Number(v.yield_g || 0);
+  if (!yieldG) errors.push('В ТТК не указан выход — расчёт невозможен.');
+  if (acc.fallback.size) warnings.push(`Потери пищевых веществ при тепловой обработке не заданы в нормах обработки сырья: ${[...acc.fallback].join(', ')} — пищевая ценность рассчитана без потерь (может быть завышена). Внесите потери Б/Ж/У в норму обработки по документу.`);
+  if (processing === 'thermal' && !acc.byNorms_g && acc.data_g > 0) warnings.push('Тепловая обработка без норм обработки сырья: потери пищевых веществ не учтены — пищевая ценность может быть завышена. Задайте шаги обработки в ТТК по нормам с основанием.');
+
+  const k = yieldG > 0 ? 100 / yieldG : 0;
+  // без данных пищевой ценности ни по одному сырью — «не рассчитано», а не ноль
+  const has = acc.data_g > 0 && yieldG > 0;
+  const per100 = has ? { protein: r1(acc.lp * k), fat: r1(acc.lf * k), carbs: r1(acc.lc * k), kcal: 0, kj: 0 } : null;
+  if (per100) {
+    per100.kcal = Math.round(per100.protein * ENERGY.protein + per100.fat * ENERGY.fat + per100.carbs * ENERGY.carbs);
+    per100.kj = Math.round(per100.protein * ENERGY_KJ.protein + per100.fat * ENERGY_KJ.fat + per100.carbs * ENERGY_KJ.carbs);
+  }
+  const portionG = dish.kind === 'dish' && v.portion_g ? Number(v.portion_g) : null;
+  const f = portionG ? portionG / 100 : 0;
+  const perPortion = portionG && per100 ? { protein: r1(per100.protein * f), fat: r1(per100.fat * f), carbs: r1(per100.carbs * f), kcal: Math.round(per100.kcal * f), kj: Math.round(per100.kj * f) } : null;
+  const coverage = acc.input_g > 0 ? Math.round(acc.data_g / acc.input_g * 100) : 0;
+  const verified = acc.input_g > 0 ? Math.round(acc.verified_g / acc.input_g * 100) : 0;
+  if (acc.missing.size) warnings.push(`Нет пищевой ценности: ${[...acc.missing].join(', ')} — расчёт занижен. Внесите данные по документу (маркировка изготовителя).`);
+  if (acc.unverified.size) warnings.push(`Пищевая ценность не подтверждена документом (справочник «требует проверки»): ${[...acc.unverified].join(', ')}.`);
+
+  const tol = params.tolerance ?? 0.1;
+  const saltPct = yieldG > 0 ? r2(acc.salt_g / yieldG * 100) : 0;
+  // норма «не менее 0» не контролирует ничего — такой показатель в ТУ не включается
+  const physico = (per100 ? [
+    { indicator: 'Массовая доля жира, %, не менее', calc: per100.fat, norm: r1(per100.fat * (1 - tol)), method: 'по методике аккредитованной лаборатории' },
+    { indicator: 'Массовая доля белка, %, не менее', calc: per100.protein, norm: r1(per100.protein * (1 - tol)), method: 'по методике аккредитованной лаборатории' },
+    { indicator: 'Массовая доля углеводов, %', calc: per100.carbs, norm: 'справочно', method: 'расчётный' },
+  ].filter((x) => typeof x.norm !== 'number' || x.norm > 0) : []) as { indicator: string; calc: number; norm: number | string; method: string }[];
+  // данные пищевой ценности не по всему сырью — расчёт занижен: норму «не менее» по нему устанавливать нельзя
+  const partial = acc.input_g > 0 && acc.data_g < acc.input_g;
+  if (partial) for (const x of physico) if (/жира|белка/.test(x.indicator)) x.norm = `не установлено: данные о пищевой ценности есть для ${Math.round(acc.data_g / acc.input_g * 100)} % массы сырья`;
+  if (acc.salt_g > 0) physico.push({ indicator: 'Массовая доля хлорида натрия (соли), %, не более', calc: saltPct, norm: r2(saltPct * (1 + tol)), method: 'по методике аккредитованной лаборатории' });
+
+  const lossPct = acc.input_g > 0 && yieldG > 0 ? r1((acc.input_g - yieldG) / acc.input_g * 100) : 0;
+  if (lossPct < 0) errors.push(`Выход (${Math.round(yieldG)} г) больше закладки нетто (${Math.round(acc.input_g)} г) — так не бывает: проверьте выход и единицы в ТТК (ГОСТ 31988-2012).`);
+  const top = (await tx.query(`select l.name_raw, l.unit, l.netto, l.brutto, l.product_id, l.sub_dish_id, p.name as product_name, d.name as sub_name
+    from ttk_lines l left join products p on p.id = l.product_id left join dishes d on d.id = l.sub_dish_id where l.version_id = $1 and l.kind = 'item' order by l.position`, [v.id])).rows;
+  const recipe = [];
+  for (const l of top) {
+    const net = Number(l.netto ?? l.brutto ?? 0);
+    const g = l.product_id ? await convertUnits(tx, l.product_id, net, l.unit, 'г') : l.sub_dish_id ? await semiGrams(tx, l.sub_dish_id, net, l.unit) : null;
+    recipe.push({ name: l.product_name || l.sub_name || l.name_raw, kind: l.sub_dish_id ? 'п/ф' : 'сырьё', netto_g: g === null ? null : r1(g),
+      per_1kg_g: g === null || !yieldG ? null : r1(g / yieldG * 1000), per_100kg_kg: g === null || !yieldG ? null : r2(g / yieldG * 100) });
+  }
+
+  const allergens = [...acc.allergens.entries()].map(([code, src]) => ({ code, label: ALLERGENS[code]?.label || code, sources: [...src] }));
+  const suggest = [...acc.suggest.entries()].map(([code, src]) => ({ code, label: ALLERGENS[code]?.label || code, sources: [...src] }));
+  if (acc.noProfile.size) warnings.push(`Нет профиля аллергенов: ${[...acc.noProfile].join(', ')} — аллергенная информация неполная.`);
+
+  const storage = { conditions: v.storage_conditions || null, shelf_life: v.shelf_life || null, shelf_life_hours: v.shelf_life_hours ? Number(v.shelf_life_hours) : null };
+  if (!storage.shelf_life) warnings.push('Срок годности в ТТК не указан — установите по действующим санитарным правилам; срок сверх установленного обосновывается по МУК 4.2.1847-04.');
+  const micro = resolveMicro(params, dish.name);
+  if (micro.mode === 'none') warnings.push(micro.suggested
+    ? `Группа продукции по ТР ТС 021/2011 не подтверждена: система предлагает «${micro.suggested.name}». Подтвердите группу — нормативы подставятся из регламента.`
+    : 'Группа продукции по ТР ТС 021/2011 не выбрана — выберите группу, нормативы подставятся из регламента.');
+  if (micro.mode === 'custom' && !micro.confirmed) warnings.push('Собственные микробиологические нормативы: заполните все показатели («не нормируется» — где не нормируются) и документ-основание.');
+  // Мясная продукция и продукция из мяса птицы (ТР ТС 034 п. 4 «в», «е»; ТР ЕАЭС 051 п. 5 «в», «е»): группа нормативов — из своего регламента
+  const meat = await meatProfile(tx, dishId).catch(() => null);
+  const special: 'trts034' | 'trts051' | null = !meat || meat.unknown.length || meat.problems.length ? null
+    : meat.poultry_g > meat.slaughter_g ? (meat.poultry_pct >= 5 ? 'trts051' : null) : meat.meat_pct >= 5 && meat.slaughter_g > 0 ? 'trts034' : null;
+  if (meat?.unknown.length && (meat.slaughter_g + meat.poultry_g > 0 || meat.unknown.some((x) => x.suggest === 'slaughter' || x.suggest === 'poultry'))) warnings.push(`Не указан вид сырья (${meat.unknown.map((x) => x.name).join(', ')}) — не определить, применяется ли ТР ТС 034/2013 или ТР ЕАЭС 051/2021 (раздел «Декларации» → вид сырья).`);
+  const gDoc = micro.mode === 'law' ? microGroup(micro.code)?.doc || null : null;
+  const SPECIAL_DOC = { trts034: 'ТР ТС 034/2013', trts051: 'ТР ЕАЭС 051/2021' } as const;
+  if (gDoc && special && gDoc !== SPECIAL_DOC[special]) errors.push(`Группа микробиологических нормативов из ${gDoc}, а по составу продукция относится к ${SPECIAL_DOC[special]} (мясных ингредиентов ${meat!.meat_pct} %, птицы ${meat!.poultry_pct} %). Выберите группу из ${SPECIAL_DOC[special]}.`);
+  if (gDoc && !special && !meat?.unknown.length) errors.push(`Группа нормативов из ${gDoc}, но по составу регламент на продукцию не распространяется (мясных ингредиентов ${meat?.meat_pct ?? 0} %).`);
+  if (special && micro.mode === 'law' && !gDoc) warnings.push(`По составу продукция — ${SPECIAL_DOC[special]} (мясных ингредиентов ${meat!.meat_pct} %). Группа «${micro.group}» ТР ТС 021/2011 (п. 1.8) — нормативы продукции общественного питания. Для продажи вне зала выберите группу из приложения 1 ${SPECIAL_DOC[special]}, если продукция в ней названа (охлаждённые готовые кулинарные изделия ТР ТС 034/2013 не называет).`);
+
+  // Нормативные ссылки — из встроенной нормативной базы (norms/library.ts): действует ли документ, загружен ли текст.
+  const today = await orgToday(tx, orgId);
+  const lib = Object.values(DOCS);
+  const usedMicro = new Set(micro.indicators.filter((m) => m.norm).map((m) => m.code));
+  const stateOf = (code: string) => {
+    const x = lib.find((l) => l.code === code || l.code.replace(/\s+/g, '') === code.replace(/\s+/g, ''));
+    return !x ? 'текст в нормативную базу не загружен' : x.effectiveTo && x.effectiveTo <= today ? `утратил силу ${x.effectiveTo.split('-').reverse().join('.')}` : 'действует, текст в нормативной базе';
+  };
+  const sanpin = lib.filter((l) => l.kind === 'СанПиН' && /4282/.test(l.code) && (!l.effectiveFrom || l.effectiveFrom <= today) && (!l.effectiveTo || l.effectiveTo > today));
+  if (!sanpin.length) errors.push('Во встроенной нормативной базе нет действующих санитарных правил для общественного питания на сегодняшнюю дату.');
+  // порядок по ГОСТ Р 51740-2016, 4.7.3.1: регламенты, ГОСТ Р, ГОСТ, санитарные правила, методические документы
+  const docs = (NORMATIVE as { code: string; title: string; use: string; micro?: string[]; reg?: string }[])
+    .filter((d) => (!d.micro || d.micro.some((c) => usedMicro.has(c))) && (!d.reg || d.reg === special)).map(({ reg: _r, ...d }) => d);
+  const normative = [
+    ...docs.filter((d) => !d.code.startsWith('МУК')).map(({ micro: _m, ...d }) => ({ ...d, state: stateOf(d.code) })),
+    ...sanpin.map((x) => ({ code: x.code, title: x.title, use: 'санитарные требования к изготовлению, хранению и реализации', state: stateOf(x.code) })),
+    ...docs.filter((d) => d.code.startsWith('МУК')).map(({ micro: _m, ...d }) => ({ ...d, state: stateOf(d.code) })),
+  ];
+  const outdated = normative.filter((d) => d.state.startsWith('утратил'));
+  if (outdated.length) errors.push(`ТУ ссылаются на документы, утратившие силу: ${outdated.map((d) => d.code).join(', ')} (ГОСТ Р 51740-2016, 5.8.5).`);
+
+  // титульный лист (ГОСТ Р 51740-2016, 4.2, приложение А) и программа производственного контроля (5.5.3)
+  const org = (await tx.query(`select name, legal_form, inn, region from organizations where id = $1`, [orgId])).rows[0];
+  const ppk = (await tx.query(`select version, approved_at::date::text as d from ppk_versions where organization_id = $1 order by version desc limit 1`, [orgId])).rows[0] || null;
+  const title = { holder: `${org.legal_form && org.legal_form !== 'другое' && !org.name.startsWith(org.legal_form) ? `${org.legal_form} ` : ''}${org.name}`,
+    okpd2: params.okpd2 || null, oks: params.tuOks || params.tiOks || null, replaces: params.tuReplaces || null, intro_date: params.tuIntroDate || null,
+    developer: params.tuDeveloper || null, location: params.tuLocation || params.tiCity || org.region || null,
+    purpose: params.tuPurpose || (dish.kind === 'semi' ? 'для использования на предприятиях общественного питания при изготовлении блюд и кулинарных изделий' : 'для непосредственного употребления в пищу') };
+  if (!params.okpd2 || params.okpd2.replace(/\D/g, '').length < 9) warnings.push('На титульном листе приводят девятиразрядный код ОКПД2 продукции (ГОСТ Р 51740-2016, 4.2.8) — укажите полный код, например 10.85.19.110.');
+  if (!title.location) warnings.push('Укажите местонахождение держателя подлинника — субъект РФ и населённый пункт (ГОСТ Р 51740-2016, 4.2.13).');
+  const rawDocs = params.rawDocs || {};
+  const raw = (await tx.query(`select distinct p.id, p.name from ttk_lines l join products p on p.id = l.product_id where l.version_id = $1 order by p.name`, [v.id])).rows
+    .map((r) => ({ name: r.name, doc: rawDocs[r.id] || null }));
+
+  // ГОСТ Р 51740-2016, 4.4.1: «ТУ» + первые шесть знаков ОКПД2 + регистрационный номер + ОКПО + год утверждения
+  const okpd6 = params.okpd2 ? params.okpd2.split('.').slice(0, 3).join('.') : '__.__.__';
+  const designation = `ТУ ${okpd6}-${(params.seq || '001').padStart(3, '0')}-${params.okpo || '________'}-${new Date().getFullYear()}`;
+  if (!params.okpd2 || !params.okpo) warnings.push('Для обозначения ТУ укажите код ОКПД2 продукции и код ОКПО держателя подлинника (ГОСТ Р 51740-2016, 4.4.1).');
+
+  const complete = !errors.length && !!per100 && coverage === 100 && verified === 100 && !acc.noProfile.size && !!storage.shelf_life && micro.confirmed && micro.indicators.some((m) => m.norm) && yieldG > 0;
+  return {
+    object: { dish_id: dish.id, name: dish.name, kind: dish.kind, ttk_version_id: v.id, ttk_version: v.version, yield_g: yieldG, portion_g: portionG, input_mass_g: r1(acc.input_g), production_loss_pct: lossPct },
+    processing: { mode: processing, auto, reason: auto === 'thermal' ? 'в технологии есть тепловая обработка' : 'в технологии нет тепловой обработки', losses: loss,
+      by_norms_pct: acc.data_g > 0 ? Math.round(acc.byNorms_g / acc.data_g * 100) : 0, fallback: [...acc.fallback] },
+    nutrition: { per100, per_portion: perPortion, coverage_pct: coverage, verified_pct: verified },
+    physico, tolerance: tol, recipe,
+    allergens: { contains: allergens, suggest, no_profile: [...acc.noProfile], uncounted: errors.length > 0,
+      // строка, не вошедшая в расчёт, могла нести аллерген: «не содержит» при ошибке данных не утверждается
+      complete: !acc.noProfile.size && !errors.length },
+    storage, micro,
+    organoleptic: params.organoleptic || 'Внешний вид, цвет, консистенция, вкус и запах — по описанию утверждённой ТТК; оценка по ГОСТ 31986-2012.',
+    channel: params.channel || 'через предприятия общественного питания и вне их',
+    // органолептика таблицей (ГОСТ Р 51740-2016, 5.2.4): из утверждённой ТТК, недостающее — из правил папки
+    organoleptic_table: (() => { const d = (params as { organolepticDefault?: Record<string, string> }).organolepticDefault || {}, o = (v.organoleptic || {}) as Record<string, string>;
+      return Object.fromEntries(['appearance', 'color', 'consistency', 'taste'].map((k) => [k, o[k] || d[k] || null])); })(),
+    packaging: params.tiPackaging || null,
+    meat_regulation: special, normative, designation, title, raw, ppk, status: errors.length ? 'error' : complete ? 'ready' : 'project', errors, warnings: warnings.filter((w) => !errors.includes(w)), generated_at: new Date().toISOString(),
+  };
+}
+
+/* ───────────── API ───────────── */
+
+export async function getTechSpec(userId: string, orgId: string, dishId: string) {
+  return inOrg(userId, orgId, 'menu.read', async (tx) => {
+    const spec = (await tx.query(`select params, updated_at from tech_specs where dish_id = $1 and organization_id = $2`, [dishId, orgId])).rows[0];
+    const params: TuParams = spec?.params || {};
+    const calc = await calcTechSpec(tx, orgId, dishId, await effectiveParams(tx, dishId));   // правила папки + блюдо
+    const versions = (await tx.query(`select v.id, v.version, v.designation, v.lab_protocol, v.approved_at, v.change_note, v.ppk_version, v.haccp_version, u.full_name as approved_by_name,
+        t.version as ttk_version, t.status <> 'approved' as outdated
+      from tech_spec_versions v join users u on u.id = v.approved_by join ttk_versions t on t.id = v.ttk_version_id where v.dish_id = $1 order by v.version desc`, [dishId])).rows;
+    // протоколы, которыми можно подтвердить ТУ: образец — это блюдо или его партия
+    const candidates = (await tx.query(`select r.id from lab_results r left join lots lt on lt.id = r.lot_id
+      where r.organization_id = $1 and (r.dish_id = $2 or lt.product_id = (select product_id from dishes where id = $2)) order by r.result_on desc limit 30`, [orgId, dishId])).rows.map((r) => r.id as string);
+    const protocols = candidates.length ? (await tuProtocols(tx, orgId, dishId, candidates, calc.micro.indicators)).rows : [];
+    // по каждому сырью — данные пищевой ценности и профиль аллергенов (для ввода по документу)
+    const products = (await tx.query(`with recursive tree(dish_id, depth) as (select $1::uuid, 0 union
+        select l.sub_dish_id, t.depth + 1 from tree t join ttk_versions v on v.dish_id = t.dish_id and v.status = 'approved' join ttk_lines l on l.version_id = v.id where l.sub_dish_id is not null and t.depth < 5)
+      select distinct p.id, p.name, p.unit from tree t join ttk_versions v on v.dish_id = t.dish_id and v.status = 'approved' join ttk_lines l on l.version_id = v.id join products p on p.id = l.product_id order by p.name`, [dishId])).rows;
+    for (const p of products) {
+      p.nutrition = await nutritionOf(tx, p.id);
+      p.allergens = await allergenProfile(tx, p.id);
+      p.suggest = suggestAllergens(p.name);
+    }
+    return { params, calc, versions, protocols, products, allergen_list: Object.entries(ALLERGENS).map(([code, a]) => ({ code, label: a.label })), micro_list: MICRO };
+  });
+}
+
+const ParamsInput = z.object({
+  processing: z.enum(['thermal', 'raw']).nullable().optional(),
+  tolerance: z.coerce.number().min(0).max(0.5).nullable().optional(),
+  microGroup: optText(200), microGroupCode: MicroGroupCode, organoleptic: optText(2000), channel: optText(300),
+  okpd2: z.string().trim().regex(/^\d{2}\.\d{2}(\.\d{1,2}(\.\d{1,3})?)?$/, 'ОКПД2 — например 10.85.19.110.').nullable().optional().or(z.literal('').transform(() => null)),
+  tuPurpose: optText(300), tuOks: optText(60), tuReplaces: optText(100), tuDeveloper: optText(300), tuLocation: optText(200),
+  tuIntroDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата введения — ГГГГ-ММ-ДД.').nullable().optional().or(z.literal('').transform(() => null)),
+  seq: z.string().trim().regex(/^\d{1,3}$/, 'Порядковый номер — до 3 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
+  okpo: z.string().trim().regex(/^\d{8,10}$/, 'ОКПО — 8 или 10 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
+  micro: z.record(z.string(), z.string().trim().max(200)).optional(),
+  // ТТК: нормируемые физико-химические показатели (Методические указания по лабораторному контролю, 1997)
+  physNormed: z.object({ dry: z.boolean(), fat: z.boolean(), sugar: z.boolean(), salt: z.boolean() }).partial().nullable().optional(),   // null — как в папке
+  gerberPct: z.coerce.number().min(0).max(100).nullable().optional(), saltMaxPct: z.coerce.number().min(0).max(20).nullable().optional(),
+  dryCoef: z.coerce.number().min(0).max(1).nullable().optional(), sugarCoef: z.coerce.number().min(0).max(1).nullable().optional(),
+  physBasis: optText(500), microIndex: optText(300), microNote: optText(1000),
+  // ТИ: титульный лист и разделы, которые вписывает технолог
+  tiGroup: optText(60), tiOks: optText(60), tiSeq: z.string().trim().regex(/^\d{1,3}$/, 'Порядковый номер ТИ — до 3 цифр.').nullable().optional().or(z.literal('').transform(() => null)),
+  tiCity: optText(100), tiPackaging: optText(4000), tiSafety: optText(4000), tiEnvironment: optText(4000), tiEquipment: optText(4000),
+  rawDocs: z.record(z.uuid(), z.string().trim().max(300)).optional(),   // НД на сырьё: ГОСТ, ТУ, спецификация
+});
+
+export async function saveTechSpecParams(userId: string, orgId: string, dishId: string, input: unknown) {
+  const d = parse(ParamsInput, input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    if (!(await tx.query(`select 1 from dishes where id = $1 and organization_id = $2`, [dishId, orgId])).rowCount) throw Errors.notFound('Блюдо не найдено.');
+    const micro = Object.fromEntries(Object.entries(d.micro || {}).filter(([k, v]) => MICRO.some((m) => m.code === k) && v));
+    // параметры ТУ и ТТК хранятся вместе: не переданное сохраняется
+    const old = (await tx.query(`select params from tech_specs where dish_id = $1`, [dishId])).rows[0]?.params || {};
+    const given = new Set(Object.keys((input && typeof input === 'object' ? input : {}) as object));
+    const params = { ...old, ...Object.fromEntries(Object.entries(d).filter(([k]) => given.has(k))), ...(d.micro ? { micro } : {}) };
+    await tx.query(`insert into tech_specs (organization_id, dish_id, params, updated_by) values ($1, $2, $3, $4)
+      on conflict (dish_id) do update set params = excluded.params, updated_by = excluded.updated_by, updated_at = now()`, [orgId, dishId, JSON.stringify(params), userId]);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'tu.params', entityType: 'dish', entityId: dishId, after: params });
+    return { ok: true };
+  });
+}
+
+const ApproveInput = z.object({
+  labResultIds: z.array(z.uuid()).min(1, 'Выберите протоколы испытаний аккредитованной лаборатории.').max(20),
+  changeNote: optText(1000),
+});
+
+/** Как показатель ТУ может называться в протоколе (если в протоколе не выбран код показателя). */
+const MICRO_ALIASES: Record<string, string[]> = {
+  KMAFANM: ['кмафанм', 'мафанм'], BGKP: ['бгкп', 'колиформ'], ECOLI: ['e. coli', 'e.coli', 'кишечная палочка', 'escherichia'],
+  SAUREUS: ['aureus', 'стафилококк'], PROTEUS: ['proteus', 'протей'], CLOSTRIDIA: ['клостриди'], SALMONELLA: ['сальмонел', 'патоген'],
+  LISTERIA: ['monocytogenes', 'листери'], YEAST: ['дрожж'], MOLD: ['плесен'], ENTEROCOCCUS: ['enterococc', 'энтерокок'],
+};
+type Param = { name: string; norm: string; fact: string; unit?: string | null; pass: boolean; code?: string | null };
+const covers = (p: Param, code: string) => p.code === code || (MICRO_ALIASES[code] || []).some((a) => p.name.toLowerCase().includes(a));
+
+/**
+ * Протоколы для утверждения ТУ (ТЗ доработки 5.4): лаборатория из реестра с аттестатом и областью аккредитации,
+ * файл протокола приложен, образец — это блюдо или его партия, итог «соответствует», каждый нормируемый
+ * микробиологический показатель ТУ есть в протоколах с фактическим значением. Возвращает препятствия и протоколы.
+ */
+export async function tuProtocols(tx: Tx, orgId: string, dishId: string, ids: string[], indicators: { code: string; name: string; norm: string | null }[]) {
+  const rows = (await tx.query(`select r.id, r.protocol_no, r.result_on::text as result_on, r.sampled_on::text as sampled_on, r.result, r.params, r.dish_id, r.lot_id, r.sample_ref, r.test_type,
+      l.id as lab_id, l.name as lab, l.accreditation_no, l.scope, l.status as lab_status, lt.lot_no,
+      (select count(*)::int from evidence_files f where f.entity_type = 'lab_result' and f.entity_id = r.id) as files,
+      (r.dish_id = $3 or lt.product_id = (select product_id from dishes where id = $3)) as of_dish
+    from lab_results r left join laboratories l on l.id = r.laboratory_id left join lots lt on lt.id = r.lot_id
+    where r.organization_id = $1 and r.id = any($2::uuid[])`, [orgId, ids, dishId])).rows;
+  const problems: string[] = [];
+  for (const id of ids) if (!rows.some((r) => r.id === id)) problems.push('Протокол не найден.');
+  for (const r of rows) {
+    const n = `Протокол № ${r.protocol_no}`;
+    if (!r.lab_id) problems.push(`${n}: лаборатория не из реестра — нет аттестата и области аккредитации.`);
+    else if (r.lab_status !== 'active') problems.push(`${n}: лаборатория «${r.lab}» в реестре не действует.`);
+    if (!r.files) problems.push(`${n}: не приложен файл протокола.`);
+    if (!r.of_dish) problems.push(`${n}: образец не связан с этим блюдом или его партией.`);
+    if (r.result !== 'pass') problems.push(`${n}: результат «не соответствует».`);
+    if (!(r.params as Param[]).length) problems.push(`${n}: нет показателей с фактическими результатами.`);
+  }
+  const params = rows.flatMap((r) => r.params as Param[]);
+  for (const i of indicators.filter((x) => x.norm)) {
+    if (!params.some((p) => covers(p, i.code))) problems.push(`Показатель «${i.name.split(',')[0]}» не исследован ни в одном выбранном протоколе.`);
+  }
+  return { problems, rows };
+}
+
+/** Утверждение ТУ: только полный проверенный расчёт и протоколы испытаний (5.4); снимок не меняется. */
+export async function approveTechSpec(userId: string, orgId: string, dishId: string, input: unknown) {
+  const d = parse(ApproveInput, input);
+  return inOrg(userId, orgId, 'ttk.approve', async (tx) => {
+    await tx.query(`select 1 from tech_specs where dish_id = $1 and organization_id = $2 for update`, [dishId, orgId]);
+    const calc = await calcTechSpec(tx, orgId, dishId, await effectiveParams(tx, dishId));
+    if (calc.status !== 'ready') throw Errors.conflict(`ТУ — проект, утвердить нельзя: ${[...calc.errors, ...calc.warnings].join(' ')}`);
+    const { problems, rows } = await tuProtocols(tx, orgId, dishId, d.labResultIds, calc.micro.indicators);
+    if (problems.length) throw Errors.validation(`Протоколы испытаний не подтверждают ТУ: ${problems.join(' ')}`, problems);
+    const n = Number((await tx.query(`select coalesce(max(version), 0) as m from tech_spec_versions where dish_id = $1`, [dishId])).rows[0].m) + 1;
+    if (n > 1 && (!d.changeNote || d.changeNote.length < 5)) throw Errors.validation('Укажите содержание изменения для листа регистрации изменений.');
+    const ppk = (await tx.query(`select max(version) as v from ppk_versions where organization_id = $1`, [orgId])).rows[0].v;
+    const haccp = (await tx.query(`select max(version) as v from haccp_plans where organization_id = $1 and status = 'approved'`, [orgId])).rows[0].v;
+    const labProtocol = rows.map((r) => `протокол № ${r.protocol_no} от ${r.result_on.split('-').reverse().join('.')}, ${r.lab} (аттестат ${r.accreditation_no})`).join('; ');
+    const row = (await tx.query(`insert into tech_spec_versions (organization_id, dish_id, version, ttk_version_id, designation, snapshot, lab_protocol, approved_by, lab_result_ids, ppk_version, haccp_version, change_note)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id, version, approved_at`,
+      [orgId, dishId, n, calc.object.ttk_version_id, calc.designation, JSON.stringify({ ...calc, protocols: rows.map(({ files: _f, of_dish: _o, ...r }) => r) }), labProtocol, userId,
+        rows.map((r) => r.id), ppk ?? null, haccp ?? null, n === 1 ? 'первая редакция' : d.changeNote])).rows[0];
+    await closeTasksFor(tx, orgId, 'tu_review', dishId, userId, `утверждена версия ${n}`);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'tu.approve', entityType: 'dish', entityId: dishId,
+      after: { version: n, designation: calc.designation, lab_protocol: labProtocol, ppk_version: ppk ?? null, haccp_version: haccp ?? null, change_note: d.changeNote ?? null } });
+    return row;
+  });
+}
+
+export async function getTechSpecVersion(userId: string, orgId: string, dishId: string, version: number) {
+  return inOrg(userId, orgId, 'menu.read', async (tx) => {
+    const v = (await tx.query(`select v.*, u.full_name as approved_by_name from tech_spec_versions v join users u on u.id = v.approved_by
+      where v.dish_id = $1 and v.organization_id = $2 and v.version = $3`, [dishId, orgId, version])).rows[0];
+    if (!v) throw Errors.notFound('Версия ТУ не найдена.');
+    return { ...v, integrity: await assertSnapshotIntact(tx, 'tech_spec_versions', v.id, { orgId, userId }) };
+  });
+}
+
+const num = z.union([z.number(), z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Введите число.').transform((s) => Number(s.replace(',', '.')))]).refine((x) => x >= 0 && x <= 1000, 'Значение на 100 г — от 0 до 1000.');
+const pct100 = z.union([z.number(), z.string().trim().regex(/^\d+([.,]\d+)?$/, 'Введите число.').transform((s) => Number(s.replace(',', '.')))]).refine((x) => x >= 0 && x <= 100, 'Значение на 100 г — от 0 до 100.');
+const NutritionInput = z.object({ kcal: num, protein: num, fat: num, carbs: num,
+  dryMatter: pct100.nullable().optional(), sucrose: pct100.nullable().optional(), fatMass: pct100.nullable().optional(),   // сухие вещества, сахароза, массовая доля жира
+  basis: z.string().trim().min(5, 'Укажите документ: маркировка изготовителя, удостоверение качества, протокол.').max(300) })
+  .refine((x) => x.protein + x.fat + x.carbs <= 100, 'Белки, жиры и углеводы вместе — не больше 100 г на 100 г.');
+
+/** Пищевая ценность товара на 100 г по документу. Новая запись заменяет прежнюю, история сохраняется. */
+export async function setProductNutrition(userId: string, orgId: string, productId: string, input: unknown) {
+  const d = parse(NutritionInput, input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    if (!(await tx.query(`select 1 from products where id = $1 and organization_id = $2`, [productId, orgId])).rowCount) throw Errors.notFound('Товар не найден.');
+    await tx.query(`insert into product_nutrition (organization_id, product_id, kcal_100, protein_100, fat_100, carbs_100, basis, created_by, dry_matter_100, sucrose_100, fat_mass_100)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [orgId, productId, d.kcal, d.protein, d.fat, d.carbs, d.basis, userId, d.dryMatter ?? null, d.sucrose ?? null, d.fatMass ?? null]);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'product.nutrition', entityType: 'product', entityId: productId, after: d });
+    return { ok: true };
+  });
+}
+
+const AllergenInput = z.object({ allergens: z.array(z.enum(ALLERGEN_CODES)).max(ALLERGEN_CODES.length),
+  basis: z.string().trim().min(5, 'Укажите документ: состав на маркировке, спецификация поставщика.').max(300) });
+
+/** Профиль аллергенов товара по документу (пустой список — «не содержит»). */
+export async function setProductAllergens(userId: string, orgId: string, productId: string, input: unknown) {
+  const d = parse(AllergenInput, input);
+  return inOrg(userId, orgId, 'ttk.manage', async (tx) => {
+    if (!(await tx.query(`select 1 from products where id = $1 and organization_id = $2`, [productId, orgId])).rowCount) throw Errors.notFound('Товар не найден.');
+    await tx.query(`insert into product_allergens (organization_id, product_id, allergens, basis, created_by) values ($1, $2, $3, $4, $5)`, [orgId, productId, [...new Set(d.allergens)], d.basis, userId]);
+    await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'product.allergens', entityType: 'product', entityId: productId, after: d });
+    return { ok: true };
+  });
+}
