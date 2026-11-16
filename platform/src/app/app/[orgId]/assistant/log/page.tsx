@@ -6,8 +6,8 @@ import { api } from '@/lib/api';
 import { dt } from '@/lib/fmt';
 
 interface Job { id: string; kind: string; status: string; question: string | null; model: string | null; prompt_version: string; latency_ms: number | null; created_at: string; user_name: string; sources: number; confidence: string | null; tasks: number }
-const KIND: Record<string, string> = { question: 'Вопрос', incident_explain: 'Отклонение', capa_suggest: 'CAPA' };
-const STATUS: Record<string, string> = { ok: 'ответ', guard_rejected: 'отклонён проверкой', no_sources: 'нет источника', unavailable: 'AI не подключён', refused: 'отказ', error: 'ошибка' };
+const KIND: Record<string, string> = { question: 'Вопрос', incident_explain: 'Отклонение', capa_suggest: 'CAPA', agent: 'ЦЕХ AI' };
+const STATUS: Record<string, string> = { ok: 'ответ', guard_rejected: 'отклонён проверкой', no_sources: 'нет источника', unavailable: 'AI не подключён', refused: 'отказ', error: 'ошибка', step_limit: 'не уложился в шаги' };
 
 /** Журнал AI для руководителя и аудитора: кто спрашивал, что получил, сколько источников, какие задачи приняты. */
 export default function AiLogPage() {
