@@ -98,17 +98,33 @@ function insertRow_(sheetKey, obj) {
   return obj;
 }
 
+/**
+ * Поля принадлежности записи. Аудит 16.11.2026, C-03 (mass assignment): ~9 действий передавали клиентский
+ * data.patch прямо в updateRow_, и patch с organization_id/location_id переподчинял запись чужой точке или
+ * организации ПОСЛЕ проверки владения. Теперь это закрыто в одном месте для ВСЕХ вызовов: уже заполненную
+ * принадлежность updateRow_ не меняет — бросает FORBIDDEN_SCOPE. Заполнить пустую (миграции) можно.
+ * Осознанная смена — только для листов из SCOPE_CHANGE_SHEETS_ (SESSIONS: выбор точки при входе) или
+ * с явным opts.allowScopeChange в серверном коде (никогда из клиентского patch).
+ */
+var SCOPE_FIELDS_ = ['organization_id', 'location_id'];
+var SCOPE_CHANGE_SHEETS_ = { SESSIONS: true };
+
 /** Точечное обновление строки по __row (полученному из getAllRows_/findOne_), только изменённые поля. */
-function updateRow_(sheetKey, rowObj, patch) {
+function updateRow_(sheetKey, rowObj, patch, opts) {
   if (!rowObj || !rowObj.__row) throw new Error('updateRow_: rowObj без __row — сначала найди строку через findOne_.');
   var sheet = getSheet_(sheetKey);
   var headers = CONFIG.SCHEMA[sheetKey];
+  var allowScope = SCOPE_CHANGE_SHEETS_[sheetKey] === true || !!(opts && opts.allowScopeChange === true);
 
   var current = sheet.getRange(rowObj.__row, 1, 1, headers.length).getValues()[0];
   var changed = false;
   for (var i = 0; i < headers.length; i++) {
     var h = headers[i];
     if (Object.prototype.hasOwnProperty.call(patch, h) && patch[h] !== current[i]) {
+      if (!allowScope && SCOPE_FIELDS_.indexOf(h) !== -1 && String(current[i] === null || current[i] === undefined ? '' : current[i]) !== '' &&
+          String(patch[h] === null || patch[h] === undefined ? '' : patch[h]) !== String(current[i])) {
+        throw new Error('FORBIDDEN_SCOPE: нельзя переподчинить запись ' + sheetKey + ' другой ' + (h === 'organization_id' ? 'организации' : 'точке') + '.');
+      }
       current[i] = patch[h];
       changed = true;
     }

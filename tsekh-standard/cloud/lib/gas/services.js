@@ -86,9 +86,9 @@ function makeLock(store) {
 }
 
 /* ---------- пользователь ---------- */
-function makeSession(tenant) {
+function makeSession(tenant, activeEmail) {
   return {
-    getActiveUser: () => tenant.user(),
+    getActiveUser: () => tenant.user(activeEmail),
     getEffectiveUser: () => tenant.user(),
     getScriptTimeZone: () => tenant.timeZone(),
     getTemporaryActiveUserKey: () => tenant.slug,

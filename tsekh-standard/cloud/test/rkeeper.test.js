@@ -59,7 +59,8 @@ function run(body) {
   });
 }
 const J = (s) => { const r = typeof s === 'string' ? JSON.parse(s) : s; if (!r.success) throw new Error(JSON.stringify(r.error)); return r.data; };
-const call = (fn, ...a) => run((res) => JSON.parse(res(fn)(...a, TOKEN)));
+// защита шлюза от двойного нажатия (тот же вызов за 15 с) в тестах не нужна: повторы здесь — отдельные загрузки
+const call = (fn, ...a) => { T.store.db.prepare("delete from cache where k like 'mc_gate_%'").run(); return run((res) => JSON.parse(res(fn)(...a, TOKEN))); };
 const log = () => fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const sales = () => run((res) => { const sh = res('_book_')().getSheetByName('Инт_Продажи'), v = sh.getDataRange().getValues(), h = v[0]; return v.slice(1).map((r) => Object.fromEntries(h.map((k, i) => [k, r[i]]))); });
 

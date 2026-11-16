@@ -67,7 +67,8 @@ function run(body) {
   });
 }
 const J = (s) => { const r = typeof s === 'string' ? JSON.parse(s) : s; if (!r.success) throw new Error(JSON.stringify(r.error)); return r.data; };
-const call = (fn, ...a) => run((res) => JSON.parse(res(fn)(...a, TOKEN)));
+// защита шлюза от двойного нажатия (тот же вызов за 15 с) в тестах не нужна: повторы здесь — отдельные загрузки
+const call = (fn, ...a) => { T.store.db.prepare("delete from cache where k like 'mc_gate_%'").run(); return run((res) => JSON.parse(res(fn)(...a, TOKEN))); };
 const log = () => fs.readFileSync(LOG, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 
 test('подготовка: ТТК Борщ (свёкла 250 г, морковь), приёмка по одной накладной, подключение iiko', () => {

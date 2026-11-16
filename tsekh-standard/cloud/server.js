@@ -4,7 +4,8 @@
  *
  *   https://домен/t/<код предприятия>/exec   — веб-приложение предприятия (то, что было script.google.com/macros/s/…/exec)
  *   https://домен/t/<код>/rpc                 — вызовы google.script.run со страниц
- *   https://домен/t/<код>/file/<id>           — файлы «Диска» предприятия (ссылки из журналов, документов, фото)
+ *   https://домен/t/<код>/file/<id>           — файлы «Диска» предприятия (ссылки из журналов, документов, фото);
+ *                                               открываются только после входа в систему предприятия (cookie сессии)
  *   https://домен/admin/exec                  — админ-панель поставщика (лицензии, подписки, ЮKassa)
  *
  * Код Apps Script синхронный: долгий вызов (распознавание, PDF) занимает процесс целиком. Поэтому запросы
@@ -46,6 +47,22 @@ function startWeb() {
   const { clientShim } = require('./lib/client');
   const { Blob } = require('./lib/gas/blob');
   const { MIME_SHEET } = require('./lib/gas/spreadsheet');
+  const gw = require('./lib/gateway');
+  const SECURE = /^https:/i.test(process.env.APP_URL || '');
+  // попытки входа (ПИН, пароль админ-панели) с одного адреса: не больше LOGIN_RATE за минуту
+  const loginLimit = gw.rateLimiter(Number(process.env.LOGIN_RATE || 20), 60 * 1000);
+  // все вызовы с одного адреса: не больше RPC_RATE за минуту (страница «Сейчас» делает десятки вызовов — запас большой)
+  const rpcLimit = gw.rateLimiter(Number(process.env.RPC_RATE || 1200), 60 * 1000);
+  const basePath = (t) => new URL(t.baseUrl).pathname;
+  /** Ключ из cookie — действующая сессия этого предприятия? (проверяет сам код ЦЕХ / админ-панели) */
+  const validSession = (t, tok) => {
+    if (!tok || tok.length > 200) return false;
+    try {
+      if (t.cfg.kind === 'admin') return !!t.execute((res) => () => { const r = res('adminMe')(tok); return r && r.ok; }, [], { web: true });
+      return !!t.execute((res) => () => !!res('_getSession_')(tok), [], { web: true });
+    } catch (e) { return false; }
+  };
+  const denyFile = (res) => send(res, 401, page('Нужен вход', '<h2>Нужен вход в систему</h2><p>Файлы предприятия открываются только после входа. Откройте систему, войдите по ПИН-коду и повторите ссылку.</p>'), 'text/html; charset=utf-8', { 'cache-control': 'no-store' });
 
   const send = (res, code, body, type = 'text/html; charset=utf-8', extra = {}) => {
     res.writeHead(code, { 'content-type': type, 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin', ...extra });
@@ -117,43 +134,55 @@ function startWeb() {
     const action = rest[0] || 'exec';
 
     if (action === 'exec' && (req.method === 'GET' || req.method === 'HEAD')) {
-      const out = t.execute('doGet', [event(url, null)]);
+      const out = t.execute('doGet', [event(url, null)], { web: true });
       return respond(res, t, url, out);
     }
     if (action === 'exec' && req.method === 'POST') {
       const body = await readBody(req);
-      const out = t.execute('doPost', [event(url, body, req.headers['content-type'])]);
+      const out = t.execute('doPost', [event(url, body, req.headers['content-type'])], { web: true });
       return respond(res, t, url, out);
     }
     if (action === 'rpc' && req.method === 'POST') {
+      const kind = t.cfg.kind === 'admin' ? 'admin' : 'tenant';
+      const ip = gw.clientIp(req);
+      const json = (obj, extra) => send(res, 200, JSON.stringify(obj), 'application/json; charset=utf-8', { 'cache-control': 'no-store', ...(extra || {}) });
+      if (!rpcLimit(ip)) return send(res, 429, JSON.stringify({ ok: false, error: { name: 'ScriptError', message: 'Слишком много запросов — подождите минуту' } }), 'application/json; charset=utf-8', { 'retry-after': '60' });
       const body = await readBody(req);
       let msg; try { msg = JSON.parse(body.toString('utf8')); } catch (e) { return send(res, 400, JSON.stringify({ ok: false, error: { message: 'Неверный запрос' } }), 'application/json'); }
-      const fn = String(msg.fn || '');
-      // как в Apps Script: функции с подчёркиванием в конце закрыты для вызова со страницы
-      if (!/^[A-Za-z$][A-Za-z0-9_$]*$/.test(fn) || fn.endsWith('_') || ['doGet', 'doPost', 'eval', 'Function'].includes(fn)) {
-        return send(res, 200, JSON.stringify({ ok: false, error: { name: 'ScriptError', message: `Функция ${fn} недоступна` } }), 'application/json');
-      }
+      const fn = String((msg && msg.fn) || '');
+      const args = fromJson(Array.isArray(msg && msg.args) ? msg.args : []);
+      const denied = () => json({ ok: false, error: { name: 'ScriptError', message: `Функция ${fn} недоступна` } });
+      if (!/^[A-Za-z$][A-Za-z0-9_$]*$/.test(fn) || fn.endsWith('_')) return denied();
+      if ((fn === 'loginWithPin' || fn === 'adminLogin') && !loginLimit(ip)) return json({ ok: false, error: { name: 'ScriptError', message: 'Слишком много попыток входа с этого адреса — подождите минуту' } });
+      const hdr = String(req.headers['x-ts-session'] || '');
+      const argTok = gw.tokenFromArgs(kind, fn, args) || (kind === 'tenant' && /^[\x21-\x7e]{16,200}$/.test(hdr) ? hdr : '');
       try {
-        const value = t.execute(fn, fromJson(Array.isArray(msg.args) ? msg.args : []));
-        return send(res, 200, JSON.stringify({ ok: true, value: value === undefined ? null : value }), 'application/json; charset=utf-8', { 'cache-control': 'no-store' });
+        // C-02: функция ищется и проверяется по списку разрешённых в том же выполнении, где вызывается
+        const value = t.execute((r) => { const f = r(fn); return gw.rpcAllowed(kind, fn, f) ? f : null; }, args, { web: true });
+        // C-01: ключ сессии — в cookie этого предприятия, по нему открываются файлы; выход — cookie стирается
+        const tok = gw.isLogout(kind, fn) ? '' : (gw.tokenFromLogin(kind, fn, value) || argTok);
+        const setCookie = (gw.isLogout(kind, fn) || tok) && gw.readCookie(req) !== tok ? { 'set-cookie': gw.sessionCookie(basePath(t), tok, SECURE) } : null;
+        return json({ ok: true, value: value === undefined ? null : value }, setCookie);
       } catch (e) {
+        if (/^Функция не найдена/.test(errorText(e))) return denied();
         t.store.log('ERROR', `${fn}: ${errorText(e)}${e.where ? '\n' + e.where.split('\n').slice(0, 4).join('\n') : ''}`);
-        return send(res, 200, JSON.stringify({ ok: false, error: { name: 'ScriptError', message: errorText(e) } }), 'application/json; charset=utf-8');
+        return json({ ok: false, error: { name: 'ScriptError', message: errorText(e) } });
       }
     }
+    if ((action === 'file' || action === 'sheet' || action === 'folder') && rest[1] && !validSession(t, gw.readCookie(req))) return denyFile(res);
     if ((action === 'file' || action === 'sheet') && rest[1] && req.method === 'GET') {
       const f = t.store.file(rest[1]);
       if (!f || f.trashed) return send(res, 404, page('Файл не найден', '<h2>Файл не найден</h2>'));
       if (f.mime === MIME_SHEET) {
-        const blob = t.execute(() => () => t.spreadsheetApp().openById(f.id).getBlob());
+        const blob = t.execute(() => () => t.spreadsheetApp().openById(f.id).getBlob(), [], { web: true });
         return send(res, 200, blob._buffer(), 'text/csv; charset=utf-8', { 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.name + '.csv')}` });
       }
       if (f.mime === 'application/vnd.google-apps.document') {
-        const html = t.execute(() => () => require('./lib/gas/services').makeDocumentApp(t).openById(f.id).getBlob().getDataAsString());
+        const html = t.execute(() => () => require('./lib/gas/services').makeDocumentApp(t).openById(f.id).getBlob().getDataAsString(), [], { web: true });
         return send(res, 200, html);
       }
       const disp = url.searchParams.get('download') ? 'attachment' : 'inline';
-      return send(res, 200, t.store.readBlob(f.id), f.mime || 'application/octet-stream', { 'content-disposition': `${disp}; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'cache-control': 'private, max-age=300' });
+      return send(res, 200, t.store.readBlob(f.id), f.mime || 'application/octet-stream', { 'content-disposition': `${disp}; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'cache-control': 'private, no-store' });
     }
     if (action === 'folder' && rest[1]) {
       const f = t.store.file(rest[1]);

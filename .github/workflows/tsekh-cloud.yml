@@ -1,0 +1,34 @@
+# ЦЕХ Стандарт, сервер для Yandex Cloud: тесты при каждом изменении (аудит 16.11.2026, C-04).
+# 1) Node 22 на Linux — как у разработчика; 2) внутри собранного Docker-образа — как на сервере клиента.
+name: tsekh-cloud
+on:
+  push:
+    paths: ['tsekh-standard/app/**', 'tsekh-standard/admin/**', 'tsekh-standard/cloud/**', '.github/workflows/tsekh-cloud.yml']
+  pull_request:
+    paths: ['tsekh-standard/app/**', 'tsekh-standard/admin/**', 'tsekh-standard/cloud/**', '.github/workflows/tsekh-cloud.yml']
+permissions:
+  contents: read
+jobs:
+  node:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: tsekh-standard/cloud
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: tsekh-standard/cloud/.nvmrc
+          cache: npm
+          cache-dependency-path: tsekh-standard/cloud/package-lock.json
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm test
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка образа
+        run: docker build -f tsekh-standard/cloud/Dockerfile -t tsekh-standard:ci tsekh-standard
+      - name: Тесты внутри образа
+        run: docker run --rm -v "$PWD/tsekh-standard/cloud/test:/srv/tsekh/cloud/test:ro" tsekh-standard:ci sh -c 'node --test test/*.test.js'
