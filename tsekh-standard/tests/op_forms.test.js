@@ -1,4 +1,4 @@
-// Формы первичных документов общепита (ОП-3, 7, 10, 11, 12, 18, 21, 23): реквизиты и цены подставляются сами,
+// Формы первичных документов общепита (ОП-1…ОП-25, с форматами листов): реквизиты и цены подставляются сами,
 // логотипов и названий сторонних организаций в формах нет.
 // Запуск: node tests/op_forms.test.js
 const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert'), { make } = require('./gas_mock');
@@ -22,10 +22,11 @@ Object.assign(G, {
   _buildDishIndexes_: () => ({ dishByCode: {
     'D-01': { code: 'D-01', name: 'Борщ', semi: false, ing: [['Свёкла', 80, 'г'], ['Говядина', 50, 'г']] },
     'D-02': { code: 'D-02', name: 'Котлета по-киевски', semi: false, ing: [['Филе куриное', 120, 'г'], ['Масло сливочное', 20, 'г']] },
-    'D-03': { code: 'D-03', name: 'Компот', semi: false, ing: [['Сухофрукты', 30, 'г']] } } }),
+    'D-03': { code: 'D-03', name: 'Компот', semi: false, ing: [['Сухофрукты', 30, 'г']] },
+    'D-04': { code: 'D-04', name: 'Суп харчо', semi: false, ing: [['Говядина', 60, 'г'], ['Соль поваренная', 3, 'г'], ['Перец черный молотый', 0.5, 'г'], ['Перец болгарский', 20, 'г']] } } }),
   _dishWorkshopMap_: () => ({ 'D-01': 'Горячий цех', 'D-02': 'Горячий цех', 'D-03': 'Холодный цех' }),
   // средняя цена склада за 1 г
-  _currentAvgPrice_: (n, u) => ({ 'свёкла': 0.05, 'говядина': 0.8, 'филе куриное': 0.45, 'масло сливочное': 0.9, 'мука': 0.04 })[String(n).toLowerCase()] * (u === 'кг' ? 1000 : 1) || 0,
+  _currentAvgPrice_: (n, u) => ({ 'свёкла': 0.05, 'говядина': 0.8, 'филе куриное': 0.45, 'масло сливочное': 0.9, 'мука': 0.04, 'соль поваренная': 0.02, 'перец черный молотый': 1.2 })[String(n).toLowerCase()] * (u === 'кг' ? 1000 : 1) || 0,
 });
 G.Utilities.newBlob = (h) => ({ getAs: t => ({ type: t, html: h, setName(n) { this.name = n; return this; } }) });
 const ctx = vm.createContext(G);
@@ -65,9 +66,33 @@ t('реквизиты: ОКПО, подразделение и руководи�
   assert.deepStrictEqual(o.missing, []);
 });
 
-t('список: 8 форм, блюда, товары склада и подразделения (цеха) для подсказок', () => {
+// перечень форм первичной учётной документации — как прислал Денис: номер, наименование, формат листа
+const CATALOG = [['ОП-1', 'Калькуляционная карточка', 'A4L'], ['ОП-2', 'План-меню', 'A4'], ['ОП-3', 'Требование в кладовую', 'A4'],
+  ['ОП-4', 'Накладная на отпуск товара', 'A4L'], ['ОП-5', 'Закупочный акт', 'A4'], ['ОП-6', 'Дневной заборный лист', 'A4L'],
+  ['ОП-7', 'Опись дневных заборных листов (накладных)', 'A4'], ['ОП-8', 'Акт о бое, ломе и утрате посуды и приборов', 'A4L'],
+  ['ОП-9', 'Ведомость учета движения посуды и приборов', 'A4L'], ['ОП-10', 'Акт о реализации и отпуске изделий кухни', 'A4L'],
+  ['ОП-11', 'Акт о продаже и отпуске изделий кухни', 'A4'], ['ОП-12', 'Акт о реализации готовых изделий кухни за наличный расчет', 'A4'],
+  ['ОП-13', 'Контрольный расчет расхода специй и соли', 'A4'], ['ОП-14', 'Ведомость учета движения продуктов и тары на кухне', 'A4'],
+  ['ОП-15', 'Акт о снятии остатков продуктов, полуфабрикатов и готовых изделий кухни', 'A3L'],
+  ['ОП-16', 'Ведомость учета остатков продуктов и товаров на складе (в кладовой)', 'A4L'],
+  ['ОП-17', 'Контрольный расчет расхода продуктов по нормам рецептур на выпущенные изделия', 'A4L'],
+  ['ОП-18', 'Акт о передаче товаров и тары при смене материально ответственного лица', 'A4'],
+  ['ОП-19', 'Журнал учета столовой посуды и приборов, выдаваемых под отчет работникам организации', '2A4L'],
+  ['ОП-20', 'Заказ-счет', 'A4'], ['ОП-21', 'Акт на отпуск питания сотрудникам организации', 'A4'], ['ОП-22', 'Акт на отпуск питания по безналичному расчету', 'A4'],
+  ['ОП-23', 'Акт о разделке мяса-сырья на полуфабрикаты', 'A3L'], ['ОП-24', 'Ведомость учета движения готовых изделий в кондитерском и других цехах', 'A4L'],
+  ['ОП-25', 'Наряд-заказ на изготовление кондитерских и других изделий', 'A3L']];
+
+t('перечень: все 25 форм ОП-1…ОП-25 с наименованиями, кодами ОКУД 03305xx и форматами листов', () => {
   const d = J(C.tsOpList('t'));
-  assert.deepStrictEqual(d.forms.map(f => f.code), ['ОП-3', 'ОП-7', 'ОП-10', 'ОП-11', 'ОП-12', 'ОП-18', 'ОП-21', 'ОП-23']);
+  assert.deepStrictEqual(d.forms.map(f => [f.code, f.title, f.format]), CATALOG);
+  d.forms.forEach((f, i) => assert.strictEqual(f.okud, '03305' + String(i + 1).padStart(2, '0'), f.code));
+  const html = J(C.tsOpCatalog('t')).html;
+  assert(/ПЕРЕЧЕНЬ ФОРМ ПЕРВИЧНОЙ УЧЕТНОЙ ДОКУМЕНТАЦИИ/.test(html) && /А3 альбомный/.test(html) && /разворот/.test(html));
+  CATALOG.forEach(([code]) => assert(html.includes('>' + code + '<'), code));
+});
+
+t('список: блюда, товары склада и подразделения (цеха) для подсказок', () => {
+  const d = J(C.tsOpList('t'));
   assert(d.dishes.includes('Борщ') && d.products.some(p => p.name === 'Мука'));
   assert(d.divisions.includes('Горячий цех') && d.divisions[0] === 'Столовая № 1');
 });
@@ -117,6 +142,94 @@ t('ОП-23: разделка — сырьё по цене партии, п/ф п
   assert.strictEqual(bone.sum, 0); assert.strictEqual(d.totals.sum, 6000);
 });
 
+t('форматы листов: А4 книжный, А4 альбомный, А3 альбомный — в разметке печати', () => {
+  const html = form => C._tsOpHtml_({ form, n: 1, params: { date: ISO }, rows: [], org: C._tsOpOrg_('') });
+  assert(/size:A4 portrait/.test(html('OP3')) && /size:A4 landscape/.test(html('OP10')) && /size:A3 landscape/.test(html('OP23')) && /size:A3 landscape/.test(html('OP15')));
+  assert(/формат А3 альбомный/.test(html('OP25')));
+});
+
+t('ОП-1: калькуляция по ТТК на N порций — цены склада, себестоимость порции, цена продажи и наценка', () => {
+  const d = J(C.tsOpPrefill('t', 'OP1', { date: ISO, dish: 'Борщ', portions: '10' }));
+  assert.deepStrictEqual(d.rows.map(r => [r.name, r.qty, r.sum]), [['Свёкла', 800, 40], ['Говядина', 500, 400]]);
+  const r = J(C.tsOpCreate('t', 'OP1', { params: { date: ISO, dish: 'Борщ', portions: '10' }, rows: d.rows }));
+  assert.strictEqual(r.totals.sum, 440);
+  assert(/КАЛЬКУЛЯЦИОННАЯ КАРТОЧКА/.test(r.html) && /0330501/.test(r.html) && /Количество порций: <b>10/.test(r.html));
+  assert(/1 порции: <b>44,00/.test(r.html), 'себестоимость порции');
+  assert(/Цена продажи 1 порции: <b>250,00/.test(r.html), 'цена — последняя по дате продажа, а не последняя строка журнала');
+  assert(/Наценка: <b>468,18 %/.test(r.html));
+});
+
+t('ОП-2: план-меню по продажам того же дня неделю назад; блюда без количества в план не попадают', () => {
+  const d = J(C.tsOpPrefill('t', 'OP2', { date: '2026-11-19' }));
+  assert.deepStrictEqual(d.rows.map(r => [r.name, r.qty]), [['Борщ', 5], ['Компот', 4], ['Котлета по-киевски', 1]]);
+  d.rows.find(r => r.name === 'Компот').qty = 0;
+  const r = J(C.tsOpCreate('t', 'OP2', { params: { date: '2026-11-19' }, rows: d.rows }));
+  assert.strictEqual(r.totals.saleSum, 1670, '5 × 250 + 1 × 420'); assert(/ПЛАН-МЕНЮ/.test(r.html) && !/Компот/.test(r.html));
+});
+
+// продажи следующего дня — суп с солью и специями
+S['Ж_Продажи'].appendRow([6, '13.11.2026', '13:00', 'Суп харчо', 10, 300, 3000, 'Кассир', '', '']);
+
+t('ОП-13: расход соли и специй по нормам ТТК на проданные блюда; овощной «перец болгарский» — не специя', () => {
+  const d = J(C.tsOpPrefill('t', 'OP13', { date: '2026-11-13' }));
+  assert.deepStrictEqual(d.rows.map(r => [r.name, r.unit, r.qty, r.sum]), [['Перец черный молотый', 'г', 5, 6], ['Соль поваренная', 'г', 30, 0.6]]);
+  assert.strictEqual(d.totals.sum, 6.6);
+});
+
+t('ОП-17: расход продуктов по нормам; фактический расход вводится — отклонение считается сервером', () => {
+  const d = J(C.tsOpPrefill('t', 'OP17', { date: '2026-11-13' }));
+  const beef = d.rows.find(r => r.name === 'Говядина');
+  assert.strictEqual(beef.qty, 600); assert.strictEqual(beef.sum, 480); assert.strictEqual(beef.diff, '', 'пока факт не введён — отклонения нет');
+  assert(d.rows.find(r => r.name === 'Перец болгарский').noPrice, 'нет цены склада — строка помечается');
+  beef.fact = 650; beef.diff = -999;
+  const r = J(C.tsOpCreate('t', 'OP17', { params: { date: '2026-11-13' }, rows: d.rows }));
+  assert(/<td[^>]*>50<\/td>/.test(r.html), 'отклонение +50 г посчитано сервером');
+});
+
+t('ОП-9 и ОП-14: остаток на конец = начало + поступило − выбыло; отрицательный остаток не сохраняется', () => {
+  const r = J(C.tsOpCreate('t', 'OP9', { params: { from: '2026-11-01', to: '2026-11-30' }, rows: [{ name: 'Тарелка мелкая', price: 150, open: 100, in: 20, out: 5, qty: 1 }, { name: 'Вилка', price: 40, open: 10, in: 0, out: 10 }] }));
+  assert.strictEqual(r.totals.sum, 17250); assert.strictEqual(r.totals.qty, 115);
+  assert(/за период с <b>01\.11\.2026<\/b> по <b>30\.11\.2026/.test(r.html) && /Дата составления[\s\S]*30\.11\.2026/.test(r.html));
+  assert(/^ОП-9\/2026\/1$/.test(r.no));
+  assert.strictEqual(F(C.tsOpCreate('t', 'OP14', { params: { from: ISO, to: ISO }, rows: [{ name: 'Мука', unit: 'кг', open: 1, in: 0, out: 3 }] })).success, false);
+  const k = J(C.tsOpCreate('t', 'OP14', { params: { from: ISO, to: ISO }, rows: [{ name: 'Мука', unit: 'кг', open: 1, in: 5, out: 3 }] }));
+  assert.strictEqual(k.totals.sum, 120, 'остаток 3 кг × 40 — цена склада подставлена');
+});
+
+t('ОП-19: журнал на развороте из двух листов А4 альбомных; недостача считается; без суммы прописью', () => {
+  const r = J(C.tsOpCreate('t', 'OP19', { params: { date: ISO }, rows: [{ issueDate: '12.11.2026', person: 'Сидоров И. И.', tab: '7', name: 'Ложка столовая', qty: 3, ret: 2 }] }));
+  assert(/size:A4 landscape/.test(r.html) && /page-break-before:always/.test(r.html) && /Правая сторона разворота/.test(r.html));
+  assert(!/Итого на сумму/.test(r.html));
+  const right = r.html.split('Правая сторона разворота')[1];
+  assert(/Недостача, шт\./.test(right) && /<td[^>]*>1<\/td>/.test(right) && !/Работник \(ФИО\)/.test(right));
+});
+
+t('ОП-24: движение готовых изделий за период — «отпущено» по продажам, остаток 0 допускается', () => {
+  const d = J(C.tsOpPrefill('t', 'OP24', { from: '2026-11-11', to: '2026-11-13' }));
+  const b = d.rows.find(r => r.name === 'Борщ');
+  assert.strictEqual(b.out, 14); assert.strictEqual(b.in, 14); assert.strictEqual(b.qty, 0);
+  assert.strictEqual(J(C.tsOpCreate('t', 'OP24', { params: { from: '2026-11-11', to: '2026-11-13' }, rows: d.rows })).totals.qty, 0);
+});
+
+t('ОП-25: наряд-заказ — цена из продажи, потребность в сырье по нормам ТТК', () => {
+  const r = J(C.tsOpCreate('t', 'OP25', { params: { date: '2026-11-13', customer: 'Банкет', due: '14.11.2026' }, rows: [{ name: 'Суп харчо', qty: 2 }] }));
+  assert.strictEqual(r.totals.saleSum, 600);
+  assert(/<td[^>]*>Суп харчо<\/td><td[^>]*>D-04<\/td>/.test(r.html), '№ ТТК подставлен по названию изделия');
+  assert(/Потребность в сырье/.test(r.html) && /Говядина/.test(r.html) && /Заказчик \(подразделение, организация\): <b>Банкет/.test(r.html) && /Срок исполнения: <b>14\.11\.2026/.test(r.html));
+});
+
+t('ОП-5, ОП-20, ОП-22, ОП-16: ручные формы и реквизиты; закупка — только договорная цена', () => {
+  const z = J(C.tsOpPrefill('t', 'OP5', { date: ISO })); assert.strictEqual(z.rows.length, 0);
+  const p5 = J(C.tsOpPrice('t', 'OP5', 'Мука', 'кг', ISO)); assert.strictEqual(p5.price, 0, 'цена склада в закупочный акт не подставляется'); assert(p5.noPrice);
+  const a = J(C.tsOpCreate('t', 'OP5', { params: { date: ISO, seller: 'Фермер А. А.', sellerDoc: '5300 123456' }, rows: [{ name: 'Картофель', unit: 'кг', qty: 50, price: 30 }] }));
+  assert.strictEqual(a.totals.sum, 1500); assert(/Продавец \(ФИО\): <b>Фермер А\. А\./.test(a.html) && /<td[^>]*>166<\/td>/.test(a.html));
+  const p22 = J(C.tsOpPrice('t', 'OP22', 'Котлета по-киевски', '', ISO)); assert.strictEqual(p22.salePrice, 420);
+  const b = J(C.tsOpCreate('t', 'OP22', { params: { date: ISO, customer: 'ООО «Сосед»', contract: 'Договор № 5' }, rows: [{ name: 'Котлета по-киевски', qty: 3 }] }));
+  assert.strictEqual(b.totals.saleSum, 1260); assert(/Получатель \(организация\): <b>ООО «Сосед»/.test(b.html));
+  assert.strictEqual(J(C.tsOpCreate('t', 'OP20', { params: { date: ISO, table: '5' }, rows: [{ name: 'Борщ', qty: 2 }] })).totals.saleSum, 500);
+  assert.strictEqual(J(C.tsOpPrefill('t', 'OP16', { date: ISO })).totals.sum, 4600);
+});
+
 t('печать: без логотипов и чужих названий; «Утверждаю» — руководитель из настроек; PDF — в папку отчётов', () => {
   const r = J(C.tsOpCreate('t', 'OP12', { params: { date: ISO }, rows: J(C.tsOpPrefill('t', 'OP12', { date: ISO })).rows }));
   assert(!/<img/i.test(r.html), 'логотипа нет'); assert(!/креатив|creative|kreativ/i.test(r.html), 'упоминаний «Креатив шеф» нет');
@@ -138,7 +251,7 @@ t('сумма прописью: склонения', () => {
 
 t('шлюз: функции форм зарегистрированы, запись — только с правом записи, возможность тарифа «Экономика»', () => {
   const src = fs.readFileSync(path.join(root, 'app', 'TS_Subscription.gs'), 'utf8');
-  ['tsOpList', 'tsOpPrefill', 'tsOpPrice', 'tsOpCreate', 'tsOpGet', 'tsOpPdf'].forEach(fn => assert(new RegExp("n: '" + fn + "'.*f: 'economics'").test(src), fn));
+  ['tsOpList', 'tsOpPrefill', 'tsOpPrice', 'tsOpCreate', 'tsOpGet', 'tsOpCatalog', 'tsOpPdf'].forEach(fn => assert(new RegExp("n: '" + fn + "'.*f: 'economics'").test(src), fn));
   assert(/n: 'tsOpCreate', need: '[^']*', mut: true/.test(src));
 });
 console.log('Формы ОП: ' + n + ' проверок пройдено');

@@ -6096,8 +6096,15 @@ VIEWS.tsData = {
   PRE_UPDATE: 'перед обновлением', PRE_IMPORT: 'перед импортом', PRE_RECONCILIATION_APPLY: 'перед исправлениями', PRE_GENERATION: 'перед генерацией документов', PRE_RESTORE: 'перед откатом', PRE_ROTATION: 'перед вырезанием месяца', MONTH_ARCHIVE: 'архив месяца', DUPLICATE_KEY: 'дубль ключа' };
   if (typeof V_RU === 'object') Object.keys(m).forEach(function (k) { if (!V_RU[k]) V_RU[k] = m[k]; }); })();
 
-/* ---------- Формы первичных документов общепита (ОП-3, 7, 10, 11, 12, 18, 21, 23): TS_OpForms.gs ---------- */
+/* ---------- Формы первичных документов общепита (ОП-1…ОП-25, с форматами листов): TS_OpForms.gs ---------- */
 var TS_OP = { d: null, form: 'OP10', rows: [], params: {} };
+function tsOpCalc(f, r) {
+  Object.keys(f.calc || {}).forEach(function (k) {
+    var c = f.calc[k];
+    if (c.need && (r[c.need] === '' || r[c.need] === undefined || r[c.need] === null)) { r[k] = ''; return; }
+    r[k] = Math.round(c.of.reduce(function (s, x) { return s + x[1] * (Number(r[x[0]]) || 0); }, 0) * 1000) / 1000;
+  });
+}
 function tsOpMoney(x) { var v = Math.round((Number(x) || 0) * 100) / 100; return v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 VIEWS.tsOpForms = {
   title: 'Формы документов (ОП)', sub: 'Унифицированные формы общепита: организация, подразделение и цены подставляются сами',
@@ -6110,24 +6117,27 @@ VIEWS.tsOpForms = {
     f: function () { return TS_OP.d.forms.filter(function (x) { return x.key === TS_OP.form; })[0]; },
     draw: function () {
       var d = TS_OP.d, f = VIEWS.tsOpForms.h.f(), o = d.org, P = TS_OP.params, today = vIso();
-      var lab = { date: 'Дата документа', from: 'С', to: 'По', division: 'Структурное подразделение', recipient: 'Получатель (подразделение)', dish: 'Рацион (блюдо) для цены' };
+      var lab = { date: 'Дата документа', from: 'С', to: 'По', division: 'Структурное подразделение', recipient: 'Получатель (подразделение)', dish: 'Рацион (блюдо) для цены', portions: 'Количество порций' };
       var flds = f.params.map(function (k) {
         var l = (f.paramLabels && f.paramLabels[k]) || lab[k];
         if (k === 'date') return [k, l, 'date', P.date || today];
-        if ((k === 'from' || k === 'to') && f.key === 'OP7') return [k, l, 'date', P[k] || today];
+        if ((k === 'from' || k === 'to') && f.period) return [k, l, 'date', P[k] || today];
+        if (k === 'portions') return [k, l, 'number', P[k] || 1];
         if (k === 'division') return [k, l, 'text', P.division !== undefined ? P.division : o.division, 'из настроек организации'];
         return [k, l, 'text', P[k] || ''];
       });
       var h = (o.missing.length ? '<div class="rdnote" style="color:#a33">Не заполнено в «Настройки → Организация»: ' + esc(o.missing.join(', ')) + '. Эти поля печатаются в шапке формы.</div>' : '') +
         vCard('Документ', '<div class="bqf mvf"><div class="mvwide"><label>Форма</label><select id="tsOpForm" onchange="VIEWS.tsOpForms.h.pick(this.value)">' +
-          d.forms.map(function (x) { return '<option value="' + x.key + '"' + (x.key === TS_OP.form ? ' selected' : '') + '>' + esc(x.code + ' — ' + x.title) + '</option>'; }).join('') + '</select></div></div>' +
-          '<div class="rdnote">' + esc(f.help) + '</div><div class="rdnote">Организация: <b>' + esc(o.line || 'не заполнено') + '</b> · ОКПО: <b>' + esc(o.okpo || '—') + '</b>' + (o.director ? ' · Утверждает: <b>' + esc(o.director) + '</b>' : '') + '</div>' +
+          d.forms.map(function (x) { return '<option value="' + x.key + '"' + (x.key === TS_OP.form ? ' selected' : '') + '>' + esc(x.code + ' — ' + x.title + ' (' + x.formatLabel + ')') + '</option>'; }).join('') + '</select></div></div>' +
+          '<div class="rdnote">' + esc(f.help) + ' Формат листа: <b>' + esc(f.formatLabel) + '</b>.</div><div class="rdnote">Организация: <b>' + esc(o.line || 'не заполнено') + '</b> · ОКПО: <b>' + esc(o.okpo || '—') + '</b>' + (o.director ? ' · Утверждает: <b>' + esc(o.director) + '</b>' : '') + '</div>' +
           vForm(flds) + '<datalist id="tsOpDiv">' + d.divisions.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
-          '<datalist id="tsOpNames">' + (f.key === 'OP3' || f.key === 'OP18' ? d.products.map(function (x) { return '<option value="' + esc(x.name) + '">'; }) : f.key === 'OP21' ? [] : d.dishes.map(function (x) { return '<option value="' + esc(x) + '">'; })).join('') + '</datalist>' +
+          '<datalist id="tsOpNames">' + (f.names === 'products' ? d.products.map(function (x) { return '<option value="' + esc(x.name) + '">'; }) : f.names === 'none' ? [] : d.dishes.map(function (x) { return '<option value="' + esc(x) + '">'; })).join('') + '</datalist>' +
           '<div class="mvbar"><button class="btn pri" data-mv="fill">Заполнить из данных системы</button> <button class="btn" data-mv="add">Добавить строку</button></div>' +
           '<div id="tsOpRows"></div>') +
         vCard('Составленные документы', vTable([{ k: 'no', l: 'Номер' }, { l: 'Дата', f: function (x) { return String(x.date).split('-').reverse().join('.'); } }, { k: 'division', l: 'Подразделение' },
-          { l: 'Сумма', t: 'num', f: function (x) { return tsOpMoney(x.sum); } }, { k: 'who', l: 'Составил' }], d.issued, function (x) { return vBtn('Печать', 'print', x.no) + vBtn('PDF на Диск', 'pdf', x.no); }));
+          { l: 'Сумма', t: 'num', f: function (x) { return tsOpMoney(x.sum); } }, { k: 'who', l: 'Составил' }], d.issued, function (x) { return vBtn('Печать', 'print', x.no) + vBtn('PDF на Диск', 'pdf', x.no); })) +
+        vCard('Перечень форм первичной учётной документации', '<div class="mvbar"><button class="btn" data-mv="catalog">Распечатать перечень</button></div>' +
+          vTable([{ k: 'code', l: 'Номер формы' }, { k: 'title', l: 'Наименование формы' }, { k: 'okud', l: 'ОКУД' }, { k: 'formatLabel', l: 'Формат' }], d.forms, function (x) { return vBtn('Открыть', 'pick', x.key); }));
       vBody(h);
       var dv = document.getElementById('mvf_division'); if (dv) dv.setAttribute('list', 'tsOpDiv');
       var dish = document.getElementById('mvf_dish'); if (dish) dish.setAttribute('list', 'tsOpNames2');
@@ -6146,8 +6156,9 @@ VIEWS.tsOpForms = {
           if (r.noPrice) np++;
           return '<tr><td>' + (i + 1) + '</td>' + f.cols.map(function (c) {
             var k = c[0], v = r[k] === undefined || r[k] === null ? '' : r[k];
-            if ((k === 'sum' && f.key !== 'OP7') || k === 'saleSum') return '<td class="num">' + tsOpMoney(v) + '</td>';
+            if ((k === 'sum' && f.source !== 'op3list') || k === 'saleSum') return '<td class="num">' + tsOpMoney(v) + '</td>';
             if (c[2] === 'auto') return '<td>' + esc(v) + '</td>';
+            if (c[2] === 'calc') return '<td class="num"' + (Number(v) < 0 ? ' style="color:#c33"' : '') + '>' + esc(String(v).replace('.', ',')) + '</td>';
             var num = c[2] === 'num' || c[2] === 'money';
             return '<td><input data-op="' + i + '|' + k + '" value="' + esc(v) + '"' + (num ? ' type="number" step="any" style="width:90px' + (r.noPrice && /rice/.test(k) && !(Number(v) > 0) ? ';border-color:#c33' : '') + '"' : (k === 'name' ? ' list="tsOpNames" style="min-width:200px"' : ' style="width:110px"')) +
               ' onchange="VIEWS.tsOpForms.h.cell(this)"></td>';
@@ -6160,16 +6171,17 @@ VIEWS.tsOpForms = {
       box.innerHTML = h;
     },
     recalc: function (r) {
-      var q = Number(r.qty) || 0;
+      var f = VIEWS.tsOpForms.h.f(); tsOpCalc(f, r);
+      var q = Number(r.qty) || 0, moved = q > 0 || !!(f.calc && f.calc.qty && f.calc.qty.of.some(function (x) { return Number(r[x[0]]) > 0; }));
       if (r.salePrice !== undefined) r.saleSum = Math.round((Number(r.salePrice) || 0) * q * 100) / 100;
       if (r.price !== undefined) r.sum = r.kind === 'отходы' ? 0 : Math.round((Number(r.price) || 0) * q * 100) / 100;
-      if (VIEWS.tsOpForms.h.f().key === 'OP7') r.sum = Number(r.sum) || 0;
-      r.noPrice = !!(r.name && q > 0 && ((r.salePrice !== undefined && !(Number(r.salePrice) > 0)) || (r.price !== undefined && r.kind !== 'отходы' && !(Number(r.price) > 0))));
+      if (f.source === 'op3list') r.sum = Number(r.sum) || 0;
+      r.noPrice = !!(r.name && moved && f.source !== 'op3list' && ((r.salePrice !== undefined && !(Number(r.salePrice) > 0)) || (r.price !== undefined && r.kind !== 'отходы' && !(Number(r.price) > 0))));
     },
     cell: function (el) {
       var p = el.getAttribute('data-op').split('|'), r = TS_OP.rows[+p[0]], k = p[1], f = VIEWS.tsOpForms.h.f();
       r[k] = el.type === 'number' ? (el.value === '' ? '' : Number(el.value)) : el.value;
-      if (k === 'name' && r.name && f.key !== 'OP21' && f.key !== 'OP7') {
+      if (k === 'name' && r.name && f.names !== 'none' && (r.price !== undefined || r.salePrice !== undefined)) {
         var P = VIEWS.tsOpForms.h.keep();
         vCall('tsOpPrice', [TOKEN, f.key, r.name, r.unit || '', P.date || '']).then(function (x) {
           if (vErr(x)) return; var d = vData(x);
@@ -6185,8 +6197,9 @@ VIEWS.tsOpForms = {
     },
     add: function () {
       var f = VIEWS.tsOpForms.h.f(), r = {};
-      f.cols.forEach(function (c) { r[c[0]] = c[2] === 'num' ? (f.key === 'OP21' ? 1 : '') : c[2] === 'money' ? 0 : ''; });
-      if (f.key === 'OP23') r.kind = 'сырьё';
+      f.cols.forEach(function (c) { r[c[0]] = c[2] === 'num' ? (f.source === 'staff' && c[0] === 'qty' ? 1 : '') : c[2] === 'money' ? 0 : ''; });
+      if (f.source === 'disassembly') r.kind = 'сырьё';
+      tsOpCalc(f, r);
       TS_OP.rows.push(r); VIEWS.tsOpForms.h.rows();
     },
     del: function (i) { TS_OP.rows.splice(+i, 1); VIEWS.tsOpForms.h.rows(); },
@@ -6200,6 +6213,7 @@ VIEWS.tsOpForms = {
       vDo(btn, 'tsOpCreate', [TOKEN, f.key, JSON.stringify({ params: P, rows: TS_OP.rows })], function (d) { return f.code + ' № ' + d.n + ' сохранён' + (d.noPrice ? ' (без цены строк: ' + d.noPrice + ')' : ''); },
         function (d) { tsPrint(d.html, f.code + ' № ' + d.n); TS_OP.rows = []; VIEWS.tsOpForms.h.load(); });
     },
+    catalog: function () { vCall('tsOpCatalog', [TOKEN]).then(function (r) { var e = vErr(r); if (e) { vMsg(e, 'err'); return; } tsPrint(vData(r).html, 'Перечень форм ОП'); }); },
     print: function (no) { vCall('tsOpGet', [TOKEN, no]).then(function (r) { var e = vErr(r); if (e) { vMsg(e, 'err'); return; } tsPrint(vData(r).html, no); }); },
     pdf: function (no, btn) { vDo(btn, 'tsOpPdf', [TOKEN, no], function (d) { return 'PDF сохранён: ' + d.name; }, function (d) { window.open(d.url, '_blank'); }); }
   }
