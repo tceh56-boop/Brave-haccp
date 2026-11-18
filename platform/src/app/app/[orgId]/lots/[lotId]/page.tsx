@@ -98,7 +98,7 @@ export default function LotPage({ params }: { params: Promise<{ lotId: string }>
       {can('recall.block') && ['available', 'quarantine', 'blocked'].includes(l.status) && Number(l.quantity) > 0 && c.recall?.status !== 'open' && <BlockLot lotId={lotId} />}
       <Marking c={c} onDone={load} />
       <LotBalance lotId={lotId} reload={c} />
-      <LotActions lotId={lotId} status={l.status} quantity={l.quantity} unit={l.unit} onDone={load} />
+      <LotActions lotId={lotId} status={l.status} quantity={l.quantity} unit={l.unit} supplier={l.supplier} onDone={load} />
       {c.tasks.length > 0 && <div className="card"><h3>Открытые задачи</h3><ul className="list">{c.tasks.map((t) => <li key={t.id}>{t.title}</li>)}</ul></div>}
       <Evidence entityType="lot" entityId={lotId} title="Фото маркировки и документы" />
     </>
@@ -230,12 +230,13 @@ function Marking({ c, onDone }: { c: LotCard; onDone: () => void }) {
 }
 
 /** Журнал движений партии, списание, перемещение, прослеживаемость. */
-function LotActions({ lotId, status, quantity, unit, onDone }: { lotId: string; status: string; quantity: string; unit: string; onDone: () => void }) {
+function LotActions({ lotId, status, quantity, unit, supplier, onDone }: { lotId: string; status: string; quantity: string; unit: string; supplier: string | null; onDone: () => void }) {
   const { org, sites, can } = useOrg();
   const [moves, setMoves] = useState<{ kind: string; quantity: string; unit: string; reason: string | null; created_at: string; who: string | null; fefo_override: boolean }[]>([]);
   const [wo, setWo] = useState({ quantity: '', reasonCode: 'expired', comment: '' });
   const [tr, setTr] = useState({ toSiteId: '', quantity: '' });
-  const woOp = useOperationId(), trOp = useOperationId();
+  const [rt, setRt] = useState({ quantity: '', reason: '', docNo: '' });
+  const woOp = useOperationId(), trOp = useOperationId(), rtOp = useOperationId();
   const { busy, error, run } = useSubmit();
   const loadMoves = useCallback(() => api<typeof moves>(`/orgs/${org.id}/lots/${lotId}/movements`).then(setMoves), [org.id, lotId]);
   useEffect(() => { loadMoves(); }, [loadMoves]);
@@ -258,6 +259,23 @@ function LotActions({ lotId, status, quantity, unit, onDone }: { lotId: string; 
             <p className="small muted">Класс потерь: {LOSS_OF[wo.reasonCode]}.</p>
             <label htmlFor="wc">Комментарий</label><input id="wc" value={wo.comment} onChange={(e) => setWo({ ...wo, comment: e.target.value })} required={wo.reasonCode === 'other'} />
             <button className="btn block danger" disabled={busy}>Списать</button>
+          </form>
+        </div>
+      )}
+      {open && supplier && can('stock.write_off') && (
+        <div className="card">
+          <h2>Вернуть поставщику</h2>
+          <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+            await api(`/orgs/${org.id}/money/supplier-returns`, { body: { lotId, quantity: rt.quantity.replace(',', '.'), reason: rt.reason, docNo: rt.docNo || null, operationId: rtOp.id } });
+            rtOp.next(); setRt({ quantity: '', reason: '', docNo: '' }); await after();
+          }); }}>
+            <div className="grid2">
+              <div><label htmlFor="rq">Сколько, {unit}</label><input id="rq" inputMode="decimal" required value={rt.quantity} onChange={(e) => setRt({ ...rt, quantity: e.target.value })} placeholder={`не больше ${n(quantity)}`} /></div>
+              <div><label htmlFor="rd">Документ</label><input id="rd" value={rt.docNo} onChange={(e) => setRt({ ...rt, docNo: e.target.value })} placeholder="акт возврата № …" /></div>
+            </div>
+            <label htmlFor="rr">Причина</label><input id="rr" required value={rt.reason} onChange={(e) => setRt({ ...rt, reason: e.target.value })} placeholder="брак, пересорт, не тот срок" />
+            <p className="small muted">Товар уходит со склада, долг поставщику «{supplier}» уменьшается на сумму по цене накладной. Бухгалтер получит уведомление.</p>
+            <button className="btn block secondary" disabled={busy}>Вернуть поставщику</button>
           </form>
         </div>
       )}

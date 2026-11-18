@@ -86,6 +86,8 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
           <Link href={`/app/${org.id}/events/${id}/requisition`}>Требование в кладовую (печать)</Link></p>
       </div>
 
+      {x.event.can_see_money && <EventPayments id={id} />}
+
       <div className="card">
         <h2>Меню · {x.items.length}</h2>
         {x.items.length === 0 && <p className="small muted">Блюд пока нет.</p>}
@@ -209,5 +211,52 @@ export default function EventPage({ params }: { params: Promise<{ id: string }> 
         </div>
       )}
     </>
+  );
+}
+
+const PAY_METHOD: Record<string, string> = { bank: 'Банк', card: 'Карта', cash: 'Наличные (не из кассы)', cash_register: 'Через кассу смены' };
+const PAY_KIND: Record<string, string> = { prepayment: 'Предоплата', payment: 'Доплата', refund: 'Возврат клиенту' };
+
+/** Оплаты мероприятия: предоплата (аванс), доплата, возврат. Остаток — к сумме по меню (до проведения) или выручке (после). */
+function EventPayments({ id }: { id: string }) {
+  const { org, can } = useOrg();
+  const [x, setX] = useState<{ hidden: boolean; rows: { id: string; kind: string; paid_on: string; amount: number; method: string; method_label: string; doc_no: string | null; voided_at: string | null; void_reason: string | null; who: string }[];
+    money: { status: string; amount: number | null; paid: number; balance: number | null } | null } | null>(null);
+  const [f, setF] = useState({ kind: 'prepayment', amount: '', paidOn: new Date().toLocaleDateString('sv-SE'), method: 'card', docNo: '' });
+  const op = useOperationId();
+  const { busy, error, run } = useSubmit();
+  const load = useCallback(() => api<typeof x>(`/orgs/${org.id}/events/${id}/payments`).then(setX).catch(() => undefined), [org.id, id]);
+  useEffect(() => { load(); }, [load]);
+  if (!x || x.hidden || !x.money) return null;
+  const m = x.money;
+  return (
+    <div className="card">
+      <h2>Оплата</h2>
+      <dl className="kv">
+        <dt>Сумма</dt><dd>{m.amount === null ? 'не определена — у блюда нет цены' : `${n(m.amount)} ₽`}{m.status !== 'done' ? <span className="small muted"> (по меню)</span> : null}</dd>
+        <dt>Оплачено</dt><dd>{n(m.paid)} ₽</dd>
+        <dt>Остаток</dt><dd><b>{m.balance === null ? '—' : `${n(m.balance)} ₽`}</b>{m.balance !== null && m.balance < -0.005 ? <span className="badge warn" style={{ marginLeft: 6 }}>переплата</span> : null}</dd>
+      </dl>
+      {x.rows.length > 0 && <ul className="list">{x.rows.map((p) => <li key={p.id} style={p.voided_at ? { opacity: 0.55 } : undefined} className="between">
+        <span>{p.paid_on.split('-').reverse().join('.')} · {PAY_KIND[p.kind]} · {p.method_label}{p.doc_no ? ` · ${p.doc_no}` : ''}<div className="small muted">{p.who}{p.voided_at ? ` · аннулирована: ${p.void_reason}` : ''}</div></span>
+        <span><b>{p.kind === 'refund' ? '−' : '+'}{n(p.amount)} ₽</b>{can('payment.manage') && !p.voided_at && p.method !== 'cash_register' && <button className="btn small secondary" style={{ marginLeft: 6 }} disabled={busy}
+          onClick={() => { const reason = prompt('Причина аннулирования:'); if (reason) run(async () => { await api(`/orgs/${org.id}/money/event-payments/${p.id}/void`, { body: { reason } }); await load(); }); }}>✕</button>}</span></li>)}</ul>}
+      {can('event.manage') && (m.status !== 'cancelled' || m.paid > 0) ? (
+        <form onSubmit={(e) => { e.preventDefault(); run(async () => {
+          await api(`/orgs/${org.id}/events/${id}/payments`, { body: { ...f, amount: f.amount.replace(',', '.'), docNo: f.docNo || null, operationId: op.id } });
+          op.next(); setF({ ...f, amount: '', docNo: '' }); await load();
+        }); }}>
+          <div className="grid2">
+            <div><label htmlFor="ek">Вид</label><select id="ek" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{Object.entries(PAY_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+            <div><label htmlFor="ea">Сумма, ₽</label><input id="ea" inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></div>
+            <div><label htmlFor="em">Способ</label><select id="em" value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>{Object.entries(PAY_METHOD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+            <div><label htmlFor="ed">Дата</label><input id="ed" type="date" required value={f.paidOn} onChange={(e) => setF({ ...f, paidOn: e.target.value })} /></div>
+          </div>
+          <label htmlFor="en">Документ</label><input id="en" value={f.docNo} onChange={(e) => setF({ ...f, docNo: e.target.value })} placeholder="чек, счёт, п/п № …" />
+          {error && <div className="err" role="alert">{error}</div>}
+          <button className="btn block secondary" disabled={busy}>Записать</button>
+          <p className="small muted">Предоплата до проведения — аванс клиента (наш долг перед ним). «Через кассу смены» сразу меняет наличные открытой смены.</p>
+        </form>) : null}
+    </div>
   );
 }

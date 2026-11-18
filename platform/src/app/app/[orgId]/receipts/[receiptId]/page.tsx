@@ -84,6 +84,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
         </div>
       )}
 
+      {(draft || r.lines.length > 0) && <div className="card"><InvoiceMoney r={r} draft={draft} reload={load} /></div>}
       {r.lines.length > 0 && (
         <div className="card">
           <h2>Позиции</h2>
@@ -103,7 +104,6 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
               </div>
             </li>
           ))}</ul>
-          <InvoiceMoney r={r} draft={draft} reload={load} />
           {draft && <button className="btn block" disabled={busy} onClick={() => run(async () => { setSummary(await api(`/orgs/${org.id}/receipts/${receiptId}/complete`, { body: {} })); await load(); })}>Завершить приёмку</button>}
           {!draft && can('label.print') && r.lines.some((l) => l.lot_id) && (
             <button className="btn block secondary" disabled={busy} onClick={() => run(async () => {

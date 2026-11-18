@@ -5,6 +5,7 @@ import { useOrg } from '@/lib/org';
 import { api } from '@/lib/api';
 import { dt, n } from '@/lib/fmt';
 import { PnlTab, AbcTab, ExpensesTab, ReportsTab } from './finance';
+import { MoneyTab } from './money';
 
 interface Econ { revenue: number; refunds: number; orders: number; avg_check: number | null; payments: Record<string, number>; cogs: number; margin_costed: number; food_cost_pct: number | null;
   complete: boolean; uncosted: { lines: number; amount: number }; write_off: { value: number; unpriced: number };
@@ -35,11 +36,12 @@ export default function EconomicsPage() {
         </div>
         {sites.length > 1 && <select aria-label="Площадка" value={p.siteId} onChange={(x) => setP({ ...p, siteId: x.target.value })} style={{ marginTop: 8 }}><option value="">Все площадки</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
       </div>
-      <div className="chips">{[['summary', 'Сводка'], ['pnl', 'P&L'], ['abc', 'ABC / XYZ'], ['expenses', 'Расходы'], ['reports', 'Отчёты']].map(([k, l]) => <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="chips">{[['summary', 'Сводка'], ['pnl', 'P&L'], ['abc', 'ABC / XYZ'], ['expenses', 'Расходы'], ['money', 'Деньги'], ['reports', 'Отчёты']].map(([k, l]) => <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'pnl' && <PnlTab q={p} />}
       {tab === 'abc' && <AbcTab q={p} />}
       {tab === 'expenses' && <ExpensesTab q={p} />}
       {tab === 'reports' && <ReportsTab q={p} />}
+      {tab === 'money' && <MoneyTab />}
       {tab === 'summary' && err && <div className="err">{err}</div>}
       {tab === 'summary' && e && (
         <>

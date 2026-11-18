@@ -86,12 +86,14 @@ describe('Управленческие отчёты', () => {
     expect(rev.fact).toBe(4300);
     expect(Number(rev.plan)).toBeGreaterThan(0);
     const cf = (await econReport(acc.id, orgId, P('cash_flow'))).table;
-    expect(cf.notes!.join(' ')).toMatch(/Оплаты поставщикам в системе не ведутся/);
+    expect(cf.notes!.join(' ')).toMatch(/по дате движения денег/);   // оплаты поставщикам ведутся с этапа Ф-3 (stage60)
     const pl = (await econReport(acc.id, orgId, P('pnl'))).table;
     expect(pl.rows.find((r) => r.item === 'Чистая выручка')).toMatchObject({ amount: 4300 });
     expect(pl.rows.find((r) => r.item === 'Возвраты')).toMatchObject({ amount: -300 });
     const de = (await econReport(acc.id, orgId, P('debts'))).table;
-    expect(de.rows.every((r) => /не ведётся/.test(String(r.value)))).toBe(true);
+    // с этапа Ф-3 задолженность считается; накладная без цены — «без суммы», а не ноль
+    expect(de.rows.find((r) => r.item === 'Мы должны поставщикам')!.value).toBe(10500);
+    expect(de.rows.find((r) => String(r.item).startsWith('Накладных без суммы'))!.value).toBe(1);
     const co = (await econReport(acc.id, orgId, P('completeness'))).table;
     expect(co.rows.map((r) => r.text).join(' | ')).toMatch(/партии без цены/);
   });

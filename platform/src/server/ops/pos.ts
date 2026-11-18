@@ -173,8 +173,11 @@ async function shiftTotals(tx: Tx, shift: Record<string, any>) {
   const orders = (await tx.query(`select status, count(*)::int as n from pos_orders where shift_id = $1 group by status`, [shift.id])).rows;
   const cnt = (s: string) => orders.find((o) => o.status === s)?.n || 0;
   const sold = cnt('paid') + cnt('refunded');
+  // наличные: оплаты и возвраты наличными + внесения, оплаты мероприятий − выемки, инкассации, расходы и оплаты поставщикам из кассы
+  const { shiftCash } = await import('./money');
+  const c = await shiftCash(tx, shift as { id: string; cash_start: string });
   return { cash: t.cash, card: t.card, other: t.other, revenue: r2(t.cash + t.card + t.other), gross, refunds, orders: sold, open_orders: cnt('open'),
-    avg_check: sold ? r2(gross / sold) : 0, cash_expected: r2(Number(shift.cash_start) + t.cash) };
+    avg_check: sold ? r2(gross / sold) : 0, cash_ops: c.ops, cash_in: c.cash_in, cash_out: c.cash_out, cash_expected: c.cash_expected };
 }
 
 export async function getShift(userId: string, orgId: string, siteId: string) {

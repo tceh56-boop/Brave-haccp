@@ -6,6 +6,8 @@ import { inOrg, parse, assertSiteAccess, getSite } from './common';
 import { pnl, abcXyz, stockFlows, FLOW, EXPENSE_CATEGORY, MGMT_NOTE } from './finance';
 import { WRITE_OFF_REASONS } from './stock';
 import type { Table } from './tableExport';
+import { supplierBalances, eventSettlements, METHOD as PAY_METHOD } from './money';
+import { orgToday } from './common';
 
 /**
  * Управленческие отчёты (ТЗ доработки, 9.4): склад в рублях, закупки по поставщикам, изменение закупочных цен,
@@ -31,13 +33,16 @@ export const REPORTS = {
   turnover: 'Оборачиваемость запасов',
   illiquid: 'Неликвиды и просроченные остатки',
   completeness: 'Полнота данных',
-  debts: 'Дебиторская и кредиторская задолженность',
+  debts: 'Задолженность: сводка',
+  payables: 'Долги поставщикам (кредиторская задолженность)',
+  receivables: 'Расчёты по мероприятиям (авансы и долги клиентов)',
 } as const;
 export type ReportKind = keyof typeof REPORTS;
 
 const Input = z.object({ kind: z.enum(Object.keys(REPORTS) as [ReportKind, ...ReportKind[]]), from: z.iso.date(), to: z.iso.date(), siteId: z.uuid().nullable().optional() })
   .refine((p) => p.from <= p.to, 'Начало периода позже конца.').refine((p) => (Date.parse(p.to) - Date.parse(p.from)) / 86400e3 <= 370, 'Период — не больше года.');
 const r2 = (v: number) => Math.round(v * 100) / 100;
+const fmtMoney = (v: number) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const CHANNEL: Record<string, string> = { pos: 'Касса ЦЕХ (зал, вынос)', iiko: 'iiko (импорт)', r_keeper: 'r_keeper (импорт)', other: 'Другая касса (импорт)', import: 'Импорт', event: 'Мероприятия (банкеты)' };
 const METHOD: Record<string, string> = { cash: 'Наличные', card: 'Карта', other: 'Прочее' };
 
@@ -190,17 +195,62 @@ async function build(c: Ctx, kind: ReportKind): Promise<Table> {
         rows, notes: [plans.length ? 'План — бюджет по месяцам, долей дней месяца в периоде.' : 'Бюджет на период не внесён — план пустой.', `Факт — данные: ${f.status_label}.`] };
     }
     case 'cash_flow': {
-      const inflow = await q(`select method, coalesce(sum(amount) filter (where kind = 'payment'), 0)::float as inc, coalesce(-sum(amount) filter (where kind = 'refund'), 0)::float as ref
-        from pos_payments where organization_id = $1 and ($5::uuid is null or site_id = $5) and created_at ${per} group by method`);
+      // ДДС — по дате движения денег. Внутренние перемещения (инкассация, зачисление эквайринга, переводы между своими счетами)
+      // в сальдо не входят: деньги не пришли и не ушли, а сменили место.
+      const pos = await q(`select method, coalesce(sum(amount) filter (where kind = 'payment'), 0)::float as inc, coalesce(-sum(amount) filter (where kind = 'refund'), 0)::float as ref
+        from pos_payments where organization_id = $1 and ($5::uuid is null or site_id = $5) and created_at ${per} group by method order by method`);
+      const dper = `between $2::date and $3::date and ($4::text is not null)`;
+      const ev = await q(`select p.method, p.kind, sum(p.amount)::float as amount from event_payments p join plan_events e on e.id = p.event_id
+        where p.organization_id = $1 and ($5::uuid is null or e.site_id = $5) and p.voided_at is null and p.paid_on ${dper} group by 1, 2 order by 1, 2`);
+      const sp = await q(`select method, kind, sum(amount)::float as amount from supplier_payments where organization_id = $1 and ($5::uuid is null or site_id is null or site_id = $5)
+        and voided_at is null and paid_on ${dper} group by 1, 2 order by 1, 2`);
+      const ops = await q(`select kind, sum(amount)::float as amount from pos_cash_ops where organization_id = $1 and ($5::uuid is null or site_id = $5) and created_at ${per}
+        and kind in ('deposit', 'withdrawal', 'collection') group by kind`);
+      const bank = await q(`select status, sum(amount)::float as amount, count(*)::int as n from bank_lines where organization_id = $1 and op_date ${dper} and ($5::uuid is null or true) group by status`);
       const f = await pnl(c.userId, c.orgId, { from: c.from, to: c.to, siteId: c.siteId });
-      const rows = [
-        ...inflow.map((r) => ({ item: `Поступления: ${METHOD[r.method] || r.method}`, amount: r2(r.inc) })),
-        ...inflow.filter((r) => r.ref).map((r) => ({ item: `Возвраты покупателям: ${METHOD[r.method] || r.method}`, amount: -r2(r.ref) })),
-        ...Object.entries(f.expenses).map(([k, v]) => ({ item: `Расходы: ${EXPENSE_CATEGORY[k] || k}`, amount: -v })),
+      const op = (k: string) => ops.find((x) => x.kind === k)?.amount || 0;
+      const rows: { section: string; item: string; amount: number }[] = [
+        ...pos.map((r) => ({ section: 'Поступления', item: `Выручка кассы ЦЕХ: ${METHOD[r.method] || r.method}`, amount: r2(r.inc) })),
+        ...ev.filter((r) => r.kind !== 'refund').map((r) => ({ section: 'Поступления', item: `Оплаты мероприятий: ${PAY_METHOD[r.method]}`, amount: r2(r.amount) })),
+        ...sp.filter((r) => r.kind === 'refund').map((r) => ({ section: 'Поступления', item: `Возврат денег от поставщиков: ${PAY_METHOD[r.method]}`, amount: r2(r.amount) })),
+        ...(op('deposit') ? [{ section: 'Поступления', item: 'Внесения наличных в кассу', amount: r2(op('deposit')) }] : []),
+        ...pos.filter((r) => r.ref).map((r) => ({ section: 'Выплаты', item: `Возвраты покупателям: ${METHOD[r.method] || r.method}`, amount: -r2(r.ref) })),
+        ...ev.filter((r) => r.kind === 'refund').map((r) => ({ section: 'Выплаты', item: `Возвраты по мероприятиям: ${PAY_METHOD[r.method]}`, amount: -r2(r.amount) })),
+        ...sp.filter((r) => r.kind === 'payment').map((r) => ({ section: 'Выплаты', item: `Оплаты поставщикам: ${PAY_METHOD[r.method]}`, amount: -r2(r.amount) })),
+        ...Object.entries(f.expenses).map(([k, v]) => ({ section: 'Выплаты', item: `Расходы: ${EXPENSE_CATEGORY[k] || k}`, amount: -v })),
+        ...(op('withdrawal') ? [{ section: 'Выплаты', item: 'Выемки наличных из кассы', amount: -r2(op('withdrawal')) }] : []),
       ];
-      return { title: REPORTS.cash_flow, columns: [{ key: 'item', label: 'Статья' }, { key: 'amount', label: 'Сумма, ₽', type: 'money' }],
-        rows, totals: { item: 'Сальдо по учтённым движениям', amount: r2(rows.reduce((s, r) => s + r.amount, 0)) },
-        notes: ['Поступления — оплаты кассы ЦЕХ; продажи из внешних касс деньгами здесь не учитываются.', 'Оплаты поставщикам в системе не ведутся — в ДДС их нет; расходы — по датам внесения (ежемесячные — долей дней).', 'ДДС неполный, пока не подключены банк и оплаты поставщикам (P3).'] };
+      const saldo = r2(rows.reduce((s, r) => s + r.amount, 0));
+      const internal = [
+        ...(op('collection') ? [{ section: 'Внутренние перемещения (в сальдо не входят)', item: 'Инкассация: касса → банк', amount: r2(op('collection')) }] : []),
+        ...bank.filter((b) => b.status === 'acquiring').map((b) => ({ section: 'Внутренние перемещения (в сальдо не входят)', item: 'Зачисления эквайринга на счёт (оплаты картой уже в выручке)', amount: r2(b.amount) })),
+        ...bank.filter((b) => b.status === 'transfer').map((b) => ({ section: 'Внутренние перемещения (в сальдо не входят)', item: 'Переводы между своими счетами', amount: r2(b.amount) })),
+      ];
+      const unposted = bank.find((b) => b.status === 'new');
+      return { title: REPORTS.cash_flow, columns: [{ key: 'section', label: 'Раздел' }, { key: 'item', label: 'Статья' }, { key: 'amount', label: 'Сумма, ₽', type: 'money' }],
+        rows: [...rows, ...internal], totals: { section: 'Сальдо', item: 'поступления − выплаты', amount: saldo },
+        notes: ['ДДС — по дате движения денег (P&L — по дате продажи и расхода; итоги не обязаны совпадать).',
+          'Продажи внешних касс (iiko, r_keeper) сюда не входят: деньги по ним видны в банковской выписке.',
+          'Расходы — по датам внесения (ежемесячные — долей дней месяца).',
+          ...(unposted ? [`Не разнесено строк банковской выписки: ${unposted.n} на ${fmtMoney(unposted.amount)} ₽ — разнесите в разделе «Деньги → Банк».`] : [])] };
+    }
+    case 'payables': {
+      const today = await orgToday(tx, c.orgId);
+      const rows = (await supplierBalances(tx, c.orgId, today)).filter((r) => r.balance !== 0 || r.unpriced);
+      return { title: REPORTS.payables, columns: [{ key: 'name', label: 'Поставщик' }, { key: 'inn', label: 'ИНН' }, { key: 'invoiced', label: 'По накладным, ₽', type: 'money' },
+          { key: 'credits', label: 'Возвраты и корректировки, ₽', type: 'money' }, { key: 'paid', label: 'Оплачено, ₽', type: 'money' }, { key: 'debt', label: 'Долг, ₽', type: 'money' },
+          { key: 'overdue', label: 'В т. ч. просрочено, ₽', type: 'money' }, { key: 'advance', label: 'Аванс поставщику, ₽', type: 'money' }, { key: 'unpriced', label: 'Накладных без суммы', type: 'num' }],
+        rows, totals: { name: 'Итого', debt: r2(rows.reduce((s, r) => s + r.debt, 0)), overdue: r2(rows.reduce((s, r) => s + r.overdue, 0)), advance: r2(rows.reduce((s, r) => s + r.advance, 0)), unpriced: rows.reduce((s, r) => s + r.unpriced, 0) },
+        notes: [`На ${today.split('-').reverse().join('.')}, по всем площадкам. Срок оплаты — дата документа + отсрочка поставщика.`,
+          'Накладная со строкой без цены в долг не входит: сумма неизвестна (не ноль) — уточните цены.'] };
+    }
+    case 'receivables': {
+      const rows = (await eventSettlements(tx, c.orgId, c.siteId)).map((r) => ({ ...r, date: r.date.split('-').reverse().join('.') }));
+      const sum = (st: string) => r2(rows.filter((r) => r.state === st).reduce((s, r) => s + Math.abs(r.balance ?? 0), 0));
+      return { title: REPORTS.receivables, columns: [{ key: 'name', label: 'Мероприятие' }, { key: 'date', label: 'Дата' }, { key: 'amount', label: 'Сумма, ₽', type: 'money' },
+          { key: 'paid', label: 'Оплачено, ₽', type: 'money' }, { key: 'balance', label: 'Остаток, ₽', type: 'money' }, { key: 'state', label: 'Состояние' }], rows,
+        notes: [`Долги клиентов: ${fmtMoney(sum('долг клиента'))} ₽. Авансы получены (мероприятие не проведено): ${fmtMoney(r2(rows.filter((r) => r.state === 'аванс получен').reduce((s, r) => s + r.paid, 0)))} ₽. Вернуть клиентам по отменённым: ${fmtMoney(sum('вернуть клиенту'))} ₽.`,
+          'Сумма до проведения — по меню (цена × порции), после — выручка мероприятия.'] };
     }
     case 'turnover': {
       const f = await pnl(c.userId, c.orgId, { from: c.from, to: c.to, siteId: c.siteId });
@@ -243,11 +293,22 @@ async function build(c: Ctx, kind: ReportKind): Promise<Table> {
       return { title: REPORTS.completeness, columns: [{ key: 'area', label: 'Область' }, { key: 'text', label: 'Что не хватает' }], rows,
         notes: [`Статус цифр за период: ${f.status_label}.`, rows.length ? 'Пока причины не устранены, отчёты считаются по известным данным и помечаются.' : 'Причин неполноты не найдено.'] };
     }
-    case 'debts':
-      return { title: REPORTS.debts, columns: [{ key: 'item', label: 'Показатель' }, { key: 'value', label: 'Значение' }],
-        rows: [{ item: 'Дебиторская задолженность', value: 'не ведётся: продажи в кредит и счета покупателям в системе не оформляются' },
-          { item: 'Кредиторская задолженность', value: 'не ведётся: оплаты поставщикам в системе не фиксируются (план — интеграция с банком и ЭДО, P3)' }],
-        notes: ['Система не выдаёт задолженность, которой не знает: пустое значение не равно нулю.'] };
+    case 'debts': {
+      const today = await orgToday(tx, c.orgId);
+      const sup = await supplierBalances(tx, c.orgId, today);
+      const ev = await eventSettlements(tx, c.orgId, c.siteId);
+      const S = (xs: number[]) => r2(xs.reduce((a, b) => a + b, 0));
+      const rows = [
+        { item: 'Мы должны поставщикам', value: S(sup.map((r) => r.debt)) }, { item: 'в том числе просрочено', value: S(sup.map((r) => r.overdue)) },
+        { item: 'Авансы, выданные поставщикам', value: S(sup.map((r) => r.advance)) },
+        { item: 'Накладных без суммы (долг по ним неизвестен)', value: sup.reduce((a, r) => a + r.unpriced, 0) },
+        { item: 'Клиенты должны нам (проведённые мероприятия)', value: S(ev.filter((r) => r.state === 'долг клиента').map((r) => r.balance ?? 0)) },
+        { item: 'Авансы, полученные от клиентов (мероприятие не проведено)', value: S(ev.filter((r) => r.state === 'аванс получен').map((r) => r.paid)) },
+        { item: 'Вернуть клиентам по отменённым мероприятиям', value: S(ev.filter((r) => r.state === 'вернуть клиенту').map((r) => r.paid)) },
+      ];
+      return { title: REPORTS.debts, columns: [{ key: 'item', label: 'Показатель' }, { key: 'value', label: 'Сумма, ₽', type: 'money' }], rows,
+        notes: [`На ${today.split('-').reverse().join('.')}. Подробно — отчёты «Долги поставщикам» и «Расчёты по мероприятиям».`, 'Продажи в кредит через кассу не оформляются — другой дебиторки в системе нет.'] };
+    }
   }
 }
 

@@ -97,7 +97,7 @@ interface Exp { id: string; category: string; category_label: string; kind: stri
 export function ExpensesTab({ q }: { q: Q }) {
   const { org, sites } = useOrg();
   const [x, setX] = useState<{ rows: Exp[]; categories: Record<string, string>; can_manage: boolean } | null>(null);
-  const [f, setF] = useState({ category: 'rent', kind: 'monthly', date: q.from, amount: '', title: '', basis: '', siteId: '' });
+  const [f, setF] = useState({ category: 'rent', kind: 'monthly', date: q.from, amount: '', title: '', basis: '', siteId: '', paymentMethod: '' });
   const { busy, error, run } = useSubmit();
   const load = useCallback(() => api<typeof x>(`/orgs/${org.id}/finance/expenses?${qs(q)}`).then(setX), [org.id, q]);
   useEffect(() => { load(); }, [load]);
@@ -117,7 +117,7 @@ export function ExpensesTab({ q }: { q: Q }) {
       </div>
       {x.can_manage && (
         <form className="card" onSubmit={(e) => { e.preventDefault(); run(async () => {
-          await api(`/orgs/${org.id}/finance/expenses`, { body: { ...f, amount: f.amount.replace(',', '.'), siteId: f.siteId || null, basis: f.basis || null } });
+          await api(`/orgs/${org.id}/finance/expenses`, { body: { ...f, amount: f.amount.replace(',', '.'), siteId: f.paymentMethod === 'cash_register' ? f.siteId || sites[0]?.id : f.siteId || null, basis: f.basis || null, paymentMethod: f.paymentMethod || null } });
           setF({ ...f, amount: '', title: '', basis: '' }); await load();
         }); }}>
           <h2>Новый расход</h2>
@@ -127,6 +127,11 @@ export function ExpensesTab({ q }: { q: Q }) {
             <div><label htmlFor="xd">{f.kind === 'monthly' ? 'Месяц (любая дата месяца)' : 'Дата'}</label><input id="xd" type="date" required value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></div>
             <div><label htmlFor="xa">Сумма, ₽</label><input id="xa" inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></div>
           </div>
+          <label htmlFor="xp">Как оплачен</label>
+          <select id="xp" value={f.paymentMethod} onChange={(e) => setF({ ...f, paymentMethod: e.target.value, kind: e.target.value === 'cash_register' ? 'once' : f.kind })}>
+            <option value="">не указано</option><option value="bank">банк</option><option value="card">карта</option><option value="cash">наличные (не из кассы)</option><option value="cash_register">из кассы открытой смены</option>
+          </select>
+          {f.paymentMethod === 'cash_register' && <p className="small muted">Сумма будет выдана из кассы смены{sites.length > 1 ? ' выбранной площадки' : ''}: ожидаемые наличные уменьшатся. Выдать больше, чем в кассе, нельзя.</p>}
           <label htmlFor="xt">Наименование</label><input id="xt" required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Аренда помещения" />
           <label htmlFor="xb">Основание</label><input id="xb" value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })} placeholder="договор, счёт, ведомость" />
           {sites.length > 1 && <><label htmlFor="xs">Площадка</label><select id="xs" value={f.siteId} onChange={(e) => setF({ ...f, siteId: e.target.value })}><option value="">всё предприятие</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></>}

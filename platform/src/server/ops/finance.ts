@@ -34,6 +34,10 @@ const ExpenseInput = z.object({
   amount: z.coerce.number('Сумма.').positive('Сумма больше нуля.').max(1e10),
   title: z.string('Что за расход.').trim().min(2, 'Что за расход.').max(200),
   basis: optText(300),
+  paymentMethod: z.enum(['bank', 'cash', 'cash_register', 'card']).optional().nullable(),   // cash_register — выдача из кассы открытой смены площадки
+  operationId: z.string().trim().min(8).max(100).optional(),
+}).superRefine((x, ctx) => {
+  if (x.paymentMethod === 'cash_register' && (!x.siteId || x.kind !== 'once')) ctx.addIssue({ code: 'custom', message: 'Из кассы — только разовый расход с указанием площадки.' });
 });
 
 export async function addExpense(userId: string, orgId: string, input: unknown) {
@@ -41,8 +45,18 @@ export async function addExpense(userId: string, orgId: string, input: unknown) 
   return inOrg(userId, orgId, 'expense.manage', async (tx, m) => {
     if (d.siteId) { await getSite(tx, orgId, d.siteId); assertSiteAccess(m, d.siteId); }
     const onDate = d.kind === 'monthly' ? `${d.date.slice(0, 8)}01` : d.date;
-    const e = (await tx.query(`insert into expenses (organization_id, site_id, category, kind, on_date, amount, title, basis, created_by) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
-      [orgId, d.siteId || null, d.category, d.kind, onDate, d.amount, d.title, d.basis, userId])).rows[0];
+    if (d.operationId) {
+      const prev = (await tx.query(`select result from operations where organization_id = $1 and operation_id = $2`, [orgId, d.operationId])).rows[0];
+      if (prev) return prev.result;
+    }
+    const e = (await tx.query(`insert into expenses (organization_id, site_id, category, kind, on_date, amount, title, basis, payment_method, created_by) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+      [orgId, d.siteId || null, d.category, d.kind, onDate, d.amount, d.title, d.basis, d.paymentMethod || null, userId])).rows[0];
+    if (d.paymentMethod === 'cash_register') {
+      if (!roleHas(m.role, 'pos.refund')) throw Errors.forbidden('Выдачу из кассы делает руководитель.');
+      const { cashOp } = await import('./money');
+      await cashOp(tx, { orgId, siteId: d.siteId!, kind: 'expense', amount: d.amount, reason: `${EXPENSE_CATEGORY[d.category]}: ${d.title}`, userId, expenseId: e.id });
+    }
+    if (d.operationId) await tx.query(`insert into operations (organization_id, operation_id, kind, result, created_by) values ($1, $2, 'expense', $3, $4)`, [orgId, d.operationId, JSON.stringify(e), userId]);
     await audit.record(tx, { organizationId: orgId, siteId: d.siteId || null, actorUserId: userId, action: 'expense.add', entityType: 'expense', entityId: e.id, after: { ...d, on_date: onDate } });
     return e;
   });
@@ -54,6 +68,8 @@ export async function voidExpense(userId: string, orgId: string, id: string, inp
     const e = (await tx.query(`select * from expenses where id = $1 and organization_id = $2 for update`, [parse(z.uuid(), id), orgId])).rows[0];
     if (!e) throw Errors.notFound('Расход не найден.');
     if (e.voided_at) throw Errors.conflict('Расход уже аннулирован.');
+    if (e.payment_method === 'cash_register') throw Errors.conflict('Расход выдан из кассы — наличные уже выданы, аннулировать нельзя. Если деньги вернули — оформите внесение в кассу.');
+    if ((await tx.query(`select 1 from bank_lines where expense_id = $1`, [e.id])).rowCount) throw Errors.conflict('Расход создан из банковской выписки и не аннулируется.');
     await tx.query(`update expenses set voided_by = $2, voided_at = now(), void_reason = $3 where id = $1`, [e.id, userId, d.reason]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'expense.void', entityType: 'expense', entityId: e.id, reason: d.reason, before: { amount: e.amount, title: e.title } });
     return { ok: true };
