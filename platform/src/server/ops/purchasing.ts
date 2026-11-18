@@ -258,16 +258,20 @@ const SupplierEdit = z.object({
   phone: z.string().trim().max(40).optional().nullable().transform((v) => v || null),
   email: z.string().trim().max(200).optional().nullable().transform((v) => v || null).refine((v) => !v || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), 'Проверьте email.'),
   blockedReason: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
+  paymentDays: z.coerce.number().int('Отсрочка — целое число дней.').min(0).max(365).optional().nullable(),   // отсрочка оплаты по договору поставки
+  inn: z.string().trim().regex(/^(\d{10}|\d{12})$/, 'ИНН — 10 или 12 цифр.').optional().nullable().or(z.literal('').transform(() => null)),
 });
 
 /** Контакты поставщика и блокировка для заказов (с причиной). */
 export async function updateSupplier(userId: string, orgId: string, supplierId: string, input: unknown) {
   const d = parse(SupplierEdit, input);
   return inOrg(userId, orgId, 'catalog.manage', async (tx) => {
-    const before = (await tx.query(`select phone, email, blocked_reason from suppliers where id = $1 and organization_id = $2`, [supplierId, orgId])).rows[0];
+    const before = (await tx.query(`select phone, email, blocked_reason, payment_days, inn from suppliers where id = $1 and organization_id = $2`, [supplierId, orgId])).rows[0];
     if (!before) throw Errors.notFound('Поставщик не найден.');
     if (d.blockedReason !== null && d.blockedReason.length < 5) throw Errors.validation('Причина блокировки — не короче 5 символов.');
-    await tx.query(`update suppliers set phone = $2, email = $3, blocked_reason = $4 where id = $1`, [supplierId, d.phone, d.email, d.blockedReason]);
+    const given = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+    await tx.query(`update suppliers set phone = $2, email = $3, blocked_reason = $4, payment_days = $5, inn = $6 where id = $1`, [supplierId, d.phone, d.email, d.blockedReason,
+      Object.hasOwn(given, 'paymentDays') ? d.paymentDays ?? null : before.payment_days, Object.hasOwn(given, 'inn') ? d.inn ?? null : before.inn]);
     await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'supplier.update', entityType: 'supplier', entityId: supplierId, before, after: d });
     return { ok: true };
   });

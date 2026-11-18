@@ -177,6 +177,8 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
       and opened_at is null and coalesce(received_at, created_at) ${per}`, args)).rows[0].count);
     const noDocs = Number((await tx.query(`select count(*) from receipts where organization_id = $1 and ($5::uuid is null or site_id = $5) and status <> 'draft'
       and coalesce(document_no, '') = '' and completed_at ${per}`, args)).rows[0].count);
+    const noTotal = Number((await tx.query(`select count(*) from receipts where organization_id = $1 and ($5::uuid is null or site_id = $5) and status <> 'draft'
+      and doc_total is null and completed_at ${per}`, args)).rows[0].count);
     const card = Number((await tx.query(`select coalesce(sum(amount), 0) as c from pos_payments where organization_id = $1 and ($5::uuid is null or site_id = $5) and method = 'card' and created_at ${per}`, args)).rows[0].c);
     const ex = await expensesIn(tx, orgId, p.from, p.to, p.siteId || null);
     const byCat: Record<string, number> = {};
@@ -217,6 +219,7 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
     if (missingCats.length) reasons.push({ code: 'expenses_incomplete', affects: 'expenses', text: `неполные расходы: не внесены ${missingCats.map((k) => EXPENSE_CATEGORY[k].toLowerCase()).join(', ')}` });
     if (card > 0 && !byCat.acquiring) reasons.push({ code: 'no_acquiring', affects: 'expenses', text: `оплаты картой ${r2(card)} ₽, а расходов на эквайринг нет` });
     if (noDocs) reasons.push({ code: 'no_purchase_docs', affects: 'confirmation', text: `приёмки без номера закупочного документа: ${noDocs}` });
+    if (noTotal) reasons.push({ code: 'no_doc_total', affects: 'confirmation', text: `приёмки без итога документа (сумма строк не сверена с накладной): ${noTotal}` });
     if (s.imported) reasons.push({ code: 'imported_sales', affects: 'confirmation', text: `продажи из внешней кассы (импорт): ${s.imported} — сверяются с ККТ вне системы` });
     const status = reasons.some((r) => r.affects === 'cost') ? 'incomplete' : reasons.some((r) => r.affects === 'expenses') ? 'approximate'
       : reasons.some((r) => r.affects === 'confirmation') ? 'unconfirmed' : 'full';

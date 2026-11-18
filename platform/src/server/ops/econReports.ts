@@ -111,16 +111,22 @@ async function build(c: Ctx, kind: ReportKind): Promise<Table> {
         notes: [`Остаток на момент формирования; стоимость — по цене партий.${unpriced ? ` Партий без цены: ${unpriced} — их стоимость не включена, итог неполный.` : ''}`] };
     }
     case 'purchases': {
-      const rows = (await q(`select coalesce(s.name, 'Поставщик не указан') as supplier, count(distinct r.id)::int as receipts, count(l.id)::int as lines,
-          sum(l.quantity * l.unit_price) filter (where l.unit_price is not null)::float as amount, count(l.id) filter (where l.unit_price is null)::int as unpriced,
-          count(distinct r.id) filter (where coalesce(r.document_no, '') = '')::int as no_doc
-        from receipts r join receipt_lines l on l.receipt_id = r.id left join suppliers s on s.id = r.supplier_id
-        where r.organization_id = $1 and ($5::uuid is null or r.site_id = $5) and r.status <> 'draft' and l.decision <> 'rejected' and r.completed_at ${per}
-        group by 1 order by amount desc nulls last`));
-      return { title: REPORTS.purchases, columns: [{ key: 'supplier', label: 'Поставщик' }, { key: 'receipts', label: 'Приёмок', type: 'num' }, { key: 'lines', label: 'Позиций', type: 'num' },
-          { key: 'amount', label: 'Сумма, ₽', type: 'money' }, { key: 'unpriced', label: 'Позиций без цены', type: 'num' }, { key: 'no_doc', label: 'Приёмок без документа', type: 'num' }],
-        rows, totals: { supplier: 'Итого', receipts: rows.reduce((s, r) => s + r.receipts, 0), amount: r2(rows.reduce((s, r) => s + (r.amount || 0), 0)), unpriced: rows.reduce((s, r) => s + r.unpriced, 0) },
-        notes: ['Принятые позиции (отклонённые не входят), по ценам приёмки.'] };
+      // суммы — снимки накладной при завершении: по документу (все строки с НДС), НДС в т. ч., доп. расходы, к оплате (без отказанных строк)
+      const rows = (await q(`select coalesce(s.name, 'Поставщик не указан') as supplier, max(s.inn) as inn, count(*)::int as receipts,
+          sum(r.lines_total)::float as doc_amount, sum(r.vat_total)::float as vat, sum(r.extra_costs)::float as extra,
+          sum(r.payable)::float as payable, count(*) filter (where r.payable is null)::int as unpriced,
+          count(*) filter (where coalesce(r.document_no, '') = '')::int as no_doc, count(*) filter (where r.doc_total is null)::int as no_total
+        from receipts r left join suppliers s on s.id = r.supplier_id
+        where r.organization_id = $1 and ($5::uuid is null or r.site_id = $5) and r.status <> 'draft' and r.completed_at ${per}
+        group by s.name order by payable desc nulls last`));
+      const sum = (k: string) => r2(rows.reduce((a, x) => a + (x[k] || 0), 0));
+      return { title: REPORTS.purchases, columns: [{ key: 'supplier', label: 'Поставщик' }, { key: 'inn', label: 'ИНН' }, { key: 'receipts', label: 'Накладных', type: 'num' },
+          { key: 'doc_amount', label: 'По документам, ₽', type: 'money' }, { key: 'vat', label: 'НДС в т. ч., ₽', type: 'money' }, { key: 'extra', label: 'Доп. расходы, ₽', type: 'money' },
+          { key: 'payable', label: 'Принято к оплате, ₽', type: 'money' }, { key: 'unpriced', label: 'Накладных без цены', type: 'num' }, { key: 'no_doc', label: 'Без номера', type: 'num' },
+          { key: 'no_total', label: 'Без итога документа', type: 'num' }],
+        rows, totals: { supplier: 'Итого', receipts: rows.reduce((a, x) => a + x.receipts, 0), doc_amount: sum('doc_amount'), vat: sum('vat'), extra: sum('extra'), payable: sum('payable'), unpriced: rows.reduce((a, x) => a + x.unpriced, 0) },
+        notes: ['«По документам» — все строки накладной с НДС, как в документе; «Принято к оплате» — без отказанных строк, с доп. расходами.',
+          'АУСН и патент: НДС к вычету не принимается, он входит в себестоимость товара.', 'Накладная со строкой без цены в сумму к оплате не входит — она неизвестна, а не ноль.'] };
     }
     case 'price_changes': {
       const rows = (await q(`with x as (select p.name, l.unit, l.unit_price::float as price, r.completed_at,

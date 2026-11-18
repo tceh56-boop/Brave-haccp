@@ -6,7 +6,7 @@ import { useSubmit } from '@/components/useSubmit';
 import { api } from '@/lib/api';
 
 interface Org { id: string; name: string; legal_form: string | null; inn: string | null; phone: string | null; region: string | null; timezone: string; status: string;
-  ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null; modules?: string[]; sales_consumption?: string }
+  ogrn?: string | null; legal_address?: string | null; email?: string | null; head_position?: string | null; head_name?: string | null; head_basis?: string | null; activity_notice?: string | null; modules?: string[]; sales_consumption?: string; tax_regime?: string | null; invoice_prices_with_vat?: boolean }
 interface Membership { role: string; role_label: string; site_ids: string[]; permissions: string[] }
 interface Site { id: string; name: string; address: string | null; status: string }
 interface Member { id: string; user_id: string; full_name: string; email: string; role: string; role_label: string; site_ids: string[]; position: string | null; status: string; blocked_reason: string | null; has_pin?: boolean }
@@ -382,6 +382,22 @@ function OrgModules({ org, defs, canEdit }: { org: Org; defs: ModuleDef[]; canEd
               onChange={() => run(async () => { await api(`/orgs/${org.id}`, { method: "PATCH", body: { salesConsumption: k } }); window.location.reload(); })} />
             <span><b>{l}</b><br /><span className="small muted">{h}</span></span>
           </label>))}
+      <h3 style={{ marginTop: 16 }}>Налоги и накладные</h3>
+      <label htmlFor="tax">Режим налогообложения</label>
+      <select id="tax" disabled={!canEdit || busy} value={org.tax_regime || ''}
+        onChange={(e) => run(async () => { await api(`/orgs/${org.id}`, { method: 'PATCH', body: { taxRegime: e.target.value || null } }); window.location.reload(); })}>
+        <option value="">— не указан —</option>
+        <option value="ausn_income">АУСН «доходы»</option>
+        <option value="ausn_income_expense">АУСН «доходы минус расходы»</option>
+        <option value="psn">Патентная система (ПСН)</option>
+      </select>
+      <p className="small muted">Оба режима — без НДС к вычету: себестоимость товара считается по цене с НДС поставщика. Сам налог считает банк (АУСН) или он фиксирован (патент); его платёж вносится расходом «Налоги и сборы».
+        {org.tax_regime === 'ausn_income_expense' ? ' Для «доходы минус расходы» бухгалтеру нужны оплаченные расходы — реестр оплат поставщикам и расходов есть в выгрузках.' : ''}</p>
+      <label className="row" style={{ fontWeight: 400, marginTop: 6 }}>
+        <input type="checkbox" style={{ width: 22, minHeight: 22 }} disabled={!canEdit || busy} checked={org.invoice_prices_with_vat !== false}
+          onChange={(e) => run(async () => { await api(`/orgs/${org.id}`, { method: 'PATCH', body: { invoicePricesWithVat: e.target.checked } }); window.location.reload(); })} />
+        <span>В накладных поставщиков цены обычно указаны с НДС <span className="small muted">— значение для новой приёмки; в каждой накладной можно поменять</span></span>
+      </label>
       {error && <div className="err">{error}</div>}
     </div>
   );

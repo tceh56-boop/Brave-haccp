@@ -69,7 +69,7 @@ describe('Управленческие отчёты', () => {
     expect(st.totals).toMatchObject({ value: 10500, unpriced: 1 });
     expect(st.notes!.join(' ')).toMatch(/без цены: 1 — их стоимость не включена/);
     const pu = (await econReport(acc.id, orgId, P('purchases'))).table;
-    expect(pu.rows.map((r) => [r.supplier, r.amount, r.unpriced])).toEqual([['ООО «Мясо»', 10500, 0], ['ООО «Молоко»', null, 1]]);
+    expect(pu.rows.map((r) => [r.supplier, r.payable, r.unpriced])).toEqual([['ООО «Мясо»', 10500, 0], ['ООО «Молоко»', null, 1]]);   // к оплате — снимок накладной; без цены — не 0
     const pc = (await econReport(acc.id, orgId, P('price_changes'))).table;
     expect(pc.rows[0]).toMatchObject({ name: 'Говядина', first: 500, last: 550, change: 10 });
   });

@@ -9,9 +9,12 @@ import { d, n } from '@/lib/fmt';
 import { Evidence } from '@/components/Evidence';
 import { RecognizeDocument } from '@/components/RecognizeDocument';
 
-interface Line { id: string; product_id: string; product: string; quantity: string; unit: string; lot_no: string | null; expires_at: string | null; expiry_basis: string | null; temperature: string | null; decision: string; decision_reason: string | null; storage_name: string | null; lot_id: string | null }
+interface Line { id: string; product_id: string; product: string; quantity: string; unit: string; lot_no: string | null; expires_at: string | null; expiry_basis: string | null; temperature: string | null; decision: string; decision_reason: string | null; storage_name: string | null; lot_id: string | null;
+  unit_price: string | null; doc_price: string | null; vat_rate: string | null }
 interface OrderLine { product_id: string; product: string; quantity: string; unit: string; price: string | null }
-interface R { receipt: { id: string; status: string; status_label: string; document_no: string | null; supplier: string | null; site_id: string }; lines: Line[];
+interface Money { prices_with_vat: boolean; doc_total: string | null; extra_costs: string; extra_costs_note: string | null; total_mismatch_reason: string | null;
+  lines_total: string | null; vat_total: string | null; payable: string | null; due_date: string | null }
+interface R { receipt: { id: string; status: string; status_label: string; document_no: string | null; supplier: string | null; site_id: string } & Money; lines: Line[];
   order: { id: string; number: number; lines: OrderLine[] } | null }
 interface Product { id: string; name: string; unit: string }
 /** Каскад цен после приёмки: что подорожало и как изменилась себестоимость блюд (только при праве cost.read). */
@@ -21,7 +24,7 @@ interface Obj { id: string; name: string }
 
 const CHECKS: [string, string][] = [['packaging', 'Упаковка цела'], ['labeling', 'Маркировка есть и читается'], ['documents', 'Документы в порядке'], ['quality', 'Качество (вид, запах)']];
 const DEC: Record<string, [string, string]> = { accepted: ['принято', 'ok'], quarantine: ['карантин', 'warn'], rejected: ['отказ', 'crit'] };
-const empty = { productId: '', quantity: '', lotNo: '', manufacturedAt: '', expiresAt: '', expiryBasis: 'маркировка изготовителя', temperature: '', storageObjectId: '', decisionReason: '', unitPrice: '', manufacturer: '', vsdNo: '', storageConditions: '' };
+const empty = { productId: '', quantity: '', lotNo: '', manufacturedAt: '', expiresAt: '', expiryBasis: 'маркировка изготовителя', temperature: '', storageObjectId: '', decisionReason: '', unitPrice: '', vatRate: '', manufacturer: '', vsdNo: '', storageConditions: '' };
 
 export default function ReceiptPage({ params }: { params: Promise<{ receiptId: string }> }) {
   const { receiptId } = use(params);
@@ -50,7 +53,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
       productId: f.productId, quantity: f.quantity.replace(',', '.'), lotNo: f.lotNo || null, manufacturedAt: f.manufacturedAt || null,
       expiresAt: f.expiresAt || null, expiryBasis: f.expiresAt ? f.expiryBasis : null, temperature: f.temperature ? f.temperature.replace(',', '.') : null,
       checks, decision, decisionReason: decision === 'accepted' ? null : f.decisionReason, storageObjectId: f.storageObjectId || null,
-      unitPrice: f.unitPrice ? f.unitPrice.replace(',', '.') : null,
+      unitPrice: f.unitPrice ? f.unitPrice.replace(',', '.') : null, vatRate: f.vatRate ? f.vatRate.replace(',', '.') : null,
       manufacturer: f.manufacturer || null, vsdNo: f.vsdNo || null, storageConditions: f.storageConditions || null,
     } });
     setF({ ...empty, storageObjectId: f.storageObjectId }); setChecks({ packaging: null, labeling: null, documents: null, quality: null }); await load();
@@ -89,6 +92,8 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
               <div className="between">
                 <div><b>{l.product}</b> · {n(l.quantity)} {l.unit}{l.lot_no ? ` · партия ${l.lot_no}` : ''}
                   <div className="small muted">{l.expires_at ? `годен до ${d(l.expires_at, org.timezone)} (${l.expiry_basis})` : 'срок не указан'}{l.temperature !== null ? ` · ${n(l.temperature)} °C` : ''}{l.storage_name ? ` · ${l.storage_name}` : ''}</div>
+                  {l.doc_price !== null && <div className="small">{n(l.doc_price)} ₽ × {n(l.quantity)} = {n(Math.round(Number(l.doc_price) * Number(l.quantity) * 100) / 100)} ₽ {l.vat_rate === null ? 'без НДС' : `НДС ${n(l.vat_rate)} %`}
+                    {l.unit_price !== null && l.unit_price !== l.doc_price && Number(l.unit_price) !== Number(l.doc_price) ? ` · с НДС ${n(l.unit_price)} ₽/${l.unit}` : ''}</div>}
                   {l.decision_reason && <div className="small">{l.decision_reason}</div>}
                 </div>
                 <div className="row"><span className={`badge ${DEC[l.decision][1]}`}>{DEC[l.decision][0]}</span>
@@ -98,6 +103,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
               </div>
             </li>
           ))}</ul>
+          <InvoiceMoney r={r} draft={draft} reload={load} />
           {draft && <button className="btn block" disabled={busy} onClick={() => run(async () => { setSummary(await api(`/orgs/${org.id}/receipts/${receiptId}/complete`, { body: {} })); await load(); })}>Завершить приёмку</button>}
           {!draft && can('label.print') && r.lines.some((l) => l.lot_id) && (
             <button className="btn block secondary" disabled={busy} onClick={() => run(async () => {
@@ -165,7 +171,8 @@ export default function ReceiptPage({ params }: { params: Promise<{ receiptId: s
             <div><label htmlFor="t">Температура при приёмке, °C</label><input id="t" inputMode="decimal" value={f.temperature} onChange={(e) => setF({ ...f, temperature: e.target.value })} placeholder="если требуется" /></div>
             <div><label htmlFor="so">Место хранения</label>
               <select id="so" value={f.storageObjectId} onChange={(e) => setF({ ...f, storageObjectId: e.target.value })}><option value="">—</option>{objects.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
-            <div><label htmlFor="up">Цена за {unit || 'единицу'}, ₽</label><input id="up" inputMode="decimal" value={f.unitPrice} onChange={(e) => setF({ ...f, unitPrice: e.target.value })} placeholder="как в накладной" /></div>
+            <div><label htmlFor="up">Цена за {unit || 'единицу'}, ₽ ({r.receipt.prices_with_vat ? 'с НДС' : 'без НДС'})</label><input id="up" inputMode="decimal" value={f.unitPrice} onChange={(e) => setF({ ...f, unitPrice: e.target.value })} placeholder="как в накладной" /></div>
+            <div><label htmlFor="vr">НДС, % по документу</label><input id="vr" inputMode="decimal" value={f.vatRate} onChange={(e) => setF({ ...f, vatRate: e.target.value })} placeholder="пусто — «без НДС»" /></div>
             <div><label htmlFor="mfr">Изготовитель</label><input id="mfr" value={f.manufacturer} onChange={(e) => setF({ ...f, manufacturer: e.target.value })} placeholder="как на маркировке" /></div>
             <div><label htmlFor="vsd">Номер ВСД</label><input id="vsd" value={f.vsdNo} onChange={(e) => setF({ ...f, vsdNo: e.target.value })} placeholder="для подконтрольной продукции" /></div>
             <div><label htmlFor="stc">Условия хранения</label><input id="stc" value={f.storageConditions} onChange={(e) => setF({ ...f, storageConditions: e.target.value })} placeholder="как на маркировке, напр. 0…+4 °C" /></div>
@@ -216,6 +223,53 @@ function FiscalQr({ receiptId }: { receiptId: string }) {
         {error && <div className="err">{error}</div>}
         <button className="btn small" disabled={busy || qr.length < 5}>Сверить чек</button>
       </form>}
+    </div>
+  );
+}
+
+const money = (v: number | string | null | undefined) => (v === null || v === undefined ? 'не определена' : `${n(Number(v))} ₽`);
+
+/**
+ * Деньги накладной. Черновик: цены с НДС или без, итог документа, доставка и тара, причина расхождения — сумма строк
+ * сверяется с итогом при завершении. Завершённая: снимок — по документу, НДС в т. ч., к оплате и срок оплаты.
+ */
+function InvoiceMoney({ r, draft, reload }: { r: R; draft: boolean; reload: () => Promise<void> }) {
+  const { org } = useOrg();
+  const x = r.receipt;
+  const { busy, error, run } = useSubmit();
+  const [t, setT] = useState({ docTotal: x.doc_total ?? '', extra: Number(x.extra_costs) ? String(x.extra_costs) : '', note: x.extra_costs_note ?? '', reason: x.total_mismatch_reason ?? '' });
+  if (!draft) return (
+    <dl className="kv">
+      <dt>По документу (с НДС)</dt><dd>{money(x.lines_total)}{x.doc_total !== null ? ` · итог документа ${n(Number(x.doc_total))} ₽` : ' · итог документа не внесён'}</dd>
+      <dt>НДС в том числе</dt><dd>{money(x.vat_total)} <span className="small muted">(АУСН и патент: в себестоимости товара)</span></dd>
+      {Number(x.extra_costs) > 0 && <><dt>Доп. расходы</dt><dd>{n(Number(x.extra_costs))} ₽ — {x.extra_costs_note}</dd></>}
+      <dt>К оплате поставщику</dt><dd><b>{money(x.payable)}</b>{x.due_date ? ` · срок ${d(x.due_date, org.timezone)}` : ''}</dd>
+      {x.total_mismatch_reason && <><dt>Расхождение с документом</dt><dd>{x.total_mismatch_reason}</dd></>}
+    </dl>
+  );
+  const sum = r.lines.reduce<number | null>((a, l) => (a === null || l.unit_price === null ? null : a + Math.round(Number(l.quantity) * Number(l.unit_price) * 100) / 100), 0);
+  const diff = sum !== null && t.docTotal !== '' ? Math.round((sum - Number(String(t.docTotal).replace(',', '.'))) * 100) / 100 : null;
+  const save = (body: Record<string, unknown>) => run(async () => { await api(`/orgs/${org.id}/receipts/${x.id}`, { method: 'PATCH', body }); await reload(); });
+  return (
+    <div style={{ margin: '12px 0' }}>
+      <h3>Деньги накладной</h3>
+      <div className="row">
+        <label className="row" style={{ gap: 6 }}><input type="radio" name="vat" checked={x.prices_with_vat} disabled={busy} onChange={() => save({ pricesWithVat: true })} style={{ width: 22, minHeight: 22 }} /> цены в документе с НДС</label>
+        <label className="row" style={{ gap: 6 }}><input type="radio" name="vat" checked={!x.prices_with_vat} disabled={busy} onChange={() => save({ pricesWithVat: false })} style={{ width: 22, minHeight: 22 }} /> без НДС</label>
+      </div>
+      <p className="small muted">АУСН и патент: НДС не возмещается, поэтому себестоимость считается по цене с НДС. Цены «без НДС» система доводит до цены с НДС по ставке строки.</p>
+      <p>Сумма строк (с НДС): <b>{money(sum === null ? null : Math.round(sum * 100) / 100)}</b>{diff !== null && Math.abs(diff) > 0.01 * Math.max(1, r.lines.length) ? <span className="badge crit" style={{ marginLeft: 6 }}>не сходится с итогом на {n(diff)} ₽</span> : diff !== null ? <span className="badge ok" style={{ marginLeft: 6 }}>сходится с итогом</span> : null}</p>
+      <div className="grid2">
+        <div><label htmlFor="dt">Итог документа «Всего к оплате», ₽</label><input id="dt" inputMode="decimal" value={t.docTotal} onChange={(e) => setT({ ...t, docTotal: e.target.value })}
+          onBlur={() => save({ docTotal: t.docTotal === '' ? null : String(t.docTotal).replace(',', '.') })} placeholder="как в накладной" /></div>
+        <div><label htmlFor="ex">Доставка, тара, ₽</label><input id="ex" inputMode="decimal" value={t.extra} onChange={(e) => setT({ ...t, extra: e.target.value })} placeholder="если есть" /></div>
+        <div><label htmlFor="exn">Что за доп. расходы</label><input id="exn" value={t.note} onChange={(e) => setT({ ...t, note: e.target.value })}
+          onBlur={() => save({ extraCosts: t.extra ? t.extra.replace(',', '.') : 0, extraCostsNote: t.note || null })} placeholder="доставка по счёту № …" /></div>
+        {diff !== null && Math.abs(diff) > 0.01 * Math.max(1, r.lines.length) && <div><label htmlFor="mr">Причина расхождения с документом</label><input id="mr" value={t.reason} onChange={(e) => setT({ ...t, reason: e.target.value })}
+          onBlur={() => save({ totalMismatchReason: t.reason || null })} placeholder="недовоз, пересорт — составлен акт" /></div>}
+      </div>
+      <p className="small muted">Доставка и тара распределяются на принятые строки пропорционально сумме и входят в цену партии. Отказанные строки к оплате не входят.</p>
+      {error && <div className="err" role="alert">{error}</div>}
     </div>
   );
 }

@@ -75,7 +75,12 @@ const Requisites = z.object({
 });
 const OrgPatch = OrgInput.omit({ firstSiteName: true }).partial().merge(Requisites.partial())
   .extend({ modules: z.array(z.enum(Object.keys(MODULES) as [ModuleCode, ...ModuleCode[]], 'Неизвестный модуль.')).max(10).optional(),
-    salesConsumption: z.enum(['estimate', 'ttk_writeoff'], 'Неизвестный способ учёта расхода по продажам.').optional() });
+    salesConsumption: z.enum(['estimate', 'ttk_writeoff'], 'Неизвестный способ учёта расхода по продажам.').optional(),
+    // режим налогообложения (решение владельца): АУСН «доходы», АУСН «доходы минус расходы», патент; null — не указан
+    taxRegime: z.enum(['ausn_income', 'ausn_income_expense', 'psn'], 'Неизвестный режим налогообложения.').nullable().optional(),
+    invoicePricesWithVat: z.boolean().optional() });
+
+export const TAX_REGIME: Record<string, string> = { ausn_income: 'АУСН «доходы»', ausn_income_expense: 'АУСН «доходы минус расходы»', psn: 'Патентная система (ПСН)' };
 
 export async function updateOrganization(userId: string, orgId: string, input: unknown) {
   const d = parse(OrgPatch, input);
@@ -98,6 +103,17 @@ export async function updateOrganization(userId: string, orgId: string, input: u
       await tx.query(`update organizations set sales_consumption = $2 where id = $1`, [orgId, d.salesConsumption]);
       await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.sales_consumption', entityType: 'organization', entityId: orgId,
         before: { sales_consumption: before.sales_consumption }, after: { sales_consumption: d.salesConsumption } });
+    }
+    const given0 = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+    if (Object.hasOwn(given0, 'taxRegime') && (d.taxRegime ?? null) !== before.tax_regime) {
+      await tx.query(`update organizations set tax_regime = $2 where id = $1`, [orgId, d.taxRegime ?? null]);
+      await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.tax_regime', entityType: 'organization', entityId: orgId,
+        before: { tax_regime: before.tax_regime }, after: { tax_regime: d.taxRegime ?? null } });
+    }
+    if (d.invoicePricesWithVat !== undefined && d.invoicePricesWithVat !== before.invoice_prices_with_vat) {
+      await tx.query(`update organizations set invoice_prices_with_vat = $2 where id = $1`, [orgId, d.invoicePricesWithVat]);
+      await audit.record(tx, { organizationId: orgId, actorUserId: userId, action: 'org.invoice_prices', entityType: 'organization', entityId: orgId,
+        before: { invoice_prices_with_vat: before.invoice_prices_with_vat }, after: { invoice_prices_with_vat: d.invoicePricesWithVat } });
     }
     // поля, переданные в запросе, записываются как есть: пустое значение очищает поле (раньше coalesce не давал очистить)
     const CLEARABLE: [keyof typeof d, string][] = [['inn', 'inn'], ['phone', 'phone'], ['region', 'region'], ['ogrn', 'ogrn'], ['legalAddress', 'legal_address'], ['email', 'email'],
