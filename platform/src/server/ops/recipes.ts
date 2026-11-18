@@ -274,9 +274,9 @@ async function convert(tx: Tx, productId: string | null, qty: number, from: stri
 /** Цена за единицу товара: средневзвешенная по партиям в остатке, иначе последняя закупка. */
 export async function productPrice(tx: Tx, orgId: string, productId: string): Promise<{ price: number; unit: string; source: string } | null> {
   const avg = (await tx.query(`select sum(quantity * unit_price) / nullif(sum(quantity), 0) as price, min(unit) as unit, count(*)::int as n
-    from lots where organization_id = $1 and product_id = $2 and unit_price is not null and quantity > 0 and status in ('available', 'quarantine')`, [orgId, productId])).rows[0];
+    from lots where organization_id = $1 and product_id = $2 and unit = (select unit from products where id = $2) and unit_price is not null and quantity > 0 and status in ('available', 'quarantine')`, [orgId, productId])).rows[0];
   if (avg?.price !== null && avg?.price !== undefined) return { price: Number(avg.price), unit: avg.unit, source: `средняя по остатку (${avg.n} парт.)` };
-  const last = (await tx.query(`select unit_price, unit, received_at from lots where organization_id = $1 and product_id = $2 and unit_price is not null order by received_at desc limit 1`, [orgId, productId])).rows[0];
+  const last = (await tx.query(`select unit_price, unit, received_at from lots where organization_id = $1 and product_id = $2 and unit = (select unit from products where id = $2) and unit_price is not null order by received_at desc limit 1`, [orgId, productId])).rows[0];
   if (last) return { price: Number(last.unit_price), unit: last.unit, source: `последняя закупка ${new Date(last.received_at).toLocaleDateString('ru-RU')}` };
   return null;
 }

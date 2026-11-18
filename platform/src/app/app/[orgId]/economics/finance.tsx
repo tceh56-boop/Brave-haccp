@@ -14,6 +14,7 @@ const pc = (v: number | null) => (v === null ? '' : ` · ${n(v)} %`);
 interface Pnl { note: string; status: string; status_label: string; reasons: { code: string; text: string; affects: string }[];
   gross_revenue: number; returns: number; revenue: number; orders: number; avg_check: number | null; cogs: number; costed_revenue: number;
   food_cost_pct: number | null; markup_pct: number | null; margin_pct: number | null; gross_margin: number; losses: number; losses_unpriced: number;
+  staff_meals: number; other_consumption: number; inventory_shortage: number; inventory_surplus: number; inventory_diff: number | null; sales_consumption: string;
   payroll: number; prime_cost: number; expenses: Record<string, number>; opex: number; opex_other: number; profit: number;
   pct: Record<string, number | null>; categories: Record<string, string>; complete: boolean; incomplete: string[] }
 const STATUS_TONE: Record<string, string> = { full: 'ok', approximate: 'warn', unconfirmed: 'warn', incomplete: 'crit', estimated: 'warn' };
@@ -39,6 +40,11 @@ export function PnlTab({ q }: { q: Q }) {
         <dt>Себестоимость продаж</dt><dd>− {n(x.cogs)} ₽{pc(x.pct.cogs)}</dd>
         <dt>Валовая прибыль</dt><dd><b>{n(x.gross_margin)} ₽</b>{pc(x.pct.gross)}</dd>
         <dt>Списания (подтверждённые потери)</dt><dd>− {n(x.losses)} ₽{pc(x.pct.losses)}{x.losses_unpriced ? <span className="small" style={{ color: 'var(--crit)' }}> + без цены: {x.losses_unpriced}</span> : null}</dd>
+        <dt>Инвентаризационные разницы</dt><dd>{x.inventory_diff === null
+          ? <span className="small muted">не вычитаются: продажи не списывают сырьё со склада, недостача ({n(x.inventory_shortage)} ₽) включает проданное. Факт против ТТК — отчёт «Сверка склада».</span>
+          : <>− {n(x.inventory_diff)} ₽{pc(x.pct.inventory)} <span className="small muted">(недостачи {n(x.inventory_shortage)} − излишки {n(x.inventory_surplus)})</span></>}</dd>
+        <dt>Питание персонала и проработки</dt><dd>− {n(x.staff_meals)} ₽{pc(x.pct.staff)}</dd>
+        <dt>Прочий расход сырья</dt><dd>− {n(x.other_consumption)} ₽{pc(x.pct.other_use)}</dd>
         <dt>ФОТ</dt><dd>− {n(x.payroll)} ₽</dd>
         {other.map(([k, v]) => <Fragment key={k}><dt>{x.categories[k]}</dt><dd>− {n(v)} ₽</dd></Fragment>)}
         <dt>Управленческая прибыль</dt><dd><b style={x.profit < 0 ? { color: 'var(--crit, #b3261e)' } : undefined}>{n(x.profit)} ₽</b>{pc(x.pct.profit)}</dd>

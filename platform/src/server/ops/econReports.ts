@@ -3,7 +3,7 @@ import type { Tx } from '../db/pool';
 import { audit } from '../audit/audit';
 import { Errors } from '../http/errors';
 import { inOrg, parse, assertSiteAccess, getSite } from './common';
-import { pnl, abcXyz, EXPENSE_CATEGORY, MGMT_NOTE } from './finance';
+import { pnl, abcXyz, stockFlows, FLOW, EXPENSE_CATEGORY, MGMT_NOTE } from './finance';
 import { WRITE_OFF_REASONS } from './stock';
 import type { Table } from './tableExport';
 
@@ -18,6 +18,7 @@ import type { Table } from './tableExport';
 export const REPORTS = {
   pnl: 'Отчет руководителя (P&L)',
   abc: 'ABC / XYZ блюд',
+  stock_flow: 'Сверка склада и фактический фудкост',
   stock_value: 'Остатки склада в рублях',
   purchases: 'Закупки по поставщикам',
   price_changes: 'Изменение закупочных цен',
@@ -37,7 +38,7 @@ export type ReportKind = keyof typeof REPORTS;
 const Input = z.object({ kind: z.enum(Object.keys(REPORTS) as [ReportKind, ...ReportKind[]]), from: z.iso.date(), to: z.iso.date(), siteId: z.uuid().nullable().optional() })
   .refine((p) => p.from <= p.to, 'Начало периода позже конца.').refine((p) => (Date.parse(p.to) - Date.parse(p.from)) / 86400e3 <= 370, 'Период — не больше года.');
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const CHANNEL: Record<string, string> = { pos: 'Касса ЦЕХ (зал, вынос)', iiko: 'iiko (импорт)', r_keeper: 'r_keeper (импорт)', other: 'Другая касса (импорт)', import: 'Импорт' };
+const CHANNEL: Record<string, string> = { pos: 'Касса ЦЕХ (зал, вынос)', iiko: 'iiko (импорт)', r_keeper: 'r_keeper (импорт)', other: 'Другая касса (импорт)', import: 'Импорт', event: 'Мероприятия (банкеты)' };
 const METHOD: Record<string, string> = { cash: 'Наличные', card: 'Карта', other: 'Прочее' };
 
 type Ctx = { tx: Tx; orgId: string; userId: string; from: string; to: string; siteId: string | null; tz: string; per: string; args: unknown[] };
@@ -51,7 +52,8 @@ async function build(c: Ctx, kind: ReportKind): Promise<Table> {
       const row = (item: string, amount: number | null, pctV: number | null = null) => ({ item, amount, pct: pctV });
       const rows = [row('Валовая выручка', f.gross_revenue), row('Возвраты', -f.returns), row('Чистая выручка', f.revenue, 100),
         row('Количество заказов', f.orders), row('Средний чек', f.avg_check), row('Себестоимость продаж', -f.cogs, f.pct.cogs), row('Валовая прибыль', f.gross_margin, f.pct.gross),
-        row('Списания (подтверждённые потери)', -f.losses, f.pct.losses), row('ФОТ', -f.payroll),
+        row('Списания (подтверждённые потери)', -f.losses, f.pct.losses), row(f.inventory_diff === null ? 'Инвентаризационные разницы — не вычитаются (расчётное потребление, см. «Сверка склада»)' : 'Инвентаризационные разницы (недостачи − излишки)', f.inventory_diff === null ? null : -f.inventory_diff, f.pct.inventory),
+        row('Питание персонала и проработки', -f.staff_meals, f.pct.staff), row('Прочий расход сырья', -f.other_consumption, f.pct.other_use), row('ФОТ', -f.payroll),
         ...Object.entries(f.expenses).filter(([k]) => k !== 'payroll').map(([k, v]) => row(EXPENSE_CATEGORY[k] || k, -v)),
         row('Управленческая прибыль', f.profit, f.pct.profit), row('Prime Cost (себестоимость + ФОТ)', f.prime_cost, f.pct.prime),
         row('Фудкост (по продажам с известной себестоимостью)', null, f.food_cost_pct), row('Наценка', null, f.markup_pct), row('Маржинальность', null, f.margin_pct)];
@@ -63,6 +65,36 @@ async function build(c: Ctx, kind: ReportKind): Promise<Table> {
       return { title: REPORTS.abc, columns: [{ key: 'name', label: 'Блюдо' }, { key: 'qty', label: 'Продано', type: 'num' }, { key: 'revenue', label: 'Выручка, ₽', type: 'money' },
           { key: 'revenue_share', label: 'Доля выручки', type: 'pct' }, { key: 'abc_revenue', label: 'ABC (выручка)' }, { key: 'abc_margin', label: 'ABC (маржа)' }, { key: 'cv', label: 'Вариация', type: 'pct' }, { key: 'xyz', label: 'XYZ' }],
         rows: a.rows, notes: a.notes };
+    }
+    case 'stock_flow': {
+      const f = await pnl(c.userId, c.orgId, { from: c.from, to: c.to, siteId: c.siteId });
+      const s = await stockFlows(tx, c.orgId, c.from, c.to, c.tz, c.siteId);
+      const rows: Record<string, unknown>[] = [{ item: 'Запас на начало периода', amount: s.opening.value, unpriced: s.opening.unpriced }];
+      for (const [k, label] of Object.entries(FLOW)) if (s.flows[k].value || s.flows[k].unpriced) rows.push({ item: label, amount: s.flows[k].value, unpriced: s.flows[k].unpriced });
+      rows.push({ item: 'Запас на конец периода', amount: s.closing.value, unpriced: s.closing.unpriced });
+      rows.push({ item: 'Проверка: начало + движения − конец (должно быть 0)', amount: s.check });
+      const fl = s.flows, rev = f.revenue;
+      // по ТТК: себестоимость продаж (в обоих режимах — по ценам партий) + списанное на мероприятия
+      const theoretical = r2(f.cogs);
+      // факт — по складу: всё, что ушло, кроме питания персонала, производства, перемещений и возвратов поставщику.
+      // В режиме «расчётное потребление» продажи склад не меняют — проданное уходит через недостачу при инвентаризации.
+      const actual = r2(-(fl.sales.value + fl.events.value + fl.losses.value + fl.shortage.value + fl.surplus.value + fl.other.value));
+      if (f.sales_consumption !== 'ttk_writeoff') rows.splice(rows.length - 2, 0, { item: 'Справочно: расход по продажам по ТТК — склад не уменьшает (расчётное потребление)', amount: -r2(f.cogs - (-fl.events.value)) });
+      const pctOf = (v: number) => (rev > 0 ? Math.round(v / rev * 1000) / 10 : null);
+      rows.push({ item: 'Чистая выручка за период', amount: rev });
+      rows.push({ item: 'Расход сырья по ТТК (себестоимость продаж и мероприятий)', amount: theoretical, pct: pctOf(theoretical) });
+      rows.push({ item: 'Фактический расход сырья (+ потери, прочий расход, инвентаризационные разницы)', amount: actual, pct: pctOf(actual) });
+      rows.push({ item: 'Разница факт − ТТК', amount: r2(actual - theoretical), pct: pctOf(r2(actual - theoretical)) });
+      const counts = await q(`select st.name, max(k.closed_at) as closed_at from sites st left join stock_counts k on k.site_id = st.id and k.status = 'closed'
+        where st.organization_id = $1 and ($5::uuid is null or st.id = $5) and ($2::text is not null and $3::text is not null and $4::text is not null) group by st.name order by st.name`);
+      const dmy = (d: Date | null) => (d ? new Date(d).toLocaleDateString('ru-RU', { timeZone: c.tz }) : 'не проводилась');
+      const unpriced = s.opening.unpriced + s.closing.unpriced + Object.values(fl).reduce((a, x) => a + x.unpriced, 0);
+      return { title: REPORTS.stock_flow, columns: [{ key: 'item', label: 'Статья' }, { key: 'amount', label: 'Сумма, ₽', type: 'money' }, { key: 'pct', label: '% от выручки', type: 'pct' },
+          { key: 'unpriced', label: 'Без цены (партий / движений)', type: 'num' }], rows,
+        notes: ['Запас на любую дату восстанавливается по журналу движений и цене партии. Приход «+», уход со склада «−».',
+          'Фудкост по ТТК — сколько сырья должно было уйти на проданное. Фактический — сколько ушло на самом деле: по ТТК плюс потери, прочий расход и инвентаризационные разницы. Питание персонала и проработки — отдельная статья, в фудкост не входят.',
+          `Фактический расход точен, только если в конце периода проведена инвентаризация. Последняя инвентаризация: ${counts.map((x) => `${x.name} — ${dmy(x.closed_at)}`).join('; ')}.`,
+          ...(unpriced ? [`Партий и движений без цены: ${unpriced} — в рубли не входят, цифры неполные.`] : []), `Данные продаж: ${f.status_label}.`] };
     }
     case 'stock_value': {
       const rows = (await q(`select p.name, l.unit, sum(l.quantity)::float as qty, count(*)::int as lots,
@@ -170,12 +202,16 @@ async function build(c: Ctx, kind: ReportKind): Promise<Table> {
         from lots where organization_id = $1 and ($5::uuid is null or site_id = $5) and quantity > 0 and status in ('available', 'quarantine', 'blocked') and ($2::text is not null and $3::text is not null and $4::text is not null)`))[0];
       const days = (Date.parse(c.to) - Date.parse(c.from)) / 864e5 + 1;
       const daily = f.cogs / days;
+      const sf = await stockFlows(tx, c.orgId, c.from, c.to, c.tz, c.siteId);
+      const avg = r2((sf.opening.value + sf.closing.value) / 2);
       const rows = [
-        { item: 'Себестоимость продаж за период, ₽', value: f.cogs }, { item: 'Дней в периоде', value: days }, { item: 'Запас на складе сейчас, ₽', value: r2(stock.value) },
-        { item: 'Оборачиваемость запаса, дней', value: daily > 0 ? Math.round(stock.value / daily * 10) / 10 : null },
+        { item: 'Себестоимость продаж за период, ₽', value: f.cogs }, { item: 'Дней в периоде', value: days },
+        { item: 'Запас на начало периода, ₽', value: sf.opening.value }, { item: 'Запас на конец периода, ₽', value: sf.closing.value }, { item: 'Средний запас, ₽', value: avg },
+        { item: 'Запас на складе сейчас, ₽', value: r2(stock.value) },
+        { item: 'Оборачиваемость запаса, дней', value: daily > 0 ? Math.round(avg / daily * 10) / 10 : null },
       ];
       return { title: REPORTS.turnover, columns: [{ key: 'item', label: 'Показатель' }, { key: 'value', label: 'Значение', type: 'num' }], rows,
-        notes: ['Оборачиваемость = текущий запас / средняя дневная себестоимость продаж (средний остаток за период не хранится).', ...(stock.unpriced ? [`Партий без цены: ${stock.unpriced} — запас занижен.`] : []), ...(f.status !== 'full' ? [`Данные продаж: ${f.status_label}.`] : [])] };
+        notes: ['Оборачиваемость = средний запас (начало + конец) / 2 / средняя дневная себестоимость продаж.', ...(stock.unpriced ? [`Партий без цены: ${stock.unpriced} — запас занижен.`] : []), ...(f.status !== 'full' ? [`Данные продаж: ${f.status_label}.`] : [])] };
     }
     case 'illiquid': {
       const rows = (await q(`select p.name, l.lot_no, l.quantity::float as qty, l.unit, l.expires_at, (l.quantity * l.unit_price)::float as value, l.status,

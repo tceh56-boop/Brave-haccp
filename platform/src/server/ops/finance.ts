@@ -89,12 +89,64 @@ export async function listExpenses(userId: string, orgId: string, input: unknown
   });
 }
 
+/* ───────────── Движение запасов в рублях ───────────── */
+
+/** Статьи движения запаса (вид движения + основание расхода). Знак: приход «+», уход со склада «−». */
+export const FLOW: Record<string, string> = {
+  purchases: 'Закупки (приёмка)', returns: 'Возврат поставщику', produced: 'Выпуск полуфабрикатов', to_production: 'Сырьё в производство полуфабрикатов',
+  tare: 'Вскрытие тары (перенос в новую партию)', transfers: 'Перемещения между площадками', sales: 'Расход по продажам (по ТТК)', events: 'Расход на мероприятия (по меню)',
+  staff: 'Питание персонала и проработки', other: 'Прочий расход', losses: 'Списания (потери)', shortage: 'Недостачи по инвентаризации', surplus: 'Излишки по инвентаризации',
+};
+/** Назначение ручного расхода со склада: определяет строку P&L. */
+export const CONSUME_PURPOSE: Record<string, string> = { manual: 'Прочий расход', staff_meal: 'Питание персонала', tasting: 'Проработка, дегустация' };
+
+function flowKey(kind: string, ref: string | null, qty: number): string {
+  switch (kind) {
+    case 'receipt': return 'purchases';
+    case 'return_to_supplier': return 'returns';
+    case 'produce': return 'produced';
+    case 'open_in': case 'open_out': return 'tare';
+    case 'transfer_in': case 'transfer_out': return 'transfers';
+    case 'write_off': return 'losses';
+    case 'count_adjust': return qty < 0 ? 'shortage' : 'surplus';
+    case 'consume': return ref === 'production' ? 'to_production' : ref === 'sale' ? 'sales' : ref === 'banquet' ? 'events' : ref === 'staff_meal' || ref === 'tasting' ? 'staff' : 'other';
+    default: return 'other';
+  }
+}
+
+/**
+ * Запас и его движение за период в рублях — по журналу движений (он неизменяем) и цене каждой партии.
+ * Запас на момент = Σ движений до момента × цена партии, поэтому остаток на любую прошлую дату восстанавливается точно.
+ * Партии без цены в рубли не входят и считаются отдельно (неизвестное — не ноль).
+ * Тождество: запас на начало + Σ движений периода = запас на конец (по партиям с ценой).
+ */
+export async function stockFlows(tx: Tx, orgId: string, from: string, to: string, tz: string, siteId: string | null) {
+  const start = `(($2::date)::timestamp at time zone $3)`, end = `((($4::date) + 1)::timestamp at time zone $3)`;
+  const at = async (bound: string) => {
+    const r = (await tx.query(`select coalesce(sum(q * price) filter (where price is not null), 0)::float8 as value, count(*) filter (where price is null)::int as unpriced
+      from (select m.lot_id, sum(m.quantity) as q, min(l.unit_price) as price from stock_movements m join lots l on l.id = m.lot_id
+        where m.organization_id = $1 and ($5::uuid is null or m.site_id = $5) and m.created_at < ${bound} and $2::date <= $4::date group by m.lot_id having sum(m.quantity) <> 0) x`, [orgId, from, tz, to, siteId])).rows[0];
+    return { value: r2(r.value), unpriced: r.unpriced as number };
+  };
+  const rows = (await tx.query(`select m.kind, m.ref_type, sign(m.quantity)::int as sg, coalesce(sum(m.quantity * l.unit_price) filter (where l.unit_price is not null), 0)::float8 as value,
+      count(*) filter (where l.unit_price is null)::int as unpriced
+    from stock_movements m join lots l on l.id = m.lot_id
+    where m.organization_id = $1 and ($5::uuid is null or m.site_id = $5) and m.created_at >= ${start} and m.created_at < ${end} group by 1, 2, 3`, [orgId, from, tz, to, siteId])).rows;
+  const flows: Record<string, { value: number; unpriced: number }> = Object.fromEntries(Object.keys(FLOW).map((k) => [k, { value: 0, unpriced: 0 }]));
+  for (const r of rows) { const f = flows[flowKey(r.kind, r.ref_type, r.sg)]; f.value = r2(f.value + r.value); f.unpriced += r.unpriced; }
+  const opening = await at(start), closing = await at(end);
+  const moved = r2(Object.values(flows).reduce((s, f) => s + f.value, 0));
+  return { opening, closing, flows, check: r2(opening.value + moved - closing.value) };
+}
+
 /* ───────────── P&L ───────────── */
 
 /**
  * P&L и сводка руководителя (ТЗ доработки, 9.2–9.3):
  *   чистая выручка (валовая − возвраты) − себестоимость продаж = валовая прибыль;
- *   валовая прибыль − списания − ФОТ − операционные расходы = управленческая прибыль.
+ *   валовая прибыль − списания − инвентаризационные разницы (недостачи − излишки) − питание персонала и проработки
+ *   − прочий расход сырья − ФОТ − операционные расходы = управленческая прибыль.
+ * Мероприятия входят в продажи (источник «event»): выручка по меню, себестоимость — по списанным партиям.
  * Фудкост, наценка и маржинальность — только по продажам с известной себестоимостью; неизвестная себестоимость
  * нулём не считается. Статус полноты — с перечнем причин (9.1).
  */
@@ -102,7 +154,8 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
   const p = parse(Period, input);
   return inOrg(userId, orgId, 'econ.read', async (tx, m) => {
     if (p.siteId) assertSiteAccess(m, p.siteId);
-    const tz = (await tx.query(`select timezone from organizations where id = $1`, [orgId])).rows[0].timezone;
+    const o = (await tx.query(`select timezone, sales_consumption from organizations where id = $1`, [orgId])).rows[0];
+    const tz = o.timezone as string, writeoffMode = o.sales_consumption === 'ttk_writeoff';
     const per = `between (($2::date)::timestamp at time zone $4) and ((($3::date) + 1)::timestamp at time zone $4)`;
     const args = [orgId, p.from, p.to, tz, p.siteId || null];
     const s = (await tx.query(`select
@@ -115,12 +168,11 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
         count(*) filter (where qty > 0 and fulfil_status in ('no_ttk', 'unmatched'))::int as no_ttk,
         count(*) filter (where qty > 0 and fulfil_status in ('pending', 'failed'))::int as not_written_off,
         count(*) filter (where qty > 0 and coalesce(price, 0) <= 0)::int as no_price,
-        count(*) filter (where source <> 'pos')::int as imported
+        count(*) filter (where source not in ('pos', 'event'))::int as imported
       from (select s.*, ol.order_id from sales s left join pos_order_lines ol on ol.id = s.order_line_id
         where s.organization_id = $1 and ($5::uuid is null or s.site_id = $5) and s.sold_at ${per}) x`, args)).rows[0];
-    const w = (await tx.query(`select coalesce(sum(-m.quantity * l.unit_price) filter (where l.unit_price is not null), 0) as value,
-        count(*) filter (where l.unit_price is null)::int as unpriced
-      from stock_movements m join lots l on l.id = m.lot_id where m.organization_id = $1 and ($5::uuid is null or m.site_id = $5) and m.kind = 'write_off' and m.created_at ${per}`, args)).rows[0];
+    const fl = (await stockFlows(tx, orgId, p.from, p.to, tz, p.siteId || null)).flows;
+    const w = { value: -fl.losses.value, unpriced: fl.losses.unpriced };
     const lotsNoPrice = Number((await tx.query(`select count(*) from lots where organization_id = $1 and ($5::uuid is null or site_id = $5) and unit_price is null and quantity > 0
       and opened_at is null and coalesce(received_at, created_at) ${per}`, args)).rows[0].count);
     const noDocs = Number((await tx.query(`select count(*) from receipts where organization_id = $1 and ($5::uuid is null or site_id = $5) and status <> 'draft'
@@ -133,9 +185,16 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
     const gross = r2(Number(s.gross)), returns = r2(Number(s.returns)), revenue = r2(gross - returns);
     const cogs = r2(Number(s.cogs)), costedRev = r2(Number(s.costed_revenue));
     const losses = r2(Number(w.value)), payroll = byCat.payroll || 0;
+    // уход сырья со склада мимо продаж: питание персонала и проработки, прочий расход, инвентаризационные разницы
+    const staffMeals = r2(-fl.staff.value), otherUse = r2(-fl.other.value);
+    // Инвентаризационные разницы — строка P&L только когда продажи списывают сырьё со склада (режим «списание по ТТК»).
+    // В режиме «расчётное потребление» (по умолчанию) склад продажами не уменьшается: недостача включает проданное, которое
+    // уже в себестоимости продаж. Вычесть её — посчитать проданное дважды; разница «факт − ТТК» — в отчёте «Сверка склада».
+    const shortage = r2(-fl.shortage.value), surplus = r2(fl.surplus.value);
+    const invDiff: number | null = writeoffMode ? r2(shortage - surplus) : null;
     const opexOther = r2(Object.entries(byCat).filter(([k]) => k !== 'payroll').reduce((a, [, v]) => a + v, 0));
     const grossProfit = r2(revenue - cogs);
-    const profit = r2(grossProfit - losses - payroll - opexOther);
+    const profit = r2(grossProfit - losses - (invDiff ?? 0) - staffMeals - otherUse - payroll - opexOther);
     const prime = r2(cogs + payroll);
     const pct = (x: number, base = revenue) => (base > 0 ? Math.round(x / base * 1000) / 10 : null);
 
@@ -149,6 +208,10 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
     if (s.no_price) reasons.push({ code: 'sales_no_price', affects: 'cost', text: `продажи без цены: ${s.no_price}` });
     if (lotsNoPrice) reasons.push({ code: 'lots_no_price', affects: 'cost', text: `партии без цены, поступившие в периоде: ${lotsNoPrice}` });
     if (w.unpriced) reasons.push({ code: 'writeoffs_no_price', affects: 'cost', text: `списания без цены партии: ${w.unpriced} (потери занижены)` });
+    const useUnpriced = fl.staff.unpriced + fl.other.unpriced + fl.shortage.unpriced + fl.surplus.unpriced;
+    if (useUnpriced) reasons.push({ code: 'consumption_no_price', affects: 'cost', text: `расход персонала, прочий расход и инвентаризационные разницы без цены партии: ${useUnpriced}` });
+    if (!writeoffMode && (shortage || surplus)) reasons.push({ code: 'inventory_in_reconciliation', affects: 'expenses',
+      text: `инвентаризационные разницы (недостачи ${shortage} ₽, излишки ${surplus} ₽) не вычтены из прибыли: продажи не списывают сырьё со склада (расчётное потребление), недостача включает проданное. Фактический расход против ТТК — в отчёте «Сверка склада и фактический фудкост»` });
     if (!payroll) reasons.push({ code: 'no_payroll', affects: 'expenses', text: 'неучтенный ФОТ: нет расходов на зарплату за период' });
     const missingCats = ['rent', 'utilities'].filter((k) => !byCat[k]);
     if (missingCats.length) reasons.push({ code: 'expenses_incomplete', affects: 'expenses', text: `неполные расходы: не внесены ${missingCats.map((k) => EXPENSE_CATEGORY[k].toLowerCase()).join(', ')}` });
@@ -163,8 +226,9 @@ export async function pnl(userId: string, orgId: string, input: unknown) {
       gross_revenue: gross, returns, revenue, orders: s.orders, avg_check: s.orders ? r2(revenue / s.orders) : null,
       cogs, costed_revenue: costedRev, food_cost_pct: pct(cogs, costedRev), markup_pct: cogs > 0 ? Math.round((costedRev - cogs) / cogs * 1000) / 10 : null,
       margin_pct: pct(costedRev - cogs, costedRev), gross_margin: grossProfit,
-      losses, losses_unpriced: w.unpriced, payroll, prime_cost: prime, expenses: byCat, opex: r2(payroll + opexOther), opex_other: opexOther, profit,
-      pct: { cogs: pct(cogs), gross: pct(grossProfit), losses: pct(losses), opex: pct(r2(payroll + opexOther)), profit: pct(profit), prime: pct(prime) },
+      losses, losses_unpriced: w.unpriced, staff_meals: staffMeals, other_consumption: otherUse, inventory_shortage: shortage, inventory_surplus: surplus, inventory_diff: invDiff, sales_consumption: o.sales_consumption as string,
+      payroll, prime_cost: prime, expenses: byCat, opex: r2(payroll + opexOther), opex_other: opexOther, profit,
+      pct: { cogs: pct(cogs), gross: pct(grossProfit), losses: pct(losses), inventory: invDiff === null ? null : pct(invDiff), staff: pct(staffMeals), other_use: pct(otherUse), opex: pct(r2(payroll + opexOther)), profit: pct(profit), prime: pct(prime) },
       categories: EXPENSE_CATEGORY, complete: status === 'full', incomplete: reasons.map((r) => r.text),
     };
   }, p.siteId || null);

@@ -15,7 +15,7 @@ interface Res { product: string; quantity: number; unit: string; lots: { lot_no:
 export default function ConsumePage() {
   const { org, siteId } = useOrg();
   const [products, setProducts] = useState<Product[]>([]);
-  const [f, setF] = useState({ productId: '', quantity: '', purpose: '' });
+  const [f, setF] = useState({ productId: '', quantity: '', purpose: '', refType: 'manual' });
   const [res, setRes] = useState<Res | null>(null);
   const op = useOperationId();
   const { busy, error, run } = useSubmit();
@@ -28,7 +28,7 @@ export default function ConsumePage() {
       <SitePicker />
       <div className="card">
         <form onSubmit={(e) => { e.preventDefault(); run(async () => {
-          setRes(await api<Res>(`/orgs/${org.id}/stock/consume`, { body: { siteId, productId: f.productId, quantity: f.quantity.replace(',', '.'), purpose: f.purpose, operationId: op.id } }));
+          setRes(await api<Res>(`/orgs/${org.id}/stock/consume`, { body: { siteId, productId: f.productId, quantity: f.quantity.replace(',', '.'), purpose: f.purpose, refType: f.refType, operationId: op.id } }));
           op.next(); setF({ ...f, quantity: '' });
         }); }}>
           <label htmlFor="p">Товар</label>
@@ -37,8 +37,15 @@ export default function ConsumePage() {
           </select>
           <label htmlFor="q">Количество{unit ? `, ${unit}` : ''}</label>
           <input id="q" className="big-input" inputMode="decimal" required value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} />
+          <label htmlFor="rt">Назначение</label>
+          <select id="rt" value={f.refType} onChange={(e) => setF({ ...f, refType: e.target.value })}>
+            <option value="manual">Прочий расход</option>
+            <option value="staff_meal">Питание персонала</option>
+            <option value="tasting">Проработка, дегустация</option>
+          </select>
+          <p className="small muted">В отчёте о прибыли питание персонала и проработки — отдельная статья, прочий расход — своя строка. Продажи, мероприятия и производство списываются сами.</p>
           <label htmlFor="pu">Для чего</label>
-          <input id="pu" required value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} placeholder="заготовка на обед, банкет 18:00" />
+          <input id="pu" required value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} placeholder="обед смены, проработка нового блюда" />
           <p className="small muted">Система берёт партии с ближайшим сроком годности. Карантинные, просроченные и без подтверждённого срока не расходуются.</p>
           {error && <div className="err" role="alert">{error}</div>}
           <button className="btn block" disabled={busy}>Списать в расход</button>

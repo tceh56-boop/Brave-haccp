@@ -66,7 +66,7 @@ const ConsumeInput = z.object({
   quantity: num,
   unit: z.enum(['кг', 'г', 'л', 'мл', 'шт']).optional().nullable(),
   purpose: z.string().trim().min(2, 'Укажите назначение расхода.').max(200),
-  refType: z.enum(['production', 'sale', 'banquet', 'manual']).default('manual'),
+  refType: z.enum(['manual', 'staff_meal', 'tasting'], 'Назначение расхода.').default('manual'),   // строка P&L (finance.ts → CONSUME_PURPOSE); продажи, мероприятия и производство списывают свои модули
   refId: z.uuid().optional().nullable(),
   lotId: z.uuid().optional().nullable(),
   overrideReason: optText(300),

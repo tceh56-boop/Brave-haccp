@@ -329,6 +329,10 @@ export async function completeEvent(userId: string, orgId: string, id: string, i
       revenue = revenue === null || price === null ? null : revenue + price * fact;
       total = total === null || cost === null ? null : total + cost;
       await tx.query(`update plan_event_items set actual_portions = $2, cost = $3 where id = $1`, [it.id, fact, cost === null ? null : r2(cost)]);
+      // мероприятие — канал продаж: выручка по меню и себестоимость списанных партий попадают в P&L и отчёты (нет цены — продажа без цены, не 0 в итоге)
+      if (fact > 0) await tx.query(`insert into sales (organization_id, site_id, source, external_id, dish_id, name, qty, price, amount, sold_at, fulfil_status, cost, fulfilled_at, created_by)
+        values ($1, $2, 'event', $3, $4, $5, $6, $7, $8, (($9::date + time '12:00') at time zone $10), 'done', $11, now(), $12) on conflict (organization_id, source, external_id) do nothing`,
+        [orgId, e.site_id, `${e.id}:${it.dish_id}`, it.dish_id, it.dish, fact, price ?? 0, r2((price ?? 0) * fact), date, e.timezone || 'Europe/Moscow', cost === null ? null : r2(cost), userId]);
     }
     revenue = revenue === null ? null : r2(revenue); total = total === null ? null : r2(total);
     await tx.query(`update plan_events set status = 'done', completed_by = $2, completed_at = now(), revenue = $3, cost = $4 where id = $1`, [e.id, userId, revenue, total]);
