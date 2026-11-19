@@ -565,14 +565,18 @@ var _UI_BUILDERS_ = {
   settings: function (token) {
     var emp = _uiArr_(_uiTry_(getEmployees, '[]'));
     var sched = _uiTry_(getSchedulerStatus, []);
+    // Лицензия MonChef: сохранённое состояние, без обращения к сервису (MonChef_LicenseClient.gs)
+    var lic = _uiTry_(function () { return typeof _mcLicUiRows_ === 'function' ? _mcLicUiRows_() : []; }, []);
     return {
       title: 'Настройки',
-      kpis: [{ label: 'Сотрудников', go: { sec: 'settings', tab: 0 }, value: emp.length }, { label: 'Автозадач', go: { sec: 'settings', tab: 1 }, value: sched.length }],
+      kpis: [{ label: 'Сотрудников', go: { sec: 'settings', tab: 0 }, value: emp.length }, { label: 'Автозадач', go: { sec: 'settings', tab: 1 }, value: sched.length },
+        { label: 'Лицензия', go: { sec: 'settings', tab: 2 }, value: lic.length ? lic[0].v : '—', tone: lic.length && lic[0].s === 'Норма' ? 'green' : lic.length && lic[0].s ? 'gold' : '' }],
       tabs: [
         { title: 'Сотрудники', columns: [_uiCol_('name', 'ФИО'), _uiCol_('position', 'Должность'), _uiCol_('role', 'Роль'), _uiCol_('status', 'Статус', 'status')],
           rows: emp.map(function (e) { return { name: e.name || e.fullName || '', position: e.position || '', role: e.role || '', status: e.active === false ? 'Неактивен' : 'Активен' }; }) },
         { title: 'Автозапуски', columns: [_uiCol_('fn', 'Задача'), _uiCol_('schedule', 'Расписание'), _uiCol_('last', 'Последний запуск'), _uiCol_('err', 'Ошибка')],
-          rows: sched.map(function (s) { return { fn: s.fn, schedule: s.schedule, last: s.lastRun ? _uiDate_(new Date(Number(s.lastRun))) : '—', err: s.lastError || '' }; }) }
+          rows: sched.map(function (s) { return { fn: s.fn, schedule: s.schedule, last: s.lastRun ? _uiDate_(new Date(Number(s.lastRun))) : '—', err: s.lastError || '' }; }) },
+        { title: 'Лицензия', columns: [_uiCol_('k', 'Показатель'), _uiCol_('v', 'Значение'), _uiCol_('s', '', 'status')], rows: lic }
       ],
       actions: [{ label: 'Сотрудники', module: 'staff' }, { label: 'Перенос ролей (этап 10.7)', fn: 'rbMigrate' }, { label: 'Код технического доступа', fn: 'rbDevPin' }, { label: 'Товары и единицы', module: 'productunits' }, { label: 'Дезсредства', module: 'disinfectants' }, { label: 'Резервные копии', module: 'backup' }, { label: '🔒 Защита журналов', fn: 'mcProtect' }, { label: 'Связать состав ТТК с продуктами', fn: 'mcTtkIds' }, { label: 'Миграция данных', fn: 'mcMigrate' }]
     };
