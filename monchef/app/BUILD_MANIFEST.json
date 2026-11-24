@@ -70,7 +70,7 @@
     "Staff shift schedule and shortage (V98)",
     "Working spreadsheet ID in installation settings (V99)",
     "Personal data technical measures (V100)",
-    "Restaurant Service: halls, tables, bookings, preorders, demand forecast (V101, stage 2)"
+    "Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split (V101, stages 2–3)"
   ],
   "validation": {
     "gs_syntax": "PASS",
@@ -154,8 +154,8 @@
     },
     {
       "file": "Hall.html",
-      "bytes": 37390,
-      "sha256": "e31acdeacc9e4bb7a885ef60c035754ddd3e49556d294b2e27f931658445e650"
+      "bytes": 63608,
+      "sha256": "fae23930efbb8c063cf9122f86c309f15ff34476e2adc96cd929e12ce0ebcfda"
     },
     {
       "file": "Income.html",
@@ -428,24 +428,34 @@
       "sha256": "4688092b44586db94e60b83a756c333c4c66cd216390356a914cdcb45c99e446"
     },
     {
+      "file": "MonChef_V101_RS_Bills.gs",
+      "bytes": 23082,
+      "sha256": "5956d1fd5873101bdf406f6f315926a521a4ba2758d0f6a8a021673e55d979cd"
+    },
+    {
       "file": "MonChef_V101_RS_Booking.gs",
-      "bytes": 28717,
-      "sha256": "e69fed701774865e11faec5c318977c42cc9ba8f5c6b5559a094501d52ec6803"
+      "bytes": 28713,
+      "sha256": "ff497db465dcba9d697e0925fee206a3edf6acb0e8aa4bc1b67d77b223911f98"
     },
     {
       "file": "MonChef_V101_RS_Core.gs",
-      "bytes": 19824,
-      "sha256": "28f80039cc28dbbb4565afdbe694bf957124aecac617a1159d6d45b1a583995c"
+      "bytes": 22778,
+      "sha256": "4f933f64356b66dac9307ef0c7b4e38bf17233932b55443288011d9e9eae9d02"
     },
     {
       "file": "MonChef_V101_RS_Hall.gs",
-      "bytes": 12014,
-      "sha256": "3b95b95cf74f6c8394cf7477667684938a1a7b97182b5ab7d88cf5bc911304d5"
+      "bytes": 12811,
+      "sha256": "57844c6a171ce60ebf17841c4305eeb17f68d18dbfec2a0284734de86142881e"
+    },
+    {
+      "file": "MonChef_V101_RS_Orders.gs",
+      "bytes": 55755,
+      "sha256": "36ff8bea6f8e96aebf7b4f9cfa84ebaa54c2a922dc2c0c5e1b4f584b2d208352"
     },
     {
       "file": "MonChef_V101_RS_Roles.gs",
-      "bytes": 3361,
-      "sha256": "5509d3cea506fba896ffa6ed64dce46203eea69a29e897a21f4a293203b02378"
+      "bytes": 5075,
+      "sha256": "7b3a5b093f5fa6928a738fb0bb8a5b525fd0755a4bf7e517231987eae89b0b81"
     },
     {
       "file": "MonChef_V101_RS_UI.gs",

@@ -9,7 +9,7 @@
  * Номер стола уникален в зале. «Можно объединять с» — взаимно: связь пишется у обоих столов.
  * Схема зала — координаты X, Y в клетках сетки зала (Ширина × Высота); система их не придумывает — расставляет администратор.
  * Состояние стола на выбранное время: свободен / скоро бронь (до 2 ч) / забронирован / гости за столом.
- * Заказы зала (этап 3) добавят состояние «занят заказом».
+ * Стол с открытым заказом (этап 3) — «занят заказом»: гостей, официант, сумма, готовые и ожидающие блюда.
  */
 var MC_RS_SOON_MIN_ = 120;
 var MC_RS_SHAPES_ = ['round', 'square', 'rect'];
@@ -35,6 +35,7 @@ function rsHallData(json, token) {
     var tables = _rsRows_(MC_RS_SH_.TABLES).map(_rsTableObj_).filter(function (t) { return hallIds.indexOf(t.hallId) >= 0 && (manage || t.status === 'ACTIVE'); });
     var at = _rsAbsMin_(day, hm);
     var bookings = _rsBookingsBetween_(siteId, at - 24 * 60, at + 24 * 60).filter(function (b) { return b.date === day || (b.startAbs <= at && b.endAbs > at); });
+    var orders = day === _rsToday_() && typeof _rsActiveOrders_ === 'function' ? _rsActiveOrders_(siteId) : {};
     tables.forEach(function (t) {
       var mine = bookings.filter(function (b) { return b.tables.indexOf(t.id) >= 0 && MC_RS_BK_BLOCK_.indexOf(b.status) >= 0; });
       var now = mine.filter(function (b) { return b.startAbs <= at && b.endAbs > at; })[0];
@@ -42,9 +43,12 @@ function rsHallData(json, token) {
       t.state = now ? (now.status === 'SEATED' || now.status === 'ARRIVED' ? 'seated' : 'booked') : (next && next.startAbs - at <= MC_RS_SOON_MIN_ ? 'soon' : 'free');
       t.booking = now ? _rsBkShort_(now) : null;
       t.next = next ? _rsBkShort_(next) : null;
+      var ord = orders[t.id];
+      if (ord) { t.state = 'order'; t.order = { id: ord.id, guests: ord.guests, waiter: ord.waiter, waiterId: ord.waiterId, totalKop: ord.totalKop, ready: ord.ready, waiting: ord.waiting, draft: ord.draft, mine: ord.waiterId === String(s.user_id || '') }; }
     });
     return { sites: _rsSites_(), siteId: siteId, date: day, time: hm, halls: halls, tables: tables, bookings: bookings.map(function (b) { return _rsBkPublic_(b, s); }),
-      can: { booking: _mcRbHasExact_(s, 'booking'), manage: manage } };
+      can: { booking: _mcRbHasExact_(s, 'booking'), manage: manage, order: _mcRbHasExact_(s, 'order_edit|order_all'), orderAll: _mcRbHasExact_(s, 'order_all'), send: _mcRbHasExact_(s, 'order_send|order_all'),
+        split: _mcRbHasExact_(s, 'bill_split|order_all'), discount: _mcRbHasExact_(s, 'discount'), pay: _mcRbHasExact_(s, 'payment_confirm') }, me: String(s.user_id || '') };
   });
 }
 function _rsBkShort_(b) { return { id: b.id, guest: b.guest, guests: b.guests, start: b.start, end: b.end, status: b.status }; }

@@ -312,7 +312,7 @@ function rsBookingHistory(json, token) {
   return _rsRead_(token, 'booking', function () {
     var d = _rsJ_(json, {}) || {}, id = _rsS_(d.id);
     return _rsRows_(MC_RS_SH_.EVENTS).filter(function (e) { return String(e.BookingID) === id; }).map(function (e) {
-      return { at: e['Время'] instanceof Date ? Utilities.formatDate(e['Время'], _mcTz_(), 'dd.MM.yyyy HH:mm') : String(e['Время']), event: String(e['Событие']),
+      return { at: _rsIsDate_(e['Время']) ? Utilities.formatDate(e['Время'], _mcTz_(), 'dd.MM.yyyy HH:mm') : String(e['Время']), event: String(e['Событие']),
         before: _rsJ_(e['Было'], null), after: _rsJ_(e['Стало'], null), who: String(e['Сотрудник']) };
     });
   });

@@ -32,7 +32,7 @@ textarea{min-height:56px}
 .cell{min-height:56px}
 .tbl{border-radius:12px;border:2px solid transparent;padding:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:56px;font-size:13px;text-align:center}
 .tbl b{font-size:17px}.tbl.round{border-radius:50%}.tbl.rect{border-radius:8px}
-.s-free{background:var(--green-bg);color:var(--green)}.s-soon{background:var(--amber-bg);color:var(--amber)}.s-booked{background:var(--blue-bg);color:var(--blue)}.s-seated{background:#f1e4c8;color:#7a5512}
+.s-free{background:var(--green-bg);color:var(--green)}.s-order{background:var(--wine);color:#fff}.s-order.mine{box-shadow:0 0 0 3px var(--gold) inset}.s-soon{background:var(--amber-bg);color:var(--amber)}.s-booked{background:var(--blue-bg);color:var(--blue)}.s-seated{background:#f1e4c8;color:#7a5512}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;margin:8px 0}.legend span{display:inline-flex;align-items:center;gap:4px}.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
 /* календарь */
 .month{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.month .d{background:#fff;border:1px solid var(--line);border-radius:8px;min-height:58px;padding:4px;font-size:12px;cursor:pointer}
@@ -57,7 +57,7 @@ table.f{width:100%;border-collapse:collapse;font-size:14px}table.f td,table.f th
 </style></head>
 <body><div class="wrap">
 <h1>Зал и бронирование</h1>
-<div class="sub">Схема зала, брони гостей и предзаказ. Предзаказ — не продажа: склад не списывается. Пересечения броней проверяет сервер.</div>
+<div class="sub">Схема зала, заказы столов, брони гостей и предзаказ. Нажмите на стол: открыть стол, заказ, бронь.</div>
 <div class="bar">
   <div><label>Площадка</label><select id="site"></select></div>
   <div><label>Дата</label><input type="date" id="date"></div>
@@ -106,11 +106,13 @@ function load() {
   });
 }
 function tabs() {
-  var t = [['plan', 'Зал'], ['book', 'Брони'], ['fc', 'Прогноз по предзаказам']];
+  var t = [['plan', 'Зал']];
+  if (S.data && S.data.can.order) t.push(['mine', S.data.can.orderAll ? 'Заказы' : 'Мои заказы']);
+  t = t.concat([['book', 'Брони'], ['fc', 'Прогноз по предзаказам']]);
   if (S.data && S.data.can.manage) t.push(['setup', 'Настройка зала']);
   $('tabs').innerHTML = t.map(function (x) { return '<button class="' + (S.tab === x[0] ? 'on' : '') + '" onclick="S.tab=\'' + x[0] + '\';tabs();render()">' + x[1] + '</button>'; }).join('');
 }
-function render() { ({ plan: rPlan, book: rBook, fc: rFc, setup: rSetup })[S.tab](); }
+function render() { ({ plan: rPlan, mine: rMine, book: rBook, fc: rFc, setup: rSetup })[S.tab](); }
 
 /* ---------- зал ---------- */
 function rPlan() {
@@ -120,21 +122,32 @@ function rPlan() {
   var tb = d.tables.filter(function (t) { return t.hallId === h.id && t.status === 'ACTIVE'; });
   var html = '<div class="seg">' + halls.map(function (x) { return '<button class="' + (x.id === h.id ? 'on' : '') + '" onclick="S.hall=\'' + x.id + '\';render()">' + esc(x.name) + '</button>'; }).join('') +
     (d.can.booking ? '<button onclick="openBk(null)">+ Новая бронь</button>' : '') + '</div>';
-  html += '<div class="legend"><span><i class="s-free"></i>свободен</span><span><i class="s-soon"></i>бронь в ближайшие 2 ч</span><span><i class="s-booked"></i>забронирован</span><span><i class="s-seated"></i>гости за столом</span></div>';
+  html += '<div class="legend"><span><i class="s-free"></i>свободен</span><span><i class="s-soon"></i>бронь в ближайшие 2 ч</span><span><i class="s-booked"></i>забронирован</span><span><i class="s-seated"></i>гости за столом</span><span><i class="s-order"></i>заказ (рамка — мой)</span></div>';
   var cells = {}; tb.forEach(function (t) { cells[t.x + ':' + t.y] = t; });
   html += '<div class="plan" style="grid-template-columns:repeat(' + h.width + ',minmax(56px,1fr))">';
   for (var y = 0; y < h.height; y++) for (var x = 0; x < h.width; x++) {
     var t = cells[x + ':' + y];
-    html += t ? '<div class="tbl ' + esc(t.shape) + ' s-' + t.state + '" onclick="tableCard(\'' + t.id + '\')"><b>' + esc(t.number) + '</b>' +
-      (t.booking ? esc(t.booking.start) + ' · ' + t.booking.guests + ' гост.' : t.next ? 'с ' + esc(t.next.start) : t.seatsMax + ' мест') + '</div>' : '<div class="cell"></div>';
+    html += t ? '<div class="tbl ' + esc(t.shape) + ' s-' + t.state + (t.order && t.order.mine ? ' mine' : '') + '" onclick="tableCard(\'' + t.id + '\')"><b>' + esc(t.number) + '</b>' +
+      (t.order ? t.order.guests + ' гост. · ' + money(t.order.totalKop) + (t.order.ready ? '<br>готово: ' + t.order.ready : '') :
+       t.booking ? esc(t.booking.start) + ' · ' + t.booking.guests + ' гост.' : t.next ? 'с ' + esc(t.next.start) : t.seatsMax + ' мест') + '</div>' : '<div class="cell"></div>';
   }
-  html += '</div><div class="meta" style="margin-top:6px">Состояние на ' + ru(d.date) + ' ' + esc(d.time) + '. Заказы зала появятся на этапе «Блокнот официанта».</div>';
+  html += '</div><div class="meta" style="margin-top:6px">Состояние на ' + ru(d.date) + ' ' + esc(d.time) + '. Нажмите на стол, чтобы открыть заказ или бронь.</div>';
   $('view').innerHTML = html;
 }
 function tableCard(id) {
   var t = S.data.tables.filter(function (x) { return x.id === id; })[0], d = S.data;
   var bks = d.bookings.filter(function (b) { return b.tables.indexOf(id) >= 0 && ['CLOSED', 'CANCELLED', 'NO_SHOW'].indexOf(b.status) < 0; });
   var h = '<h2>Стол № ' + esc(t.number) + '</h2><div class="meta">' + t.seatsMin + '–' + t.seatsMax + ' мест</div>';
+  if (t.order) h += '<div class="card"><div class="nm">Заказ открыт · официант ' + esc(t.order.waiter) + '</div><div class="meta">' + t.order.guests + ' гост. · ' + money(t.order.totalKop) +
+    ' · на кухне: ' + t.order.waiting + ' · готово: ' + t.order.ready + (t.order.draft ? ' · не отправлено: ' + t.order.draft : '') + '</div>' +
+    '<div class="acts"><button class="btn pri" onclick="openOrder(\'' + t.order.id + '\')">Открыть заказ</button></div></div>';
+  else if (d.can.order && d.date === iso(new Date())) {
+    var mineBk = bks.filter(function (b) { return ['NEW', 'CONFIRMED', 'ARRIVED'].indexOf(b.status) >= 0 && !b.orderId; });
+    h += '<div class="card"><div class="nm">Открыть стол</div><div class="grid" style="margin-top:8px"><div><label>Гостей</label><input id="o_guests" type="number" min="1" value="' + (mineBk[0] ? mineBk[0].guests : 2) + '"></div>' +
+      '<div style="grid-column:span 2"><label>Бронь</label><select id="o_bk"><option value="">без брони</option>' + mineBk.map(function (b, i) { return '<option value="' + b.id + '"' + (i === 0 ? ' selected' : '') + '>' + esc(b.start + ' ' + b.guest + ', ' + b.guests + ' гост.' + (b.preorderId ? ' · с предзаказом' : '')) + '</option>'; }).join('') + '</select></div>' +
+      '<div style="grid-column:1/-1"><label>Комментарий</label><input id="o_comment"></div></div><div id="f_msg"></div>' +
+      '<div class="acts"><button class="btn pri" id="o_open" onclick="openTable(\'' + id + '\')">Открыть стол</button></div></div>';
+  }
   h += bks.length ? bks.map(function (b) { return '<div class="card bk" onclick="openBkId(\'' + b.id + '\')"><div><span class="t">' + esc(b.start) + '–' + esc(b.end) + '</span> ' + esc(b.guest) + ', ' + b.guests + ' гост.</div>' + chip(b.status) + '</div>'; }).join('') : '<div class="empty">На ' + ru(d.date) + ' броней нет</div>';
   h += '<div class="acts">' + (d.can.booking ? '<button class="btn pri" onclick="openBk(null,\'' + id + '\')">Забронировать этот стол</button>' : '') + '<button class="btn" onclick="closeOv()">Закрыть</button></div>';
   openOv(h);
@@ -346,6 +359,202 @@ function saveTable(id, hallId) {
   act('tbl-' + (id || 'new'), 'rsTableSave', { id: id || '', version: t ? t.version : '', hallId: hallId, number: $('t_num').value, seatsMin: $('t_min').value, seatsMax: $('t_max').value,
     x: (+$('t_x').value || 1) - 1, y: (+$('t_y').value || 1) - 1, shape: $('t_shape').value, combine: comb, status: $('t_st') ? $('t_st').value : 'ACTIVE' },
     function () { closeOv(); note('Стол сохранён', true); load(); }, fmsg);
+}
+
+/* ---------- блокнот официанта (этап 3) ---------- */
+function money(k) { if (k === null || k === undefined) return '—'; var r = (k / 100).toFixed(2).split('.'); return r[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (r[1] === '00' ? '' : ',' + r[1]) + ' ₽'; }
+var O = null, MENU = null, OV = 'items';   // открытый заказ, меню, вкладка заказа
+var IT_ST = { DRAFT: 'не отправлено', SENT: 'на кухне', WAIT_COURSE: 'ждёт курса', COOKING: 'готовится', READY: 'готово', SERVED: 'подано', CANCELLED: 'отменено', PROBLEM: 'проблема' };
+function openTable(tableId) {
+  var b = $('o_open'); b.disabled = true;
+  act('open-' + tableId, 'rsOrderOpen', { tableId: tableId, guests: $('o_guests').value, bookingId: $('o_bk').value, comment: $('o_comment').value }, function (r) {
+    b.disabled = false; note('Стол № ' + r.table + ' открыт' + (r.fromPreorder ? ', из предзаказа: ' + r.fromPreorder + ' поз.' : '') + (r.skipped && r.skipped.length ? '. Не перенесено: ' + r.skipped.join('; ') : ''), true);
+    load(); openOrder(r.orderId);
+  }, function (m) { b.disabled = false; fmsg(m); });
+}
+function rMine() {
+  $('view').innerHTML = '<div class="empty">Загрузка…</div>';
+  call('rsOrderList', { siteId: $('site').value, all: S.data.can.orderAll }, function (l) {
+    $('view').innerHTML = l.length ? l.map(function (o) {
+      return '<div class="card bk" onclick="openOrder(\'' + o.id + '\')"><div><span class="t">Стол № ' + esc(o.table) + '</span> ' + o.guests + ' гост. · ' + esc(o.waiter) +
+        '<div class="meta">открыт ' + esc(o.openedAt) + ' · на кухне: ' + o.waiting + (o.draft ? ' · не отправлено: ' + o.draft : '') + '</div></div><div style="text-align:right"><div class="nm">' + money(o.totalKop) + '</div>' +
+        (o.ready ? '<span class="chip st-CONFIRMED">готово: ' + o.ready + '</span>' : '') + '</div></div>';
+    }).join('') : '<div class="empty">Открытых заказов нет. Откройте стол на схеме зала.</div>';
+  }, function (m) { $('view').innerHTML = ''; note(m); });
+}
+function openOrder(id) {
+  call('rsOrderGet', { id: id }, function (o) { O = o; renderOrder(); if (!MENU) call('rsMenuForOrder', {}, function (m) { MENU = m; }); }, note);
+}
+function reloadOrder(msg) { if (msg) note(msg, true); openOrder(O.id); load(); }
+function oAct(slot, fn, data, msg) { act(slot + '-' + O.id, fn, data, function () { reloadOrder(msg); }, function (m) { fmsg(m); }); }
+function renderOrder() {
+  var o = O, h = '<h2>Стол № ' + esc(o.table) + ' · ' + o.guests + ' гост. <span class="chip">' + esc(o.statusRu) + '</span></h2>' +
+    '<div class="meta">Официант ' + esc(o.waiter) + ' · открыт ' + esc(o.openedAt) + (o.bookingId ? ' · по брони' : '') + (o.comment ? ' · ' + esc(o.comment) : '') + '</div>' +
+    '<div class="card" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center"><div class="nm">Сумма заказа</div><div class="nm" style="font-size:20px">' + money(o.totalKop) + '</div></div>' +
+    '<div class="seg">' + [['items', 'Позиции'], ['add', '+ Добавить блюдо'], ['bill', 'Счёт']].filter(function (x) { return x[0] !== 'add' || (o.can.edit && o.status === 'OPEN'); })
+      .map(function (x) { return '<button class="' + (OV === x[0] ? 'on' : '') + '" onclick="OV=\'' + x[0] + '\';renderOrder()">' + x[1] + '</button>'; }).join('') + '</div><div id="f_msg"></div>';
+  h += OV === 'items' ? oItems() : OV === 'add' ? oAdd() : oBill();
+  h += '<div class="acts"><button class="btn" onclick="closeOv()">Закрыть</button>' + (o.status === 'OPEN' && o.can.edit ? '<button class="btn" onclick="oClose()">Закрыть заказ</button>' : '') +
+    (o.status === 'OPEN' && o.can.all ? '<button class="btn bad" onclick="oCancel()">Отменить заказ</button>' : '') + '</div>';
+  openOv(h);
+  if (OV === 'add') menuList();
+}
+function oItems() {
+  var o = O, live = o.items.filter(function (x) { return x.status !== 'CANCELLED'; }), draft = live.filter(function (x) { return x.status === 'DRAFT'; });
+  var h = '';
+  if (o.can.send && draft.length) h += '<div class="card"><div class="nm">Не отправлено: ' + draft.length + '</div><div class="acts"><button class="btn pri" onclick="oSend(\'all\')">Отправить на кухню</button>' +
+    '<button class="btn" onclick="oSend(\'all\',false)">Отправить все курсы сразу</button></div><div class="meta">«Отправить на кухню»: первый ждущий курс готовят сразу, следующие ждут вашей команды «Следующий курс».</div></div>';
+  var groups = [{ n: 0, name: 'Без курса (сразу)' }].concat(o.courses.map(function (c) { return { n: c.n, name: c.name, status: c.status }; }));
+  groups.forEach(function (g) {
+    var its = o.items.filter(function (x) { return x.course === g.n; }); if (!its.length) return;
+    var lv = its.filter(function (x) { return x.status !== 'CANCELLED'; });
+    h += '<div class="card"><div class="bk" style="cursor:default"><div class="nm">' + (g.n ? 'Курс ' + g.n + ' · ' + esc(g.name) : g.name) + '</div>' +
+      (g.n ? (g.status === 'FIRED' ? '<span class="chip st-CONFIRMED">готовят</span>' : '<span class="chip st-WAITING">ждёт команды</span>') : '') + '</div>';
+    if (g.n && o.can.send && o.status === 'OPEN') {
+      var hasDraft = lv.some(function (x) { return x.status === 'DRAFT'; }), hasWait = lv.some(function (x) { return x.status === 'WAIT_COURSE'; });
+      h += '<div class="acts" style="margin-top:6px">' + (hasDraft ? '<button class="btn" onclick="oSend(\'course\',null,' + g.n + ')">Отправить курс ' + g.n + '</button>' : '') +
+        (g.status !== 'FIRED' && hasWait ? '<button class="btn pri" onclick="oFire(' + g.n + ')">Следующий курс: ' + esc(g.name) + '</button>' : '') +
+        (g.status === 'FIRED' ? '<button class="btn" onclick="oHold(' + g.n + ')">Отложить курс</button>' : '') + '</div>';
+    }
+    h += its.map(itemRow).join('') + '</div>';
+  });
+  return h || '<div class="empty">Позиций нет. Нажмите «+ Добавить блюдо».</div>';
+}
+function itemRow(x) {
+  var o = O, cls = x.status === 'READY' ? 'st-CONFIRMED' : x.status === 'CANCELLED' ? 'st-CANCELLED' : x.status === 'DRAFT' ? 'st-NEW' : x.status === 'WAIT_COURSE' ? 'st-WAITING' : 'st-SEATED';
+  var amt = x.weighted ? (x.factAmount !== null ? x.factAmount + ' ' + esc(x.amountUnit) + ' (факт)' : x.planAmount + ' ' + esc(x.amountUnit) + ' (план)') : x.qty + ' ' + esc(x.unit);
+  var h = '<div style="border-top:1px solid var(--line);padding:8px 0"><div class="bk" style="cursor:default"><div><span class="nm">' + esc(x.name) + '</span> · ' + amt +
+    '<div class="meta">' + (x.guest ? 'гость ' + x.guest : 'общее') + ' · ' + (x.dept === 'BAR' ? 'бар' : 'кухня') + (x.modifiers.length ? ' · ' + esc(x.modifiers.join(', ')) : '') + (x.comment ? ' · ' + esc(x.comment) : '') +
+    (x.cancelReason && x.status === 'CANCELLED' ? ' · отмена: ' + esc(x.cancelReason) : '') + (x.sentAt ? ' · отправлено ' + esc(x.sentAt) : '') + '</div></div>' +
+    '<div style="text-align:right"><div>' + money(x.factKop !== null ? x.factKop : x.planKop) + '</div><span class="chip ' + cls + '">' + esc(IT_ST[x.status] || x.status) + '</span></div></div>';
+  if (o.status === 'OPEN' && o.can.edit && x.status !== 'CANCELLED') {
+    h += '<div class="acts" style="margin-top:4px">';
+    if (x.weighted) h += '<button class="btn" onclick="oWeight(\'' + x.id + '\')">Фактический вес</button>';
+    h += '<button class="btn" onclick="oGuest(\'' + x.id + '\')">Гость</button>';
+    if (x.status === 'DRAFT') h += '<button class="btn" onclick="oReprice(\'' + x.id + '\')" title="взять цену меню на сегодня">Обновить цену</button>';
+    if (['DRAFT', 'SENT', 'WAIT_COURSE'].indexOf(x.status) >= 0) h += '<button class="btn bad" onclick="oCancelItem(\'' + x.id + '\')">Отменить</button>';
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+function findIt(id) { return O.items.filter(function (x) { return x.id === id; })[0]; }
+function oSend(mode, holdNext, course) {
+  if (!confirm(mode === 'course' ? 'Отправить курс ' + course + '? Кухня начнёт его готовить.' : 'Отправить неотправленные позиции на кухню и в бар?')) return;
+  var d = { orderId: O.id, mode: mode, course: course }; if (holdNext === false) d.holdNext = false;
+  act('send-' + O.id, 'rsOrderSend', d, function (r) { reloadOrder('Отправлено: ' + r.sent + ' (кухня ' + r.kitchen + ', бар ' + r.bar + ')' + (r.waiting ? ', ждут курса: ' + r.waiting : '')); }, fmsg);
+}
+function oFire(n) { if (confirm('Дать кухне команду готовить курс ' + n + '?')) oAct('fire' + n, 'rsCourseFire', { orderId: O.id, course: n }, 'Курс ' + n + ' — готовят'); }
+function oHold(n) { if (confirm('Отложить курс ' + n + '? Кухня его ещё не начала — задания снова будут ждать команды.')) oAct('hold' + n, 'rsCourseHold', { orderId: O.id, course: n }, 'Курс ' + n + ' отложен'); }
+function oWeight(id) { var x = findIt(id), a = prompt('Фактический вес «' + x.name + '», ' + x.amountUnit + ' (план ' + x.planAmount + '):', x.factAmount || ''); if (a) oAct('w-' + id, 'rsItemWeight', { itemId: id, version: x.version, amount: a.replace(',', '.') }, 'Вес внесён, сумма пересчитана'); }
+function oGuest(id) { var x = findIt(id), g = prompt('Номер гостя (1–' + O.guests + '), 0 — общее:', x.guest || 0); if (g !== null && g !== '') oAct('g-' + id, 'rsItemUpdate', { itemId: id, version: x.version, guest: g }, 'Гость изменён'); }
+function oReprice(id) { var x = findIt(id); oAct('rp-' + id, 'rsItemUpdate', { itemId: id, version: x.version, reprice: true }, 'Цена обновлена'); }
+function oCancelItem(id) {
+  var x = findIt(id), reason = '';
+  if (x.status !== 'DRAFT') { reason = prompt('«' + x.name + '» уже на кухне (ещё не начата). Отмена снимет задание, расхода не будет. Причина:'); if (!reason) return; }
+  else if (!confirm('Убрать «' + x.name + '» из заказа?')) return;
+  oAct('c-' + id, 'rsItemCancel', { itemId: id, version: x.version, reason: reason }, 'Позиция отменена');
+}
+function oClose() { if (confirm('Закрыть заказ? Все счета должны быть оплачены.')) oAct('close', 'rsOrderClose', { orderId: O.id, version: O.version }, 'Заказ закрыт'); }
+function oCancel() { var r = prompt('Отменить заказ целиком? Возможно, только если ничего не ушло на кухню. Причина:'); if (r) oAct('cancel', 'rsOrderCancel', { orderId: O.id, version: O.version, reason: r }, 'Заказ отменён'); }
+
+/* добавление блюд */
+var ADDQ = '', ADDCAT = '';
+function oAdd() {
+  return '<div class="grid"><div style="grid-column:span 2"><input id="m_q" placeholder="Найти блюдо или напиток" value="' + esc(ADDQ) + '" oninput="ADDQ=this.value;menuList()"></div>' +
+    '<div><select id="m_g" title="гость"><option value="0">общее</option>' + O.guestsList.map(function (g) { return '<option value="' + g.n + '">гость ' + g.n + '</option>'; }).join('') + '</select></div>' +
+    '<div><select id="m_c" title="курс"><option value="0">без курса (сразу)</option>' + O.courses.map(function (c) { return '<option value="' + c.n + '">' + c.n + ' · ' + esc(c.name) + '</option>'; }).join('') + '</select></div></div>' +
+    '<div class="seg" id="m_cats" style="margin-top:8px"></div><div id="m_list"></div>';
+}
+function menuList() {
+  var box = $('m_list'); if (!box) return;
+  if (!MENU) { box.innerHTML = '<div class="meta">Меню загружается…</div>'; setTimeout(menuList, 400); return; }
+  var cats = []; MENU.dishes.forEach(function (d) { if (cats.indexOf(d.category) < 0) cats.push(d.category); });
+  $('m_cats').innerHTML = ['<button class="' + (!ADDCAT ? 'on' : '') + '" onclick="ADDCAT=\'\';menuList()">Все</button>'].concat(cats.map(function (c) { return '<button class="' + (ADDCAT === c ? 'on' : '') + '" onclick="ADDCAT=\'' + esc(c) + '\';menuList()">' + esc(c || 'Без категории') + '</button>'; })).join('');
+  var q = ADDQ.trim().toLowerCase();
+  var l = MENU.dishes.filter(function (d) { return (!ADDCAT || d.category === ADDCAT) && (!q || d.name.toLowerCase().indexOf(q) >= 0); }).slice(0, 60);
+  box.innerHTML = l.map(function (d) {
+    var off = d.stop === 'STOP' || d.priceKop === null;
+    return '<div class="card bk" style="' + (off ? 'opacity:.55;cursor:default' : '') + '" ' + (off ? '' : 'onclick="addDish(\'' + esc(d.code) + '\')"') + '><div><span class="nm">' + esc(d.name) + '</span><div class="meta">' + esc(d.category) +
+      (d.yield ? ' · ' + d.yield + ' ' + esc(d.yunit) : '') + ' · ' + (d.dept === 'BAR' ? 'бар' : 'кухня') + (d.weighted ? ' · весовое' : '') + '</div></div><div style="text-align:right">' +
+      (d.priceKop !== null ? '<div class="nm">' + money(d.priceKop) + '</div><div class="meta">за ' + esc(d.priceFor) + '</div>' : '<span class="meta">нет цены</span>') +
+      (d.stop === 'STOP' ? '<span class="chip st-CANCELLED">STOP</span>' : d.stop === 'LIMITED' ? '<span class="chip st-WAITING">осталось ' + d.left + '</span>' : '') + '</div></div>';
+  }).join('') || '<div class="meta">Не найдено</div>';
+}
+function addDish(code) {
+  var d = MENU.dishes.filter(function (x) { return x.code === code; })[0], x = { code: code, guest: $('m_g').value, course: $('m_c').value };
+  if (d.weighted) { var a = prompt('«' + d.name + '» — весовое (' + money(d.priceKop) + ' за ' + d.priceFor + '). Вес или объём, ' + d.weightUnit + ':', d.yield || ''); if (!a) return; x.amount = a.replace(',', '.'); }
+  else { var q = prompt('«' + d.name + '» — количество:', '1'); if (!q) return; x.qty = q; }
+  var c = prompt('Комментарий или модификаторы через запятую (можно пусто):', ''); if (c === null) return;
+  if (c) { var parts = c.split(','); x.modifiers = parts.slice(1).map(function (s) { return s.trim(); }); x.comment = parts[0].trim(); }
+  act('add-' + O.id, 'rsItemAdd', { orderId: O.id, items: [x] }, function () { note('Добавлено: ' + d.name, true); openOrder(O.id); }, fmsg);
+}
+
+/* счёт */
+function oBill() {
+  var o = O, h = '<div class="meta">Внутренний счёт MON CHEF — не фискальный чек. Оплату подтверждают по кассе; сверка — с Z-отчётом смены.</div>';
+  var open = o.status === 'OPEN', anyPaid = (o.bills || []).some(function (b) { return b.status === 'PAID'; });
+  if (open && o.can.split && !anyPaid) h += '<div class="acts"><button class="btn" onclick="split(\'one\')">Один счёт</button><button class="btn" onclick="splitEq()">Поровну</button>' +
+    '<button class="btn" onclick="split(\'guests\')">Каждый за себя</button><button class="btn" onclick="manualSplit()">Разделить вручную</button></div>';
+  if (o.unallocated && o.unallocated.length) h += '<div class="card"><div class="nm">Не распределено по счетам</div>' + o.unallocated.map(function (u) { return '<div class="meta">• ' + esc(u.name) + ' — ' + u.rest.num + '/' + u.rest.den + '</div>'; }).join('') +
+    ((o.bills || []).some(function (b) { return b.status === 'OPEN'; }) && o.can.split ? '<div class="acts">' + o.bills.filter(function (b) { return b.status === 'OPEN'; }).map(function (b) { return '<button class="btn" onclick="assignRest(\'' + b.id + '\')">В «' + esc(b.name) + '»</button>'; }).join('') + '</div>' : '') + '</div>';
+  (o.bills || []).forEach(function (b) {
+    h += '<div class="card"><div class="bk" style="cursor:default"><div class="nm">' + esc(b.name) + '</div><span class="chip ' + (b.status === 'PAID' ? 'st-CONFIRMED' : 'st-NEW') + '">' + esc(b.statusRu) + '</span></div>' +
+      b.lines.map(function (l) { return '<div class="bk" style="cursor:default"><div>' + esc(l.name) + (l.num !== l.den ? ' · ' + l.num + '/' + l.den : '') + '</div><div>' + money(l.kop) + '</div></div>'; }).join('') +
+      '<div class="meta" style="margin-top:6px">Сумма ' + money(b.subtotalKop) + (b.discountKop ? ' · скидка −' + money(b.discountKop) + ' (' + esc(b.discountReason) + ')' : '') + (b.serviceKop ? ' · сбор +' + money(b.serviceKop) + ' (' + esc(b.serviceReason) + ')' : '') + '</div>' +
+      '<div class="bk" style="cursor:default;margin-top:4px"><div class="nm">Итого</div><div class="nm" style="font-size:18px">' + money(b.totalKop) + '</div></div>' +
+      (b.status === 'PAID' ? '<div class="meta">Оплачено: ' + esc({ CASH: 'наличные', CARD: 'карта', OTHER: 'другое' }[b.method] || b.method) + (b.receipt ? ', чек ' + esc(b.receipt) : '') + ' · ' + esc(b.confirmedBy) + ' ' + esc(b.confirmedAt) + '</div>' : '') +
+      (b.status === 'OPEN' && open ? '<div class="acts">' + (o.can.discount ? '<button class="btn" onclick="adjust(\'' + b.id + '\')">Скидка / сбор</button>' : '') + (o.can.pay ? '<button class="btn ok" onclick="pay(\'' + b.id + '\')">Оплата подтверждена</button>' : '') + '</div>' : '') + '</div>';
+  });
+  var openBills = (o.bills || []).filter(function (b) { return b.status === 'OPEN'; });
+  if (open && o.can.split && openBills.length > 1) h += '<div class="acts"><button class="btn" onclick="mergeAll()">Объединить неоплаченные счета</button></div>';
+  if (!(o.bills || []).length) h += '<div class="empty">Счёт ещё не сформирован — выберите вариант выше.</div>';
+  return h;
+}
+function split(mode, extra) { var d = { orderId: O.id, mode: mode }; for (var k in (extra || {})) d[k] = extra[k]; act('split-' + O.id, 'rsBillSplit', d, function () { OV = 'bill'; reloadOrder('Счёт сформирован'); }, fmsg); }
+function splitEq() { var n = prompt('На сколько частей поровну?', O.guests); if (n) split('equal', { parts: n }); }
+function assignRest(billId) { act('asg-' + billId, 'rsBillAssign', { orderId: O.id, billId: billId, items: O.unallocated.map(function (u) { return { itemId: u.itemId }; }) }, function () { reloadOrder('Добавлено в счёт'); }, fmsg); }
+function mergeAll() { if (confirm('Объединить все неоплаченные счета в один?')) act('merge-' + O.id, 'rsBillMerge', { orderId: O.id, billIds: O.bills.filter(function (b) { return b.status === 'OPEN'; }).map(function (b) { return b.id; }) }, function () { reloadOrder('Счета объединены'); }, fmsg); }
+function adjust(id) {
+  var b = O.bills.filter(function (x) { return x.id === id; })[0];
+  var dv = prompt('Скидка: «10%» или сумма «200». Пусто — без скидки.', b.discountType === 'PERCENT' ? b.discountValue + '%' : b.discountType === 'SUM' ? b.discountValue : ''); if (dv === null) return;
+  var dr = dv ? prompt('Причина скидки:', b.discountReason) : ''; if (dv && !dr) return;
+  var sv = prompt('Сервисный сбор: «10%» или сумма. Пусто — без сбора.', b.serviceType === 'PERCENT' ? b.serviceValue + '%' : b.serviceType === 'SUM' ? b.serviceValue : ''); if (sv === null) return;
+  var sr = sv ? prompt('Основание сбора:', b.serviceReason) : ''; if (sv && !sr) return;
+  var p = function (v) { v = String(v || '').trim().replace(',', '.'); return !v ? ['NONE', ''] : /%$/.test(v) ? ['PERCENT', v.slice(0, -1)] : ['SUM', v]; }, a = p(dv), c = p(sv);
+  act('adj-' + id, 'rsBillAdjust', { billId: id, version: b.version, discountType: a[0], discountValue: a[1], discountReason: dr, serviceType: c[0], serviceValue: c[1], serviceReason: sr }, function () { reloadOrder('Счёт пересчитан'); }, fmsg);
+}
+function pay(id) {
+  var b = O.bills.filter(function (x) { return x.id === id; })[0];
+  var m = prompt('Счёт «' + b.name + '» на ' + money(b.totalKop) + ' оплачен в кассе?\nСпособ: 1 — наличные, 2 — карта, 3 — другое', '2'); if (!m) return;
+  var method = { 1: 'CASH', 2: 'CARD', 3: 'OTHER' }[m.trim()]; if (!method) { fmsg('Способ: 1, 2 или 3'); return; }
+  var rc = method === 'CASH' ? (prompt('Номер чека (можно пусто):', '') || '') : prompt('Номер чека или операции:', ''); if (method !== 'CASH' && !rc) return;
+  act('pay-' + id, 'rsBillPay', { billId: id, version: b.version, method: method, receipt: rc, amountKop: b.totalKop }, function () { reloadOrder('Оплата подтверждена'); }, fmsg);
+}
+/* ручное разделение: у каждой позиции — части по счетам (1 и 1 — пополам; 2 и 1 — две трети и треть) */
+var MS = null;
+function manualSplit() {
+  var live = O.items.filter(function (x) { return x.status !== 'CANCELLED'; });
+  var n = Math.max(2, O.guests);
+  MS = { bills: [], w: {} };
+  for (var i = 1; i <= n; i++) MS.bills.push('Гость ' + i);
+  live.forEach(function (x) { MS.w[x.id] = MS.bills.map(function (_, i) { return x.guest === i + 1 ? 1 : 0; }); if (!x.guest) MS.w[x.id][0] = 1; });
+  drawMs();
+}
+function drawMs() {
+  var live = O.items.filter(function (x) { return x.status !== 'CANCELLED'; });
+  var h = '<h2>Разделить вручную</h2><div class="meta">У каждой позиции укажите части по счетам: 1 и 1 — пополам, 2 и 1 — две трети и треть (например, 3 бокала: 2 одному, 1 другому). Сумма делится без потери копеек.</div>' +
+    '<div class="acts"><button class="btn" onclick="MS.bills.push(\'Счёт \'+(MS.bills.length+1));for(var k in MS.w)MS.w[k].push(0);drawMs()">+ Счёт</button></div><div style="overflow-x:auto"><table class="f"><tr><th>Позиция</th>' +
+    MS.bills.map(function (b, i) { return '<th><input style="min-width:90px" value="' + esc(b) + '" onchange="MS.bills[' + i + ']=this.value"></th>'; }).join('') + '</tr>' +
+    live.map(function (x) { return '<tr><td>' + esc(x.name) + '<div class="meta">' + money(x.factKop !== null ? x.factKop : x.planKop) + (x.qty > 1 ? ' · ' + x.qty + ' ' + esc(x.unit) : '') + '</div></td>' +
+      MS.bills.map(function (_, i) { return '<td><input type="number" min="0" style="width:70px" value="' + (MS.w[x.id][i] || 0) + '" onchange="MS.w[\'' + x.id + '\'][' + i + ']=+this.value||0"></td>'; }).join('') + '</tr>'; }).join('') +
+    '</table></div><div id="f_msg"></div><div class="acts"><button class="btn pri" onclick="saveMs()">Разделить</button><button class="btn" onclick="renderOrder()">Назад</button></div>';
+  openOv(h);
+}
+function saveMs() {
+  var bills = MS.bills.map(function (name) { return { name: name, items: [] }; });
+  Object.keys(MS.w).forEach(function (id) { var w = MS.w[id], tot = w.reduce(function (a, b) { return a + b; }, 0); w.forEach(function (v, i) { if (v > 0) bills[i].items.push({ itemId: id, num: v, den: tot }); }); });
+  bills = bills.filter(function (b) { return b.items.length; });
+  act('split-' + O.id, 'rsBillSplit', { orderId: O.id, mode: 'manual', bills: bills }, function () { OV = 'bill'; reloadOrder('Счёт разделён'); }, fmsg);
 }
 
 /* ---------- старт ---------- */

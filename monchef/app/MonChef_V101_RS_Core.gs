@@ -23,7 +23,9 @@ var MC_GATE_EXT_ = (typeof MC_GATE_EXT_ !== 'undefined' && MC_GATE_EXT_) || {};
 var MC_RS_STD_ = ['CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy', 'Version', 'OperationID'];
 var MC_RS_SH_ = {
   HALLS: 'Залы_V1', TABLES: 'Столы_V1', BOOKINGS: 'Бронирования_V1', PREORDERS: 'Предзаказы_V1',
-  EVENTS: 'СобытияОбслуживания_V1', IDEM: 'Идемпотентность_V1', TX: 'ЖурналТранзакций_RS'
+  EVENTS: 'СобытияОбслуживания_V1', IDEM: 'Идемпотентность_V1', TX: 'ЖурналТранзакций_RS',
+  ORDERS: 'ЗаказыЗала_V1', GUESTS: 'ГостиЗаказа_V1', COURSES: 'КурсыЗаказа_V1', ITEMS: 'ПозицииЗаказа_V1', QUEUE: 'ОчередьПроизводства_V1',
+  BILLS: 'СчетаВнутренние_V1', ALLOC: 'РаспределениеСчета_V1'
 };
 var MC_RS_HEAD_ = {};
 MC_RS_HEAD_[MC_RS_SH_.HALLS] = ['HallID', 'SiteID', 'Название', 'Порядок', 'Ширина', 'Высота', 'Статус'].concat(MC_RS_STD_);
@@ -31,11 +33,24 @@ MC_RS_HEAD_[MC_RS_SH_.TABLES] = ['TableID', 'HallID', 'SiteID', 'Номер', '�
 MC_RS_HEAD_[MC_RS_SH_.BOOKINGS] = ['BookingID', 'SiteID', 'HallID', 'Столы', 'Гость', 'Телефон', 'Дата', 'Начало', 'Длительность, мин', 'Окончание',
   'Гостей', 'Пожелания', 'Комментарий', 'Менеджер', 'PreorderID', 'Статус', 'Причина', 'OrderID', 'IdempotencyKey'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.PREORDERS] = ['PreorderID', 'BookingID', 'Позиции', 'Статус', 'ConvertedOrderID', 'ConvertedAt'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.ORDERS] = ['OrderID', 'SiteID', 'HallID', 'TableID', 'BookingID', 'Гостей', 'Официант', 'WaiterID', 'Открыт', 'Комментарий', 'Статус', 'Причина', 'Закрыт',
+  'IdempotencyKey'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.GUESTS] = ['GuestID', 'OrderID', 'Номер', 'Метка'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.COURSES] = ['CourseID', 'OrderID', 'Номер', 'Название', 'Статус', 'Отправлен', 'Отправил'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.ITEMS] = ['OrderItemID', 'OrderID', 'CourseID', 'Курс', 'GuestID', 'Гость', 'DishCode', 'TTKVersion', 'Название', 'Подразделение', 'Цех',
+  'Кол-во', 'Ед. продажи', 'Весовая', 'Вес план', 'Вес факт', 'Ед. веса', 'Цена, коп', 'Цена за', 'PriceID', 'Сумма план, коп', 'Сумма факт, коп',
+  'Модификаторы', 'Комментарий', 'Статус', 'Отправлено', 'TicketID', 'Причина отмены', 'Источник'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.QUEUE] = ['TicketID', 'OrderItemID', 'OrderID', 'TableID', 'Стол', 'SiteID', 'Подразделение', 'Цех', 'DishCode', 'TTKVersion', 'Название', 'Кол-во',
+  'Вес', 'Курс', 'Модификаторы', 'Комментарий', 'Приоритет', 'Статус', 'Принял', 'Принято', 'Готовить начал', 'Готово', 'Выдано', 'Исполнитель',
+  'Списано по партиям', 'Себестоимость, коп', 'Проблема'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.BILLS] = ['BillID', 'OrderID', 'Название', 'Гость', 'Скидка вид', 'Скидка значение', 'Скидка, коп', 'Причина скидки', 'Сбор вид', 'Сбор значение',
+  'Сбор, коп', 'Причина сбора', 'Итого, коп', 'Статус', 'Способ оплаты', 'Чек', 'Подтвердил', 'Подтверждено', 'Объединён в', 'Комментарий'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.ALLOC] = ['AllocID', 'BillID', 'OrderID', 'OrderItemID', 'Доля числитель', 'Доля знаменатель', 'Статус'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.EVENTS] = ['EventID', 'Время', 'ObjectType', 'ObjectID', 'BookingID', 'OrderID', 'Событие', 'Было', 'Стало', 'Сотрудник', 'EmployeeID', 'OperationID'];
 MC_RS_HEAD_[MC_RS_SH_.IDEM] = ['IdempotencyKey', 'Функция', 'EmployeeID', 'Создано', 'Статус', 'Ответ', 'OperationID'];
 MC_RS_HEAD_[MC_RS_SH_.TX] = ['TxID', 'OperationID', 'Тип', 'План', 'Шагов', 'Выполнено', 'Статус', 'Ошибка', 'Начато', 'Завершено'];
 /** Колонки, которые хранятся текстом (иначе таблица превращает «2026-11-25» и «19:00» в дату и время). */
-var MC_RS_TEXT_COLS_ = ['Дата', 'Начало', 'Окончание', 'Телефон', 'Номер', 'IdempotencyKey'];
+var MC_RS_TEXT_COLS_ = ['Дата', 'Начало', 'Окончание', 'Телефон', 'Номер', 'IdempotencyKey', 'Стол', 'Чек'];
 var MC_RS_TX_STALE_MIN_ = 6;   // предел выполнения Apps Script — 6 минут: PENDING старше этого уже никто не допишет
 
 /* ---------------- листы ---------------- */
@@ -77,13 +92,15 @@ function _rsUpsert_(name, o, rowsCache) {
 }
 
 /* ---------------- значения ---------------- */
+/** Дата из ячейки (проверка не через instanceof: объект может прийти из другого контекста выполнения). */
+function _rsIsDate_(v) { return Object.prototype.toString.call(v) === '[object Date]'; }
 function _rsS_(x) { return String(x === undefined || x === null ? '' : x).replace(/\s+/g, ' ').trim(); }
 function _rsJ_(x, d) { if (x && typeof x === 'object') return x; try { return JSON.parse(x); } catch (e) { return d; } }
 function _rsNum_(x) { var n = typeof x === 'number' ? x : parseFloat(String(x === undefined || x === null ? '' : x).replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : NaN; }
 /** Дата → «гггг-мм-дд» (строка, Date из таблицы, «дд.мм.гггг»). Пусто — ''. */
 function _rsDay_(v) {
   if (v === undefined || v === null || v === '') return '';
-  if (v instanceof Date) return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, _mcTz_(), 'yyyy-MM-dd');
+  if (_rsIsDate_(v)) return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, _mcTz_(), 'yyyy-MM-dd');
   var s = String(v).trim(), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (m) return s;
   m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
@@ -92,7 +109,7 @@ function _rsDay_(v) {
 /** Время → «ЧЧ:ММ» (строка или время из таблицы). */
 function _rsHm_(v) {
   if (v === undefined || v === null || v === '') return '';
-  if (v instanceof Date) return typeof _mcTimeStr_ === 'function' ? _mcTimeStr_(v) : Utilities.formatDate(v, _mcTz_(), 'HH:mm');
+  if (_rsIsDate_(v)) return typeof _mcTimeStr_ === 'function' ? _mcTimeStr_(v) : Utilities.formatDate(v, _mcTz_(), 'HH:mm');
   var m = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(String(v));
   return m && +m[1] < 24 && +m[2] < 60 ? ('0' + m[1]).slice(-2) + ':' + m[2] : '';
 }
@@ -203,7 +220,7 @@ function rsTxRecover(json, token) {
       var rows = _rsRows_(MC_RS_SH_.TX), lim = Date.now() - MC_RS_TX_STALE_MIN_ * 60000, done = [], failed = [];
       rows.forEach(function (t) {
         if (String(t['Статус']) !== 'PENDING') return;
-        var at = t['Начато'] instanceof Date ? t['Начато'].getTime() : Date.parse(t['Начато']);
+        var at = _rsIsDate_(t['Начато']) ? t['Начато'].getTime() : Date.parse(t['Начато']);
         if (!d.force && at > lim) return;
         try { _rsTxRun_(_rsJ_(t['План'], []), true); t['Статус'] = 'RECOVERED'; t['Выполнено'] = t['Шагов']; t['Завершено'] = new Date(); done.push(t.TxID); }
         catch (e) { t['Ошибка'] = String(e.message || e).slice(0, 500); failed.push(t.TxID); }

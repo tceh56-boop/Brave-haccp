@@ -25,7 +25,8 @@ dishes.appendRow(['B001', 'Негрони', 'Коктейли', '120', 3, '', ''
 
 const login = pin => { const r = J(C.loginWithPin(pin, 'dev-test-' + pin)); assert.ok(r.ok, 'вход ' + pin + ': ' + JSON.stringify(r)); return r.token; };
 const DIR = login('1111'), ADM = login('2222'), WAI = login('3333'), COOK = login('4444');
-const call = (fn, tok, d) => J(C[fn](JSON.stringify(d || {}), tok));
+// каждый вызов — новое выполнение Apps Script: кэш чтения таблицы живёт одно выполнение
+const call = (fn, tok, d) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; return J(C[fn](JSON.stringify(d || {}), tok)); };
 const ok = r => { assert.strictEqual(r.success, true, JSON.stringify(r)); return r.data; };
 const err = (r, code) => { assert.strictEqual(r.success === true || r.ok === true, false, 'ожидался отказ: ' + JSON.stringify(r)); if (code) assert.strictEqual((r.error && r.error.code) || r.code, code, JSON.stringify(r)); return r; };
 
