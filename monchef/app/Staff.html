@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Сотрудники</title>
+<style>
+:root{--wine:#6e1423;--wine2:#4a0c17;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--amber:#a86a12;--amber-bg:#fbefd9;--green:#2f7d4f;--green-bg:#e3f2e8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}.tabs b{font-weight:700;margin-left:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}.r{background:var(--red-bg);color:var(--red)}.a{background:var(--amber-bg);color:var(--amber)}.g{background:var(--green-bg);color:var(--green)}
+.form{display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}.card.open .form{display:block}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff}
+textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}.chk input{width:auto}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink)}
+.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.msg{margin-top:10px;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:30px}.note{font-size:12px;color:var(--mut);margin-top:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}.tbl th{font-size:12px;color:var(--mut)}
+</style></head><body><div class="wrap">
+<h1>Сотрудники и обучение</h1>
+<div class="sub">Сотрудники, роли и ПИН-коды (в таблице хранится только хеш), обучение и инструктажи. Медкнижки — HACCP → «Медкнижки».</div>
+<div class="tabs" id="tabs"></div><div class="msg" id="msg"></div><div id="body"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+var TOKEN = new URLSearchParams(location.search).get('token') || '';
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function call(fn, args) { return new Promise(function (ok, fail) { var r = google.script.run.withSuccessHandler(function (x) { try { ok(typeof x === 'string' && /^[\[{"]/.test(x) ? JSON.parse(x) : x); } catch (e) { ok(x); } }).withFailureHandler(fail); r[fn].apply(r, args); }); }
+function okOf(r) { return r && !(typeof r === 'string' && /^err/i.test(r)) && r.success !== false && r.ok !== false && !r.error; }
+function errText(r) { if (typeof r === 'string') return r.replace(/^err:\s*/, ''); return (r && r.error && (r.error.message || r.error)) || 'ошибка'; }
+function dataOf(r) { return r && r.data !== undefined ? r.data : r; }
+function v(id) { var e = document.getElementById(id); return e ? String(e.value).trim() : ''; }
+function msg(t, ok) { var m = document.getElementById('msg'); m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; window.scrollTo(0, 0); }
+function fld(id, l, val, type, extra) { return '<div' + (extra || '') + '><label>' + l + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>'; }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function tabs(list, cur, fn) { document.getElementById('tabs').innerHTML = list.map(function (t) { return '<button class="' + (cur === t[0] ? 'on' : '') + '" onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + (t[2] !== undefined && t[2] !== '' ? '<b>' + t[2] + '</b>' : '') + '</button>'; }).join(''); }
+function fileUrl(id, cb) { var f = document.getElementById(id); f = f && f.files && f.files[0]; if (!f) return cb('', ''); var r = new FileReader(); r.onload = function () { cb(r.result, f.type); }; r.onerror = function () { cb('', ''); }; r.readAsDataURL(f); }
+
+// этап 10.7: роли ТЗ. «Директор» назначает только технический доступ; свою роль сотрудник не меняет (проверяет и сервер)
+var ROLES = ['Администратор', 'Шеф-повар', 'Су-шеф', 'Кондитер', 'Повар холодного цеха', 'Повар горячего цеха', 'Ответственный за ХАССП'];
+function roleOpts(e) {
+  var a = window.__MC_ACCESS || {}, cur = String(e.role || '').trim(), list = (a.dev ? ['Директор'] : []).concat(ROLES), h = '';
+  if (cur && list.indexOf(cur) < 0) h += '<option value="' + esc(cur) + '" selected>' + esc(cur) + (e.roleNote ? ' — ' + esc(e.roleNote) : ' (текущая)') + '</option>';
+  if (!e.id) h += '<option value="" selected disabled>— выберите роль —</option>';
+  return h + list.map(function (r) { return '<option' + (cur === r ? ' selected' : '') + '>' + r + '</option>'; }).join('');
+}
+function isMe(e) { var a = window.__MC_ACCESS || {}; return !!(e && e.id && a && !a.dev && a.name && String(e.fullName || '').replace(/\s+/g, ' ').trim() === String(a.name).replace(/\s+/g, ' ').trim()); }
+var E = [], T = [], TAB = 'emp';
+function load() { Promise.all([call('getEmployeesFull', [TOKEN]), call('getTrainings', [TOKEN])]).then(function (a) { E = (Array.isArray(a[0]) ? a[0] : dataOf(a[0]) || []).filter(function (x) { return x && x.id; }); T = dataOf(a[1]) || []; draw(); }, function () { document.getElementById('body').innerHTML = '<div class="empty">Нет связи</div>'; }); }
+function setTab(t) { TAB = t; draw(); }
+function draw() {
+  tabs([['emp', 'Сотрудники', E.length], ['tr', 'Обучение', T.length]], TAB, 'setTab');
+  var h = '';
+  if (TAB === 'emp') h = '<div class="acts" style="margin:0 0 10px"><button class="btn pri" onclick="edit(-1)">+ Сотрудник</button></div><div id="form"></div>' + E.map(function (e, i) { return '<div class="card"><div class="row" onclick="edit(' + i + ')"><div><div class="nm">' + esc(String(e.fullName || '').replace(/\s+/g, ' ')) + '</div><div class="meta">' + esc(String(e.position || '').trim()) + ' · ' + esc(e.role) + '</div></div><span class="chip ' + (e.active === false ? '' : 'g') + '">' + (e.active === false ? 'неактивен' : 'активен') + '</span></div></div>'; }).join('');
+  if (TAB === 'tr') h = '<div class="card"><div class="nm">Обучение / инструктаж</div><div class="grid" style="margin-top:8px"><div><label>Сотрудник *</label><select id="tWho">' + E.map(function (e) { return '<option>' + esc(String(e.fullName || '').replace(/\s+/g, ' ').trim()) + '</option>'; }).join('') + '</select></div>' +
+    '<div><label>Вид *</label><select id="tKind"><option>Гигиеническое обучение</option><option>Инструктаж ХАССП</option><option>Санминимум</option><option>Инструктаж по охране труда</option><option>Другое</option></select></div>' + fld('tTheme', 'Тема') + fld('tDate', 'Дата *', today(), 'date') + fld('tTill', 'Действует до', '', 'date') + '</div><div class="acts"><button class="btn pri" onclick="addTr(this)">Записать</button></div></div>' +
+    (T.length ? T.map(function (t) { return '<div class="card"><div class="row" style="cursor:default"><div><div class="nm">' + esc(t.сотрудник) + '</div><div class="meta">' + esc(t.вид) + (t.тема ? ' · ' + esc(t.тема) : '') + ' · ' + esc(t.дата) + (t.действуетДо ? ' — ' + esc(t.действуетДо) : '') + '</div></div><span class="chip ' + (t.просрочено ? 'r' : 'g') + '">' + (t.просрочено ? 'просрочено' : 'действует') + '</span></div></div>'; }).join('') : '<div class="empty">Записей нет</div>');
+  document.getElementById('body').innerHTML = h;
+}
+function edit(i) {
+  var e = i >= 0 ? E[i] : {};
+  document.getElementById('form').innerHTML = '<div class="card"><div class="nm">' + (e.id ? esc(e.id) : 'Новый сотрудник') + '</div><div class="grid" style="margin-top:8px">' +
+    fld('fL', 'Фамилия *', String(e.lastName || '').trim()) + fld('fF', 'Имя *', String(e.firstName || '').trim()) + fld('fP', 'Отчество', String(e.patronymic || '').trim()) + fld('fPos', 'Должность', String(e.position || '').trim()) +
+    '<div><label>Роль *</label><select id="fRole"' + (isMe(e) || (String(e.role || '').trim() === 'Директор' && !(window.__MC_ACCESS || {}).dev) ? ' disabled title="Свою роль и роль «Директор» здесь не меняют"' : '') + '>' + roleOpts(e) + '</select></div>' + fld('fPin', e.id ? 'Новый ПИН (4 цифры, пусто — не менять)' : 'ПИН (4 цифры) *', '', 'password') + fld('fPhone', 'Телефон', e.phone) + '</div>' +
+    '<div class="note">Медкнижка вносится в разделе HACCP → «Медкнижки». Права роли и индивидуальные права — в «Права сотрудников» (меню).</div><div class="acts"><button class="btn pri" onclick="save(\'' + esc(e.id || '') + '\',this)">Сохранить</button>' + (e.id ? '<button class="btn bad" onclick="del(\'' + esc(e.id) + '\')">Удалить</button>' : '') + '<button class="btn" onclick="document.getElementById(\'form\').innerHTML=\'\'">Отмена</button></div></div>';
+  window.scrollTo(0, 0);
+}
+function save(id, btn) {
+  var rs = document.getElementById('fRole'), emp = { id: id || undefined, lastName: v('fL'), firstName: v('fF'), patronymic: v('fP'), position: v('fPos'), role: rs && !rs.disabled ? v('fRole') : undefined, phone: v('fPhone') }, pin = v('fPin');
+  if (!id && !emp.role) return msg('Выберите роль');
+  if (!emp.lastName || !emp.firstName) return msg('Введите фамилию и имя');
+  if (!id && !/^\d{4}$/.test(pin)) return msg('ПИН-код — 4 цифры');
+  if (pin) { if (!/^\d{4}$/.test(pin)) return msg('ПИН-код — 4 цифры'); emp.pin = pin; }
+  btn.disabled = true;
+  call(id ? 'updateEmployee' : 'createEmployee', [JSON.stringify(emp), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не сохранено: ' + errText(r)); msg('Сохранено', true); document.getElementById('form').innerHTML = ''; load(); }, function () { btn.disabled = false; msg('Нет связи'); });
+}
+function del(id) { if (!confirm('Удалить сотрудника? История его записей сохранится.')) return; call('deleteEmployee', [id, TOKEN]).then(function (r) { if (!okOf(r)) return msg('Не удалено: ' + errText(r)); msg('Удалено', true); load(); }); }
+function addTr(btn) { btn.disabled = true; call('addTraining', [JSON.stringify({ сотрудник: v('tWho'), вид: v('tKind'), тема: v('tTheme'), дата: v('tDate'), действуетДо: v('tTill') }), TOKEN]).then(function (r) { btn.disabled = false; if (!okOf(r)) return msg('Не записано: ' + errText(r)); msg('Записано', true); load(); }, function () { btn.disabled = false; msg('Нет связи'); }); }
+load();
+
+</script></body></html>
