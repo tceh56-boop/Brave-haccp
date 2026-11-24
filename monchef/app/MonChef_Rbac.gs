@@ -379,6 +379,8 @@ function _mcRbShopOf_(s) {
   if (p.shop_all) return null;
   var out = [];
   if (p.shop_hot) out.push('Горячий цех'); if (p.shop_cold) out.push('Холодный цех'); if (p.shop_pastry) out.push('Кондитерский цех');
+  // V101 Restaurant Service: цеха мясной, рыбный, овощной, заготовочный и бар (права shop_* настраиваются в редакторе ролей)
+  if (typeof MC_RS_SHOP_PERMS_ !== 'undefined') Object.keys(MC_RS_SHOP_PERMS_).forEach(function (k) { if (p[k] && out.indexOf(MC_RS_SHOP_PERMS_[k]) < 0) out.push(MC_RS_SHOP_PERMS_[k]); });
   if (p.shop_hot || p.shop_cold) out = out.concat(MC_RB_SHARED_SHOPS_);
   return out.length ? out : null;
 }

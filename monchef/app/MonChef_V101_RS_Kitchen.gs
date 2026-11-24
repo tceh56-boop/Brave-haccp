@@ -18,7 +18,7 @@
  * Обновление экранов: метка «данные изменились» (mc_gen) — экран спрашивает её раз в 10–15 с и загружает данные только при изменении.
  */
 var MC_RS_TK_RU_ = { NEW: 'новый', ACCEPTED: 'принят', COOKING: 'готовится', READY: 'готово', ISSUED: 'выдано', PROBLEM: 'проблема', CANCELLED: 'отменён', WAIT_COURSE: 'ожидает курса' };
-var MC_RS_SHOP_PERMS_ = { shop_hot: 'Горячий цех', shop_cold: 'Холодный цех', shop_pastry: 'Кондитерский цех', shop_meat: 'Мясной цех', shop_fish: 'Рыбный цех', shop_veg: 'Овощной цех', shop_prep: 'Заготовочный цех' };
+var MC_RS_SHOP_PERMS_ = { shop_hot: 'Горячий цех', shop_cold: 'Холодный цех', shop_pastry: 'Кондитерский цех', shop_meat: 'Мясной цех', shop_fish: 'Рыбный цех', shop_veg: 'Овощной цех', shop_prep: 'Заготовочный цех', shop_bar: 'Бар' };
 var MC_RS_KDS_DONE_MIN_ = 30;   // выданные и отменённые задания видны на экране ещё 30 минут
 
 /** Цеха сотрудника: null — все. */
@@ -63,6 +63,9 @@ function rsKdsData(json, token) {
       return true;
     });
     list.forEach(function (t) { t.waitMin = t.createdMs ? Math.max(0, Math.round((now - t.createdMs) / 60000)) : 0; delete t.createdMs; delete t.updatedMs; });
+    // этап 6: рецепт на карточке (состав на порцию и технология из ТТК) — для активных заданий
+    try { var codes = []; list.forEach(function (t) { if (['CANCELLED', 'ISSUED'].indexOf(t.status) < 0 && codes.indexOf(t.code) < 0) codes.push(t.code); });
+      var rec = typeof _rsRecipeIdx_ === 'function' ? _rsRecipeIdx_(codes) : {}; list.forEach(function (t) { if (rec[t.code]) t.recipe = rec[t.code]; }); } catch (e) {}
     var rank = { PROBLEM: 0, NEW: 1, ACCEPTED: 2, COOKING: 3, READY: 4, WAIT_COURSE: 5, ISSUED: 6, CANCELLED: 7 };
     list.sort(function (a, b) { return (rank[a.status] - rank[b.status]) || (b.priority - a.priority) || (b.waitMin - a.waitMin); });
     return { gen: gen, dept: dept, can: { act: can, stop: _mcRbHasExact_(s, dept === 'BAR' ? 'stopgo_bar' : 'stopgo_kitchen'), approve: _mcRbHasExact_(s, 'stopgo_approve') },
@@ -97,6 +100,14 @@ function rsTicketAct(json, token) {
     if (a === 'issue') { t['Выдано'] = now; t['Выдал'] = who; t['Результат выдачи'] = _rsS_(c.d.result).slice(0, 200) || 'выдано официанту'; }
     if (a === 'problem') t['Проблема'] = reason;
     if (a === 'resolve') t['Проблема'] = (t['Проблема'] ? t['Проблема'] + ' → решено: ' : 'решено: ') + (reason || 'продолжаем');
+    // этап 6: «Готовить» — проверка наличия партий (без списания); «Готово» — списание ингредиентов по ТТК (V71, FEFO), себестоимость
+    var cons = null, warn = '';
+    if (a === 'start') { try { warn = _rsConsumeText_(_rsConsume_(L.row, L.item, true)); } catch (e) { warn = ''; } }
+    if (to === 'READY') {
+      cons = _rsConsume_(L.row, L.item, false);
+      if (cons.status !== 'ALREADY') { t['Списано по партиям'] = JSON.stringify({ status: cons.status, portions: cons.portions, lines: cons.lines, short: cons.short, unreleased: cons.unreleased }).slice(0, 45000); t['Себестоимость, коп'] = cons.costKop; }
+      warn = _rsConsumeText_(cons);
+    }
     _rsStamp_(t, c.s, c.op, false);
     var plan = [{ sheet: MC_RS_SH_.QUEUE, row: t }], itemTo = { ACCEPTED: 'COOKING', COOKING: 'COOKING', READY: 'READY', PROBLEM: 'PROBLEM' }[to];
     if (L.item && itemTo && ['SERVED', 'CANCELLED'].indexOf(String(L.item['Статус'])) < 0) { var it = _rsCopy_(L.item); it['Статус'] = itemTo; _rsStamp_(it, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: it }); }
@@ -105,7 +116,9 @@ function rsTicketAct(json, token) {
       if (to === 'READY') _notify_('RS_READY', 'info', 'Готово: стол № ' + L.tk.table, L.tk.name + ' × ' + L.tk.qty + (L.tk.dept === 'BAR' ? ' (бар)' : ''), 'Официант', 'RS_RDY_' + L.tk.id, c.op);
       if (to === 'PROBLEM') _notify_('RS_PROBLEM', 'warning', 'Проблема: стол № ' + L.tk.table, L.tk.name + ' — ' + reason, 'Официант', 'RS_PRB_' + L.tk.id + '_' + now.getTime(), c.op);
     } catch (e) {}
-    return { data: { ticket: _rsTk_(t) }, plan: plan, audit: { action: 'RS_TICKET_' + to, entity: MC_RS_SH_.QUEUE, id: L.tk.id, before: { status: st }, after: { status: to, reason: reason } } };
+    if (cons && cons.short && cons.short.length) { try { _notify_('RS_SHORT', 'warning', 'Списание не полностью: ' + L.tk.name, warn, L.tk.dept === 'BAR' ? 'Менеджер бара' : 'Шеф-повар', 'RS_SH_' + L.tk.id, c.op); } catch (e) {} }
+    return { data: { ticket: _rsTk_(t), warning: warn, stock: cons ? { status: cons.status, lines: (cons.lines || []).length, short: (cons.short || []).length } : null }, plan: plan,
+      audit: { action: 'RS_TICKET_' + to, entity: MC_RS_SH_.QUEUE, id: L.tk.id, before: { status: st }, after: { status: to, reason: reason, stock: cons ? cons.status : '', costKop: cons ? cons.costKop : '' } } };
   });
 }
 /**
@@ -126,7 +139,14 @@ function rsTicketCancel(json, token) {
     var now = new Date(), who = _rsWho_(c.s), t = _rsCopy_(L.row);
     t['Статус'] = 'CANCELLED'; t['Проблема'] = 'отмена: ' + reason + (L.row['Запрос отмены'] ? ' (запрос официанта: ' + L.row['Запрос отмены'] + ')' : ''); _rsStamp_(t, c.s, c.op, false);
     var cons = { mode: mode, note: note, code: L.tk.code, ttk: L.tk.ttk, qty: L.tk.qty, weight: L.tk.weight, statusAtCancel: st, started: started, by: who, at: Utilities.formatDate(now, _mcTz_(), 'dd.MM.yyyy HH:mm'),
-      posted: false, postNote: mode === 'NONE' ? 'расхода нет' : 'проводка по складу — этап 7' };
+      posted: false, postNote: mode === 'NONE' ? 'расхода нет' : '' };
+    // этап 6: полный расход проводится по складу сразу (по ТТК, FEFO); частичный — актом списания MON CHEF по описанию (не угадываем количества)
+    if (mode === 'FULL') {
+      var r6 = _rsConsume_(L.row, L.item, false);
+      cons.posted = r6.status !== 'NO_TTK'; cons.stock = r6.status === 'ALREADY' ? 'списано при «Готово»' : r6.status;
+      if (r6.status !== 'ALREADY') { t['Списано по партиям'] = JSON.stringify({ status: r6.status, portions: r6.portions, lines: r6.lines, short: r6.short }).slice(0, 45000); t['Себестоимость, коп'] = r6.costKop; cons.costKop = r6.costKop; }
+      cons.postNote = r6.status === 'NO_TTK' ? 'в ТТК нет состава — списать нечего' : 'списано по ТТК' + (r6.short && r6.short.length ? ', ' + _rsConsumeText_(r6) : '');
+    } else if (mode === 'PARTIAL') cons.postNote = 'оформите акт списания по описанию: ' + note + (_rsConsumed_(L.tk.id) ? ' (по ТТК уже списано при «Готово»)' : '');
     var plan = [{ sheet: MC_RS_SH_.QUEUE, row: t }];
     if (L.item && String(L.item['Статус']) !== 'CANCELLED') {
       var it = _rsCopy_(L.item); it['Статус'] = 'CANCELLED'; it['Причина отмены'] = reason; it['Расход при отмене'] = JSON.stringify(cons); _rsStamp_(it, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: it });

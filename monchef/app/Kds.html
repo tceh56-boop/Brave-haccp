@@ -58,10 +58,11 @@ function tabs() {
   if (can('kitchen_queue')) t.push(['KITCHEN', 'Кухня']);
   if (can('bar_queue')) t.push(['BAR', 'Бар']);
   if (can('stopgo_view') || can('stopgo_kitchen') || can('stopgo_bar')) t.push(['STOP', 'Stop/Go']);
+  if (can('bar_queue') || can('bar_manage') || can('shop_bar')) { t.push(['REC', 'Рецептуры бара']); t.push(['PREP', 'Заготовки бара']); }
   if (!S.tab) S.tab = (t[0] || ['STOP'])[0];
   $('tabs').innerHTML = t.map(function (x) { return '<button class="' + (S.tab === x[0] ? 'on' : '') + '" onclick="S.tab=\'' + x[0] + '\';S.shop=\'\';S.gen=\'\';tabs();load()">' + x[1] + '</button>'; }).join('');
 }
-function load() { if (S.tab === 'STOP') return loadStop(); S.dept = S.tab; call('rsKdsData', { dept: S.dept, gen: S.gen }, function (d) { if (d.same) return; S.d = d; S.gen = d.gen; draw(); }, note); }
+function load() { if (S.tab === 'STOP') return loadStop(); if (S.tab === 'REC') return loadRec(); if (S.tab === 'PREP') return loadPrep(); S.dept = S.tab; call('rsKdsData', { dept: S.dept, gen: S.gen }, function (d) { if (d.same) return; S.d = d; S.gen = d.gen; draw(); }, note); }
 /* ---------- очередь ---------- */
 var NEXT = { NEW: [['accept', 'Принять', 'main'], ['start', 'Готовить', '']], ACCEPTED: [['start', 'Готовить', 'main']], COOKING: [['ready', 'Готово', 'ok']], READY: [['issue', 'Выдано', 'main']], PROBLEM: [['resolve', 'Решено, продолжаем', 'main']] };
 function draw() {
@@ -83,6 +84,8 @@ function card(t) {
     (t.modifiers.length || t.comment ? '<div class="mod">' + esc(t.modifiers.concat(t.comment ? [t.comment] : []).join(' · ')) + '</div>' : '') +
     '<div class="meta"><span class="st">' + esc(t.statusRu) + '</span>' + (t.course ? ' · курс ' + t.course : '') + ' · ' + esc(t.shop || '—') + ' · заказ …' + esc(t.orderId.slice(-8)) +
     (t.acceptedAt ? ' · принят ' + esc(t.acceptedAt) + (t.acceptedBy ? ' (' + esc(t.acceptedBy) + ')' : '') : '') + (t.readyAt ? ' · готово ' + esc(t.readyAt) : '') + (t.issuedAt ? ' · выдано ' + esc(t.issuedAt) : '') + '</div>';
+  if (t.recipe && t.recipe.ing.length) h += '<details class="meta"><summary>Рецепт' + (t.recipe.yield ? ' · выход ' + t.recipe.yield + ' ' + esc(t.recipe.yunit) : '') + '</summary>' +
+    t.recipe.ing.map(function (x) { return esc(x.name) + ' — ' + x.qty + ' ' + esc(x.unit); }).join('<br>') + (t.recipe.tech ? '<div style="margin-top:4px;white-space:pre-wrap">' + esc(t.recipe.tech) + '</div>' : '') + '</details>';
   if (t.problem) h += '<div class="warn">' + esc(t.problem) + '</div>';
   if (t.cancelRequest && ['CANCELLED', 'ISSUED'].indexOf(t.status) < 0) h += '<div class="warn">Официант просит отменить: ' + esc(t.cancelRequest) + '</div>';
   if (S.d.can.act && NEXT[t.status]) {
@@ -94,7 +97,7 @@ function card(t) {
 }
 function tk(id) { return S.d.tickets.filter(function (t) { return t.id === id; })[0]; }
 function go(id, a, extra) { var t = tk(id), d = { ticketId: id, version: t.version, action: a }; for (var k in (extra || {})) d[k] = extra[k];
-  act(a + '-' + id, 'rsTicketAct', d, function (r) { note(t.name + ' — ' + r.ticket.statusRu, true); S.gen = ''; load(); }); }
+  act(a + '-' + id, 'rsTicketAct', d, function (r) { if (r.warning) note(t.name + ' — ' + r.ticket.statusRu + '. Внимание: ' + r.warning); else note(t.name + ' — ' + r.ticket.statusRu + (r.stock && r.stock.lines ? ', ингредиенты списаны со склада' : ''), true); S.gen = ''; load(); }); }
 function problem(id) { var t = tk(id); openOv('<h2>Проблема: ' + esc(t.name) + ', стол ' + esc(t.table) + '</h2><div class="meta">Официант увидит описание и согласует с гостем замену или ожидание.</div><label>Что случилось</label><textarea id="p_r" maxlength="300"></textarea>' +
   '<div class="btns" style="margin-top:12px"><button class="btn main" onclick="if($(\'p_r\').value.trim()){go(\'' + id + '\',\'problem\',{reason:$(\'p_r\').value});closeOv();}">Сообщить официанту</button><button class="btn" onclick="closeOv()">Назад</button></div>'); }
 function cancelTk(id) {
@@ -154,8 +157,40 @@ function goForm(code, dept) {
     '<div class="btns" style="margin-top:12px"><button class="btn ok" id="g_go">GO — снова доступно</button><button class="btn" onclick="closeOv()">Назад</button></div>');
   $('g_go').onclick = function () { act('go-' + code + dept, 'rsStopGo', { code: code, dept: dept, reason: $('g_r').value, confirm: $('g_ok').checked }, function () { closeOv(); note('GO: ' + r.name, true); loadStop(); }, function (m) { note(m); }); };
 }
+/* ---------- рецептуры бара ---------- */
+function loadRec() { $('chips').innerHTML = ''; $('view').innerHTML = '<div class="empty">Загрузка…</div>'; call('rsBarRecipes', {}, function (d) {
+  $('sum').textContent = 'рецептур: ' + d.recipes.length;
+  $('view').innerHTML = d.recipes.length ? '<div class="grid">' + d.recipes.map(function (r) {
+    return '<div class="card"><div class="dish" style="font-weight:700;font-size:17px">' + esc(r.name) + '</div><div class="meta">' + esc(r.category) + (r.semi ? ' · заготовка' : '') + ' · ' + (r.approved ? 'версия ТТК ' + r.version : '<b style="color:var(--red)">нет утверждённой версии</b>') +
+      (r.yield ? ' · выход ' + r.yield + ' ' + esc(r.yunit) : '') + '</div><div style="margin-top:6px;font-size:14px">' + r.ing.map(function (x) { return esc(x.name) + ' — ' + x.netto + ' ' + esc(x.unit) + (x.lossPct ? ' <span class="meta">(брутто ' + x.brutto + ', потери ' + x.lossPct + ' %)</span>' : ''); }).join('<br>') + '</div>' +
+      (r.tech ? '<details class="meta" style="margin-top:6px"><summary>Технология</summary><div style="white-space:pre-wrap">' + esc(r.tech) + '</div></details>' : '') +
+      '<div class="meta" style="margin-top:6px">Хранение: ' + esc(r.storage || 'не указано в ТТК') + (r.term ? ' · срок: ' + esc(r.term) : '') + ' · оборудование: ' + esc(r.equipment) + '</div>' +
+      (d.costs && r.costPerPortion !== undefined ? '<div class="meta">Себестоимость: ' + r.costPerPortion + ' ₽' + (r.costMissing && r.costMissing.length ? ' (нет цены: ' + esc(r.costMissing.join(', ')) + ')' : '') + '</div>' : '') + '</div>';
+  }).join('') + '</div>' : '<div class="empty">Рецептур бара нет: у ТТК напитков и заготовок укажите цех «Бар»</div>';
+}, note); }
+/* ---------- заготовки бара (производство MON CHEF) ---------- */
+var PST = { PLANNED: 'запланировано', IN_PROGRESS: 'в работе', COMPLETED: 'выпущено', CANCELLED: 'отменено' };
+function loadPrep() { $('chips').innerHTML = ''; call('rsBarPreps', {}, function (d) {
+  S.prep = d; $('sum').textContent = 'в работе: ' + d.orders.filter(function (o) { return o.status === 'PLANNED' || o.status === 'IN_PROGRESS'; }).length;
+  var h = d.can.plan && d.pfs.length ? '<div class="card"><b>Новая заготовка</b><label>Заготовка</label><select id="pp_c">' + d.pfs.map(function (p) { return '<option value="' + esc(p.code) + '" data-u="' + esc(p.yunit) + '">' + esc(p.name) + '</option>'; }).join('') + '</select>' +
+    '<label>Количество (единица выхода ТТК)</label><input id="pp_q" type="number" min="0" step="any"><div class="btns" style="margin-top:10px"><button class="btn main" style="flex:0 0 auto" onclick="prepPlan()">Запланировать</button></div></div>' : '';
+  h += d.orders.length ? d.orders.map(function (o) {
+    return '<div class="card"><div class="row" style="border:0;padding:0"><div><b>' + esc(o.name) + '</b> — ' + o.planned + ' ' + esc(o.unit) + (o.actual !== null ? ' (выход ' + o.actual + ')' : '') + '<div class="meta">' + esc(PST[o.status] || o.status) +
+      (o.employee ? ' · ' + esc(o.employee) : '') + (o.batch ? ' · партия ' + esc(o.batch) : '') + '</div></div><div class="btns" style="flex:0 0 auto">' +
+      (o.status === 'PLANNED' ? '<button class="btn main small" onclick="prepStart(\'' + esc(o.id) + '\')">Начать</button>' : '') +
+      (o.status === 'PLANNED' || o.status === 'IN_PROGRESS' ? '<button class="btn ok small" onclick="prepDone(\'' + esc(o.id) + '\',' + o.planned + ',\'' + esc(o.unit) + '\')">Выпустить</button>' : '') + '</div></div></div>';
+  }).join('') : '<div class="card empty" style="padding:20px">Заданий на заготовки бара нет' + (d.pfs.length ? '' : ' (нет полуфабрикатов цеха «Бар» в ТТК)') + '</div>';
+  $('view').innerHTML = h;
+}, note); }
+function prepPlan() { var sel = $('pp_c'), u = sel.options[sel.selectedIndex].getAttribute('data-u'); act('pp-' + sel.value, 'rsBarPrepPlan', { code: sel.value, qty: $('pp_q').value, unit: u }, function () { note('Заготовка запланирована', true); loadPrep(); }); }
+function prepStart(id) { act('ps-' + id, 'rsBarPrepStart', { id: id }, function () { note('Заготовка в работе', true); loadPrep(); }); }
+function prepDone(id, plan, unit) {
+  openOv('<h2>Выпуск заготовки</h2><label>Фактический выход, ' + esc(unit) + '</label><input id="pd_q" type="number" step="any" value="' + plan + '"><label>Срок годности (если указан в документе; пусто — по правилам сроков MON CHEF)</label><input id="pd_e" type="date">' +
+    '<div class="meta" style="margin-top:6px">Сырьё спишется по партиям, будет создана партия заготовки. Без выполненных обязательных ККТ выпуск заблокирован.</div><div class="btns" style="margin-top:12px"><button class="btn ok" id="pd_go">Выпустить</button><button class="btn" onclick="closeOv()">Назад</button></div>');
+  $('pd_go').onclick = function () { var e = $('pd_e').value; act('pd-' + id, 'rsBarPrepComplete', { id: id, qty: $('pd_q').value, expiry: e ? e.split('-').reverse().join('.') : '' }, function (r) { closeOv(); note('Заготовка выпущена' + (r && r.batchIds ? ': партия ' + r.batchIds.join(', ') : ''), true); loadPrep(); }, function (m) { note(m); }); };
+}
 /* ---------- старт и обновление ---------- */
 tabs(); load();
-setInterval(function () { if (document.hidden || $('ov').classList.contains('on')) return; if (S.tab === 'STOP') return; load(); }, 10000);
+setInterval(function () { if (document.hidden || $('ov').classList.contains('on')) return; if (['STOP', 'REC', 'PREP'].indexOf(S.tab) >= 0) return; load(); }, 10000);
 </script>
 </body></html>

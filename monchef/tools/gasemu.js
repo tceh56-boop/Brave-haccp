@@ -30,7 +30,9 @@ function makeSheet(name) {
     appendRow: r => { const n = sh.getLastRow(); sh.data[n] = r.slice(); sh.data.length = Math.max(sh.data.length, n + 1); return sh; },
     setFrozenRows: n => { sh.frozen = n; }, getFrozenRows: () => sh.frozen, clear: () => { sh.data = []; return sh; }, clearContents: () => { sh.data = []; return sh; },
     deleteRow: r => { sh.data.splice(r - 1, 1); }, deleteRows: (r, n) => { sh.data.splice(r - 1, n); }, insertColumnAfter: () => sh, autoResizeColumns: () => sh, hideSheet: () => sh,
-    getParent: () => null, getSheetId: () => name.length
+    getParent: () => null, getSheetId: () => name.length,
+    // оформление листа — на стенде без действия
+    setColumnWidth: () => sh, setColumnWidths: () => sh, setRowHeight: () => sh, hideColumns: () => sh, showColumns: () => sh, setTabColor: () => sh, autoResizeColumn: () => sh, setConditionalFormatRules: () => sh, getConditionalFormatRules: () => []
   });
   return sh;
 }

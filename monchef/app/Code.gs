@@ -8082,6 +8082,7 @@ function planProduction(pfCode, qty, unit, allocationsJson, comment, token) {
     if (!pf || !pf.ing || !pf.ing.length) { _endOp_(_op, 'FAILED'); return _fail_('NOT_FOUND', 'ТТК полуфабриката не найдена или без состава', _op.id); }
     var id = 'PR' + Date.now();
     var ws = ''; try { ws = _dishWorkshopMap_()[pfCode] || ''; } catch (e) {}
+    if (typeof _mcRbShopAllowed_ === 'function' && _op.session && !_mcRbShopAllowed_(_op.session, ws)) { _endOp_(_op, 'FAILED'); return _fail_('FORBIDDEN', 'Полуфабрикат цеха «' + (ws || 'без цеха') + '» — не вашего цеха', _op.id); }   // V101
     _productionSheet_().appendRow([id, _op.id, pf.name, pfCode, '', q, '', unit || 'г', ws, '', '', '',
       'PLANNED', '', '', allocationsJson || '[]', comment || '', new Date()]);
     _audit_(_op, 'PRODUCTION_PLAN', 'Производство', id, null, { pf: pf.name, qty: q, unit: unit || 'г' });
@@ -8099,6 +8100,7 @@ function startProduction(id, token) {
       var sh = _productionSheet_(), f = _findProduction_(sh, id);
       if (!f) { _endOp_(_op, 'FAILED'); return _fail_('NOT_FOUND', 'Заказ не найден', _op.id); }
       if (f.data[PROD_COL_.status] !== 'PLANNED') { _endOp_(_op, 'FAILED'); return _fail_('VALIDATION', 'Начать можно только запланированный заказ', _op.id); }
+      if (typeof _mcRbShopAllowed_ === 'function' && _op.session && !_mcRbShopAllowed_(_op.session, f.data[PROD_COL_.ws])) { _endOp_(_op, 'FAILED'); return _fail_('FORBIDDEN', 'Задание цеха «' + (f.data[PROD_COL_.ws] || 'без цеха') + '» — не вашего цеха', _op.id); }   // V101: цех проверяет сервер
       var who = (_op.session && (_op.session.fullName || _op.session.name || _op.session.user_id)) || '';
       sh.getRange(f.row, PROD_COL_.emp + 1).setValue(who);
       sh.getRange(f.row, PROD_COL_.start + 1).setValue(new Date());
@@ -8242,6 +8244,7 @@ function completeProduction(id, actualQty, expiry, token) {
       var st = f.data[PROD_COL_.status];
       // повторное нажатие не должно списать сырьё второй раз
       if (st !== 'PLANNED' && st !== 'IN_PROGRESS') { _endOp_(_op, 'FAILED'); return _fail_('VALIDATION', 'Заказ уже ' + (st === 'COMPLETED' ? 'выполнен' : 'отменён'), _op.id); }
+      if (typeof _mcRbShopAllowed_ === 'function' && _op.session && !_mcRbShopAllowed_(_op.session, f.data[PROD_COL_.ws])) { _endOp_(_op, 'FAILED'); return _fail_('FORBIDDEN', 'Задание цеха «' + (f.data[PROD_COL_.ws] || 'без цеха') + '» — не вашего цеха', _op.id); }   // V101: цех проверяет сервер
       var code = f.data[PROD_COL_.code], name = f.data[PROD_COL_.name], unit = f.data[PROD_COL_.unit] || 'г';
       // ТЗ §9: выпуск только при выполненных обязательных ККТ карты (факт в пределах по этому заказу)
       var ccpSt = _tccpState_(code, id);
@@ -8293,6 +8296,7 @@ function cancelProduction(id, reason, token) {
       if (!f) { _endOp_(_op, 'FAILED'); return _fail_('NOT_FOUND', 'Заказ не найден', _op.id); }
       var st = f.data[PROD_COL_.status];
       if (st === 'COMPLETED') { _endOp_(_op, 'FAILED'); return _fail_('VALIDATION', 'Выполненный заказ отменить нельзя — сырьё уже списано', _op.id); }
+      if (typeof _mcRbShopAllowed_ === 'function' && _op.session && !_mcRbShopAllowed_(_op.session, f.data[PROD_COL_.ws])) { _endOp_(_op, 'FAILED'); return _fail_('FORBIDDEN', 'Задание цеха «' + (f.data[PROD_COL_.ws] || 'без цеха') + '» — не вашего цеха', _op.id); }   // V101: цех проверяет сервер
       if (st === 'CANCELLED') { _endOp_(_op); return _ok_({ id: id, status: 'CANCELLED' }, _op.id); }
       sh.getRange(f.row, PROD_COL_.status + 1).setValue('CANCELLED');
       if (reason) sh.getRange(f.row, PROD_COL_.comment + 1).setValue(String(f.data[PROD_COL_.comment] || '') + ' | отмена: ' + reason);

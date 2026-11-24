@@ -25,7 +25,7 @@
   "internal_versions_visible_in_ui": false,
   "single_stock_source": "Склад_Партии",
   "go_live_requirement": "Pilot on a copy of real data, backup/restore drill, acceptance test, security review and regulatory/e-signature validation where applicable",
-  "files_count": 185,
+  "files_count": 186,
   "files_sha256_source": "BUILD_MANIFEST.json → files",
   "updated": "2026-11-24"
 }

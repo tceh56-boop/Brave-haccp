@@ -239,7 +239,7 @@ function _v71Run_(item, qty, o) {
   var ctx = { dry: !!o.dry, day: _v71Day_(at), sh: _stockBatchesSheet_(), res: _v71Reserved_(), blocked: _v71Blocked_(), taken: {} };
   ctx.v = ctx.sh.getDataRange().getValues();
   try { if (typeof _v97SkipRows_ === 'function') ctx.skip = _v97SkipRows_(ctx.v, o.site); } catch (e) {}   // V97: только склады площадки продажи
-  var src = 'Продажа ' + (o.saleId || ''), lines = [], short = [], unreleased = [], pid = {};
+  var src = o.src || ('Продажа ' + (o.saleId || '')), lines = [], short = [], unreleased = [], pid = {};   // V101: o.src — «Производство заказа …»
   try { pid = _ttkPidByProdKey_(); } catch (e) {}
   var avgOf = function (nm, un) { try { return _currentAvgPrice_(nm, un) || 0; } catch (e) { return 0; } };
   var push = function (g, from, need) {

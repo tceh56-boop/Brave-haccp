@@ -33,9 +33,11 @@ var MC_RS_PERMS_ = [
   ['shop_meat', 'Задания мясного цеха', 'Производство'],
   ['shop_fish', 'Задания рыбного цеха', 'Производство'],
   ['shop_veg', 'Задания овощного цеха', 'Производство'],
-  ['shop_prep', 'Задания заготовочного цеха', 'Производство']
+  ['shop_prep', 'Задания заготовочного цеха', 'Производство'],
+  ['shop_bar', 'Задания и заготовки бара (цех «Бар»)', 'Производство'],
+  ['bar_manage', 'Бар — рецептуры (просмотр с технологией), заготовки, контроль барменов', 'Производство']
 ];
-var MC_RS_ROLES_NEW_ = ['Официант'];
+var MC_RS_ROLES_NEW_ = ['Официант', 'Бармен', 'Менеджер бара'];
 var MC_RS_MATRIX_ADD_ = {
   'Директор': ['hall_view', 'booking', 'hall_manage', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm', 'menu_publish', 'roles_edit'],
   'Администратор': ['hall_view', 'booking', 'hall_manage', 'catalog', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm', 'menu_publish'],
@@ -45,9 +47,15 @@ var MC_RS_MATRIX_ADD_ = {
   'Повар горячего цеха': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view'],
   'Повар холодного цеха': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view'],
   'Повар': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view'],
-  'Кондитер': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view']
+  'Кондитер': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view'],
+  // ТЗ §8.1: бармен — барное меню, барные задания, свои заготовки и партии, барные остатки (просмотр), Stop/Go бара.
+  // Запрещено по умолчанию: закупочные цены и себестоимость (costs), утверждение ТТК, финансы, сотрудники.
+  'Бармен': ['catalog', 'bar_queue', 'shop_bar', 'kanban', 'batch_use', 'stock_view', 'labels', 'stopgo_bar', 'stopgo_view', 'checklists'],
+  // ТЗ §8.2: менеджер бара — бармен + распределение заданий, доступность, заготовки, подтверждение производства, рецептуры
+  'Менеджер бара': ['catalog', 'bar_queue', 'shop_bar', 'kanban', 'batch_use', 'stock_view', 'labels', 'stopgo_bar', 'stopgo_view', 'checklists',
+    'bar_manage', 'prod_manage', 'plan', 'stock', 'stopgo_approve', 'ttk_history', 'hall_view']
 };
-['kitchen_queue', 'bar_queue', 'stopgo_view', 'stopgo_kitchen', 'stopgo_bar', 'stopgo_approve'].forEach(function (k) { MC_RS_MATRIX_ADD_['Директор'].push(k); });
+['kitchen_queue', 'bar_queue', 'stopgo_view', 'stopgo_kitchen', 'stopgo_bar', 'stopgo_approve', 'bar_manage'].forEach(function (k) { MC_RS_MATRIX_ADD_['Директор'].push(k); });
 MC_RS_MATRIX_ADD_['Администратор'].push('stopgo_view');
 
 (function () {
@@ -68,7 +76,11 @@ MC_RS_MATRIX_ADD_['Администратор'].push('stopgo_view');
   grant('order_all', ['Руководитель смены', 'Администратор площадки']);
   grant('order_edit', ['Руководитель смены', 'Администратор площадки']);
   grant('menu_publish', ['Шеф-повар', 'Су-шеф', 'Администратор площадки']);
-  grant('bar_queue', ['Администратор', 'Руководитель смены']); grant('stopgo_bar', ['Администратор', 'Руководитель смены']);   // до ролей бара (этап 6)
+  grant('bar_queue', ['Администратор', 'Руководитель смены']); grant('stopgo_bar', ['Администратор', 'Руководитель смены']);
+  grant('costs', ['Менеджер бара']); grant('receiving', ['Бармен', 'Менеджер бара']); grant('procurement', ['Менеджер бара']);   // себестоимость бара — по праву от директора (§8.2)
+  // бармен и менеджер бара работают с продуктами — медицинский допуск, цех «Бар»
+  try { ['Бармен', 'Менеджер бара'].forEach(function (r) { if (MC_FOOD_ROLES_.indexOf(r) < 0) MC_FOOD_ROLES_.push(r); }); } catch (e) {}
+  try { MC_RB_SHOPS_['Бармен'] = ['Бар']; MC_RB_SHOPS_['Менеджер бара'] = ['Бар']; } catch (e) {}
   grant('kitchen_queue', ['Руководитель смены']); grant('stopgo_approve', ['Руководитель смены']);
   ['shop_meat', 'shop_fish', 'shop_veg', 'shop_prep'].forEach(function (k) { grant(k, ['Повар горячего цеха', 'Повар холодного цеха', 'Повар', 'Кондитер']); });
   // работа с продуктами на кухне и в баре — только с медицинским допуском (как журналы и производство)
