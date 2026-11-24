@@ -81,7 +81,7 @@ function _rsTtkIdx_() {
 function _rsStopIdx_() {
   var out = {};
   try {
-    var sh = _book_().getSheetByName('СтопГО_V1'); if (!sh || sh.getLastRow() < 2) return out;
+    var sh = _book_().getSheetByName(MC_RS_SH_.STOPGO); if (!sh || sh.getLastRow() < 2) return out;
     var v = sh.getDataRange().getValues(), h = v[0].map(String);
     for (var i = 1; i < v.length; i++) { var o = {}; h.forEach(function (k, j) { o[k] = v[i][j]; }); if (String(o['Актуально']) === 'false' || o['Актуально'] === false) continue; out[String(o.DishCode) + '|' + String(o['Подразделение'])] = { status: String(o['Статус'] || 'GO'), left: _rsNum_(o['Остаток']) }; }
   } catch (e) {}
@@ -99,7 +99,9 @@ function _rsIt_(r) {
     planKop: parseInt(r['Сумма план, коп'], 10) || 0, factKop: r['Сумма факт, коп'] === '' ? null : parseInt(r['Сумма факт, коп'], 10),
     modifiers: _rsJ_(r['Модификаторы'], []) || [], comment: String(r['Комментарий'] || ''), status: String(r['Статус'] || 'DRAFT'), statusRu: MC_RS_IT_RU_[r['Статус']] || r['Статус'],
     sentAt: _rsIsDate_(r['Отправлено']) ? Utilities.formatDate(r['Отправлено'], _mcTz_(), 'HH:mm') : String(r['Отправлено'] || ''),
-    ticketId: String(r.TicketID || ''), cancelReason: String(r['Причина отмены'] || ''), version: parseInt(r.Version, 10) || 1 };
+    ticketId: String(r.TicketID || ''), cancelReason: String(r['Причина отмены'] || ''), version: parseInt(r.Version, 10) || 1,
+    servedAt: _rsIsDate_(r['Подано']) ? Utilities.formatDate(r['Подано'], _mcTz_(), 'HH:mm') : '', servedBy: String(r['Подал'] || ''),
+    consumption: _rsJ_(r['Расход при отмене'], null), replaces: String(r['Замена для'] || '') };
 }
 /** Сумма позиции, коп: по факту веса, если внесён; иначе план. */
 function _rsItKop_(it) { return it.factKop !== null && it.factKop !== undefined && !isNaN(it.factKop) ? it.factKop : it.planKop; }
@@ -133,6 +135,8 @@ function _rsOrderFull_(id, s) {
   o.guestsList = _rsRows_(MC_RS_SH_.GUESTS).filter(function (g) { return String(g.OrderID) === o.id; }).map(function (g) { return { id: String(g.GuestID), n: parseInt(g['Номер'], 10) || 0, label: String(g['Метка'] || '') }; }).sort(function (a, b) { return a.n - b.n; });
   o.courses = _rsRows_(MC_RS_SH_.COURSES).filter(function (c) { return String(c.OrderID) === o.id; }).map(function (c) { return { id: String(c.CourseID), n: parseInt(c['Номер'], 10) || 0, name: String(c['Название']), status: String(c['Статус']), version: parseInt(c.Version, 10) || 1 }; }).sort(function (a, b) { return a.n - b.n; });
   o.items = _rsRows_(MC_RS_SH_.ITEMS).filter(function (x) { return String(x.OrderID) === o.id; }).map(_rsIt_);
+  var tks = {}; _rsRows_(MC_RS_SH_.QUEUE).forEach(function (q) { if (String(q.OrderID) === o.id) tks[String(q.TicketID)] = q; });
+  o.items.forEach(function (it) { var q = tks[it.ticketId]; if (!q) return; it.ticketStatus = String(q['Статус']); it.problem = String(q['Проблема'] || ''); it.cancelRequest = String(q['Запрос отмены'] || ''); it.readyAt = _rsIsDate_(q['Готово']) ? Utilities.formatDate(q['Готово'], _mcTz_(), 'HH:mm') : ''; });
   var tidx = _rsTablesIdx_(); o.table = tidx[o.tableId] ? tidx[o.tableId].number : '';
   o.totalKop = o.items.filter(function (x) { return x.status !== 'CANCELLED'; }).reduce(function (a, x) { return a + _rsItKop_(x); }, 0);
   if (typeof _rsBillsOf_ === 'function') { var b = _rsBillsOf_(o); o.bills = b.bills; o.unallocated = b.unallocated; o.paidKop = b.paidKop; }
@@ -186,13 +190,13 @@ function rsOrderOpen(json, token) {
       if (bk.tables.indexOf(t.id) < 0) return { fail: ['VALIDATION', 'Бронь на другой стол (№ ' + bk.tables.map(function (x) { return tidx[x] ? tidx[x].number : '?'; }).join(', ') + ')'] };
       if (bk.date !== day) return { fail: ['VALIDATION', 'Бронь на ' + bk.date.split('-').reverse().join('.') + ', а не на сегодня'] };
       o.BookingID = bk.id; bkInfo = bk;
-      var b2 = JSON.parse(JSON.stringify(bkr)); delete b2._row; b2['Статус'] = 'SEATED'; b2.OrderID = id; _rsStamp_(b2, s, c.op, false);
+      var b2 = _rsCopy_(bkr); delete b2._row; b2['Статус'] = 'SEATED'; b2.OrderID = id; _rsStamp_(b2, s, c.op, false);
       plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: b2 });
       if (bk.preorderId) {
         var pr = _rsRows_(MC_RS_SH_.PREORDERS).filter(function (x) { return String(x.PreorderID) === bk.preorderId; })[0];
         if (pr && ['DRAFT', 'CONFIRMED'].indexOf(String(pr['Статус'])) >= 0) {
           items = _rsJ_(pr['Позиции'], []) || [];
-          var p2 = JSON.parse(JSON.stringify(pr)); delete p2._row; p2['Статус'] = 'CONVERTED'; p2.ConvertedOrderID = id; p2.ConvertedAt = new Date(); _rsStamp_(p2, s, c.op, false);
+          var p2 = _rsCopy_(pr); delete p2._row; p2['Статус'] = 'CONVERTED'; p2.ConvertedOrderID = id; p2.ConvertedAt = new Date(); _rsStamp_(p2, s, c.op, false);
           plan.push({ sheet: MC_RS_SH_.PREORDERS, row: p2 });
         }
       }
@@ -248,6 +252,7 @@ function rsItemAdd(json, token) {
       if (!dish) return { fail: ['VALIDATION', 'Блюдо не найдено в каталоге (код ' + (x.code || '—') + ')'] };
       var st = _rsStopOf_(stops, dish.code, dish.dept);
       if (st.status === 'STOP') return { fail: ['VALIDATION', '«' + dish.name + '» — STOP: временно недоступно'] };
+      if (st.status === 'REVIEW') return { fail: ['VALIDATION', '«' + dish.name + '» — на проверке у ответственного, пока недоступно'] };
       var price = prices[dish.code];
       if (!price) return { fail: ['VALIDATION', '«' + dish.name + '»: нет цены в «Ценах меню» на сегодня — цену вносит экономист'] };
       if (!price.unit) return { fail: ['VALIDATION', '«' + dish.name + '»: единица цены «' + price.unitText + '» не распознана (порц., шт, 100 г, кг, мл, л)'] };
@@ -292,7 +297,7 @@ function rsItemUpdate(json, token) {
     if (u && u.weighted && !(_rsNum_(x.amount) > 0)) return { fail: ['VALIDATION', 'Укажите вес или объём'] };
     var g = parseInt(x.guest, 10) || 0; if (g < 0 || g > L.o.guests) return { fail: ['VALIDATION', 'Гость — от 1 до ' + L.o.guests] };
     var crs = parseInt(x.course, 10) || 0; if (crs < 0 || crs > _rsCourses_().length) return { fail: ['VALIDATION', 'Нет такого курса'] };
-    var row = JSON.parse(JSON.stringify(L.row)); delete row._row;
+    var row = _rsCopy_(L.row); delete row._row;
     var fresh = _rsItemRow_(it.orderId, dish, price, x, L.o.guests, row['Источник'], 0);
     ['CourseID', 'Курс', 'GuestID', 'Гость', 'Кол-во', 'Ед. продажи', 'Весовая', 'Вес план', 'Ед. веса', 'Цена, коп', 'Цена за', 'PriceID', 'Сумма план, коп', 'Модификаторы', 'Комментарий']
       .forEach(function (k) { if (it.status === 'DRAFT' || k === 'GuestID' || k === 'Гость') row[k] = fresh[k]; });
@@ -314,7 +319,7 @@ function rsItemWeight(json, token) {
     if (!(a > 0 && a <= 20000)) return { fail: ['VALIDATION', 'Фактический вес — положительное число, ' + it.amountUnit] };
     if (typeof _rsItemPaid_ === 'function' && _rsItemPaid_(it.id)) return { fail: ['VALIDATION', 'Позиция в оплаченном счёте'] };
     var u = _rsPriceUnit_(it.priceFor); if (!u) return { fail: ['VALIDATION', 'Единица цены не распознана'] };
-    var row = JSON.parse(JSON.stringify(L.row)); delete row._row;
+    var row = _rsCopy_(L.row); delete row._row;
     row['Вес факт'] = a; row['Сумма факт, коп'] = _rsAmountKop_(it.priceKop, u, 1, a); _rsStamp_(row, c.s, c.op, false);
     var after = _rsIt_(row);
     return { data: { item: after }, plan: [{ sheet: MC_RS_SH_.ITEMS, row: row }, { sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'ITEM', it.id, { order: it.orderId }, 'ITEM_WEIGHED',
@@ -333,12 +338,19 @@ function rsItemCancel(json, token) {
     if (it.status !== 'DRAFT') {
       if (!reason) return { fail: ['VALIDATION', 'Позиция уже отправлена — укажите причину отмены'] };
       var tk = _rsRows_(MC_RS_SH_.QUEUE).filter(function (q) { return String(q.TicketID) === it.ticketId; })[0];
+      if (tk && ['ACCEPTED', 'COOKING', 'READY', 'PROBLEM'].indexOf(String(tk['Статус'])) >= 0) {   // этап 4: кухня уже приняла — запрос отмены кухне
+        var rq = _rsCopy_(tk); rq['Запрос отмены'] = reason + ' — ' + _rsWho_(c.s); _rsStamp_(rq, c.s, c.op, false);
+        try { _notify_('RS_CANCEL_REQ', 'warning', 'Запрос отмены: стол № ' + tk['Стол'], tk['Название'] + ' — ' + reason, 'Шеф-повар', 'RS_CRQ_' + tk.TicketID, c.op); } catch (e) {}
+        return { data: { item: it, requested: true, note: 'Кухня уже приняла позицию: отмену подтвердит кухня и укажет расход' }, plan: [{ sheet: MC_RS_SH_.QUEUE, row: rq },
+          { sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'ITEM', it.id, { order: it.orderId }, 'ITEM_CANCEL_REQUESTED', { status: it.status }, { reason: reason }) }],
+          audit: { action: 'RS_ITEM_CANCEL_REQUESTED', entity: MC_RS_SH_.QUEUE, id: String(tk.TicketID), after: { reason: reason } } };
+      }
       if (!tk || ['NEW', 'WAIT_COURSE'].indexOf(String(tk['Статус'])) < 0)
-        return { fail: ['VALIDATION', 'Кухня уже приняла позицию — отмену подтверждает кухня с фиксацией расхода'] };
-      var t2 = JSON.parse(JSON.stringify(tk)); delete t2._row; t2['Статус'] = 'CANCELLED'; t2['Проблема'] = 'отмена официантом: ' + reason; _rsStamp_(t2, c.s, c.op, false);
+        return { fail: ['VALIDATION', 'Позицию уже выдали или отменили'] };
+      var t2 = _rsCopy_(tk); delete t2._row; t2['Статус'] = 'CANCELLED'; t2['Проблема'] = 'отмена официантом: ' + reason; _rsStamp_(t2, c.s, c.op, false);
       plan.push({ sheet: MC_RS_SH_.QUEUE, row: t2 });
     }
-    var row = JSON.parse(JSON.stringify(L.row)); delete row._row; row['Статус'] = 'CANCELLED'; row['Причина отмены'] = reason || 'не отправлялась'; _rsStamp_(row, c.s, c.op, false);
+    var row = _rsCopy_(L.row); delete row._row; row['Статус'] = 'CANCELLED'; row['Причина отмены'] = reason || 'не отправлялась'; _rsStamp_(row, c.s, c.op, false);
     plan.unshift({ sheet: MC_RS_SH_.ITEMS, row: row });
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'ITEM', it.id, { order: it.orderId }, 'ITEM_CANCELLED', { status: it.status }, { status: 'CANCELLED', reason: reason, consumption: 'нет: приготовление не начиналось' }) });
     return { data: { item: _rsIt_(row) }, plan: plan, audit: { action: 'RS_ITEM_CANCELLED', entity: MC_RS_SH_.ITEMS, id: it.id, before: { status: it.status }, after: { status: 'CANCELLED', reason: reason } } };
@@ -390,7 +402,7 @@ function rsOrderSend(json, token) {
     var plan = [], now = new Date(), tidx = _rsTablesIdx_(), tableNo = tidx[o.tableId] ? tidx[o.tableId].number : '', sent = [];
     courseRows.forEach(function (r) {
       if (fire.indexOf(parseInt(r['Номер'], 10)) < 0 || String(r['Статус']) === 'FIRED') return;
-      var x = JSON.parse(JSON.stringify(r)); delete x._row; x['Статус'] = 'FIRED'; x['Отправлен'] = now; x['Отправил'] = _rsWho_(c.s); _rsStamp_(x, c.s, c.op, false);
+      var x = _rsCopy_(r); delete x._row; x['Статус'] = 'FIRED'; x['Отправлен'] = now; x['Отправил'] = _rsWho_(c.s); _rsStamp_(x, c.s, c.op, false);
       plan.push({ sheet: MC_RS_SH_.COURSES, row: x });
     });
     pick.forEach(function (r) {
@@ -398,10 +410,11 @@ function rsOrderSend(json, token) {
       var tk = _rsStamp_({ TicketID: it.id.replace(/-I/, '-T'), OrderItemID: it.id, OrderID: o.id, TableID: o.tableId, 'Стол': tableNo, SiteID: o.siteId, 'Подразделение': it.dept, 'Цех': it.shop,
         DishCode: it.code, TTKVersion: ttk[it.code], 'Название': it.name, 'Кол-во': it.qty, 'Вес': it.planAmount === null ? '' : it.planAmount + ' ' + it.amountUnit, 'Курс': it.course || '',
         'Модификаторы': JSON.stringify(it.modifiers), 'Комментарий': it.comment, 'Приоритет': 0, 'Статус': go ? 'NEW' : 'WAIT_COURSE' }, c.s, c.op, true);
-      var x = JSON.parse(JSON.stringify(r)); delete x._row; x['Статус'] = go ? 'SENT' : 'WAIT_COURSE'; x['Отправлено'] = now; x.TicketID = tk.TicketID; x.TTKVersion = ttk[it.code]; _rsStamp_(x, c.s, c.op, false);
+      var x = _rsCopy_(r); delete x._row; x['Статус'] = go ? 'SENT' : 'WAIT_COURSE'; x['Отправлено'] = now; x.TicketID = tk.TicketID; x.TTKVersion = ttk[it.code]; _rsStamp_(x, c.s, c.op, false);
       plan.push({ sheet: MC_RS_SH_.ITEMS, row: x }, { sheet: MC_RS_SH_.QUEUE, row: tk });
       sent.push({ item: it.id, ticket: tk.TicketID, dish: it.name, qty: it.qty, dept: it.dept, course: it.course, ttk: ttk[it.code], status: tk['Статус'] });
     });
+    if (typeof _rsStopConsumePlan_ === 'function') plan = plan.concat(_rsStopConsumePlan_(c, pick.map(function (r) { return { code: String(r.DishCode), dept: String(r['Подразделение']), qty: _rsNum_(r['Кол-во']) || 1 }; })));   // LIMITED: остаток
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'ORDER', o.id, { booking: o.bookingId, order: o.id }, 'ORDER_SENT', null, { mode: mode, fired: fire, items: sent }) });
     var kitchen = sent.filter(function (x) { return x.dept === 'KITCHEN'; }).length, bar = sent.length - kitchen;
     return { data: { sent: sent.length, kitchen: kitchen, bar: bar, waiting: sent.filter(function (x) { return x.status === 'WAIT_COURSE'; }).length, firedCourses: fire }, plan: plan,
@@ -415,16 +428,16 @@ function rsCourseFire(json, token) {
     var n = parseInt(c.d.course, 10), cr = _rsRows_(MC_RS_SH_.COURSES).filter(function (r) { return String(r.OrderID) === L.o.id && parseInt(r['Номер'], 10) === n; })[0];
     if (!cr) return { fail: ['VALIDATION', 'Нет такого курса'] };
     if (String(cr['Статус']) === 'FIRED') return { fail: ['VALIDATION', 'Курс уже запущен'] };
-    var now = new Date(), plan = [], x = JSON.parse(JSON.stringify(cr)); delete x._row; x['Статус'] = 'FIRED'; x['Отправлен'] = now; x['Отправил'] = _rsWho_(c.s); _rsStamp_(x, c.s, c.op, false);
+    var now = new Date(), plan = [], x = _rsCopy_(cr); delete x._row; x['Статус'] = 'FIRED'; x['Отправлен'] = now; x['Отправил'] = _rsWho_(c.s); _rsStamp_(x, c.s, c.op, false);
     plan.push({ sheet: MC_RS_SH_.COURSES, row: x });
     var moved = 0;
     _rsRows_(MC_RS_SH_.QUEUE).forEach(function (q) {
       if (String(q.OrderID) !== L.o.id || parseInt(q['Курс'], 10) !== n || String(q['Статус']) !== 'WAIT_COURSE') return;
-      var t = JSON.parse(JSON.stringify(q)); delete t._row; t['Статус'] = 'NEW'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.QUEUE, row: t }); moved++;
+      var t = _rsCopy_(q); delete t._row; t['Статус'] = 'NEW'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.QUEUE, row: t }); moved++;
     });
     _rsRows_(MC_RS_SH_.ITEMS).forEach(function (r) {
       if (String(r.OrderID) !== L.o.id || parseInt(r['Курс'], 10) !== n || String(r['Статус']) !== 'WAIT_COURSE') return;
-      var t = JSON.parse(JSON.stringify(r)); delete t._row; t['Статус'] = 'SENT'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: t });
+      var t = _rsCopy_(r); delete t._row; t['Статус'] = 'SENT'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: t });
     });
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'COURSE', x.CourseID, { order: L.o.id }, 'COURSE_FIRED', { status: 'WAIT' }, { status: 'FIRED', tickets: moved }) });
     return { data: { course: n, tickets: moved }, plan: plan, audit: { action: 'RS_COURSE_FIRED', entity: MC_RS_SH_.COURSES, id: x.CourseID, after: { tickets: moved } } };
@@ -439,11 +452,11 @@ function rsCourseHold(json, token) {
     if (String(cr['Статус']) !== 'FIRED') return { fail: ['VALIDATION', 'Курс и так ждёт команды'] };
     var q = _rsRows_(MC_RS_SH_.QUEUE).filter(function (t) { return String(t.OrderID) === L.o.id && parseInt(t['Курс'], 10) === n && String(t['Статус']) !== 'CANCELLED'; });
     if (q.some(function (t) { return String(t['Статус']) !== 'NEW'; })) return { fail: ['VALIDATION', 'Кухня уже начала этот курс — отложить нельзя'] };
-    var plan = [], x = JSON.parse(JSON.stringify(cr)); delete x._row; x['Статус'] = 'WAIT'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.COURSES, row: x });
-    q.forEach(function (t0) { var t = JSON.parse(JSON.stringify(t0)); delete t._row; t['Статус'] = 'WAIT_COURSE'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.QUEUE, row: t }); });
+    var plan = [], x = _rsCopy_(cr); delete x._row; x['Статус'] = 'WAIT'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.COURSES, row: x });
+    q.forEach(function (t0) { var t = _rsCopy_(t0); delete t._row; t['Статус'] = 'WAIT_COURSE'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.QUEUE, row: t }); });
     _rsRows_(MC_RS_SH_.ITEMS).forEach(function (r) {
       if (String(r.OrderID) !== L.o.id || parseInt(r['Курс'], 10) !== n || String(r['Статус']) !== 'SENT') return;
-      var t = JSON.parse(JSON.stringify(r)); delete t._row; t['Статус'] = 'WAIT_COURSE'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: t });
+      var t = _rsCopy_(r); delete t._row; t['Статус'] = 'WAIT_COURSE'; _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: t });
     });
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'COURSE', x.CourseID, { order: L.o.id }, 'COURSE_HELD', { status: 'FIRED' }, { status: 'WAIT', tickets: q.length }) });
     return { data: { course: n, tickets: q.length }, plan: plan, audit: { action: 'RS_COURSE_HELD', entity: MC_RS_SH_.COURSES, id: x.CourseID } };
@@ -456,14 +469,14 @@ function rsOrderUpdate(json, token) {
   return _rsMutate_(token, 'order_edit|order_all', 'RS_ORDER_UPDATE', json, function (c) {
     var L = _rsLoadOrder_(c); if (L.fail) return L;
     _rsCheckVersion_(L.row, c.d.version);
-    var d = c.d, o = L.o, row = JSON.parse(JSON.stringify(L.row)), before = { table: o.tableId, waiter: o.waiter, guests: o.guests }, plan = []; delete row._row;
+    var d = c.d, o = L.o, row = _rsCopy_(L.row), before = { table: o.tableId, waiter: o.waiter, guests: o.guests }, plan = []; delete row._row;
     if ((d.tableId && d.tableId !== o.tableId) || (d.waiterId && d.waiterId !== o.waiterId)) { if (!_mcRbHasExact_(c.s, 'order_all')) return { fail: ['FORBIDDEN', 'Перенос стола и смена официанта — администратор'] }; }
     if (d.tableId && d.tableId !== o.tableId) {
       var t = _rsTablesIdx_()[d.tableId]; if (!t || t.status !== 'ACTIVE' || t.siteId !== o.siteId) return { fail: ['VALIDATION', 'Стол не найден'] };
       if (_rsActiveOrders_(o.siteId)[t.id]) return { fail: ['CONFLICT', 'На столе № ' + t.number + ' открыт другой заказ'] };
       row.TableID = t.id; row.HallID = t.hallId;
       _rsRows_(MC_RS_SH_.QUEUE).forEach(function (q) { if (String(q.OrderID) !== o.id || ['READY', 'ISSUED', 'CANCELLED'].indexOf(String(q['Статус'])) >= 0) return;
-        var x = JSON.parse(JSON.stringify(q)); delete x._row; x.TableID = t.id; x['Стол'] = t.number; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.QUEUE, row: x }); });
+        var x = _rsCopy_(q); delete x._row; x.TableID = t.id; x['Стол'] = t.number; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.QUEUE, row: x }); });
     }
     if (d.waiterId && d.waiterId !== o.waiterId) {
       var e = null; try { e = JSON.parse(getEmployees()).filter(function (x) { return String(x.id) === String(d.waiterId) && x.active !== false; })[0]; } catch (er) {}
@@ -491,18 +504,18 @@ function rsOrderClose(json, token) {
     _rsCheckVersion_(L.row, c.d.version);
     var full = _rsOrderFull_(L.o.id, c.s), live = full.items.filter(function (x) { return x.status !== 'CANCELLED'; });
     if (live.some(function (x) { return x.status === 'DRAFT'; })) return { fail: ['VALIDATION', 'Есть неотправленные позиции — отправьте или отмените'] };
-    if (live.some(function (x) { return ['SENT', 'WAIT_COURSE', 'COOKING', 'READY'].indexOf(x.status) >= 0; }) && !c.d.force)
-      return { fail: ['VALIDATION', 'Есть позиции на кухне или не поданные гостю'] };
+    if (live.some(function (x) { return ['SENT', 'WAIT_COURSE', 'COOKING', 'READY', 'PROBLEM'].indexOf(x.status) >= 0; }) && !(c.d.force && _mcRbHasExact_(c.s, 'order_all')))
+      return { fail: ['VALIDATION', 'Есть позиции на кухне, с проблемой или не поданные гостю (закрыть принудительно может администратор)'] };
     if (live.some(function (x) { return x.weighted && x.factAmount === null; })) return { fail: ['VALIDATION', 'Внесите фактический вес весовых блюд'] };
     if (live.length) {
       if (full.unallocated && full.unallocated.length) return { fail: ['VALIDATION', 'Не все позиции распределены по счетам'] };
       if ((full.bills || []).some(function (b) { return b.status === 'OPEN'; })) return { fail: ['VALIDATION', 'Есть неоплаченные счета'] };
     }
-    var row = JSON.parse(JSON.stringify(L.row)); delete row._row; row['Статус'] = 'CLOSED'; row['Закрыт'] = new Date(); _rsStamp_(row, c.s, c.op, false);
+    var row = _rsCopy_(L.row); delete row._row; row['Статус'] = 'CLOSED'; row['Закрыт'] = new Date(); _rsStamp_(row, c.s, c.op, false);
     var plan = [{ sheet: MC_RS_SH_.ORDERS, row: row }];
     if (L.o.bookingId) {
       var b = _rsRows_(MC_RS_SH_.BOOKINGS).filter(function (x) { return String(x.BookingID) === L.o.bookingId; })[0];
-      if (b && String(b['Статус']) === 'SEATED') { var b2 = JSON.parse(JSON.stringify(b)); delete b2._row; b2['Статус'] = 'CLOSED'; _rsStamp_(b2, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: b2 }); }
+      if (b && String(b['Статус']) === 'SEATED') { var b2 = _rsCopy_(b); delete b2._row; b2['Статус'] = 'CLOSED'; _rsStamp_(b2, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: b2 }); }
     }
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'ORDER', L.o.id, { booking: L.o.bookingId, order: L.o.id }, 'ORDER_CLOSED', { status: 'OPEN' }, { status: 'CLOSED', totalKop: full.totalKop, paidKop: full.paidKop }) });
     return { data: { orderId: L.o.id, totalKop: full.totalKop, paidKop: full.paidKop }, plan: plan, audit: { action: 'RS_ORDER_CLOSED', entity: MC_RS_SH_.ORDERS, id: L.o.id, after: { totalKop: full.totalKop, paidKop: full.paidKop } } };
@@ -516,12 +529,12 @@ function rsOrderCancel(json, token) {
     var reason = _rsS_(c.d.reason).slice(0, 300); if (!reason) return { fail: ['VALIDATION', 'Укажите причину'] };
     var items = _rsRows_(MC_RS_SH_.ITEMS).filter(function (r) { return String(r.OrderID) === L.o.id && String(r['Статус']) !== 'CANCELLED'; });
     if (items.some(function (r) { return String(r['Статус']) !== 'DRAFT'; })) return { fail: ['VALIDATION', 'Позиции уже на кухне — отмените их по одной (с причиной), затем заказ'] };
-    var plan = [], row = JSON.parse(JSON.stringify(L.row)); delete row._row; row['Статус'] = 'CANCELLED'; row['Причина'] = reason; row['Закрыт'] = new Date(); _rsStamp_(row, c.s, c.op, false);
+    var plan = [], row = _rsCopy_(L.row); delete row._row; row['Статус'] = 'CANCELLED'; row['Причина'] = reason; row['Закрыт'] = new Date(); _rsStamp_(row, c.s, c.op, false);
     plan.push({ sheet: MC_RS_SH_.ORDERS, row: row });
-    items.forEach(function (r) { var x = JSON.parse(JSON.stringify(r)); delete x._row; x['Статус'] = 'CANCELLED'; x['Причина отмены'] = 'заказ отменён: ' + reason; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: x }); });
+    items.forEach(function (r) { var x = _rsCopy_(r); delete x._row; x['Статус'] = 'CANCELLED'; x['Причина отмены'] = 'заказ отменён: ' + reason; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ITEMS, row: x }); });
     if (L.o.bookingId) {
       var b = _rsRows_(MC_RS_SH_.BOOKINGS).filter(function (x) { return String(x.BookingID) === L.o.bookingId; })[0];
-      if (b) { var b2 = JSON.parse(JSON.stringify(b)); delete b2._row; b2.OrderID = ''; if (String(b2['Статус']) === 'SEATED') b2['Статус'] = 'ARRIVED'; _rsStamp_(b2, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: b2 }); }
+      if (b) { var b2 = _rsCopy_(b); delete b2._row; b2.OrderID = ''; if (String(b2['Статус']) === 'SEATED') b2['Статус'] = 'ARRIVED'; _rsStamp_(b2, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: b2 }); }
     }
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'ORDER', L.o.id, { booking: L.o.bookingId, order: L.o.id }, 'ORDER_CANCELLED', { status: 'OPEN' }, { status: 'CANCELLED', reason: reason }) });
     return { data: { orderId: L.o.id }, plan: plan, audit: { action: 'RS_ORDER_CANCELLED', entity: MC_RS_SH_.ORDERS, id: L.o.id, after: { reason: reason } } };

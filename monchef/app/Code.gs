@@ -224,6 +224,11 @@ function _doGetRaw_(e) {
      .setTitle('MON CHEF — Гостевое меню')
      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
  }
+ if (params.kds === '1' && params.token) {   // V101 этап 4: экран кухни и бара, Stop/Go
+   return HtmlService.createHtmlOutputFromFile('Kds')
+     .setTitle('MON CHEF — Кухня и бар')
+     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+ }
  if (params.roles === '1' && params.token) {
    return HtmlService.createHtmlOutputFromFile('Roles')
      .setTitle('MON CHEF — Редактор ролей')

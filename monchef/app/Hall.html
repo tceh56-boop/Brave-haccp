@@ -109,10 +109,20 @@ function tabs() {
   var t = [['plan', 'Зал']];
   if (S.data && S.data.can.order) t.push(['mine', S.data.can.orderAll ? 'Заказы' : 'Мои заказы']);
   t = t.concat([['book', 'Брони'], ['fc', 'Прогноз по предзаказам']]);
+  if (S.data && S.data.can.stopgo) t.push(['stop', 'Stop/Go']);
   if (S.data && S.data.can.manage) t.push(['setup', 'Настройка зала']);
   $('tabs').innerHTML = t.map(function (x) { return '<button class="' + (S.tab === x[0] ? 'on' : '') + '" onclick="S.tab=\'' + x[0] + '\';tabs();render()">' + x[1] + '</button>'; }).join('');
 }
-function render() { ({ plan: rPlan, mine: rMine, book: rBook, fc: rFc, setup: rSetup })[S.tab](); }
+function render() { ({ plan: rPlan, mine: rMine, book: rBook, fc: rFc, setup: rSetup, stop: rStopH })[S.tab](); }
+/* Stop/Go для зала — просмотр; ставят и снимают кухня и бар (экран «Кухня и бар») */
+function rStopH() {
+  $('view').innerHTML = '<div class="empty">Загрузка…</div>';
+  call('rsStopList', {}, function (d) {
+    var ru = { STOP: 'STOP', LIMITED: 'ограничено', REVIEW: 'на проверке' };
+    $('view').innerHTML = d.current.length ? d.current.map(function (r) { return '<div class="card bk" style="cursor:default"><div><span class="nm">' + esc(r.name) + '</span><div class="meta">' + (r.dept === 'BAR' ? 'бар' : 'кухня') + ' · ' + esc(r.reason) + (r.comment ? ' · ' + esc(r.comment) : '') + ' · с ' + esc(r.since) + '</div></div><span class="chip ' + (r.status === 'LIMITED' ? 'st-WAITING' : 'st-CANCELLED') + '">' + esc(ru[r.status] || r.status) + (r.status === 'LIMITED' ? ': ' + r.left : '') + '</span></div>'; }).join('')
+      : '<div class="empty">Все блюда и напитки доступны</div>';
+  }, function (m) { $('view').innerHTML = ''; note(m); });
+}
 
 /* ---------- зал ---------- */
 function rPlan() {
@@ -313,7 +323,7 @@ function hist() {
   }, fmsg);
 }
 function refresh() { load(); if (S.tab === 'book') rBook(); }
-function openOv(h) { $('sheet').innerHTML = h; $('ov').classList.add('on'); }
+function openOv(h) { S.ordShown = false; $('sheet').innerHTML = h; $('ov').classList.add('on'); }
 function closeOv() { $('ov').classList.remove('on'); }
 $('ov').addEventListener('click', function (e) { if (e.target === $('ov')) closeOv(); });
 
@@ -382,6 +392,9 @@ function saveTable(id, hallId) {
 function money(k) { if (k === null || k === undefined) return '—'; var r = (k / 100).toFixed(2).split('.'); return r[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (r[1] === '00' ? '' : ',' + r[1]) + ' ₽'; }
 var O = null, MENU = null, OV = 'items';   // открытый заказ, меню, вкладка заказа
 var IT_ST = { DRAFT: 'не отправлено', SENT: 'на кухне', WAIT_COURSE: 'ждёт курса', COOKING: 'готовится', READY: 'готово', SERVED: 'подано', CANCELLED: 'отменено', PROBLEM: 'проблема' };
+var REPL = null;   // позиция, которую заменяем (вкладка «+ Добавить блюдо» в режиме замены)
+function oServe(ids) { act('serve-' + ids.join(','), 'rsItemServe', { orderId: O.id, items: ids, itemIds: ids }, function (r) { reloadOrder('Подано: ' + r.served); }, fmsg); }
+function oReplace(id) { REPL = findIt(id); OV = 'add'; renderOrder(); }
 function openTable(tableId) {
   var b = $('o_open'); b.disabled = true;
   act('open-' + tableId, 'rsOrderOpen', { tableId: tableId, guests: $('o_guests').value, bookingId: $('o_bk').value, comment: $('o_comment').value }, function (r) {
@@ -405,6 +418,8 @@ function openOrder(id) {
 function reloadOrder(msg) { if (msg) note(msg, true); openOrder(O.id); load(); }
 function oAct(slot, fn, data, msg) { act(slot + '-' + O.id, fn, data, function () { reloadOrder(msg); }, function (m) { fmsg(m); }); }
 function renderOrder() {
+  if (OV !== 'add') REPL = null;
+  S.ordShown = true;
   var o = O, h = '<h2>Стол № ' + esc(o.table) + ' · ' + o.guests + ' гост. <span class="chip">' + esc(o.statusRu) + '</span></h2>' +
     '<div class="meta">Официант ' + esc(o.waiter) + ' · открыт ' + esc(o.openedAt) + (o.bookingId ? ' · по брони' : '') + (o.comment ? ' · ' + esc(o.comment) : '') + '</div>' +
     '<div class="card" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center"><div class="nm">Сумма заказа</div><div class="nm" style="font-size:20px">' + money(o.totalKop) + '</div></div>' +
@@ -413,7 +428,7 @@ function renderOrder() {
   h += OV === 'items' ? oItems() : OV === 'add' ? oAdd() : oBill();
   h += '<div class="acts"><button class="btn" onclick="closeOv()">Закрыть</button>' + (o.status === 'OPEN' && o.can.edit ? '<button class="btn" onclick="oClose()">Закрыть заказ</button>' : '') +
     (o.status === 'OPEN' && o.can.all ? '<button class="btn bad" onclick="oCancel()">Отменить заказ</button>' : '') + '</div>';
-  openOv(h);
+  openOv(h); S.ordShown = true;
   if (OV === 'add') menuList();
 }
 function oItems() {
@@ -433,6 +448,8 @@ function oItems() {
         (g.status !== 'FIRED' && hasWait ? '<button class="btn pri" onclick="oFire(' + g.n + ')">Следующий курс: ' + esc(g.name) + '</button>' : '') +
         (g.status === 'FIRED' ? '<button class="btn" onclick="oHold(' + g.n + ')">Отложить курс</button>' : '') + '</div>';
     }
+    var rdy = lv.filter(function (x) { return x.status === 'READY'; });
+    if (rdy.length > 1 && o.can.edit) h += '<div class="acts" style="margin-top:6px"><button class="btn ok" onclick="oServe([' + rdy.map(function (x) { return '\'' + x.id + '\''; }).join(',') + '])">Подано всё готовое (' + rdy.length + ')</button></div>';
     h += its.map(itemRow).join('') + '</div>';
   });
   return h || '<div class="empty">Позиций нет. Нажмите «+ Добавить блюдо».</div>';
@@ -442,14 +459,18 @@ function itemRow(x) {
   var amt = x.weighted ? (x.factAmount !== null ? x.factAmount + ' ' + esc(x.amountUnit) + ' (факт)' : x.planAmount + ' ' + esc(x.amountUnit) + ' (план)') : x.qty + ' ' + esc(x.unit);
   var h = '<div style="border-top:1px solid var(--line);padding:8px 0"><div class="bk" style="cursor:default"><div><span class="nm">' + esc(x.name) + '</span> · ' + amt +
     '<div class="meta">' + (x.guest ? 'гость ' + x.guest : 'общее') + ' · ' + (x.dept === 'BAR' ? 'бар' : 'кухня') + (x.modifiers.length ? ' · ' + esc(x.modifiers.join(', ')) : '') + (x.comment ? ' · ' + esc(x.comment) : '') +
-    (x.cancelReason && x.status === 'CANCELLED' ? ' · отмена: ' + esc(x.cancelReason) : '') + (x.sentAt ? ' · отправлено ' + esc(x.sentAt) : '') + '</div></div>' +
+    (x.cancelReason && x.status === 'CANCELLED' ? ' · отмена: ' + esc(x.cancelReason) + (x.consumption && x.consumption.mode && x.consumption.mode !== 'NONE' ? ' (расход: ' + (x.consumption.mode === 'FULL' ? 'полностью' : 'частично') + ')' : '') : '') +
+    (x.sentAt ? ' · отправлено ' + esc(x.sentAt) : '') + (x.readyAt ? ' · готово ' + esc(x.readyAt) : '') + (x.servedAt ? ' · подано ' + esc(x.servedAt) : '') + '</div>' +
+    (x.problem && x.status === 'PROBLEM' ? '<div class="msg err" style="margin:4px 0">Кухня: ' + esc(x.problem) + '</div>' : '') + (x.cancelRequest && x.status !== 'CANCELLED' ? '<div class="meta">Запрошена отмена: ' + esc(x.cancelRequest) + '</div>' : '') + '</div>' +
     '<div style="text-align:right"><div>' + money(x.factKop !== null ? x.factKop : x.planKop) + '</div><span class="chip ' + cls + '">' + esc(IT_ST[x.status] || x.status) + '</span></div></div>';
   if (o.status === 'OPEN' && o.can.edit && x.status !== 'CANCELLED') {
     h += '<div class="acts" style="margin-top:4px">';
     if (x.weighted) h += '<button class="btn" onclick="oWeight(\'' + x.id + '\')">Фактический вес</button>';
     h += '<button class="btn" onclick="oGuest(\'' + x.id + '\')">Гость</button>';
     if (x.status === 'DRAFT') h += '<button class="btn" onclick="oReprice(\'' + x.id + '\')" title="взять цену меню на сегодня">Обновить цену</button>';
-    if (['DRAFT', 'SENT', 'WAIT_COURSE'].indexOf(x.status) >= 0) h += '<button class="btn bad" onclick="oCancelItem(\'' + x.id + '\')">Отменить</button>';
+    if (x.status === 'READY') h += '<button class="btn ok" onclick="oServe([\'' + x.id + '\'])">Подано</button>';
+    if (['SENT', 'WAIT_COURSE', 'PROBLEM'].indexOf(x.status) >= 0) h += '<button class="btn" onclick="oReplace(\'' + x.id + '\')">Заменить</button>';
+    if (['DRAFT', 'SENT', 'WAIT_COURSE', 'COOKING', 'READY', 'PROBLEM'].indexOf(x.status) >= 0 && !x.cancelRequest) h += '<button class="btn bad" onclick="oCancelItem(\'' + x.id + '\')">Отменить</button>';
     h += '</div>';
   }
   return h + '</div>';
@@ -467,9 +488,9 @@ function oGuest(id) { var x = findIt(id), g = prompt('Номер гостя (1�
 function oReprice(id) { var x = findIt(id); oAct('rp-' + id, 'rsItemUpdate', { itemId: id, version: x.version, reprice: true }, 'Цена обновлена'); }
 function oCancelItem(id) {
   var x = findIt(id), reason = '';
-  if (x.status !== 'DRAFT') { reason = prompt('«' + x.name + '» уже на кухне (ещё не начата). Отмена снимет задание, расхода не будет. Причина:'); if (!reason) return; }
+  if (x.status !== 'DRAFT') { reason = prompt(['COOKING', 'READY', 'PROBLEM'].indexOf(x.status) >= 0 ? '«' + x.name + '» кухня уже приняла: отмену подтвердит кухня и укажет расход. Причина:' : '«' + x.name + '» уже на кухне (ещё не начата). Отмена снимет задание, расхода не будет. Причина:'); if (!reason) return; }
   else if (!confirm('Убрать «' + x.name + '» из заказа?')) return;
-  oAct('c-' + id, 'rsItemCancel', { itemId: id, version: x.version, reason: reason }, 'Позиция отменена');
+  act('c-' + id + '-' + O.id, 'rsItemCancel', { itemId: id, version: x.version, reason: reason }, function (r) { reloadOrder(r && r.requested ? 'Кухня уже готовит — запрос отмены отправлен кухне' : 'Позиция отменена'); }, fmsg);
 }
 function oClose() { if (confirm('Закрыть заказ? Все счета должны быть оплачены.')) oAct('close', 'rsOrderClose', { orderId: O.id, version: O.version }, 'Заказ закрыт'); }
 function oCancel() { var r = prompt('Отменить заказ целиком? Возможно, только если ничего не ушло на кухню. Причина:'); if (r) oAct('cancel', 'rsOrderCancel', { orderId: O.id, version: O.version, reason: r }, 'Заказ отменён'); }
@@ -477,7 +498,7 @@ function oCancel() { var r = prompt('Отменить заказ целиком?
 /* добавление блюд */
 var ADDQ = '', ADDCAT = '';
 function oAdd() {
-  return '<div class="grid"><div style="grid-column:span 2"><input id="m_q" placeholder="Найти блюдо или напиток" value="' + esc(ADDQ) + '" oninput="ADDQ=this.value;menuList()"></div>' +
+  return (REPL ? '<div class="msg err">Замена для «' + esc(REPL.name) + '» — выберите блюдо. <a href="#" onclick="REPL=null;renderOrder();return false">Отменить замену</a></div>' : '') + '<div class="grid"><div style="grid-column:span 2"><input id="m_q" placeholder="Найти блюдо или напиток" value="' + esc(ADDQ) + '" oninput="ADDQ=this.value;menuList()"></div>' +
     '<div><select id="m_g" title="гость"><option value="0">общее</option>' + O.guestsList.map(function (g) { return '<option value="' + g.n + '">гость ' + g.n + '</option>'; }).join('') + '</select></div>' +
     '<div><select id="m_c" title="курс"><option value="0">без курса (сразу)</option>' + O.courses.map(function (c) { return '<option value="' + c.n + '">' + c.n + ' · ' + esc(c.name) + '</option>'; }).join('') + '</select></div></div>' +
     '<div class="seg" id="m_cats" style="margin-top:8px"></div><div id="m_list"></div>';
@@ -499,6 +520,11 @@ function menuList() {
 }
 function addDish(code) {
   var d = MENU.dishes.filter(function (x) { return x.code === code; })[0], x = { code: code, guest: $('m_g').value, course: $('m_c').value };
+  if (REPL) {
+    var why = prompt('Заменить «' + REPL.name + '» на «' + d.name + '»? Что решил гость (запишется в историю):', 'гость согласен на замену'); if (!why) return;
+    var r0 = REPL; act('repl-' + r0.id, 'rsItemReplace', { itemId: r0.id, version: r0.version, code: code, reason: why }, function () { REPL = null; OV = 'items'; reloadOrder('Замена добавлена — отправьте её на кухню'); }, fmsg);
+    return;
+  }
   if (d.weighted) { var a = prompt('«' + d.name + '» — весовое (' + money(d.priceKop) + ' за ' + d.priceFor + '). Вес или объём, ' + d.weightUnit + ':', d.yield || ''); if (!a) return; x.amount = a.replace(',', '.'); }
   else { var q = prompt('«' + d.name + '» — количество:', '1'); if (!q) return; x.qty = q; }
   var c = prompt('Комментарий или модификаторы через запятую (можно пусто):', ''); if (c === null) return;
@@ -579,7 +605,16 @@ function saveMs() {
   var n = new Date(); $('date').value = iso(n); $('time').value = pad(n.getHours()) + ':' + pad(n.getMinutes());
   ['site', 'date', 'time'].forEach(function (k) { $(k).addEventListener('change', function () { if (S.tab === 'book') rBook(); else if (S.tab === 'fc') rFc(); load(); }); });
   load();
-  setInterval(function () { if (!document.hidden && S.tab === 'plan' && !$('ov').classList.contains('on')) load(); }, 60000);
+  // обновление: раз в 15 с спрашиваем метку «данные изменились»; изменилось — обновляем схему или открытый заказ (не во время ввода)
+  setInterval(function () {
+    if (document.hidden) return;
+    call('rsGen', {}, function (g) {
+      if (!g.gen || g.gen === S.gen) return; var first = !S.gen; S.gen = g.gen; if (first) return;
+      var ovOn = $('ov').classList.contains('on');
+      if (ovOn && S.ordShown && O && OV !== 'add' && !document.activeElement.closest('.sheet input,.sheet select,.sheet textarea')) openOrder(O.id);
+      else if (!ovOn && (S.tab === 'plan' || S.tab === 'mine' || S.tab === 'stop')) { load(); if (S.tab !== 'plan') render(); }
+    }, function () {});
+  }, 15000);
 })();
 </script>
 </body></html>

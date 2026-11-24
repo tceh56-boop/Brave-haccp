@@ -107,8 +107,8 @@ function rsBillSplit(json, token) {
     var bad = live.filter(function (it) { var f = _rsFracSum_(per[it.id] || []); return !(f.num === f.den && f.den > 0 && (per[it.id] || []).length); });
     if (bad.length) return { fail: ['VALIDATION', 'Позиции распределены не полностью или больше чем на 100 %: ' + bad.map(function (b) { return '«' + b.name + '»'; }).join(', ')] };
     var plan = [];
-    _rsRows_(MC_RS_SH_.BILLS).forEach(function (b) { if (String(b.OrderID) !== L.o.id || String(b['Статус']) !== 'OPEN') return; var x = JSON.parse(JSON.stringify(b)); delete x._row; x['Статус'] = 'VOID'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BILLS, row: x }); });
-    _rsRows_(MC_RS_SH_.ALLOC).forEach(function (a) { if (String(a.OrderID) !== L.o.id || String(a['Статус']) !== 'ACTIVE') return; var x = JSON.parse(JSON.stringify(a)); delete x._row; x['Статус'] = 'VOID'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ALLOC, row: x }); });
+    _rsRows_(MC_RS_SH_.BILLS).forEach(function (b) { if (String(b.OrderID) !== L.o.id || String(b['Статус']) !== 'OPEN') return; var x = _rsCopy_(b); delete x._row; x['Статус'] = 'VOID'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BILLS, row: x }); });
+    _rsRows_(MC_RS_SH_.ALLOC).forEach(function (a) { if (String(a.OrderID) !== L.o.id || String(a['Статус']) !== 'ACTIVE') return; var x = _rsCopy_(a); delete x._row; x['Статус'] = 'VOID'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ALLOC, row: x }); });
     var made = [];
     spec.forEach(function (b) {
       var id = _rsId_('BILL'); made.push(id);
@@ -151,12 +151,12 @@ function rsBillMerge(json, token) {
     var target = ids[0], plan = [], agg = {};
     _rsRows_(MC_RS_SH_.ALLOC).forEach(function (a) {
       if (String(a['Статус']) !== 'ACTIVE' || ids.indexOf(String(a.BillID)) < 0) return;
-      var x = JSON.parse(JSON.stringify(a)); delete x._row; x['Статус'] = 'VOID'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ALLOC, row: x });
+      var x = _rsCopy_(a); delete x._row; x['Статус'] = 'VOID'; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.ALLOC, row: x });
       (agg[a.OrderItemID] = agg[a.OrderItemID] || []).push({ num: parseInt(a['Доля числитель'], 10), den: parseInt(a['Доля знаменатель'], 10) });
     });
     Object.keys(agg).forEach(function (iid) { var f = _rsFracSum_(agg[iid]);
       plan.push({ sheet: MC_RS_SH_.ALLOC, row: _rsStamp_({ AllocID: _rsId_('AL'), BillID: target, OrderID: L.o.id, OrderItemID: iid, 'Доля числитель': f.num, 'Доля знаменатель': f.den, 'Статус': 'ACTIVE' }, c.s, c.op, true) }); });
-    rows.forEach(function (b) { if (String(b.BillID) === target) return; var x = JSON.parse(JSON.stringify(b)); delete x._row; x['Статус'] = 'MERGED'; x['Объединён в'] = target; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BILLS, row: x }); });
+    rows.forEach(function (b) { if (String(b.BillID) === target) return; var x = _rsCopy_(b); delete x._row; x['Статус'] = 'MERGED'; x['Объединён в'] = target; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BILLS, row: x }); });
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'BILL', target, { order: L.o.id }, 'BILLS_MERGED', { bills: ids }, { into: target }) });
     return { data: { billId: target }, plan: plan, audit: { action: 'RS_BILL_MERGED', entity: MC_RS_SH_.BILLS, id: target, before: { bills: ids } } };
   });
@@ -177,7 +177,7 @@ function rsBillAdjust(json, token) {
       return { t: t, v: n, why: w };
     };
     var ds = chk(d.discountType, d.discountValue, d.discountReason, 'скидка', 100), sv = chk(d.serviceType, d.serviceValue, d.serviceReason, 'сервисный сбор', 30);
-    var before = _rsBillObj_(r), x = JSON.parse(JSON.stringify(r)); delete x._row;
+    var before = _rsBillObj_(r), x = _rsCopy_(r); delete x._row;
     x['Скидка вид'] = ds.t; x['Скидка значение'] = ds.v; x['Причина скидки'] = ds.why; x['Сбор вид'] = sv.t; x['Сбор значение'] = sv.v; x['Причина сбора'] = sv.why;
     _rsStamp_(x, c.s, c.op, false);
     var after = { discount: ds, service: sv };
@@ -203,7 +203,7 @@ function rsBillPay(json, token) {
     if (d.amountKop !== undefined && parseInt(d.amountKop, 10) !== bill.totalKop) return { fail: ['CONFLICT', 'Сумма счёта изменилась: ' + (bill.totalKop / 100).toFixed(2) + ' ₽ — обновите экран'] };
     var m = String(d.method || '').toUpperCase(); if (!MC_RS_PAY_[m]) return { fail: ['VALIDATION', 'Способ оплаты: наличные, карта или другое'] };
     var rc = _rsS_(d.receipt).slice(0, 40); if (m !== 'CASH' && !rc) return { fail: ['VALIDATION', 'Укажите номер чека или операции'] };
-    var x = JSON.parse(JSON.stringify(r)); delete x._row;
+    var x = _rsCopy_(r); delete x._row;
     x['Статус'] = 'PAID'; x['Итого, коп'] = bill.totalKop; x['Способ оплаты'] = m; x['Чек'] = rc; x['Подтвердил'] = _rsWho_(c.s); x['Подтверждено'] = new Date(); x['Комментарий'] = _rsS_(d.comment).slice(0, 200);
     _rsStamp_(x, c.s, c.op, false);
     var after = { totalKop: bill.totalKop, subtotalKop: bill.subtotalKop, discountKop: bill.discountKop, serviceKop: bill.serviceKop, method: m, receipt: rc, lines: bill.lines.map(function (l) { return [l.itemId, l.num + '/' + l.den, l.kop]; }) };

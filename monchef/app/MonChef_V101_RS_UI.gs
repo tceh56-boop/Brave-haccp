@@ -30,7 +30,7 @@
         ],
         tabs: [{ title: 'Сегодня', columns: cols, rows: td.map(row) },
           { title: 'Неделя', columns: cols, rows: act.filter(function (b) { return b.date > today; }).sort(function (a, b) { return a.startAbs - b.startAbs; }).map(row) }],
-        actions: [{ label: 'Зал и бронирование', module: 'hall' }].concat(s && _mcRbHasExact_(s, 'menu_publish') ? [{ label: 'Гостевое меню', module: 'menuedit' }] : [])
+        actions: [{ label: 'Зал и бронирование', module: 'hall' }].concat(s && _mcRbHasExact_(s, 'menu_publish') ? [{ label: 'Гостевое меню', module: 'menuedit' }] : []).concat(s && _mcRbHasExact_(s, 'kitchen_queue|bar_queue|stopgo_kitchen|stopgo_bar') ? [{ label: 'Кухня, бар и Stop/Go', module: 'kds' }] : [])
       };
     };
   } catch (e) {}
@@ -40,5 +40,6 @@
     sec('settings', { label: 'Редактор ролей', module: 'roles' }, 'roles_edit');
     sec('personnel', { label: 'Редактор ролей', module: 'roles' }, 'roles_edit');
     sec('menu', { label: 'Гостевое меню (Reels)', module: 'menuedit' }, 'menu_publish');
+    sec('production', { label: 'Экран кухни и бара, Stop/Go', module: 'kds' }, 'kitchen_queue|bar_queue|stopgo_kitchen|stopgo_bar');
   } catch (e) {}
 })();

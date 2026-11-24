@@ -131,7 +131,8 @@ t('скрытое медиа и медиа неопубликованного б
   err(pub('rsPublicMedia', { id: 'MED-ЛЮБОЙ', part: 0 }));
 });
 t('STOP: блюдо видно, но «сейчас нет»; цена берётся на сегодня', () => {
-  const sg = ss.insertSheet('СтопГО_V1'); sg.appendRow(['StopID', 'DishCode', 'Подразделение', 'Статус', 'Остаток', 'Актуально']); sg.appendRow(['S1', 'D003', 'KITCHEN', 'STOP', '', true]);
+  const sg = C._rsSheet_('СтопГО_V1'), H = C.MC_RS_HEAD_['СтопГО_V1'], v = { StopID: 'S1', DishCode: 'D003', 'Подразделение': 'KITCHEN', 'Статус': 'STOP', 'Актуально': true, Version: 1 };
+  sg.appendRow(H.map(h => (h in v ? v[h] : '')));
   C.CacheService.getScriptCache().remove('rs_pub_menu');
   const d = ok(pub('rsPublicMenu', {})).dishes.find(x => x.id === 'D003'); assert.strictEqual(d.available, false);
   assert.ok(!JSON.stringify(d).includes('KITCHEN'), 'подразделение и причина STOP не раскрываются');

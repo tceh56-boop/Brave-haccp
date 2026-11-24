@@ -50,7 +50,7 @@ function rsHallData(json, token) {
     });
     return { sites: _rsSites_(), siteId: siteId, date: day, time: hm, halls: halls, tables: tables, bookings: bookings.map(function (b) { return _rsBkPublic_(b, s); }),
       can: { booking: _mcRbHasExact_(s, 'booking'), manage: manage, order: _mcRbHasExact_(s, 'order_edit|order_all'), orderAll: _mcRbHasExact_(s, 'order_all'), send: _mcRbHasExact_(s, 'order_send|order_all'),
-        split: _mcRbHasExact_(s, 'bill_split|order_all'), discount: _mcRbHasExact_(s, 'discount'), pay: _mcRbHasExact_(s, 'payment_confirm') }, me: String(s.user_id || '') };
+        split: _mcRbHasExact_(s, 'bill_split|order_all'), discount: _mcRbHasExact_(s, 'discount'), pay: _mcRbHasExact_(s, 'payment_confirm'), stopgo: _mcRbHasExact_(s, 'stopgo_view|stopgo_kitchen|stopgo_bar') }, me: String(s.user_id || '') };
   });
 }
 function _rsBkShort_(b) { return { id: b.id, guest: b.guest, guests: b.guests, start: b.start, end: b.end, status: b.status }; }
@@ -71,7 +71,7 @@ function rsHallSave(json, token) {
       var fut = _rsBookingsBetween_(siteId, _rsAbsMin_(_rsToday_(), _rsNowHm_()), Infinity).filter(function (b) { return b.hallId === String(cur.HallID) && MC_RS_BK_BLOCK_.indexOf(b.status) >= 0; });
       if (fut.length) return { fail: ['VALIDATION', 'В зале есть предстоящие бронирования (' + fut.length + ') — сначала перенесите или отмените их'] };
     }
-    var o = cur ? JSON.parse(JSON.stringify(cur)) : { HallID: _rsId_('HALL'), SiteID: siteId };
+    var o = cur ? _rsCopy_(cur) : { HallID: _rsId_('HALL'), SiteID: siteId };
     var before = cur ? _rsHallObj_(cur) : null;
     o['Название'] = name; o['Порядок'] = parseInt(d.order, 10) || 0; o['Ширина'] = w; o['Высота'] = h; o['Статус'] = st;
     _rsStamp_(o, c.s, c.op, !cur); delete o._row;
@@ -109,7 +109,7 @@ function rsTableSave(json, token) {
       if (fut.length) return { fail: ['VALIDATION', 'На стол есть предстоящие бронирования (' + fut.length + ') — сначала перенесите их'] };
       comb = [];
     }
-    var o = cur ? JSON.parse(JSON.stringify(cur)) : { TableID: id, HallID: hallId, SiteID: String(hall.SiteID) };
+    var o = cur ? _rsCopy_(cur) : { TableID: id, HallID: hallId, SiteID: String(hall.SiteID) };
     var before = cur ? _rsTableObj_(cur) : null, oldComb = before ? before.combine : [];
     o['Номер'] = num; o['Мест мин'] = mn; o['Мест макс'] = mx; o.X = x; o.Y = y; o['Форма'] = shape; o['Можно объединять с'] = JSON.stringify(comb); o['Статус'] = st;
     if (!o['QR-код']) o['QR-код'] = _rsQrCode_();   // код стола для гостевого меню (этап 5)
@@ -120,7 +120,7 @@ function rsTableSave(json, token) {
       var tid = String(r.TableID); if (tid === id) return;
       var has = comb.indexOf(tid) >= 0, had = oldComb.indexOf(tid) >= 0, lst = _rsJ_(r['Можно объединять с'], []) || [], i = lst.indexOf(id);
       if (has && i < 0) lst.push(id); else if (!has && had && i >= 0) lst.splice(i, 1); else return;
-      var t = JSON.parse(JSON.stringify(r)); t['Можно объединять с'] = JSON.stringify(lst); _rsStamp_(t, c.s, c.op, false); delete t._row;
+      var t = _rsCopy_(r); t['Можно объединять с'] = JSON.stringify(lst); _rsStamp_(t, c.s, c.op, false); delete t._row;
       plan.push({ sheet: MC_RS_SH_.TABLES, row: t });
     });
     var after = _rsTableObj_(o);

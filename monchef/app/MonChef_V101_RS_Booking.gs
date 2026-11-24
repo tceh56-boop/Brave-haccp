@@ -227,7 +227,7 @@ function rsBookingUpdate(json, token) {
     if (MC_RS_BK_FINAL_.indexOf(cur.status) >= 0) return { fail: ['VALIDATION', 'Бронь ' + MC_RS_BK_RU_[cur.status] + ' — изменить нельзя'] };
     if (cur.status === 'SEATED' && (d.tables !== undefined || d.date !== undefined || d.start !== undefined)) return { fail: ['VALIDATION', 'Гости уже за столом: стол и время меняются переносом заказа (этап 3)'] };
     var chk = _rsBkCheck_(d, cur, cur.status); if (chk.err) return { fail: [chk.conflict ? 'CONFLICT' : 'VALIDATION', chk.err] };
-    var o = JSON.parse(JSON.stringify(r)); delete o._row;
+    var o = _rsCopy_(r); delete o._row;
     _rsBkRow_(o, chk.f, cur.status); _rsStamp_(o, c.s, c.op, false);
     var after = _rsBkObj_(o), diff = {}, was = {};
     ['tables', 'guest', 'phone', 'date', 'start', 'duration', 'guests', 'wishes', 'comment', 'manager'].forEach(function (k) { if (JSON.stringify(cur[k]) !== JSON.stringify(after[k])) { was[k] = k === 'phone' ? _rsMaskPhone_(cur[k]) : cur[k]; diff[k] = k === 'phone' ? _rsMaskPhone_(after[k]) : after[k]; } });
@@ -251,12 +251,12 @@ function rsBookingStatus(json, token) {
     if (MC_RS_BK_BLOCK_.indexOf(to) >= 0 && MC_RS_BK_BLOCK_.indexOf(cur.status) < 0) {   // из листа ожидания — столы снова проверяются
       var chk = _rsBkCheck_({}, cur, to); if (chk.err) return { fail: [chk.conflict ? 'CONFLICT' : 'VALIDATION', chk.err] };
     }
-    var o = JSON.parse(JSON.stringify(r)); delete o._row;
+    var o = _rsCopy_(r); delete o._row;
     o['Статус'] = to; if (reason) o['Причина'] = reason; _rsStamp_(o, c.s, c.op, false);
     var plan = [{ sheet: MC_RS_SH_.BOOKINGS, row: o }];
     if ((to === 'CANCELLED' || to === 'NO_SHOW') && cur.preorderId) {
       var pr = _rsRows_(MC_RS_SH_.PREORDERS).filter(function (x) { return String(x.PreorderID) === cur.preorderId; })[0];
-      if (pr && String(pr['Статус']) !== 'CONVERTED') { var p = JSON.parse(JSON.stringify(pr)); delete p._row; p['Статус'] = 'CANCELLED'; _rsStamp_(p, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.PREORDERS, row: p }); }
+      if (pr && String(pr['Статус']) !== 'CONVERTED') { var p = _rsCopy_(pr); delete p._row; p['Статус'] = 'CANCELLED'; _rsStamp_(p, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.PREORDERS, row: p }); }
     }
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'BOOKING', cur.id, { booking: cur.id, order: cur.orderId }, 'BOOKING_' + to, { status: cur.status }, { status: to, reason: reason }) });
     return { data: { booking: _rsBkPublic_(_rsBkObj_(o), c.s) }, plan: plan,
@@ -275,10 +275,10 @@ function rsPreorderSave(json, token) {
     var pi = _rsPoItems_(d.items || []); if (pi.err) return { fail: ['VALIDATION', pi.err] };
     var st = d.confirm ? 'CONFIRMED' : 'DRAFT';
     if (st === 'CONFIRMED' && !pi.items.length) return { fail: ['VALIDATION', 'Пустой предзаказ подтвердить нельзя'] };
-    var before = _rsPoObj_(pr), p = pr ? JSON.parse(JSON.stringify(pr)) : { PreorderID: _rsId_('PO'), BookingID: b.id };
+    var before = _rsPoObj_(pr), p = pr ? _rsCopy_(pr) : { PreorderID: _rsId_('PO'), BookingID: b.id };
     delete p._row; p['Позиции'] = JSON.stringify(pi.items); p['Статус'] = st; _rsStamp_(p, c.s, c.op, !pr);
     var plan = [{ sheet: MC_RS_SH_.PREORDERS, row: p }];
-    if (!pr) { var o = JSON.parse(JSON.stringify(bk)); delete o._row; o.PreorderID = p.PreorderID; _rsStamp_(o, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: o }); }
+    if (!pr) { var o = _rsCopy_(bk); delete o._row; o.PreorderID = p.PreorderID; _rsStamp_(o, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: o }); }
     var after = _rsPoObj_(p);
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'PREORDER', p.PreorderID, { booking: b.id }, 'PREORDER_' + st, before && { status: before.status, items: before.items }, { status: st, items: pi.items }) });
     return { data: { preorder: after }, plan: plan, audit: { action: 'RS_PREORDER_' + st, entity: MC_RS_SH_.PREORDERS, id: p.PreorderID, after: { booking: b.id, items: pi.items.length } } };

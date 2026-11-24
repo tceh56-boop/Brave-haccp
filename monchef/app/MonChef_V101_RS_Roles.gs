@@ -23,14 +23,32 @@ var MC_RS_PERMS_ = [
   ['discount', 'Скидка и сервисный сбор в счёте (вручную, с причиной)', 'Зал'],
   ['payment_confirm', 'Подтверждение оплаты счёта (по кассе; сверка с Z-отчётом)', 'Зал'],
   ['menu_publish', 'Гостевое меню — фото, видео, GIF, описания, публикация, заказ гостей по QR', 'Зал'],
-  ['roles_edit', 'Редактор ролей — права ролей и новые роли (с причиной, в аудите)', 'Персонал']
+  ['roles_edit', 'Редактор ролей — права ролей и новые роли (с причиной, в аудите)', 'Персонал'],
+  ['kitchen_queue', 'Экран кухни — принять, готовить, готово, выдано, проблема, отмена с расходом', 'Производство'],
+  ['bar_queue', 'Экран бара — те же действия для барных заданий', 'Производство'],
+  ['stopgo_view', 'Stop/Go — просмотр (зал)', 'Производство'],
+  ['stopgo_kitchen', 'Stop/Go кухни — поставить STOP / LIMITED / проверку, вернуть GO', 'Производство'],
+  ['stopgo_bar', 'Stop/Go бара — поставить STOP / LIMITED / проверку, вернуть GO', 'Производство'],
+  ['stopgo_approve', 'Stop/Go — снять «на проверке» (решение ответственного)', 'Производство'],
+  ['shop_meat', 'Задания мясного цеха', 'Производство'],
+  ['shop_fish', 'Задания рыбного цеха', 'Производство'],
+  ['shop_veg', 'Задания овощного цеха', 'Производство'],
+  ['shop_prep', 'Задания заготовочного цеха', 'Производство']
 ];
 var MC_RS_ROLES_NEW_ = ['Официант'];
 var MC_RS_MATRIX_ADD_ = {
   'Директор': ['hall_view', 'booking', 'hall_manage', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm', 'menu_publish', 'roles_edit'],
   'Администратор': ['hall_view', 'booking', 'hall_manage', 'catalog', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm', 'menu_publish'],
-  'Официант': ['hall_view', 'catalog', 'order_edit', 'order_send', 'bill_split']
+  'Официант': ['hall_view', 'catalog', 'order_edit', 'order_send', 'bill_split', 'stopgo_view'],
+  'Шеф-повар': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_approve', 'stopgo_view', 'hall_view'],
+  'Су-шеф': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_approve', 'stopgo_view', 'hall_view'],
+  'Повар горячего цеха': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view'],
+  'Повар холодного цеха': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view'],
+  'Повар': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view'],
+  'Кондитер': ['kitchen_queue', 'stopgo_kitchen', 'stopgo_view']
 };
+['kitchen_queue', 'bar_queue', 'stopgo_view', 'stopgo_kitchen', 'stopgo_bar', 'stopgo_approve'].forEach(function (k) { MC_RS_MATRIX_ADD_['Директор'].push(k); });
+MC_RS_MATRIX_ADD_['Администратор'].push('stopgo_view');
 
 (function () {
   try { MC_RS_PERMS_.forEach(function (p) { if (!MC_RB_PERMS_.some(function (x) { return x[0] === p[0]; })) MC_RB_PERMS_.push(p); }); } catch (e) {}
@@ -50,9 +68,15 @@ var MC_RS_MATRIX_ADD_ = {
   grant('order_all', ['Руководитель смены', 'Администратор площадки']);
   grant('order_edit', ['Руководитель смены', 'Администратор площадки']);
   grant('menu_publish', ['Шеф-повар', 'Су-шеф', 'Администратор площадки']);
+  grant('bar_queue', ['Администратор', 'Руководитель смены']); grant('stopgo_bar', ['Администратор', 'Руководитель смены']);   // до ролей бара (этап 6)
+  grant('kitchen_queue', ['Руководитель смены']); grant('stopgo_approve', ['Руководитель смены']);
+  ['shop_meat', 'shop_fish', 'shop_veg', 'shop_prep'].forEach(function (k) { grant(k, ['Повар горячего цеха', 'Повар холодного цеха', 'Повар', 'Кондитер']); });
+  // работа с продуктами на кухне и в баре — только с медицинским допуском (как журналы и производство)
+  try { ['kitchen_queue', 'bar_queue'].forEach(function (k) { if (MC_GATE_MED_PERMS_.indexOf(k) < 0) MC_GATE_MED_PERMS_.push(k); }); } catch (e) {}
   // раздел главного окна и страница
   try { MC_RB_SECTIONS_.hall = 'hall_view|booking|hall_manage'; } catch (e) {}
   try { MC_RB_MODULES_.hall = 'hall_view|booking|hall_manage'; MC_RB_MODULE_RU_.hall = 'Зал и бронирование'; } catch (e) {}
   try { MC_RB_MODULES_.menuedit = 'menu_publish'; MC_RB_MODULE_RU_.menuedit = 'Гостевое меню — редактор'; } catch (e) {}
   try { MC_RB_MODULES_.roles = 'roles_edit'; MC_RB_MODULE_RU_.roles = 'Редактор ролей'; } catch (e) {}
+  try { MC_RB_MODULES_.kds = 'kitchen_queue|bar_queue|stopgo_view|stopgo_kitchen|stopgo_bar'; MC_RB_MODULE_RU_.kds = 'Кухня, бар и Stop/Go'; } catch (e) {}
 })();

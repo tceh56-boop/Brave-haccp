@@ -69,7 +69,7 @@ function rsMenuSave(json, token) {
     if (!dish) return { fail: ['VALIDATION', 'Блюдо не найдено в каталоге'] };
     var rows = _rsRows_(MC_RS_SH_.MENU_PUB), cur = rows.filter(function (r) { return String(r.DishCode) === code; })[0];
     if (cur) _rsCheckVersion_(cur, d.version);
-    var o = cur ? JSON.parse(JSON.stringify(cur)) : { DishCode: code, 'Статус': 'DRAFT' }; delete o._row;
+    var o = cur ? _rsCopy_(cur) : { DishCode: code, 'Статус': 'DRAFT' }; delete o._row;
     var before = cur ? _rsPubObj_(cur) : null;
     if (d.category !== undefined) o['Категория'] = _rsS_(d.category).slice(0, 40);
     if (d.description !== undefined) o['Описание'] = String(d.description || '').replace(/[<>]/g, '').trim().slice(0, 600);
@@ -82,7 +82,7 @@ function rsMenuSave(json, token) {
       if (!snap.media.length) return { fail: ['VALIDATION', '«' + dish.name + '»: добавьте хотя бы одно фото, видео или GIF'] };
       o['Статус'] = 'PUBLISHED'; o['Опубликовал'] = _rsWho_(c.s); o['Опубликовано'] = new Date();
       var sr = _rsRows_(MC_RS_SH_.MENU_SNAP).filter(function (r) { return String(r.DishCode) === code; })[0];
-      var sn = sr ? JSON.parse(JSON.stringify(sr)) : { DishCode: code }; delete sn._row;
+      var sn = sr ? _rsCopy_(sr) : { DishCode: code }; delete sn._row;
       sn['Снимок'] = JSON.stringify(snap); sn['Опубликовано'] = new Date(); _rsStamp_(sn, c.s, c.op, !sr);
       if (sn['Снимок'].length > 45000) return { fail: ['VALIDATION', 'Слишком длинное описание или состав'] };
       plan.push({ sheet: MC_RS_SH_.MENU_SNAP, row: sn });
@@ -181,13 +181,13 @@ function rsMediaUpdate(json, token) {
     var d = c.d, rows = _rsRows_(MC_RS_SH_.MEDIA), r = rows.filter(function (x) { return String(x.MediaID) === String(d.id); })[0];
     if (!r || String(r['Статус']) === 'DELETED') return { fail: ['NOT_FOUND', 'Файл не найден'] };
     _rsCheckVersion_(r, d.version);
-    var before = _rsMediaObj_(r), o = JSON.parse(JSON.stringify(r)), plan = []; delete o._row;
+    var before = _rsMediaObj_(r), o = _rsCopy_(r), plan = []; delete o._row;
     if (d.order !== undefined) o['Порядок'] = parseInt(d.order, 10) || 0;
     if (d.status && ['ACTIVE', 'HIDDEN', 'DELETED'].indexOf(d.status) >= 0) o['Статус'] = d.status;
     if (d.cover === true) {
       o['Обложка'] = true;
       rows.forEach(function (x) { if (String(x.DishCode) !== String(r.DishCode) || String(x.MediaID) === String(r.MediaID) || !(x['Обложка'] === true || String(x['Обложка']) === 'true')) return;
-        var y = JSON.parse(JSON.stringify(x)); delete y._row; y['Обложка'] = false; _rsStamp_(y, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.MEDIA, row: y }); });
+        var y = _rsCopy_(x); delete y._row; y['Обложка'] = false; _rsStamp_(y, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.MEDIA, row: y }); });
     }
     if (o['Статус'] === 'DELETED') { try { DriveApp.getFileById(String(r.FileID)).setTrashed(true); } catch (e) {} }
     _rsStamp_(o, c.s, c.op, false); plan.unshift({ sheet: MC_RS_SH_.MEDIA, row: o });
@@ -314,7 +314,7 @@ function rsGuestRequestDecide(json, token) {
     if (!r) return { fail: ['NOT_FOUND', 'Заявка не найдена'] };
     _rsCheckVersion_(r, d.version);
     if (String(r['Статус']) !== 'NEW') return { fail: ['VALIDATION', 'Заявка уже рассмотрена'] };
-    var o = JSON.parse(JSON.stringify(r)); delete o._row; var plan = [], orderId = '', made = 0;
+    var o = _rsCopy_(r); delete o._row; var plan = [], orderId = '', made = 0;
     if (!d.accept) {
       var why = _rsS_(d.reason).slice(0, 200); if (!why) return { fail: ['VALIDATION', 'Укажите причину отказа'] };
       o['Статус'] = 'REJECTED'; o['Причина'] = why;
@@ -363,7 +363,7 @@ function rsTablesQrIssue(json, token) {
   return _rsMutate_(token, 'menu_publish|hall_manage', 'RS_TABLES_QR', json, function (c) {
     var plan = [];
     _rsRows_(MC_RS_SH_.TABLES).forEach(function (r) { if (String(r['Статус']) !== 'ACTIVE' || String(r['QR-код'] || '')) return;
-      var t = JSON.parse(JSON.stringify(r)); delete t._row; t['QR-код'] = _rsQrCode_(); _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.TABLES, row: t }); });
+      var t = _rsCopy_(r); delete t._row; t['QR-код'] = _rsQrCode_(); _rsStamp_(t, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.TABLES, row: t }); });
     return { data: { issued: plan.length }, plan: plan, audit: { action: 'RS_TABLES_QR', entity: MC_RS_SH_.TABLES, id: '', after: { issued: plan.length } } };
   });
 }

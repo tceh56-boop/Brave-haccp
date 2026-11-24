@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Кухня и бар</title>
+<!-- MON CHEF V101 Restaurant Service — экран кухни и бара (KDS) и Stop/Go.
+     Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович.
+     Права и переходы статусов проверяет сервер; экран показывает только задания своего цеха и подразделения. -->
+<style>
+:root{--wine:#6e1423;--gold:#b3893f;--bg:#f2ede9;--card:#fff;--ink:#231a1c;--mut:#7d6b6e;--line:#e4d9d5;--red:#b3261e;--red-bg:#fbe1de;--green:#2f7d4f;--green-bg:#dff1e6;--amber:#9a6008;--amber-bg:#fdefd6;--blue:#2f5f9e;--blue-bg:#e2ecf8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{padding:12px 14px 40px;max-width:1600px;margin:0 auto}
+.top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.top h1{font-size:20px;margin:0 8px 0 0}
+.tabs button,.chips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 16px;font:inherit;cursor:pointer;min-height:44px}
+.tabs button.on,.chips button.on{background:var(--wine);color:#fff;border-color:var(--wine)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.sum{color:var(--mut);font-size:14px;margin-left:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.tk{background:var(--card);border:1px solid var(--line);border-left:8px solid var(--blue);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.tk.NEW{border-left-color:var(--blue)}.tk.ACCEPTED{border-left-color:#6c4bb4}.tk.COOKING{border-left-color:var(--amber)}.tk.READY{border-left-color:var(--green);background:#f4fbf6}
+.tk.PROBLEM{border-left-color:var(--red);background:#fff6f5}.tk.WAIT_COURSE{opacity:.6;border-left-color:#aaa}.tk.ISSUED,.tk.CANCELLED{opacity:.45;border-left-color:#bbb}
+.tk .h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.tk .tbl{font-size:22px;font-weight:800}.tk .w{font-weight:700}.tk .w.late{color:var(--red)}
+.tk .dish{font-size:19px;font-weight:700;line-height:1.2}.tk .q{font-size:22px;font-weight:800;color:var(--wine)}
+.tk .mod{background:var(--amber-bg);color:var(--amber);border-radius:8px;padding:4px 8px;font-size:14px;font-weight:600}
+.tk .meta{color:var(--mut);font-size:13px}.tk .warn{background:var(--red-bg);color:var(--red);border-radius:8px;padding:6px 8px;font-size:14px;font-weight:600}
+.st{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;background:#eee}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+.btn{border:0;border-radius:12px;padding:12px 14px;font:700 16px inherit;cursor:pointer;background:#eee6e3;color:var(--ink);min-height:50px;flex:1}
+.btn.main{background:var(--wine);color:#fff;flex:2}.btn.ok{background:var(--green);color:#fff;flex:2}.btn.small{flex:0 0 auto;font-size:14px;min-height:44px;padding:8px 12px}.btn.bad{background:var(--red-bg);color:var(--red)}
+.btn:disabled{opacity:.5}
+.msg{margin:6px 0 10px;font-size:15px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.empty{color:var(--mut);text-align:center;padding:40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+label{display:block;font-size:12px;color:var(--mut);margin:8px 0 3px}input,select,textarea{width:100%;padding:10px;border:1px solid #d9cfcc;border-radius:10px;font:inherit;background:#fff;min-height:44px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.ov{position:fixed;inset:0;background:rgba(30,10,14,.45);display:none;align-items:center;justify-content:center;z-index:10;padding:12px}.ov.on{display:flex}
+.sheet{background:var(--bg);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:16px;padding:16px}.sheet h2{margin:0 0 8px;font-size:19px}
+.pick{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}.pick div{padding:10px;border-bottom:1px solid var(--line);cursor:pointer}.pick div.on{background:var(--wine);color:#fff}
+</style></head>
+<body><div class="wrap">
+<div class="top"><h1>Кухня и бар</h1><div class="tabs" id="tabs"></div><span class="sum" id="sum"></span></div>
+<div class="chips" id="chips"></div><div id="msg"></div><div id="view"></div>
+</div>
+<div class="ov" id="ov" onclick="if(event.target===this)closeOv()"><div class="sheet" id="sheet"></div></div>
+<script>
+var S = { tab: '', dept: 'KITCHEN', shop: '', d: null, gen: '', pend: {}, seen: {}, stop: null, sel: '' };
+function $(i) { return document.getElementById(i); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function uuid() { return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+function note(t, ok) { $('msg').innerHTML = t ? '<div class="msg ' + (ok ? 'ok' : 'err') + '">' + esc(t) + '</div>' : ''; if (t && ok) setTimeout(function () { if ($('msg').textContent === t) note(''); }, 3500); }
+function call(fn, data, done, fail) {
+  google.script.run.withSuccessHandler(function (r) { var x; try { x = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) { x = null; } if (x && x.success) done(x.data); else (fail || note)(x && x.error ? x.error.message || x.error : 'Ошибка'); })
+    .withFailureHandler(function () { (fail || note)('Нет связи с сервером — повторите, дубля не будет'); })[fn](JSON.stringify(data || {}));
+}
+function act(slot, fn, data, done, fail) { var k = S.pend[slot] || (S.pend[slot] = uuid()); data.idem = k; call(fn, data, function (r) { delete S.pend[slot]; done(r); }, function (m) { if (!/Нет связи/.test(m)) delete S.pend[slot]; (fail || note)(m); }); }
+var A = window.__MC_ACCESS || null;
+function can(p) { return !A || A.dev || !!(A.perms && A.perms[p]); }
+function tabs() {
+  var t = [];
+  if (can('kitchen_queue')) t.push(['KITCHEN', 'Кухня']);
+  if (can('bar_queue')) t.push(['BAR', 'Бар']);
+  if (can('stopgo_view') || can('stopgo_kitchen') || can('stopgo_bar')) t.push(['STOP', 'Stop/Go']);
+  if (!S.tab) S.tab = (t[0] || ['STOP'])[0];
+  $('tabs').innerHTML = t.map(function (x) { return '<button class="' + (S.tab === x[0] ? 'on' : '') + '" onclick="S.tab=\'' + x[0] + '\';S.shop=\'\';S.gen=\'\';tabs();load()">' + x[1] + '</button>'; }).join('');
+}
+function load() { if (S.tab === 'STOP') return loadStop(); S.dept = S.tab; call('rsKdsData', { dept: S.dept, gen: S.gen }, function (d) { if (d.same) return; S.d = d; S.gen = d.gen; draw(); }, note); }
+/* ---------- очередь ---------- */
+var NEXT = { NEW: [['accept', 'Принять', 'main'], ['start', 'Готовить', '']], ACCEPTED: [['start', 'Готовить', 'main']], COOKING: [['ready', 'Готово', 'ok']], READY: [['issue', 'Выдано', 'main']], PROBLEM: [['resolve', 'Решено, продолжаем', 'main']] };
+function draw() {
+  var d = S.d;
+  $('chips').innerHTML = d.shops.length > 1 ? ['<button class="' + (!S.shop ? 'on' : '') + '" onclick="S.shop=\'\';draw()">Все цеха</button>'].concat(d.shops.map(function (s) { return '<button class="' + (S.shop === s ? 'on' : '') + '" onclick="S.shop=\'' + esc(s) + '\';draw()">' + esc(s) + '</button>'; })).join('') : '';
+  var l = d.tickets.filter(function (t) { return !S.shop || t.shop === S.shop; });
+  var cnt = function (st) { return l.filter(function (t) { return t.status === st; }).length; };
+  $('sum').textContent = 'новых ' + cnt('NEW') + ' · готовятся ' + (cnt('ACCEPTED') + cnt('COOKING')) + ' · готово ' + cnt('READY') + (cnt('PROBLEM') ? ' · проблем ' + cnt('PROBLEM') : '') + ' · ждут курса ' + cnt('WAIT_COURSE');
+  var fresh = l.filter(function (t) { return t.status === 'NEW' && !S.seen[t.id]; }); l.forEach(function (t) { S.seen[t.id] = 1; });
+  if (fresh.length && S.ready) beep();
+  S.ready = true;
+  if (!d.can.act) { $('view').innerHTML = '<div class="empty">Нет права на задания этого подразделения</div>'; return; }
+  $('view').innerHTML = l.length ? '<div class="grid">' + l.map(card).join('') + '</div>' : '<div class="empty">Заданий нет</div>';
+}
+function card(t) {
+  var late = t.waitMin >= 20 && ['NEW', 'ACCEPTED', 'COOKING'].indexOf(t.status) >= 0;
+  var h = '<div class="tk ' + t.status + '"><div class="h"><span class="tbl">Стол ' + esc(t.table) + '</span><span class="w' + (late ? ' late' : '') + '">' + t.waitMin + ' мин</span></div>' +
+    '<div class="dish">' + esc(t.name) + ' <span class="q">× ' + t.qty + '</span></div>' + (t.weight ? '<div class="meta">вес: ' + esc(t.weight) + '</div>' : '') +
+    (t.modifiers.length || t.comment ? '<div class="mod">' + esc(t.modifiers.concat(t.comment ? [t.comment] : []).join(' · ')) + '</div>' : '') +
+    '<div class="meta"><span class="st">' + esc(t.statusRu) + '</span>' + (t.course ? ' · курс ' + t.course : '') + ' · ' + esc(t.shop || '—') + ' · заказ …' + esc(t.orderId.slice(-8)) +
+    (t.acceptedAt ? ' · принят ' + esc(t.acceptedAt) + (t.acceptedBy ? ' (' + esc(t.acceptedBy) + ')' : '') : '') + (t.readyAt ? ' · готово ' + esc(t.readyAt) : '') + (t.issuedAt ? ' · выдано ' + esc(t.issuedAt) : '') + '</div>';
+  if (t.problem) h += '<div class="warn">' + esc(t.problem) + '</div>';
+  if (t.cancelRequest && ['CANCELLED', 'ISSUED'].indexOf(t.status) < 0) h += '<div class="warn">Официант просит отменить: ' + esc(t.cancelRequest) + '</div>';
+  if (S.d.can.act && NEXT[t.status]) {
+    h += '<div class="btns">' + NEXT[t.status].map(function (b) { return '<button class="btn ' + b[2] + '" onclick="go(\'' + t.id + '\',\'' + b[0] + '\')">' + b[1] + '</button>'; }).join('') + '</div><div class="btns">' +
+      (['NEW', 'ACCEPTED', 'COOKING'].indexOf(t.status) >= 0 ? '<button class="btn small" onclick="problem(\'' + t.id + '\')">Проблема</button>' : '') +
+      '<button class="btn small bad" onclick="cancelTk(\'' + t.id + '\')">Отменить</button></div>';
+  }
+  return h + '</div>';
+}
+function tk(id) { return S.d.tickets.filter(function (t) { return t.id === id; })[0]; }
+function go(id, a, extra) { var t = tk(id), d = { ticketId: id, version: t.version, action: a }; for (var k in (extra || {})) d[k] = extra[k];
+  act(a + '-' + id, 'rsTicketAct', d, function (r) { note(t.name + ' — ' + r.ticket.statusRu, true); S.gen = ''; load(); }); }
+function problem(id) { var t = tk(id); openOv('<h2>Проблема: ' + esc(t.name) + ', стол ' + esc(t.table) + '</h2><div class="meta">Официант увидит описание и согласует с гостем замену или ожидание.</div><label>Что случилось</label><textarea id="p_r" maxlength="300"></textarea>' +
+  '<div class="btns" style="margin-top:12px"><button class="btn main" onclick="if($(\'p_r\').value.trim()){go(\'' + id + '\',\'problem\',{reason:$(\'p_r\').value});closeOv();}">Сообщить официанту</button><button class="btn" onclick="closeOv()">Назад</button></div>'); }
+function cancelTk(id) {
+  var t = tk(id), started = ['COOKING', 'READY'].indexOf(t.status) >= 0 || !!t.startedAt;
+  openOv('<h2>Отменить: ' + esc(t.name) + ' × ' + t.qty + ', стол ' + esc(t.table) + '</h2>' + (t.cancelRequest ? '<div class="meta">Запрос официанта: ' + esc(t.cancelRequest) + '</div>' : '') +
+    '<label>Причина</label><input id="c_r" maxlength="300" value="' + esc(t.cancelRequest ? t.cancelRequest.split(' — ')[0] : '') + '">' +
+    '<label>Расход продуктов</label><select id="c_m">' + (started ? '' : '<option value="NONE">Не готовили — расхода нет</option>') + '<option value="FULL">Использовано полностью (по ТТК)</option><option value="PARTIAL">Использовано частично</option></select>' +
+    '<label>Что использовано (для частичного расхода)</label><input id="c_n" maxlength="300">' +
+    '<div class="meta" style="margin-top:6px">' + (started ? 'Приготовление начато — расход обязателен. ' : '') + 'Позиция будет отменена, официант получит уведомление. Расход записывается в позицию и проводится по складу на этапе 7.</div>' +
+    '<div class="btns" style="margin-top:12px"><button class="btn main" id="c_go">Отменить задание</button><button class="btn" onclick="closeOv()">Назад</button></div>');
+  $('c_go').onclick = function () {
+    if (!$('c_r').value.trim()) { note('Укажите причину'); return; }
+    act('cancel-' + id, 'rsTicketCancel', { ticketId: id, version: t.version, reason: $('c_r').value, consumption: $('c_m').value, note: $('c_n').value }, function () { closeOv(); note('Задание отменено', true); S.gen = ''; load(); }, function (m) { note(m); });
+  };
+}
+function openOv(h) { $('sheet').innerHTML = h; $('ov').classList.add('on'); }
+function closeOv() { $('ov').classList.remove('on'); }
+function beep() { try { var c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.value = 0.15; o.start(); o.stop(c.currentTime + 0.25); } catch (e) {} }
+/* ---------- Stop/Go ---------- */
+var STRU = { STOP: 'STOP', LIMITED: 'ограничено', REVIEW: 'на проверке', GO: 'доступно' };
+function loadStop() { $('chips').innerHTML = ''; call('rsStopList', {}, function (d) { S.stop = d; drawStop(); }, note); }
+function drawStop() {
+  var d = S.stop, canAny = d.can.kitchen || d.can.bar;
+  $('sum').textContent = 'ограничений: ' + d.current.length;
+  var h = canAny ? '<div class="btns" style="margin-bottom:10px"><button class="btn main" style="flex:0 0 auto" onclick="stopForm()">+ Поставить STOP / ограничение</button></div>' : '';
+  h += d.current.length ? d.current.map(function (r) {
+    var mine = r.dept === 'BAR' ? d.can.bar : d.can.kitchen, canGo = (r.status === 'REVIEW' ? d.can.approve : (mine || d.can.approve));
+    return '<div class="card"><div class="row" style="border:0;padding:0"><div><b>' + esc(r.name) + '</b> · ' + (r.dept === 'BAR' ? 'бар' : 'кухня') + '<div class="meta">' + esc(STRU[r.status]) + (r.status === 'LIMITED' ? ', осталось ' + r.left : '') + ' · ' + esc(r.reason) +
+      (r.comment ? ' · ' + esc(r.comment) : '') + ' · ' + esc(r.by) + ', с ' + esc(r.since) + '</div></div>' + (canGo ? '<button class="btn ok small" onclick="goForm(\'' + esc(r.code) + '\',\'' + r.dept + '\')">GO</button>' : '') + '</div></div>';
+  }).join('') : '<div class="card empty" style="padding:20px">Все блюда и напитки доступны</div>';
+  h += '<div class="card"><b>История</b>' + d.history.slice(0, 30).map(function (r) { return '<div class="row"><div>' + esc(r.name) + ' · ' + (r.dept === 'BAR' ? 'бар' : 'кухня') + ' — <b>' + esc(STRU[r.status]) + '</b>' + (r.reason ? ' · ' + esc(r.reason) : '') + (r.restoreReason ? ' · GO: ' + esc(r.restoreReason) : '') + '</div><span class="meta">' + esc(r.since) + ' ' + esc(r.by) + '</span></div>'; }).join('') + '</div>';
+  $('view').innerHTML = h;
+}
+function stopForm() {
+  var d = S.stop; S.sel = '';
+  openOv('<h2>STOP / ограничение</h2><label>Блюдо или напиток</label><input id="s_q" placeholder="Начните вводить название" oninput="stopPick()"><div class="pick" id="s_l"></div>' +
+    '<label>Подразделение</label><select id="s_d">' + (d.can.kitchen ? '<option value="KITCHEN">Кухня</option>' : '') + (d.can.bar ? '<option value="BAR">Бар</option>' : '') + '</select>' +
+    '<label>Статус</label><select id="s_s" onchange="$(\'s_lw\').style.display=this.value===\'LIMITED\'?\'block\':\'none\'"><option value="STOP">STOP — недоступно</option><option value="LIMITED">Ограничено — указать остаток</option><option value="REVIEW">На проверке — решит ответственный</option></select>' +
+    '<div id="s_lw" style="display:none"><label>Остаток, порций</label><input id="s_left" type="number" min="1"></div>' +
+    '<label>Причина</label><select id="s_r">' + d.reasons.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select><label>Комментарий</label><input id="s_c" maxlength="300">' +
+    '<label>Уже принятые заказы этого блюда</label><select id="s_a"><option value="KEEP">Выполним — остатка хватает</option><option value="PROBLEM">Не выполним — официанту согласовать замену</option></select>' +
+    '<div class="meta" style="margin-top:6px">Новые заказы блюда будут заблокированы, официанты и гостевое меню увидят это сразу. Принятые заказы не удаляются.</div>' +
+    '<div class="btns" style="margin-top:12px"><button class="btn main" onclick="stopSave()">Подтвердить</button><button class="btn" onclick="closeOv()">Назад</button></div>');
+  stopPick();
+}
+function stopPick() { var q = $('s_q').value.trim().toLowerCase(); $('s_l').innerHTML = S.stop.dishes.filter(function (x) { return !q || x.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 40).map(function (x) {
+  return '<div class="' + (S.sel === x.code ? 'on' : '') + '" onclick="S.sel=\'' + esc(x.code) + '\';$(\'s_d\').value=\'' + x.dept + '\';stopPick()">' + esc(x.name) + ' <span class="meta">' + esc(x.category) + ' · ' + (x.dept === 'BAR' ? 'бар' : 'кухня') + '</span></div>'; }).join(''); }
+function stopSave() {
+  if (!S.sel) { note('Выберите блюдо'); return; }
+  act('stop-' + S.sel, 'rsStopSet', { code: S.sel, dept: $('s_d').value, status: $('s_s').value, left: $('s_left').value, reason: $('s_r').value, comment: $('s_c').value, affected: $('s_a').value },
+    function (r) { closeOv(); note(STRU[r.status] + ': ' + r.name + (r.needReplace.length ? ' — официантам: замена на столах ' + r.needReplace.map(function (m) { return m.table; }).join(', ') : ''), true); loadStop(); }, function (m) { note(m); });
+}
+function goForm(code, dept) {
+  var r = S.stop.current.filter(function (x) { return x.code === code && x.dept === dept; })[0];
+  openOv('<h2>Вернуть GO: ' + esc(r.name) + '</h2><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" id="g_ok" style="width:auto;min-height:0"> Проверено: продукты есть, оборудование работает, качество в норме</label>' +
+    '<label>Причина восстановления</label><input id="g_r" maxlength="300" placeholder="например: поставка принята">' +
+    '<div class="btns" style="margin-top:12px"><button class="btn ok" id="g_go">GO — снова доступно</button><button class="btn" onclick="closeOv()">Назад</button></div>');
+  $('g_go').onclick = function () { act('go-' + code + dept, 'rsStopGo', { code: code, dept: dept, reason: $('g_r').value, confirm: $('g_ok').checked }, function () { closeOv(); note('GO: ' + r.name, true); loadStop(); }, function (m) { note(m); }); };
+}
+/* ---------- старт и обновление ---------- */
+tabs(); load();
+setInterval(function () { if (document.hidden || $('ov').classList.contains('on')) return; if (S.tab === 'STOP') return; load(); }, 10000);
+</script>
+</body></html>

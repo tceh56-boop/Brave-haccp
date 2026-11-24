@@ -26,7 +26,8 @@ var MC_RS_SH_ = {
   EVENTS: 'СобытияОбслуживания_V1', IDEM: 'Идемпотентность_V1', TX: 'ЖурналТранзакций_RS',
   ORDERS: 'ЗаказыЗала_V1', GUESTS: 'ГостиЗаказа_V1', COURSES: 'КурсыЗаказа_V1', ITEMS: 'ПозицииЗаказа_V1', QUEUE: 'ОчередьПроизводства_V1',
   BILLS: 'СчетаВнутренние_V1', ALLOC: 'РаспределениеСчета_V1',
-  MENU_PUB: 'МенюПубликация_V1', MEDIA: 'МедиаМеню_V1', MENU_SNAP: 'МенюСнимок_V1', GUEST_REQ: 'ГостевыеЗаявки_V1'
+  MENU_PUB: 'МенюПубликация_V1', MEDIA: 'МедиаМеню_V1', MENU_SNAP: 'МенюСнимок_V1', GUEST_REQ: 'ГостевыеЗаявки_V1',
+  STOPGO: 'СтопГО_V1'
 };
 var MC_RS_HEAD_ = {};
 MC_RS_HEAD_[MC_RS_SH_.HALLS] = ['HallID', 'SiteID', 'Название', 'Порядок', 'Ширина', 'Высота', 'Статус'].concat(MC_RS_STD_);
@@ -40,10 +41,10 @@ MC_RS_HEAD_[MC_RS_SH_.GUESTS] = ['GuestID', 'OrderID', 'Номер', 'Метка
 MC_RS_HEAD_[MC_RS_SH_.COURSES] = ['CourseID', 'OrderID', 'Номер', 'Название', 'Статус', 'Отправлен', 'Отправил'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.ITEMS] = ['OrderItemID', 'OrderID', 'CourseID', 'Курс', 'GuestID', 'Гость', 'DishCode', 'TTKVersion', 'Название', 'Подразделение', 'Цех',
   'Кол-во', 'Ед. продажи', 'Весовая', 'Вес план', 'Вес факт', 'Ед. веса', 'Цена, коп', 'Цена за', 'PriceID', 'Сумма план, коп', 'Сумма факт, коп',
-  'Модификаторы', 'Комментарий', 'Статус', 'Отправлено', 'TicketID', 'Причина отмены', 'Источник'].concat(MC_RS_STD_);
+  'Модификаторы', 'Комментарий', 'Статус', 'Отправлено', 'TicketID', 'Причина отмены', 'Источник'].concat(MC_RS_STD_).concat(['Расход при отмене', 'Подано', 'Подал', 'Замена для']);   // этап 4 — в конце
 MC_RS_HEAD_[MC_RS_SH_.QUEUE] = ['TicketID', 'OrderItemID', 'OrderID', 'TableID', 'Стол', 'SiteID', 'Подразделение', 'Цех', 'DishCode', 'TTKVersion', 'Название', 'Кол-во',
   'Вес', 'Курс', 'Модификаторы', 'Комментарий', 'Приоритет', 'Статус', 'Принял', 'Принято', 'Готовить начал', 'Готово', 'Выдано', 'Исполнитель',
-  'Списано по партиям', 'Себестоимость, коп', 'Проблема'].concat(MC_RS_STD_);
+  'Списано по партиям', 'Себестоимость, коп', 'Проблема'].concat(MC_RS_STD_).concat(['Запрос отмены', 'Выдал', 'Результат выдачи']);   // этап 4 — в конце
 MC_RS_HEAD_[MC_RS_SH_.BILLS] = ['BillID', 'OrderID', 'Название', 'Гость', 'Скидка вид', 'Скидка значение', 'Скидка, коп', 'Причина скидки', 'Сбор вид', 'Сбор значение',
   'Сбор, коп', 'Причина сбора', 'Итого, коп', 'Статус', 'Способ оплаты', 'Чек', 'Подтвердил', 'Подтверждено', 'Объединён в', 'Комментарий'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.ALLOC] = ['AllocID', 'BillID', 'OrderID', 'OrderItemID', 'Доля числитель', 'Доля знаменатель', 'Статус'].concat(MC_RS_STD_);
@@ -51,6 +52,8 @@ MC_RS_HEAD_[MC_RS_SH_.MENU_PUB] = ['DishCode', 'Категория', 'Описа
 MC_RS_HEAD_[MC_RS_SH_.MEDIA] = ['MediaID', 'DishCode', 'Тип', 'FileID', 'Файл', 'MIME', 'Размер', 'SHA-256', 'Обложка', 'Порядок', 'Статус', 'Загрузил', 'Загружено'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.MENU_SNAP] = ['DishCode', 'Снимок', 'Опубликовано'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.GUEST_REQ] = ['RequestID', 'SiteID', 'TableID', 'Стол', 'Позиции', 'Комментарий', 'Статус', 'OrderID', 'Решил', 'Решено', 'Причина', 'Создано', 'IdempotencyKey'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.STOPGO] = ['StopID', 'DishCode', 'Название', 'Подразделение', 'Статус', 'Остаток', 'Причина', 'Комментарий', 'Ответственный', 'С', 'Восстановил', 'Восстановлено',
+  'Причина восстановления', 'Актуально'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.EVENTS] = ['EventID', 'Время', 'ObjectType', 'ObjectID', 'BookingID', 'OrderID', 'Событие', 'Было', 'Стало', 'Сотрудник', 'EmployeeID', 'OperationID'];
 MC_RS_HEAD_[MC_RS_SH_.IDEM] = ['IdempotencyKey', 'Функция', 'EmployeeID', 'Создано', 'Статус', 'Ответ', 'OperationID'];
 MC_RS_HEAD_[MC_RS_SH_.TX] = ['TxID', 'OperationID', 'Тип', 'План', 'Шагов', 'Выполнено', 'Статус', 'Ошибка', 'Начато', 'Завершено'];
@@ -69,9 +72,16 @@ function _rsSheet_(name) {
     try { sh.getRange(1, 1, 1, head.length).setFontWeight('bold'); } catch (e) {}
     head.forEach(function (h, i) { if (MC_RS_TEXT_COLS_.indexOf(h) >= 0) { try { sh.getRange(2, i + 1, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@'); } catch (e) {} } });
   } else if (sh.getLastColumn() < head.length) {   // колонки, добавленные в конец в новых версиях: дописать заголовок, данные не сдвигаются
-    var n0 = sh.getLastColumn(); sh.getRange(1, n0 + 1, 1, head.length - n0).setValues([head.slice(n0)]);
+    var n0 = sh.getLastColumn(), cur = sh.getRange(1, 1, 1, n0).getValues()[0].map(String);
+    if (cur.join('|') !== head.slice(0, n0).join('|')) throw new Error('INTERNAL: заголовки листа «' + name + '» не совпадают с ожидаемыми — лист изменён вручную, данные не трогаю');
+    sh.getRange(1, n0 + 1, 1, head.length - n0).setValues([head.slice(n0)]);
   }
   return sh;
+}
+/** Копия строки листа для записи: даты остаются датами (копия через JSON превращала их в текст), служебный _row убирается. */
+function _rsCopy_(r) {
+  var o = {}; Object.keys(r || {}).forEach(function (k) { if (k === '_row') return; var v = r[k]; o[k] = _rsIsDate_(v) ? new Date(v.getTime()) : (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v); });
+  return o;
 }
 /** Все строки листа одним чтением: [{колонка: значение, _row}]. */
 function _rsRows_(name) {

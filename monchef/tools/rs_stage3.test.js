@@ -130,9 +130,10 @@ t('отправка проверяет ТТК, цену и STOP — при ош�
   const up = ok(call('rsItemUpdate', WAI, { idem: key(), itemId: it.id, version: it.version, reprice: true })).item;
   assert.strictEqual(up.priceKop, 99000);
   // STOP: лист этапа 4
-  const sg = ss.insertSheet('СтопГО_V1'); sg.appendRow(['StopID', 'DishCode', 'Подразделение', 'Статус', 'Остаток', 'Актуально']); sg.appendRow(['S1', 'D004', 'KITCHEN', 'STOP', '', true]);
+  const sg = C._rsSheet_('СтопГО_V1'), H = C.MC_RS_HEAD_['СтопГО_V1'], v = { StopID: 'S1', DishCode: 'D004', 'Подразделение': 'KITCHEN', 'Статус': 'STOP', 'Актуально': true, Version: 1 };
+  sg.appendRow(H.map(h => (h in v ? v[h] : '')));
   err(call('rsItemAdd', WAI, { idem: key(), orderId: o11, items: [{ code: 'D004' }] }), 'VALIDATION');
-  sg.getRange(2, 4).setValue('GO');
+  sg.getRange(2, H.indexOf('Статус') + 1).setValue('GO');
   ok(call('rsOrderSend', WAI, { idem: key(), orderId: o11, mode: 'all' }));
 });
 
