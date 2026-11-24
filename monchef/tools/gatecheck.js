@@ -7,6 +7,9 @@ const gate=fs.readFileSync(path.join(dir,'zzz_MonChef_Gate.gs'),'utf8');
 const arr=n=>JSON.parse(new RegExp('var '+n+' = (\\[[^\\n]*\\]);').exec(gate)[1]);
 const obj=n=>JSON.parse(new RegExp('var '+n+' = (\\{[^\\n]*\\});').exec(gate)[1]);
 const CL=new Set(arr('MC_GATE_CLIENT_')),MUT=new Set(arr('MC_GATE_MUT_')),PUB=new Set(arr('MC_GATE_PUBLIC_')),RAW=new Set(arr('MC_GATE_RAW_')),TRIG=new Set(arr('MC_GATE_TRIGGER_'));const NEED=obj('MC_GATE_NEED_');
+// модули после генерации шлюза регистрируются в MC_GATE_EXT_ (V101): MC_GATE_EXT_.имя = { need: '…', mut: true } или { pub: true }
+for(const f of fs.readdirSync(dir).filter(f=>f.endsWith('.gs'))){const s=fs.readFileSync(path.join(dir,f),'utf8');for(const m of s.matchAll(/MC_GATE_EXT_\.([A-Za-z0-9_]+)\s*=\s*\{([^}]*)\}/g)){
+ const n=m[1],b=m[2],need=(/need:\s*'([^']+)'/.exec(b)||[])[1];if(/pub:\s*true/.test(b)){PUB.add(n);continue;}if(!need)continue;CL.add(n);NEED[n]=need;if(/mut:\s*true/.test(b))MUT.add(n);}}
 const defs=new Map();let dup=[];
 for(const f of fs.readdirSync(dir).filter(f=>f.endsWith('.gs'))){const s=fs.readFileSync(path.join(dir,f),'utf8');for(const m of s.matchAll(/^function ([A-Za-z0-9_$]+)\s*\(/gm)){const n=m[1];if(defs.has(n))dup.push(n+' : '+defs.get(n)+' + '+f);else defs.set(n,f);}}
 const pub=[...defs.keys()].filter(n=>!/_$/.test(n));

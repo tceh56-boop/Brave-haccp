@@ -35,6 +35,21 @@ var MC_GATE_PORTAL_ = ["getJournalRegistry","verifyDocument"];
 var MC_GATE_RAW_ = ["getAuditBatch","getAuditBatches","getAuditCanonicalTrace","getAuditDashboard","getAuditDeviations","getAuditDocument","getAuditDocumentFile","getAuditEquipment","getAuditHaccp","getAuditInspectionPackage","getAuditJournal","getAuditOperationalState","getAuditRuleState","getAuditSession","getAuditStaff","getAuditTemperatures","getAuditTraceability","getInspectionDocuments","getInspectionReadiness","verifyAuditDocument","verifyAuditJournal","verifyInspectionDocument"];
 var MC_GATE_TRIGGER_ = ["archiveMonChefMonthly","autoCreateChecklistEntries","autoFillCloseShiftChecklist","autoFillEveningJournals","autoFillJournalsFromEvents","autoFillMorningJournals","autoGenerateGeneralCleaning","autoGenerateWeeklyCleaning","autoHealthJournal","autoLampRun","autoLampSessions","autoRecalcMinStock","autoRotationJournal","autoVerificationSample","checkPendingOverdue","generateJournalPending","mcBatchExpiryWatchSystem","mcMercurySyncPendingSystem","mcNotifyTick","mcOnEditAudit","mcProcessingWatchSystem","mcShiftClosingTick","mcSwitchWatchSystem","mcVsdOverdueWatchSystem","medBooksDailyCheck","monChefFrequentTick","monChefHourlyTick","refreshJournalsOnDrive","runMonChefControlCycleSystem","runMonChefFullControlCycleSystem","runMonChefHaccpControlCenterCycleSystem","runMonChefHaccpControlCycleSystem","runMonChefMyTasksCycleSystem","runMonChefProductionHaccpBridgeCycleSystem","runMonChefShiftCycleSystem","runMonChefWeeklyDispatcherCycleSystem","runMonChefWeeklyPlanningCycleSystem","syncTTKScheduled","v43AutomationTick"];
 var MC_GATE_ENTRY_ = ["doGet"];
+// V101: модули после генерации шлюза (Restaurant Service и далее) регистрируют свои функции в MC_GATE_EXT_
+// (объявлен в файле модуля, загружается раньше шлюза): { имя: { need: 'право|право', mut: true } } или { pub: true }.
+// Функция без права остаётся служебной (только технический доступ). Собственность Слепцова Дениса Владимировича.
+(function () {
+  if (typeof MC_GATE_EXT_ === 'undefined' || !MC_GATE_EXT_) return;
+  Object.keys(MC_GATE_EXT_).forEach(function (n) {
+    var d = MC_GATE_EXT_[n] || {};
+    if (/_$/.test(n)) return;
+    if (d.pub) { if (MC_GATE_PUBLIC_.indexOf(n) < 0) MC_GATE_PUBLIC_.push(n); return; }
+    if (!d.need) return;
+    if (MC_GATE_CLIENT_.indexOf(n) < 0) MC_GATE_CLIENT_.push(n);
+    MC_GATE_NEED_[n] = d.need; MC_GATE_PERM_[n] = d.need;
+    if (d.mut && MC_GATE_MUT_.indexOf(n) < 0) MC_GATE_MUT_.push(n);
+  });
+})();
 var MC_GATE_DEDUP_SEC_ = 15;
 // Нагрузочный сценарий: вызов может ждать общую блокировку дольше 15 с. Метка «выполняется» живёт до предела
 // выполнения Apps Script (6 мин) — повторное нажатие во время ожидания не запустит ту же операцию второй раз.

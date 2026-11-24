@@ -1,8 +1,6 @@
 {
   "product": "MON CHEF",
   "build": "Integrated Application 1.0",
-  "entrypoint": "App.html",
-  "server": "Code.gs",
   "integration": "MonChef_Application_Integration.gs",
   "internal_release_numbers_visible_in_ui": false,
   "duplicate_server_functions": false,
@@ -71,12 +69,898 @@
     "Sites, warehouses, sales channels, transfers (V97)",
     "Staff shift schedule and shortage (V98)",
     "Working spreadsheet ID in installation settings (V99)",
-    "Personal data technical measures (V100)"
+    "Personal data technical measures (V100)",
+    "Restaurant Service: halls, tables, bookings, preorders, demand forecast (V101, stage 2)"
   ],
   "validation": {
     "gs_syntax": "PASS",
-    "app_javascript_syntax": "PASS",
-    "duplicate_functions": "PASS"
+    "duplicate_functions": "PASS",
+    "ui": "Console.html (App.html удалён)"
   },
-  "updated": "2026-11-24"
+  "updated": "2026-11-24",
+  "entry": {
+    "server": "Code.gs",
+    "function": "doGet",
+    "doGet": 1,
+    "doPost": 0,
+    "ui": "Console.html",
+    "gate": "zzz_MonChef_Gate.gs (загружается последним)"
+  },
+  "files": [
+    {
+      "file": "Allergens.html",
+      "bytes": 9049,
+      "sha256": "90d0afb82c0b93775e630105cc1dd0da2c8b0d11f221a59444c03f980a43d9b5"
+    },
+    {
+      "file": "Audit.html",
+      "bytes": 25533,
+      "sha256": "1f6f4786283f419bc4cfa65d8905958b779f6959e7a6ec3cb7f2d44684e7890d"
+    },
+    {
+      "file": "Backup.html",
+      "bytes": 7567,
+      "sha256": "defd944ec109af18f87c2af7bd9852bb8071a301cfac81d05507fe24528f688b"
+    },
+    {
+      "file": "BatchCard.html",
+      "bytes": 117714,
+      "sha256": "7e3bfda516c7a915a3c242ea2619c3403e298a891abc0c33b65090aa5962d4d8"
+    },
+    {
+      "file": "BatchControl.html",
+      "bytes": 22069,
+      "sha256": "5213ab51f3bb53cdc49c80a9a5b4c73bffe34df7fcf55fbb9f96d17becb7016d"
+    },
+    {
+      "file": "Code.gs",
+      "bytes": 994764,
+      "sha256": "3a0315ebe79e1f74f9945042e416e30abb339125171a44895c709583f2f2c21f"
+    },
+    {
+      "file": "Console.html",
+      "bytes": 1250606,
+      "sha256": "a98645ea2374b04526f087685a1a3886a1f38287bc9f8c4f96bd9437e730f2de"
+    },
+    {
+      "file": "Corrections.html",
+      "bytes": 10932,
+      "sha256": "b9f611e0fe89bb21f0dcda8c4dc7575637adb9ac2806ce03c7699846d9306eea"
+    },
+    {
+      "file": "DailySamples.html",
+      "bytes": 13785,
+      "sha256": "03fa858814a94269fed26a1801d36363fb53aed2166e9878a018e0a44e53c13e"
+    },
+    {
+      "file": "Docs.html",
+      "bytes": 9617,
+      "sha256": "78f2bc421d42efa72b89edeec38ee375688d844a94522f3b2991bff58abab72a"
+    },
+    {
+      "file": "Environment.html",
+      "bytes": 13865,
+      "sha256": "7b52c28a3db3ec8d8c7dc1f0ce5d08b6621c29aa4707a745dce2747a9961d61a"
+    },
+    {
+      "file": "Equipment.html",
+      "bytes": 8643,
+      "sha256": "1338f3190a9c08ebfffda45c1cddf8d90102c503605e5391e1bd2b74e14ece05"
+    },
+    {
+      "file": "HaccpToday.html",
+      "bytes": 8039,
+      "sha256": "24ae48e276e3c2261914c40653d8c3a1b3cc25ad665f368a5840577549a2e53b"
+    },
+    {
+      "file": "Hall.html",
+      "bytes": 37390,
+      "sha256": "e31acdeacc9e4bb7a885ef60c035754ddd3e49556d294b2e27f931658445e650"
+    },
+    {
+      "file": "Income.html",
+      "bytes": 152708,
+      "sha256": "2d252f523eaf2cdbfe79d4c4f06298663405831556380bc8d2bbace9cdc9aea1"
+    },
+    {
+      "file": "Inspectors.html",
+      "bytes": 33902,
+      "sha256": "7abf0bbb219c34f590c444a431db0bea72b722505c04a1e6df2e4830c968dcdd"
+    },
+    {
+      "file": "Journals.html",
+      "bytes": 38912,
+      "sha256": "263cda6b75cdb425d8a47496702130f9bb133a389b5bffff8ccccef75a295d8c"
+    },
+    {
+      "file": "Labs.html",
+      "bytes": 11123,
+      "sha256": "3ccc537f8fb7ff4a88f9980fef4a2ea19f1c6e572e96170f01e3d44f0dda94a3"
+    },
+    {
+      "file": "MonChef_Allergens.gs",
+      "bytes": 10798,
+      "sha256": "30f2bbfef122a4d11145f859ec0bb799464885e9aeef4a29b5b5fa4ef36f6025"
+    },
+    {
+      "file": "MonChef_Application_Integration.gs",
+      "bytes": 6205,
+      "sha256": "4d69d145c00ee934c343abec6abc6852ad3f3a236293b3fb4dca1cca1600f883"
+    },
+    {
+      "file": "MonChef_AuditEngine.gs",
+      "bytes": 12581,
+      "sha256": "22a3bfd7b615574c5647574e8e50bd8109d84f47e2dc172f74da8f8505c2c9e4"
+    },
+    {
+      "file": "MonChef_Backup.gs",
+      "bytes": 8678,
+      "sha256": "e6114eca7760c04d71bc29397b324f57f3973d080fb33c4be5b0d08d1a79885c"
+    },
+    {
+      "file": "MonChef_BanquetOcr.gs",
+      "bytes": 79898,
+      "sha256": "4a61ca0a5109c9adb38d08f5953031aaa1f4b2c25c8609f9d392c16d17d58021"
+    },
+    {
+      "file": "MonChef_BanquetUI.gs",
+      "bytes": 37138,
+      "sha256": "58131364cb49bf146f8234c1f62eeb252a4883d616c0d2fd432f3089fdb4d000"
+    },
+    {
+      "file": "MonChef_BatchControl.gs",
+      "bytes": 25712,
+      "sha256": "299acc5aaa552955d27921dbd0233c32e34cd8de120cafc2024a5547637c92b7"
+    },
+    {
+      "file": "MonChef_BatchLifecycle.gs",
+      "bytes": 75147,
+      "sha256": "1daa2b8fe0938a8464455e7d4cea712e8f1eb1a51175903d0b8dd97b2827b019"
+    },
+    {
+      "file": "MonChef_ChefKpi.gs",
+      "bytes": 4736,
+      "sha256": "549ad053382a35607d57e0509095e8a7d99ce65e6ffa20272486793421d0edb5"
+    },
+    {
+      "file": "MonChef_Compliance.gs",
+      "bytes": 12983,
+      "sha256": "049b1070e1c3ff15e36846e979aa46835ad2ff39466227b3171f3a002edebac2"
+    },
+    {
+      "file": "MonChef_DailySamples.gs",
+      "bytes": 11137,
+      "sha256": "cac055809611d6ce4b6002fcf3acf8054c28d1904dfd68306062eeae680e7347"
+    },
+    {
+      "file": "MonChef_DishPhotos.gs",
+      "bytes": 24294,
+      "sha256": "86f5ddbcfa1a40f9e2b9216ff1df5ce5ac7c07d9c08ee3f384ec68bc156c8821"
+    },
+    {
+      "file": "MonChef_DocumentRegistry.gs",
+      "bytes": 8259,
+      "sha256": "7a764dfd3d4636ad76e7db9f1a00daf7614550bac9b565a36baf7424f912a808"
+    },
+    {
+      "file": "MonChef_Environment.gs",
+      "bytes": 19713,
+      "sha256": "174354a93694e0351dca4d717d9dacf9ceff4579abbbbf375310a0afd43df6d9"
+    },
+    {
+      "file": "MonChef_FileFormats.gs",
+      "bytes": 10182,
+      "sha256": "3ba84d4194e7b3a469d714dc2cd47cd1c029d636442579388a5e46f7ef0745f1"
+    },
+    {
+      "file": "MonChef_FullControlEngine.gs",
+      "bytes": 29924,
+      "sha256": "311f56d9e67d5c34b297b6eb6894f618bf9eb344acc33896d2c27c9bfa3fb88e"
+    },
+    {
+      "file": "MonChef_HaccpToday.gs",
+      "bytes": 21749,
+      "sha256": "6ad8005a058b8d7dde12cb14dde3a2c4f9d50df3d90ab9e8fb5db6c7d09da616"
+    },
+    {
+      "file": "MonChef_Integrity.gs",
+      "bytes": 8830,
+      "sha256": "2383d02e8284cb2948b3c81107adb2c6f86dbd818de8790de15b57a3d0af3087"
+    },
+    {
+      "file": "MonChef_JournalAuthor.gs",
+      "bytes": 4555,
+      "sha256": "dc5fb65172aa9bb3854f47018c5590a3e6d2c4787734cb1f192a2778863e5211"
+    },
+    {
+      "file": "MonChef_JournalForms.gs",
+      "bytes": 102121,
+      "sha256": "f9dce3f33495c78c55282bf3ee158dc7357102710e7fd952dbf1ec40c3aec5a9"
+    },
+    {
+      "file": "MonChef_JournalFormsSpec.gs",
+      "bytes": 39774,
+      "sha256": "bad81c32c6694518c292c1d7145aafb25c4018612a1179402701889ec1ab3112"
+    },
+    {
+      "file": "MonChef_LegacyBack.gs",
+      "bytes": 56135,
+      "sha256": "93e00c61a36c73a904cc986c3ca8969c55acdab7a69619e017d66a9ea358c550"
+    },
+    {
+      "file": "MonChef_LoadCalibrate.gs",
+      "bytes": 5565,
+      "sha256": "726aab759832eceb3e361e6b91dd3d07268cf82de4df4b58bf70fa6e6b75c96e"
+    },
+    {
+      "file": "MonChef_MasterData.gs",
+      "bytes": 7328,
+      "sha256": "d34fd946f9b879501657fbc0feb2da004b7dee1b907062c1e259602cd59f213f"
+    },
+    {
+      "file": "MonChef_MedBooks.gs",
+      "bytes": 13867,
+      "sha256": "589e2f39a74eb1073cbd8c7549c9577431be76d3354c59a1913627d8d2de35b5"
+    },
+    {
+      "file": "MonChef_Mercury.gs",
+      "bytes": 95677,
+      "sha256": "63a5109d05c48bd0359070b08eace183f9c5dbf000ba7f0b33ce2e1b6ba70748"
+    },
+    {
+      "file": "MonChef_Migration.gs",
+      "bytes": 8881,
+      "sha256": "0d2997cd000da4a47141714d38dd05ad47c7885d7e932f3531a3c29bec03fa9b"
+    },
+    {
+      "file": "MonChef_Offline.gs",
+      "bytes": 6723,
+      "sha256": "39d74bb56b87b1e96438da9653a60adfd2a780eaaa213434f685b490cd29813a"
+    },
+    {
+      "file": "MonChef_OrgSettings.gs",
+      "bytes": 22535,
+      "sha256": "032abd2beaaf45ecbdfc95d90d2d9ccfd10dece837e1a343d641c5e7149068c0"
+    },
+    {
+      "file": "MonChef_Pages.gs",
+      "bytes": 10824,
+      "sha256": "7156889ba1f8834509503c6d9da5ee44f406a7857b59708466dcf918b80872bb"
+    },
+    {
+      "file": "MonChef_PdfOcr.gs",
+      "bytes": 6768,
+      "sha256": "a521e3a87d2cdb26e8da517f6f2d1f3ff0fad72b273ceae5463948e02f4b49dc"
+    },
+    {
+      "file": "MonChef_Processing.gs",
+      "bytes": 78110,
+      "sha256": "b5e646f14faea07adc6b8dff1207846fa42885c9d30e1d08ccba8e3906b26844"
+    },
+    {
+      "file": "MonChef_ProdWeekUI.gs",
+      "bytes": 20342,
+      "sha256": "713659c28099035ee5a75a213e641228903f8900c83f3f4d8857d2d8e079e4a9"
+    },
+    {
+      "file": "MonChef_ProductionCcp.gs",
+      "bytes": 9512,
+      "sha256": "26e26db92d3724f1915fd7115a39d19eeb1b635b161a7cc23a7eb5f32cf257fc"
+    },
+    {
+      "file": "MonChef_QrLib.gs",
+      "bytes": 21955,
+      "sha256": "b0388ccc6be75365b810ff13fc2ebcce4ebb9b925895711cd5f9d521b9f263d8"
+    },
+    {
+      "file": "MonChef_Rbac.gs",
+      "bytes": 56595,
+      "sha256": "7918ee88612d37279edbfeb80ba9a898c7388052d7171d993a2b25300be770a2"
+    },
+    {
+      "file": "MonChef_Readiness.gs",
+      "bytes": 26624,
+      "sha256": "2f07e3dadc3629655c5522636887e1126970284b8906671770bd0f83e364f04d"
+    },
+    {
+      "file": "MonChef_ReceiptCorrection.gs",
+      "bytes": 13945,
+      "sha256": "0748bd2c6a47b897d6f444e2822614cdab8e9acff46160836f2b63d5253a5f1e"
+    },
+    {
+      "file": "MonChef_Receiving.gs",
+      "bytes": 71229,
+      "sha256": "b064acd78a7c8e59a9d5f11eca6bcda40d0a9daf9cafe6533bb188b4cbabbd59"
+    },
+    {
+      "file": "MonChef_RuleEngine.gs",
+      "bytes": 6585,
+      "sha256": "8bfd4eaf55a41add53c53177bed0ff36f465121b48108e67264d818958495d98"
+    },
+    {
+      "file": "MonChef_Scheduler.gs",
+      "bytes": 13061,
+      "sha256": "56964bbaf22eceb2fd8a07fc6b44b2b5d86dc26e5de9392a3e86780cbf61e16b"
+    },
+    {
+      "file": "MonChef_SignatureEngine.gs",
+      "bytes": 20703,
+      "sha256": "ca0ec5f9cee24e33010334a77f81c316acd71a929a05a7ed86a0b9184aa6f441"
+    },
+    {
+      "file": "MonChef_SupplyDocs.gs",
+      "bytes": 25473,
+      "sha256": "774d182c915283a4d2f03047f8daf6a4e553874a9ac5820299484fc0890871ca"
+    },
+    {
+      "file": "MonChef_Temperature.gs",
+      "bytes": 37669,
+      "sha256": "fd2c1668d340b0a232dc5ffa93c6b5e9e0271039b51829e500077294bab08346"
+    },
+    {
+      "file": "MonChef_Traceability.gs",
+      "bytes": 6826,
+      "sha256": "6043cb97d971079e6f3ead9f89e396942283a5e80a8e8a0f40bdce0d3888466a"
+    },
+    {
+      "file": "MonChef_TtkHistory.gs",
+      "bytes": 19303,
+      "sha256": "032b6e12b0ba130e8b31aea03143f7609253b0d0a8b3c0c07359520a7e7fd8bb"
+    },
+    {
+      "file": "MonChef_TtkIds.gs",
+      "bytes": 5330,
+      "sha256": "380080c2a5e6d3bc189842abb78660de9108fa450cc9077d6ed78e0f7cd354e4"
+    },
+    {
+      "file": "MonChef_UI.gs",
+      "bytes": 68247,
+      "sha256": "c28a4e19d439b897fdec3a314a20ecdcc2148514240eb051f50595ab41c24b41"
+    },
+    {
+      "file": "MonChef_UISections.gs",
+      "bytes": 21910,
+      "sha256": "53af927b3d90b2837413ba9aea13a077483e25c0d47ef15b74bac37bd402a7e9"
+    },
+    {
+      "file": "MonChef_V100_PersonalData.gs",
+      "bytes": 22555,
+      "sha256": "4688092b44586db94e60b83a756c333c4c66cd216390356a914cdcb45c99e446"
+    },
+    {
+      "file": "MonChef_V101_RS_Booking.gs",
+      "bytes": 28717,
+      "sha256": "e69fed701774865e11faec5c318977c42cc9ba8f5c6b5559a094501d52ec6803"
+    },
+    {
+      "file": "MonChef_V101_RS_Core.gs",
+      "bytes": 19824,
+      "sha256": "28f80039cc28dbbb4565afdbe694bf957124aecac617a1159d6d45b1a583995c"
+    },
+    {
+      "file": "MonChef_V101_RS_Hall.gs",
+      "bytes": 12014,
+      "sha256": "3b95b95cf74f6c8394cf7477667684938a1a7b97182b5ab7d88cf5bc911304d5"
+    },
+    {
+      "file": "MonChef_V101_RS_Roles.gs",
+      "bytes": 3361,
+      "sha256": "5509d3cea506fba896ffa6ed64dce46203eea69a29e897a21f4a293203b02378"
+    },
+    {
+      "file": "MonChef_V101_RS_UI.gs",
+      "bytes": 3101,
+      "sha256": "8e39724a3524f918c25c8a33005e71828e5ab016efd9848fd5150886eacdd285"
+    },
+    {
+      "file": "MonChef_V10_OCR_Engine.gs",
+      "bytes": 13872,
+      "sha256": "05783073aead58e21bddf84541f4b103ac5bcfa3175c9959f86262f52f7124af"
+    },
+    {
+      "file": "MonChef_V11_OCR_Intelligence.gs",
+      "bytes": 13490,
+      "sha256": "e858bf2f241db95be2565154f57679f01b971149796abf78935c9467df032e21"
+    },
+    {
+      "file": "MonChef_V12_OCR_Autopilot.gs",
+      "bytes": 15233,
+      "sha256": "42307ae89c1f6852e1fbb2064d107f384a5ada9e79b9bb9eaf725e083eb3bc72"
+    },
+    {
+      "file": "MonChef_V13_FiscalQrEngine.gs",
+      "bytes": 6618,
+      "sha256": "b0e43ccb6ab42a69ab718023923636c866f87be5e5e8b998dabaeaac045effcd"
+    },
+    {
+      "file": "MonChef_V14_WeeklyPlanning.gs",
+      "bytes": 11240,
+      "sha256": "0ba5287f74aa8e95fe23735619e85380c3100cdd3732a454bd5c9d13a810e3a5"
+    },
+    {
+      "file": "MonChef_V15_HaccpControlEngine.gs",
+      "bytes": 13943,
+      "sha256": "086efe815ba40ced8af426f23d9146ba1b6060aa7396758a7f62aeeca7004b78"
+    },
+    {
+      "file": "MonChef_V16_HaccpControlCenter.gs",
+      "bytes": 10973,
+      "sha256": "270ca10d34db82ffaa420f46ec1acdf69e44edaf8fe798a37883975ae45092d9"
+    },
+    {
+      "file": "MonChef_V17_ProductionHaccpBridge.gs",
+      "bytes": 9443,
+      "sha256": "b6b998f7119309ca3815be61914948c815c45dc8253cd0a3758d00854a3dbf36"
+    },
+    {
+      "file": "MonChef_V18_MyTasks.gs",
+      "bytes": 7319,
+      "sha256": "119e0386e639f2fe85997f6a7b3ba33d0b13ab79bd6c02ee2ec86b7ea1849a06"
+    },
+    {
+      "file": "MonChef_V19_ShiftEngine.gs",
+      "bytes": 7586,
+      "sha256": "b17e7a9e342d296f8e21f321ccbba839f9ad85c20dd370d9c0970b3385079d10"
+    },
+    {
+      "file": "MonChef_V20_WeeklyDispatcher.gs",
+      "bytes": 8433,
+      "sha256": "a058d9ed26c9315ae519d6335117b9a3fbf9522e4cc47564258d56316078e6f3"
+    },
+    {
+      "file": "MonChef_V21_ProcurementReceiving.gs",
+      "bytes": 14454,
+      "sha256": "f6dbb46a55c8bb75514918fa21b6094b956bb5a6ba64017024823f217a7f7636"
+    },
+    {
+      "file": "MonChef_V22_StorageFEFOLabels.gs",
+      "bytes": 16091,
+      "sha256": "ac4917fd04e8ee4ff05274e20b0f3b18a7bfc496ff98265375d3773f56a72a50"
+    },
+    {
+      "file": "MonChef_V23_ProductionPick.gs",
+      "bytes": 7331,
+      "sha256": "f559afee356b4f3c472a1104fee621d79b9388fa80dad4ecc1c482a7cbcba87d"
+    },
+    {
+      "file": "MonChef_V24_TTKProductionEngine.gs",
+      "bytes": 8579,
+      "sha256": "38d86e955579eac2216d550c7472fd8ff237200c19c39be5b798b2400cd64c71"
+    },
+    {
+      "file": "MonChef_V25_ProductionScheduler.gs",
+      "bytes": 8922,
+      "sha256": "422679fa2f1228175b1e1cd97c39eaecafaa4cf7c2f5be032757328b627d9c2b"
+    },
+    {
+      "file": "MonChef_V26_DispatchBridge.gs",
+      "bytes": 6308,
+      "sha256": "dee30d480c683a940f639415b83c2e2b6cb1959ff6d0ef6d1a09ecd164e75ab9"
+    },
+    {
+      "file": "MonChef_V27_ProductionRelease.gs",
+      "bytes": 8962,
+      "sha256": "c14988520e774392d35dd338c79f1604ed47ce430fdeb90d1754fbff3cba72d1"
+    },
+    {
+      "file": "MonChef_V28_BanquetFulfillment.gs",
+      "bytes": 9497,
+      "sha256": "779cacbe37821424c7041d635e5b10908b2203c91effe328a9df946f7e6b87fe"
+    },
+    {
+      "file": "MonChef_V29_BanquetClosure.gs",
+      "bytes": 8767,
+      "sha256": "d2d4abeccb53b1f5090b63f23647ba311113ed426bbf474f2f015f7d671765dc"
+    },
+    {
+      "file": "MonChef_V30_ComplianceHaccpCore.gs",
+      "bytes": 21823,
+      "sha256": "c0d1f25022b61e923744aba769d48df6522d52bdbc05e5a146616aceb8cd7544"
+    },
+    {
+      "file": "MonChef_V31_HaccpFactBridge.gs",
+      "bytes": 9069,
+      "sha256": "76af6e764ee0a31c640902dfc6e996e63befa13b137367975f33cadce2241f47"
+    },
+    {
+      "file": "MonChef_V32_EVENT_HACCP_BRIDGE.gs",
+      "bytes": 5461,
+      "sha256": "593a89d50277ee381565a6da2332d50d91a428e0608236fbe84c60c97a609b0e"
+    },
+    {
+      "file": "MonChef_V33_NORMATIVE_COMPLIANCE_ENGINE.gs",
+      "bytes": 18588,
+      "sha256": "a8ba56fe1345e79622c944d9a9f3bacf729c4555b57e8cf98ee7f1a829f7d98f"
+    },
+    {
+      "file": "MonChef_V34_COMPLIANCE_RULES_ENGINE.gs",
+      "bytes": 9145,
+      "sha256": "9ef9ff6018936951fd050ce794fc03ed3f10fa9237dafaacf2e5f980e4801117"
+    },
+    {
+      "file": "MonChef_V35_PPK_HACCP_BUILDER.gs",
+      "bytes": 12396,
+      "sha256": "1fcb059342645329aea6f112390203ecac67fe261b7cb8a7c75a1cf76e058a68"
+    },
+    {
+      "file": "MonChef_V36_TTK_MASTER.gs",
+      "bytes": 11459,
+      "sha256": "603d270081ec579a7e2cd976e1bef1754bdaf3e343d5b9abaddc74dcaa704ba1"
+    },
+    {
+      "file": "MonChef_V37_TTK_PPK_BRIDGE.gs",
+      "bytes": 11643,
+      "sha256": "eaa7b27ca7fabb8ec37f3552b3ca4a4d2cbce6c98fd3e925fda61427e913987e"
+    },
+    {
+      "file": "MonChef_V38_SHELF_LIFE_RULES.gs",
+      "bytes": 8448,
+      "sha256": "cf809e45d432e85811f9dd985ac46df54d98bba950c0ecd5055363a9de2f00ac"
+    },
+    {
+      "file": "MonChef_V39_SHELF_LIFE_SCHEDULER.gs",
+      "bytes": 6510,
+      "sha256": "ea8d68464fffd10870918ab8d5252a80736a090294fbfddfc711b6274850c253"
+    },
+    {
+      "file": "MonChef_V40_PRODUCT_SHELF_LIFE.gs",
+      "bytes": 7111,
+      "sha256": "f8c18a4b96b4bcbcf2cff4bd1ecfda6034cee9d456ac5b6b0ab381100e35feed"
+    },
+    {
+      "file": "MonChef_V41_DISINFECTANTS.gs",
+      "bytes": 11004,
+      "sha256": "dc8995d793bc2809f62cd4e8171ae3f394d02352c552383e646d385ce39ec6e8"
+    },
+    {
+      "file": "MonChef_V42_SANITATION_ENGINE.gs",
+      "bytes": 11484,
+      "sha256": "f6ce18ad0ddabc91aedb8b2927694ba5e512d996a8b6b6c207428af4da3bffca"
+    },
+    {
+      "file": "MonChef_V43_SANITATION_CHECKLIST_BRIDGE.gs",
+      "bytes": 12448,
+      "sha256": "7359d2dc084098d7b84450eefda6cbcfa35827de84af5c1c2970fccc9131e688"
+    },
+    {
+      "file": "MonChef_V44_TASK_CENTER.gs",
+      "bytes": 12008,
+      "sha256": "1de247a074d7336fb9d6f2f915aa04551d33b0fef1470e3f8bf50b97a2c14a11"
+    },
+    {
+      "file": "MonChef_V45_PRODUCTION_TASK_BRIDGE.gs",
+      "bytes": 11014,
+      "sha256": "ca7a220e7aade7aed223e3b91866427f2d98f1898e3f3cd7a8c34a75596da806"
+    },
+    {
+      "file": "MonChef_V46_BANQUET_ALLOCATION.gs",
+      "bytes": 11148,
+      "sha256": "cea0eabf9db91d2edec69cef7ddbe5919cd5e214faa5146343f3428f45624a2f"
+    },
+    {
+      "file": "MonChef_V47_DISPATCHER.gs",
+      "bytes": 7912,
+      "sha256": "b3652e6f1b97a97f650ae125e9a5204fb4470d98a547853c71e7624294e5f45e"
+    },
+    {
+      "file": "MonChef_V48_DEFICIT_ENGINE.gs",
+      "bytes": 12908,
+      "sha256": "cec7c0e2b81e2e2ad8be20fc1bb2b60f0d38f962bcc248431f7bc2cb43d76ff0"
+    },
+    {
+      "file": "MonChef_V49_INVENTORY_REVISION.gs",
+      "bytes": 13377,
+      "sha256": "27b201ba5bb1930c9fb2dedc2e8aaf591235c9e1e9750a2abc471663c0742ab3"
+    },
+    {
+      "file": "MonChef_V4_Integration.gs",
+      "bytes": 6805,
+      "sha256": "c7841795f6f796d6a3cbb39cdd584df834f819da05eb68012690afeb91569b89"
+    },
+    {
+      "file": "MonChef_V50_SURPLUS_UTILIZATION.gs",
+      "bytes": 19271,
+      "sha256": "235f0a8d439da3fa10fe631512899c209eb92ea41f1c917618cb38dc53f3001b"
+    },
+    {
+      "file": "MonChef_V51_DEFICIT_SURPLUS_BRIDGE.gs",
+      "bytes": 10753,
+      "sha256": "cc097a8a213e6ab735fde13f09f491dedae136afe074cf68cbd98940f5b0e7bb"
+    },
+    {
+      "file": "MonChef_V52_TTK_DEFICIT_RECALC.gs",
+      "bytes": 8648,
+      "sha256": "24ae17245f4ea3ea50a78f9cfea451664a11cde5d835601e34ee62367b283807"
+    },
+    {
+      "file": "MonChef_V53_PRODUCT_UNITS.gs",
+      "bytes": 10087,
+      "sha256": "7d6ff481debe501ea9cdbc8d65357df2f6b3db12f161a9c804b5e4a8081a20c5"
+    },
+    {
+      "file": "MonChef_V54_RESOURCE_STOCK_ENGINE.gs",
+      "bytes": 13534,
+      "sha256": "ee2c805968b4abc023e305b7e18c7570eae8c88b06bf9be7fc282949880293d2"
+    },
+    {
+      "file": "MonChef_V5_TraceabilityEngine.gs",
+      "bytes": 17836,
+      "sha256": "a6058b57a46e423ce52880b0a04cf29c3b8e72c07eb07849682b1d5bb698807b"
+    },
+    {
+      "file": "MonChef_V64_EconomyFlow.gs",
+      "bytes": 66266,
+      "sha256": "36f9e081aadc1a44fe700de5d47684ba63181365005bda04d0e437a93b9bccf5"
+    },
+    {
+      "file": "MonChef_V64_Finance.gs",
+      "bytes": 54360,
+      "sha256": "61fd91dbb17c09403fcf7a7a3e4387b6ed47292f8dc367f228260b2bd808aac0"
+    },
+    {
+      "file": "MonChef_V65_PPK.gs",
+      "bytes": 74918,
+      "sha256": "acee1c6b8313c65c902321d69b53e1dab7e19fe490c75242fc5a0b2135b62bef"
+    },
+    {
+      "file": "MonChef_V66_TU.gs",
+      "bytes": 33376,
+      "sha256": "fddf0fa3d2e717fb91c38b058c9461ffb4fe5e8fc48c8ac199d67805f99c94cc"
+    },
+    {
+      "file": "MonChef_V67_Lab.gs",
+      "bytes": 56269,
+      "sha256": "24e198ea277d44f209d41e875ac67d2fb1f38537a7b8717c5fcb30e933a5b016"
+    },
+    {
+      "file": "MonChef_V68_Reports.gs",
+      "bytes": 21226,
+      "sha256": "f9f4bf3683b2ab3688bd0f4b60129941af7cb7ce7e19311caf6702637c9aec7e"
+    },
+    {
+      "file": "MonChef_V69_UI.gs",
+      "bytes": 5976,
+      "sha256": "ddd39345679c9b36d609bf47e54af49722fa8c271bb614db90155057c427cf07"
+    },
+    {
+      "file": "MonChef_V6_Automation.gs",
+      "bytes": 4573,
+      "sha256": "9e578c9b03f8f796d50646ed61edddf972426959ed8113d6d3450fc5706ad109"
+    },
+    {
+      "file": "MonChef_V70_NormBase.gs",
+      "bytes": 41476,
+      "sha256": "651611c37a6e4494af526470ba45b68e591cabeab6b69a62622d31140675c6c6"
+    },
+    {
+      "file": "MonChef_V70_NormData.gs",
+      "bytes": 43282,
+      "sha256": "600bc9d3762a0cbb4211f0757ce08478728c1a8a443b2d5a91b00f2cbaed4737"
+    },
+    {
+      "file": "MonChef_V71_SaleStock.gs",
+      "bytes": 28921,
+      "sha256": "50aab3bea7b0d6d6e231b9f98b773684bd044b67dde835f5006a254e68e7739a"
+    },
+    {
+      "file": "MonChef_V72_OpForms.gs",
+      "bytes": 74653,
+      "sha256": "355f230ad01b5540840c9ad63948215d360cae4172210f068f14df450ba972c1"
+    },
+    {
+      "file": "MonChef_V73_Nutrition.gs",
+      "bytes": 187034,
+      "sha256": "35a6ae4aa8127b161de223d64b1c0bd0ba197e38397bff8249a34c786f027bb5"
+    },
+    {
+      "file": "MonChef_V74_Recall.gs",
+      "bytes": 110639,
+      "sha256": "a1e317e3e4a967ae692596d3fa8c768ac3fb6684ce370167206df502eb890cc7"
+    },
+    {
+      "file": "MonChef_V75_HazardAnalysis.gs",
+      "bytes": 74993,
+      "sha256": "78ac06da68b05c173baa1b6d96f01372e778d62b0a0f95f19520ef23b498fc79"
+    },
+    {
+      "file": "MonChef_V76_EmergencyMetrology.gs",
+      "bytes": 83295,
+      "sha256": "1f95a6104c25bef4a6b0786121be176b64b7c27a4a8c9d343fdb483367f8edc7"
+    },
+    {
+      "file": "MonChef_V77_BrakerageSales.gs",
+      "bytes": 12788,
+      "sha256": "245d1fcb6188a506dfff9184feb5b9e6e13330ec3f10c54b0bdc7b88e35ccc8d"
+    },
+    {
+      "file": "MonChef_V78_DriveLayout.gs",
+      "bytes": 28493,
+      "sha256": "2c5a1f231e7bdf3e5572c86aea88e8fa735a1ab0e8dbd4cf10d77cfbc4ef707e"
+    },
+    {
+      "file": "MonChef_V79_ShiftSales.gs",
+      "bytes": 37636,
+      "sha256": "0bf0ab7a83edd1cf94ad4d562b8e3c8da200702ca2c9fb2a814644511bdb4da9"
+    },
+    {
+      "file": "MonChef_V7_ProductionControl.gs",
+      "bytes": 12087,
+      "sha256": "089aff3077eab7b2528fb4798f5031d16156ad0e662e7492e3f3f9c70cb0abb5"
+    },
+    {
+      "file": "MonChef_V80_OneTap.gs",
+      "bytes": 11131,
+      "sha256": "b3bd3cd618966673148a3e2b490ba6cfc65b115c722e02112f83a8658275c070"
+    },
+    {
+      "file": "MonChef_V81_AutoJournals.gs",
+      "bytes": 50036,
+      "sha256": "a04049732627f184108a3802a734bee74dc9c083a2c4d19798cbc1d91479b130"
+    },
+    {
+      "file": "MonChef_V82_Eggs.gs",
+      "bytes": 28617,
+      "sha256": "00a24f02fd4cc05e97f28fa512e406a2a4dd5de9d411dc47e9737c50cc70869b"
+    },
+    {
+      "file": "MonChef_V83_EggUse.gs",
+      "bytes": 12092,
+      "sha256": "7141ca29f8e93f0c39b714abfa85c627967b0deef7fc6c016d8d8e879c9dd9ec"
+    },
+    {
+      "file": "MonChef_V84_InstrumentCheck.gs",
+      "bytes": 14963,
+      "sha256": "a30d5284ae4bafe03a041a979f5300b8bece81e2545b53eb013e0a692f47c5a1"
+    },
+    {
+      "file": "MonChef_V85_PestAct.gs",
+      "bytes": 24112,
+      "sha256": "49973c954495f6d8da4351d5db85541dc298adbcd7203f54d8b2a6462f7e91dd"
+    },
+    {
+      "file": "MonChef_V86_R2Fixes.gs",
+      "bytes": 14364,
+      "sha256": "a6232879dde7b487cfb1b8d9c110bf2c5faa88804f5ca44dee778f089407c274"
+    },
+    {
+      "file": "MonChef_V87_MyShift.gs",
+      "bytes": 32203,
+      "sha256": "8ce879cfb9542d8902d723366245565bf794a8c0147fddd3c80206a7f6bc396f"
+    },
+    {
+      "file": "MonChef_V88_ShiftStock.gs",
+      "bytes": 50030,
+      "sha256": "feebadd2f524150f51a72107521c1f053a2d306b5dcee5c4a6530316c7100b88"
+    },
+    {
+      "file": "MonChef_V89_ShiftEmail.gs",
+      "bytes": 152597,
+      "sha256": "ac40642c17d706bd8d95281e164eda5bf972199fc1e4ac5c59e48f865dc25f1a"
+    },
+    {
+      "file": "MonChef_V8_ArchiveEngine.gs",
+      "bytes": 26533,
+      "sha256": "0c3a0e65763fa42eafc1ca264fcd2137107cde5c7bfb5ce3cf15e26c2fc22cb2"
+    },
+    {
+      "file": "MonChef_V90_NormLab.gs",
+      "bytes": 32053,
+      "sha256": "d47d4b54ce4852901e1e10b10980bb73ab7319ca77b457a0bcccf4dc99ca2c19"
+    },
+    {
+      "file": "MonChef_V91_SfPassport.gs",
+      "bytes": 68913,
+      "sha256": "b0e7832d6e8c6751239ae63693d675b407341f8ef4f3df966a171a5815898f28"
+    },
+    {
+      "file": "MonChef_V92_RoleShift.gs",
+      "bytes": 44295,
+      "sha256": "216bebca25174aa357142ecb786fce94e5a91720cab431bf706ef78e91cef213"
+    },
+    {
+      "file": "MonChef_V93_Forecast.gs",
+      "bytes": 154423,
+      "sha256": "3df8df7f028605498a04e1915154b06c462a7641b4aca78d116a58f0d650f2e5"
+    },
+    {
+      "file": "MonChef_V94_KktLampSensor.gs",
+      "bytes": 63469,
+      "sha256": "e8cd93ef579a1698813674971b884ccc951c38934f6737281b529a1694035143"
+    },
+    {
+      "file": "MonChef_V94_SensorDocs.gs",
+      "bytes": 17317,
+      "sha256": "5f99f4f7bfe09aaf9dd583414f6c5e577e9e380e2bcd3f5bc89609a06b98593d"
+    },
+    {
+      "file": "MonChef_V95_SaleCancel.gs",
+      "bytes": 24138,
+      "sha256": "7474e8fcbf600eba6fe5ad5ead607af7f47137dceefb1204e39add85d7aef681"
+    },
+    {
+      "file": "MonChef_V96_ProductCatalog.gs",
+      "bytes": 36525,
+      "sha256": "845278c5dc86494ce930e5aca6adf9209b1b44ce013d0271101d59c029c18b21"
+    },
+    {
+      "file": "MonChef_V97_SitesChannels.gs",
+      "bytes": 43969,
+      "sha256": "789533583d2692d61d21ccf5b5d674b73d21d43300630611ae4c4698d0cac5d2"
+    },
+    {
+      "file": "MonChef_V98_StaffSchedule.gs",
+      "bytes": 31626,
+      "sha256": "a1b1311fafb7712f571a30284615b3cfa0b5cb671689f635060aa29319f44b8b"
+    },
+    {
+      "file": "MonChef_V99_InstallSettings.gs",
+      "bytes": 8926,
+      "sha256": "7772b821ae9fd47bd6319c938203aac843de7b703cbc7f6b08309af2e04c951c"
+    },
+    {
+      "file": "MonChef_V9_DocumentIntake.gs",
+      "bytes": 9519,
+      "sha256": "5f556f64fdcdf7ad4385e360dc34aaadc11a6745ba2abcddb95c8d78fa8db299"
+    },
+    {
+      "file": "MonChef_VsdTasks.gs",
+      "bytes": 14351,
+      "sha256": "e02bf93a6a4fb286b933448a425930f5c1bd82ede425c9f4fb8eb0d67630e3cd"
+    },
+    {
+      "file": "MonChef_WriteOff.gs",
+      "bytes": 21730,
+      "sha256": "f238199ae092b9d252258f333e08f7a91ddf3204439a49201d25e89072291f77"
+    },
+    {
+      "file": "Orders.html",
+      "bytes": 16923,
+      "sha256": "a0f8239784c8d4c42384e59b0ffc517f7da0f6d202daffbd1e7805434af50261"
+    },
+    {
+      "file": "Processing.html",
+      "bytes": 96638,
+      "sha256": "7bab9f0adc8a447f4b74ffb916dfdbaa9d3a995e38103ea93a05c981d6d1e4de"
+    },
+    {
+      "file": "ProductShelfLifeSeed.html",
+      "bytes": 774293,
+      "sha256": "33c7d4d9da12f66df469ac1d4e88e9406f1f914bb169ee6f1e345f142cc1f286"
+    },
+    {
+      "file": "Staff.html",
+      "bytes": 12597,
+      "sha256": "93c810c97801f66a249bc9a2745b69689f729034c11203ac58012475eb63a38d"
+    },
+    {
+      "file": "Suppliers.html",
+      "bytes": 7794,
+      "sha256": "d42f0db7cc1962f5defcf380f2794a06600c1538637bda8810d778b69d7bfb3e"
+    },
+    {
+      "file": "SupplyDocs.html",
+      "bytes": 51234,
+      "sha256": "5d0aedbb73d6a42565f4529aac3f72cb2229dd38823b230106114d308db10e89"
+    },
+    {
+      "file": "Temperatures.html",
+      "bytes": 19786,
+      "sha256": "21dd52877a946d89a55b371d19c132da8db7f7f78d06e09538b08b3a75e02b61"
+    },
+    {
+      "file": "appsscript.json",
+      "bytes": 560,
+      "sha256": "e0c8eaa908a14c9e140b3416569cc725e9f6b2c7087f4039ce4074e8b4c7f5d8"
+    },
+    {
+      "file": "zz_MonChef_Runtime.gs",
+      "bytes": 5314,
+      "sha256": "ba4d81f7f0abb2e38cb885a362b64df25ef023f71b779a55ab539e7ed6907d65"
+    },
+    {
+      "file": "zzz_MonChef_Gate.gs",
+      "bytes": 94106,
+      "sha256": "44151e25fce732506c1c20bbbff14ed232f5c61b7c0d9869eec58a1b4d660c05"
+    }
+  ]
 }

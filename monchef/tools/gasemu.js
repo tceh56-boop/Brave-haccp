@@ -84,6 +84,11 @@ function boot(opts) {
     HtmlService: { createHtmlOutputFromFile: f => htmlOut(fs.readFileSync(G + f + (f.endsWith('.html') ? '' : '.html'), 'utf8')), createHtmlOutput: h => htmlOut(h || ''), createTemplateFromFile: f => { const t = { evaluate: () => htmlOut(fs.readFileSync(G + f + '.html', 'utf8')) }; return t; }, XFrameOptionsMode: { ALLOWALL: 'ALLOWALL', DEFAULT: 'DEFAULT' }, SandboxMode: {} }, ContentService: { createTextOutput: () => ({ setMimeType: () => ({}) }), MimeType: {} }
   };
   ctx.globalThis = ctx;
+  // встроенные функции в Apps Script не перечисляются (шлюз обходит Object.keys(this) и оборачивает только функции проекта)
+  ['console', 'JSON', 'Math', 'Number', 'String', 'Object', 'Array', 'Boolean', 'RegExp', 'Error', 'TypeError', 'isNaN', 'isFinite', 'parseInt', 'parseFloat',
+    'Infinity', 'NaN', 'encodeURIComponent', 'decodeURIComponent', 'escape', 'unescape', 'Date', 'globalThis'].forEach(k => {
+    if (k in ctx) Object.defineProperty(ctx, k, { value: ctx[k], enumerable: false, writable: true, configurable: true });
+  });
   vm.createContext(ctx);
   const files = fs.readdirSync(G).filter(f => f.endsWith('.gs')).sort((a, b) => (a === 'Code.gs' ? -1 : b === 'Code.gs' ? 1 : a.localeCompare(b)));
   files.forEach(f => vm.runInContext(fs.readFileSync(G + f, 'utf8'), ctx, { filename: f }));

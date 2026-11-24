@@ -207,6 +207,12 @@ function _doGetRaw_(e) {
      .setTitle('MON CHEF — Приборы и поверка')
      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
  }
+ // V101 Restaurant Service: зал, столы, бронирование, предзаказ (право — MC_RB_MODULES_.hall, проверка выше в doGet)
+ if (params.hall === '1' && params.token) {
+   return HtmlService.createHtmlOutputFromFile('Hall')
+     .setTitle('MON CHEF — Зал и бронирование')
+     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+ }
  if (params.batchcontrol === '1' && params.token) {
    return HtmlService.createHtmlOutputFromFile('BatchControl')
      .setTitle('MON CHEF — Контроль партий')

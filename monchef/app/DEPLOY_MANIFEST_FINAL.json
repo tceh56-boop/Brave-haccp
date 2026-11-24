@@ -1,9 +1,15 @@
 {
   "product": "Mon Chef",
   "release": "FINAL",
-  "entry": "Code.gs",
-  "ui": "App.html",
-  "production_stack": "V54-V63",
+  "entry": {
+    "server": "Code.gs",
+    "function": "doGet",
+    "doGet": 1,
+    "doPost": 0,
+    "ui": "Console.html",
+    "gate": "zzz_MonChef_Gate.gs (загружается последним)"
+  },
+  "production_stack": "V4–V101",
   "core": [
     "ProductID / Resource identity",
     "Unified Stock / Resource Engine",
@@ -18,5 +24,8 @@
   "brand": "MON CHEF",
   "internal_versions_visible_in_ui": false,
   "single_stock_source": "Склад_Партии",
-  "go_live_requirement": "Pilot on a copy of real data, backup/restore drill, acceptance test, security review and regulatory/e-signature validation where applicable"
+  "go_live_requirement": "Pilot on a copy of real data, backup/restore drill, acceptance test, security review and regulatory/e-signature validation where applicable",
+  "files_count": 175,
+  "files_sha256_source": "BUILD_MANIFEST.json → files",
+  "updated": "2026-11-24"
 }
