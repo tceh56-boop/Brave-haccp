@@ -1,7 +1,7 @@
 // Эмулятор Google Apps Script для стенда MON CHEF: все .gs в одном контексте, таблица в памяти.
 const fs = require('fs'), vm = require('vm'), crypto = require('crypto');
 const path = require('path');
-const G = path.resolve(__dirname, '../app') + '/';
+const G = path.resolve(process.env.MC_APP_DIR || path.resolve(__dirname, '../app')) + '/';   // MC_APP_DIR — другая папка сборки (проверка установленного проекта)
 
 function makeSheet(name) {
   const sh = { name, data: [], frozen: 0 };
@@ -92,7 +92,10 @@ function boot(opts) {
     if (k in ctx) Object.defineProperty(ctx, k, { value: ctx[k], enumerable: false, writable: true, configurable: true });
   });
   vm.createContext(ctx);
-  const files = fs.readdirSync(G).filter(f => f.endsWith('.gs')).sort((a, b) => (a === 'Code.gs' ? -1 : b === 'Code.gs' ? 1 : a.localeCompare(b)));
+  // MC_ORDER=install — порядок, в котором установщик MonChefInstaller.gs кладёт файлы в проект (Code.gs, затем по кодам символов)
+  const files = fs.readdirSync(G).filter(f => f.endsWith('.gs')).sort(process.env.MC_ORDER === 'install'
+    ? (a, b) => (a === 'Code.gs' ? -1 : b === 'Code.gs' ? 1 : a < b ? -1 : a > b ? 1 : 0)
+    : (a, b) => (a === 'Code.gs' ? -1 : b === 'Code.gs' ? 1 : a.localeCompare(b)));
   files.forEach(f => vm.runInContext(fs.readFileSync(G + f, 'utf8'), ctx, { filename: f }));
   return { ctx, ss, props, logs, setNow: t => { now = t ? new RealDate(t).getTime() : null; } };
 }
