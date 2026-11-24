@@ -38,7 +38,8 @@ function v35SetOrganization(json,token){var op=null;try{op=_beginOp_(token,'hacc
     return _ok_({documentId:d.documentId,organization:org,inHeader:active},op.id);
   }catch(e){_endOp_(op,'FAILED');return _failFrom_(e,op&&op.id);}}
 function _v35ApplyOrganization_(documentId){
-  var p=PropertiesService.getScriptProperties(),o=null;try{o=JSON.parse(p.getProperty('MC_PPK_ORG_'+documentId)||'null');}catch(e){}
+  var p=PropertiesService.getScriptProperties(),o=null;
+  if(p.getProperty('MC_ORG_SETTINGS')){p.setProperty('MC_ORG_PPK',String(documentId));return true;}   // реквизиты ведутся в «Настройки → Организация» (ТЗ §9) — ППК их не переписываетtry{o=JSON.parse(p.getProperty('MC_PPK_ORG_'+documentId)||'null');}catch(e){}
   if(!o||!o.name)return false;
   p.setProperty('MC_ORG_NAME',o.name);p.setProperty('ORG_NAME',o.name);p.setProperty('MC_ORG_INN',o.inn||'');p.setProperty('MC_ORG_ADDRESS',o.address||'');p.setProperty('MC_ORG_PPK',String(documentId));
   return true;

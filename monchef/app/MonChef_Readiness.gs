@@ -34,7 +34,7 @@ function _mcReadinessCompute_() {
   // R02 ППК
   var ppk = _rdVals_('ППК_V30').filter(function (r) { return /ACTIVE|APPROVED/.test(String(r[5])); });
   out.push(_rdItem_('R02', 'ППК', 'Утверждённая программа производственного контроля', ppk.length ? 'PASS' : 'FAIL',
-    { evidence: ppk.map(function (r) { return r[0]; }), action: 'Утвердите ППК в «Конструкторе ППК»', go: { module: 'ppkbuilder' } }));
+    { evidence: ppk.map(function (r) { return r[0]; }), action: 'Утвердите и введите в действие ППК: HACCP → «ППК: версии, разделы, график»', go: { module: 'ppk' } }));
   // R03 HACCP план: ККТ с мониторингом
   var ccp = _rdVals_('HACCP_ТочкиКонтроля_V30').filter(function (r) { return /ACTIVE|APPROVED/.test(String(r[13])); });
   var mon = _rdVals_('HACCP_Мониторинг_V30');
@@ -82,10 +82,15 @@ function _mcReadinessCompute_() {
   // R08 суточные пробы
   var miss = typeof _dsMissing_ === 'function' ? _dsMissing_() : [], ds = _rdVals_('Суточные_Пробы');
   var due = ds.filter(function (r) { return String(r[13]) === 'STORED' && _rdTime_(r[12]) && _rdTime_(r[12]) < now - day; });
-  out.push(_rdItem_('R08', 'Суточные пробы', 'Суточная проба от каждой выпущенной партии, хранение 48 ч, уничтожение по сроку',
-    miss.length ? 'FAIL' : due.length ? 'REVIEW' : ds.length ? 'PASS' : 'MISSING_EVIDENCE',
-    { evidence: miss.length ? miss.map(function (x) { return x.batchId; }) : ds.slice(-3).map(function (r) { return r[0]; }), detail: miss.length ? 'партий без пробы: ' + miss.length : due.length ? 'просрочено уничтожение: ' + due.length : 'проб: ' + ds.length,
-      action: 'Отберите пробы', go: { module: 'samples' } }));
+  // V90: применимость — по профилю предприятия (СанПиН 2.3/2.4.4282-26: п. 56 подп. 4 и 12, п. 59 подп. 10, п. 65 подп. 3)
+  var dsP = typeof _v90DsProfile_ === 'function' ? _v90DsProfile_() : { code: '', required: true, ref: '', text: '' };
+  out.push(_rdItem_('R08', 'Суточные пробы', dsP.code && dsP.required ? 'Суточная проба от каждой выпущенной партии по профилю «' + dsP.ru + '»' + (dsP.ref ? ' (' + dsP.ref + ')' : '') + ', уничтожение по сроку'
+      : !dsP.required ? 'Суточные пробы не применяются по профилю предприятия' : 'Суточная проба от каждой выпущенной партии — профиль предприятия не задан',
+    !dsP.required ? 'NOT_APPLICABLE' : miss.length ? 'FAIL' : due.length ? 'REVIEW' : !dsP.code ? 'REVIEW' : ds.length ? 'PASS' : 'MISSING_EVIDENCE',
+    { evidence: miss.length ? miss.map(function (x) { return x.batchId; }) : ds.slice(-3).map(function (r) { return r[0]; }),
+      detail: !dsP.required ? dsP.text : miss.length ? 'партий без пробы: ' + miss.length : due.length ? 'просрочено уничтожение: ' + due.length : !dsP.code ? 'проб: ' + ds.length + '. ' + dsP.text : 'проб: ' + ds.length,
+      applicability: dsP.code ? 'профиль предприятия: ' + dsP.ru + (dsP.ref ? ' (' + dsP.ref + ')' : '') : 'профиль предприятия не задан — проверяется как обязательное',
+      action: !dsP.code ? 'Укажите профиль суточных проб (экран «Суточные пробы»)' : 'Отберите пробы', go: { module: 'samples' } }));
   // R09 медицинский допуск пищевого персонала
   var emps = []; try { emps = JSON.parse(getEmployeesFull_()).filter(function (e) { return e.active !== false && e.fullName && MC_FOOD_ROLES_.indexOf(String(e.role || '').trim()) >= 0; }); } catch (e) {}
   _MC_ADM_CACHE = null;

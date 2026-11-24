@@ -97,7 +97,7 @@ _UI_BUILDERS_.lab = function (token) {
       { title: 'Исследования', columns: [_uiCol_('date', 'Отбор'), _uiCol_('obj', 'Объект'), _uiCol_('kind', 'Показатель'), _uiCol_('prot', 'Протокол'), _uiCol_('status', 'Результат', 'status')],
         rows: tests.map(function (t) { return { date: t.датаОтбора, obj: t.объект, kind: t.вид, prot: t.протокол || '', status: t.результат || 'Ждёт результата' }; }) }
     ],
-    actions: [{ label: 'План и исследования', module: 'labs' }]
+    actions: [] // V90: «План и исследования» (Labs.html, без файла протокола) заменён экраном V67 — кнопку добавляет V69
   };
 };
 

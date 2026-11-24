@@ -64,6 +64,17 @@ function mcRunFullMigration(token) {
   step('6. Партии → ProductID / SupplierID', function () { return { __d: _withLock_(_migStampOldBatches_) }; });
   step('7. Нормативный реестр', function () { _v33SeedNorms_(); _v33SeedRequirements_(); return { __d: 'ok' }; });
   step('8. Журналы → FACT (история)', function () { var r = _migParse_(migrateExistingJournalsToFacts(token, 5000)); return { __ok: _migOk_(r), __d: r.data || r.error }; });
+  // V71: шаг 3 заново ставит резервы и по прошедшим банкетам; резервы выданных полностью и закрытых банкетов снимаются,
+  // иначе п/ф на складе считается занятым и выпуск/продажа списывают сырьё второй раз
+  step('9. Резервы выданных и закрытых банкетов → сняты', function () { if (typeof _v71ReleaseDone_ !== 'function') return { __skip: true }; return { __d: _withLock_(function () { return _v71ReleaseDone_(''); }) }; });
+  // 15.11.2026: ссылки реестра требований на пункты СанПиН и ТР ТС 021/2011 уточнены по тексту документов
+  step('10. Реестр требований → уточнённые пункты', function () { if (typeof _v33FixRefs_ !== 'function') return { __skip: true }; return { __d: _withLock_(_v33FixRefs_) }; });
+  // 16.11.2026 — исправления по нормативному аудиту (ДОК_12)
+  step('11. КБЖУ → записи с источником и статусом (прежние — черновики)', function () { if (typeof _v73ImportLegacy_ !== 'function') return { __skip: true }; return { __d: _withLock_(_v73ImportLegacy_) }; });
+  step('12. Реестр нормативов → ГОСТ Р 51705.1-2024, СП 2.3.6.4281-26, приказы 29н и 862', function () { if (typeof _v33UpdateNormDocs_ !== 'function') return { __skip: true }; return { __d: _withLock_(_v33UpdateNormDocs_) }; });
+  step('13. Товары: единица у импортированных из базы продуктов', function () { if (typeof _v53FixImportedUnits_ !== 'function') return { __skip: true }; return { __d: _withLock_(_v53FixImportedUnits_) }; });
+  step('14. Реестры: 29-ФЗ и требование REQ-RECALL-001 (отзыв продукции)', function () { if (typeof _v74AddRequirement_ !== 'function') return { __skip: true }; return { __d: _withLock_(_v74AddRequirement_) }; });
+  step('15. Папки на Google Диске: общая структура разделов (где какие документы лежат)', function () { if (typeof _v78SetupCore_ !== 'function') return { __skip: true }; var r = _v78SetupCore_('миграция'); return { created: r.created.length, found: r.found.length, outside: r.outside.length, root: r.root.name }; });
   var failed = steps.filter(function (x) { return x.result === 'FAILED'; });
   try { _audit_({ id: run, session: s }, 'FULL_MIGRATION', 'Таблица', run, null, steps.map(function (x) { return x.step + ': ' + x.result; })); } catch (e) {}
   return _ok_({ runId: run, ok: !failed.length, steps: steps, note: failed.length ? 'Не выполнены шаги: ' + failed.map(function (x) { return x.step; }).join(', ') + ' — данные не повреждены (перед миграцией сделана копия), повторите после устранения причины' : 'Миграция выполнена; повторный запуск безопасен' }, run);

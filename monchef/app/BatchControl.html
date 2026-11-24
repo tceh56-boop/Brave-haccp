@@ -49,24 +49,84 @@ function chip(x) {
   if (TAB === 'blocked') return '<span class="chip r">Брак</span>';
   return '<span class="chip r">Просрочена</span>';
 }
+/* Пределы температуры — из утверждённой базы нормативов (Нормативы: база на Диске), с источником. Нет нормы — поля пустые: предел по документу на товар. */
+function nv(x, k) { var u = x.norm && x.norm.use; return u && u[k] !== null && u[k] !== undefined ? String(u[k]) : ''; }
+function normHint(x, i) {
+  var n = x.norm; if (!n) return '<div class="meta" style="margin-top:4px">Предел по базе нормативов не найден — впишите по документу на товар (маркировка, ВСД, спецификация).</div>';
+  if (n.use) return '<div class="meta" style="margin-top:4px">Предел из базы нормативов: ' + esc(n.use.label) + ' — ' + esc(n.use.source) + '. Проверьте по маркировке.</div>';
+  var b = function (o) { return o ? '<button class="btn" style="margin:4px 6px 0 0" onclick="setNorm(' + i + ',' + (o.min === null ? 'null' : o.min) + ',' + (o.max === null ? 'null' : o.max) + ')">' + esc(o.label) + '</button>' : ''; };
+  return '<div class="meta" style="margin-top:4px">Охлаждённый или замороженный? Выберите по маркировке — пределы из базы нормативов (' + esc((n.chilled || n.frozen).source) + '):</div>' + b(n.chilled) + b(n.frozen);
+}
+function setNorm(i, mn, mx) { document.getElementById('mn' + i).value = mn === null ? '' : mn; document.getElementById('mx' + i).value = mx === null ? '' : mx; }
+function eqOk() { return EQ.filter(function (e) { return !e.effective || e.effective === 'ACTIVE'; }); }
+/* V80: одно нажатие — органолептика и упаковка «соответствуют»; t° — только если товар её требует (пределы из базы нормативов или прошлой приёмки) */
+function qrange(x) { var n = x.norm && x.norm.use, p = x.prev; if (n) return { min: n.min, max: n.max, src: n.label + ' — ' + n.source }; if (p && !p.noTemp && (p.tMin !== null || p.tMax !== null)) return { min: p.tMin, max: p.tMax, src: 'как при прошлой приёмке ' + p.at + ' (' + p.by + ')' }; return null; }
+function quick(x, i) {
+  if (TAB !== 'quarantine' || (x.last && x.last.decision === 'QUARANTINE')) return '';
+  var p = x.prev, R = qrange(x), E = eqOk(), h = '';
+  if (!x.docRef) return '<div class="quick meta" style="padding:6px 12px">Документ не указан — откройте карточку и заполните полностью.</div>';
+  if (R) h = '<div class="grid"><div><label>Измеренная t°, °C</label><input id="qt' + i + '" inputmode="decimal" placeholder="напр. 3.5"></div>' + (E.length > 1 ? '<div><label>Термометр</label><select id="qe' + i + '"><option value="">— выберите —</option>' + E.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>'; }).join('') + '</select></div>' : '') + '</div>' +
+    '<div class="meta">Допустимо ' + (R.min === null ? '' : 'от ' + R.min + ' ') + (R.max === null ? '' : 'до ' + R.max) + ' °C: ' + esc(R.src) + '. Проверьте по маркировке.</div>';
+  else if (p && p.noTemp) h = '<div class="meta">Температура не измеряется: «' + esc(p.reason) + '» — так указал ' + esc(p.by) + ' при приёмке ' + esc(p.at) + '.</div>';
+  else return '';
+  h += eggBlock(x, i, 'q', true);
+  return '<div class="quick" style="padding:8px 12px;border-top:1px dashed var(--line,#ddd)">' + h + '<div class="acts"><button class="btn pri" onclick="quickOk(' + i + ')">✓ Всё соответствует</button></div><div class="meta">Есть замечания — нажмите на название товара и заполните форму.</div><div class="msg" id="qm' + i + '"></div></div>';
+}
+function quickOk(i) {
+  var x = DATA[TAB][i], R = qrange(x), E = eqOk(), m = document.getElementById('qm' + i), noT = !R;
+  var p = { batchId: x.batchId, organoleptic: 'PASS', packaging: 'PASS', docRef: x.docRef, tempNotRequired: noT, tempReason: noT ? x.prev.reason : '',
+    temperature: noT ? '' : v('qt' + i), tMin: noT || R.min === null ? '' : R.min, tMax: noT || R.max === null ? '' : R.max, equipmentId: noT ? '' : (E.length === 1 ? E[0].id : v('qe' + i)) };
+  Object.assign(p, eggFields(x, i, 'q', true));
+  if (!noT && p.temperature === '') { m.className = 'msg err'; m.textContent = 'Введите измеренную температуру'; return; }
+  if (!confirm('«' + x.product + '»: вы сами проверили — органолептика, упаковка и маркировка соответствуют' + (x.egg && x.egg.kind !== 'WATERFOWL' ? '; скорлупа чистая, неповреждённая; маркировка яиц соответствует' : '') + (noT ? '' : ', температура ' + p.temperature + ' °C') + '?')) return;
+  call('mcRecordIncomingControl', [JSON.stringify(p), TOKEN]).then(function (r) {
+    if (!r || r.success === false || r.ok === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    var d = r.data || {}; m.className = 'msg ' + (d.decision === 'RELEASED' ? 'ok' : 'err'); m.textContent = (d.decision === 'RELEASED' ? 'Партия допущена к использованию' : 'Партия в карантине: ' + (d.reasons || []).join('; ')) + eggWarn(d);
+    setTimeout(load, 1200);
+  }, function () { m.className = 'msg err'; m.textContent = 'Нет связи — контроль не записан'; });
+}
+/* V82: яйца — отметки по ГОСТ 31654-2012 / 31655-2012 (вид, класс, категория, дата сортировки, скорлупа, маркировка) */
+var EGG_KINDS = [['CHICKEN', 'куриные'], ['QUAIL', 'перепелиные'], ['TURKEY', 'индюшиные'], ['GUINEA', 'цесариные'], ['OSTRICH', 'страусиные'], ['WATERFOWL', 'утиные, гусиные']];
+function sel(id, opts, cur) { return '<select id="' + id + '"><option value="">— выберите —</option>' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>'; }
+function eggBlock(x, i, pre, quickMode) {
+  var g = x.egg; if (!g) return '';
+  if (g.kind === 'WATERFOWL') return '<div class="note" style="color:var(--red)">Яйца водоплавающих птиц: ' + (g.children ? 'в питании детей не допускаются (СанПиН 2.3/2.4.4282-26, прил. 6, п. 7; ТР ТС 021/2011, ст. 7)' : 'ГОСТ 31654/31655 на них не распространяется') + '.</div>';
+  var cls = [['Д', 'Д — диетические (до ' + g.classes['Д'] + ' сут)'], ['С', 'С — столовые (до ' + g.classes['С'] + ' сут)']];
+  var h = '<div style="margin-top:10px;padding:8px 10px;border:1px solid var(--line,#ddd);border-radius:8px"><b>Яйца ' + esc(g.name) + '</b> — ' + esc(g.doc) +
+    '<div class="grid" style="margin-top:6px">' + (quickMode ? '' : '<div><label>Вид птицы</label>' + sel(pre + 'ek' + i, EGG_KINDS, g.kind) + '</div>') +
+    '<div><label>' + (g.categories ? 'Вид по маркировке' : 'Класс по маркировке') + '</label>' + sel(pre + 'ec' + i, cls, g.hint ? g.hint.cls : '') + '</div>' +
+    (g.categories ? '<div><label>Категория</label>' + sel(pre + 'eg' + i, [['В', 'В — высшая (75 г и более)'], ['О', 'О — отборная (65–74,9 г)'], ['1', '1 (55–64,9 г)'], ['2', '2 (45–54,9 г)'], ['3', '3 (35–44,9 г)']], g.hint ? g.hint.cat : '') + '</div>' : '') +
+    '<div><label>Дата сортировки (для диетических)</label><input type="date" id="' + pre + 'es' + i + '"></div></div>' +
+    (quickMode ? '' : '<div class="grid" style="margin-top:6px"><div><label>Скорлупа</label>' + sel(pre + 'eh' + i, [['PASS', 'соответствует'], ['FAIL', 'не соответствует']], '') + '</div>' +
+      '<div><label>Маркировка яиц / тары</label>' + sel(pre + 'em' + i, [['PASS', 'соответствует'], ['FAIL', 'не соответствует']], '') + '</div></div>') +
+    (g.hint ? '<div class="note">Класс' + (g.hint.cat ? ' и категория подставлены' : ' подставлен') + ' из названия товара — сверьте с маркировкой.</div>' : '') +
+    '<div class="note">' + esc(g.shell) + '.<br>Маркировка: ' + esc(g.marking) + ' (' + esc(g.markRef) + ').<br>Хранение: ' + esc(g.store) + ' (' + esc(g.storeRef) + '). ' + esc(g.producerExpiry) + '.</div></div>';
+  return h;
+}
+function eggFields(x, i, pre, quickMode) {
+  if (!x.egg || x.egg.kind === 'WATERFOWL') return {};
+  return { eggKind: quickMode ? x.egg.kind : v(pre + 'ek' + i), eggClass: v(pre + 'ec' + i), eggCategory: v(pre + 'eg' + i), eggSorted: v(pre + 'es' + i),
+    eggShell: quickMode ? 'PASS' : v(pre + 'eh' + i), eggMarking: quickMode ? 'PASS' : v(pre + 'em' + i) };
+}
+function eggWarn(d) { return d && d.eggWarnings && d.eggWarnings.length ? ' · Яйца: ' + d.eggWarnings.join('; ') : ''; }
 function card(x, i) {
   var id = esc(x.batchId), h = '<div class="card" id="c' + i + '"><div class="row" onclick="toggle(' + i + ')"><div><div class="nm">' + esc(x.product) + '</div>' +
     '<div class="meta">' + esc(x.qty) + ' ' + esc(x.unit) + ' · получено ' + esc(x.received) + (x.expiry ? ' · годен до ' + esc(x.expiry) : '') + ' · ' + esc(x.source || '') + '</div>' +
     '<div class="meta">Партия ' + id + (x.docRef ? ' · документ: ' + esc(x.docRef) : ' · <b style="color:var(--red)">документ не указан</b>') + '</div>' +
-    (x.last && x.last.reasons ? '<div class="meta" style="color:var(--red)">Причина карантина: ' + esc(x.last.reasons) + '</div>' : '') + '</div>' + chip(x) + '</div>';
+    (x.last && x.last.reasons ? '<div class="meta" style="color:var(--red)">Причина карантина: ' + esc(x.last.reasons) + '</div>' : '') + '</div>' + chip(x) + '</div>' + quick(x, i);
   if (TAB === 'quarantine' || TAB === 'recheck') {
     var q = TAB === 'quarantine' && x.last && x.last.decision === 'QUARANTINE';
     h += '<div class="form">' + (q ? '<label>Корректирующее действие</label><textarea id="ca' + i + '" placeholder="Например: партия охлаждена до +2 °C, поставщик заменил упаковку"></textarea>' +
       '<div class="acts"><button class="btn pri" onclick="recheck(' + i + ')">Отправить на повторный контроль</button><button class="btn bad" onclick="reject(' + i + ')">Брак</button></div>' :
       (EQ.length ? '<div style="margin-bottom:8px"><label>Термометр (из реестра приборов)</label><select id="eq' + i + '"><option value="">— выберите прибор —</option>' + EQ.map(function (e) { return '<option value="' + esc(e.id) + '"' + (e.effective !== 'ACTIVE' ? ' disabled' : '') + '>' + esc(e.name) + (e.serial ? ' № ' + esc(e.serial) : '') + (e.effective !== 'ACTIVE' ? ' — ' + esc(e.reason || 'недоступен') : ' · поверка до ' + esc(e.nextCalibration)) + '</option>'; }).join('') + '</select></div>' : '') +
       '<div class="grid"><div><label>Измеренная t°, °C</label><input id="t' + i + '" inputmode="decimal" placeholder="напр. 3.5"></div>' +
-      '<div><label>Допустимо от, °C</label><input id="mn' + i + '" inputmode="decimal" value="' + (/мяс|рыб|птиц|кур|молоч|сыр|сливк|творог|кост/i.test(x.product) ? '0' : '') + '"></div>' +
-      '<div><label>до, °C</label><input id="mx' + i + '" inputmode="decimal" value="' + (/мяс|рыб|птиц|кур|молоч|сыр|сливк|творог|кост/i.test(x.product) ? '6' : '') + '"></div></div>' +
+      '<div><label>Допустимо от, °C</label><input id="mn' + i + '" inputmode="decimal" value="' + nv(x, 'min') + '"></div>' +
+      '<div><label>до, °C</label><input id="mx' + i + '" inputmode="decimal" value="' + nv(x, 'max') + '"></div></div>' + normHint(x, i) +
       '<label class="chk" style="margin-top:8px"><input type="checkbox" id="nt' + i + '" onchange="document.getElementById(\'ntr' + i + '\').style.display=this.checked?\'block\':\'none\'">Температура для этого товара не измеряется</label>' +
       '<input id="ntr' + i + '" style="display:none;margin-top:6px" placeholder="Причина: например, бакалея при комнатной температуре">' +
       '<div class="grid" style="margin-top:10px"><div><label>Органолептика</label><select id="o' + i + '"><option value="">— выберите —</option><option value="PASS">соответствует</option><option value="FAIL">не соответствует</option></select></div>' +
       '<div><label>Упаковка и маркировка</label><select id="p' + i + '"><option value="">— выберите —</option><option value="PASS">соответствует</option><option value="FAIL">не соответствует</option></select></div>' +
-      '<div><label>Документ (накладная, декларация)</label><input id="d' + i + '" value="' + esc(x.docRef) + '"></div></div>' +
+      '<div><label>Документ (накладная, декларация)</label><input id="d' + i + '" value="' + esc(x.docRef) + '"></div></div>' + eggBlock(x, i, '', false) +
       (TAB === 'recheck' ? '<label style="margin-top:10px">Что сделано (корректирующее действие)</label><textarea id="ca' + i + '"></textarea>' : '') +
       '<div class="acts"><button class="btn pri" onclick="control(' + i + ')">Записать контроль</button><button class="btn bad" onclick="reject(' + i + ')">Брак</button></div>' +
       '<div class="note">Если хоть один показатель не соответствует — партия уходит в карантин и открывается отклонение.</div>') +
@@ -82,12 +142,13 @@ function control(i) {
   var x = DATA[TAB][i], nt = document.getElementById('nt' + i).checked;
   var p = { batchId: x.batchId, temperature: nt ? '' : v('t' + i), tMin: v('mn' + i), tMax: v('mx' + i), tempNotRequired: nt, tempReason: v('ntr' + i),
     organoleptic: v('o' + i), packaging: v('p' + i), docRef: v('d' + i), correctiveAction: v('ca' + i), equipmentId: v('eq' + i) };
+  Object.assign(p, eggFields(x, i, '', false));
   busy(i, true);
   call('mcRecordIncomingControl', [JSON.stringify(p), TOKEN]).then(function (r) {
     busy(i, false);
     if (!r || r.success === false || r.ok === false) return msg(i, errText(r));
     var d = r.data || {};
-    msg(i, d.decision === 'RELEASED' ? 'Партия допущена к использованию' : 'Партия в карантине: ' + (d.reasons || []).join('; '), d.decision === 'RELEASED');
+    msg(i, (d.decision === 'RELEASED' ? 'Партия допущена к использованию' : 'Партия в карантине: ' + (d.reasons || []).join('; ')) + eggWarn(d), d.decision === 'RELEASED');
     setTimeout(load, 1200);
   }, function (e) { busy(i, false); msg(i, 'Нет связи — контроль не записан. Повторите, когда появится интернет.'); });
 }

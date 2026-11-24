@@ -78,6 +78,8 @@ function mcReceiptCorrectionDecide(json, token) {
       var who = _author_(op), sh = _rcSheet_(), batchId = String(v[C['BatchID']]), field = v[C['Что исправить']], after = _bcNum_(v[C['Стало']]), applied = null;
       if (dec === 'APPROVE') {
         var b = _bcFind_(batchId); if (!b) { _endOp_(op, 'FAILED'); return _fail_('NOT_FOUND', 'Партия ' + batchId + ' не найдена', op.id); }
+        // ТЗ «Итоговая структура», §14.11: стоимость партии закрытого финансового периода задним числом не меняется
+        if (typeof _v64AssertOpen_ === 'function') { try { _v64AssertOpen_(b.v[4], 'корректировка накладной партии ' + batchId); } catch (eClosed) { _endOp_(op, 'FAILED'); return _failFrom_(eClosed, op.id); } }
         if (field === MC_RC_FIELDS_.qty) {
           var got = _bcNum_(b.v[3]) || 0, rest = _bcNum_(b.v[9]) || 0, delta = after - got, newRest = Math.round((rest + delta) * 1000) / 1000;
           if (newRest < 0) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'Из партии уже израсходовано больше: остаток ' + rest + ' ' + b.v[2] + ', уменьшение на ' + (-delta) + '. Оформите списание или возврат.', op.id); }

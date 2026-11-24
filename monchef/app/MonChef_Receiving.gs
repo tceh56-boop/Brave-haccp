@@ -172,7 +172,8 @@ function stockReceiveSuggest(namesJson, token) {
     _requireAuth_(token, 'stock');
     var names = typeof namesJson === 'string' ? JSON.parse(namesJson || '[]') : (namesJson || []);
     var x = _mcRcvDb_(), now = new Date();
-    if (!x.db) return _ok_({ matrix: false, items: names.map(function (n) { return { name: n, found: false, modes: {}, mode: '' }; }),
+    if (!x.db) return _ok_({ matrix: false, items: names.map(function (n) {   // матрицы нет — срок может быть в базе нормативов на Диске (V70)
+      var o = typeof _v70ShelfRows_ === 'function' ? _mcRcvSuggestOne_(n, now, x) : null; return o && o.found ? o : { name: n, found: false, modes: {}, mode: '' }; }),
       note: 'Лист «' + PRODUCTS_DB_SHEET + '» не найден — срок только вручную' });
     var vetOn = _sdVetOn_(), mc = _mvCfg_();
     return _ok_({ matrix: true, now: _mcRcvIso_(now, true), mercury: { configured: mc.ready }, items: names.slice(0, 200).map(function (n) { var o = _mcRcvSuggestOne_(n, now, x); o.vet = vetOn && _sdVetControlled_('', n); return o; }) });
@@ -495,7 +496,7 @@ function stockReceiveSave(itemsJson, supplier, docNo, metaJson, token) {
       } else if (it.mode && MC_RCV_MODES_[it.mode]) {
         x = x || _mcRcvDb_();
         var s = _mcRcvSuggestOne_(name, now, x), mm = s.modes[it.mode];
-        if (mm && mm.until) { var u = _mcRcvUntil_(now, _mcRcvShelf_(mm.text)); p.exp = u.date; p.withTime = u.withTime; p.src = 'MATRIX'; p.basis = 'матрица: ' + s.matched + ' · ' + MC_RCV_MODES_[it.mode] + ': ' + mm.text; }
+        if (mm && mm.until) { var u = _mcRcvUntil_(now, _mcRcvShelf_(mm.text)); p.exp = u.date; p.withTime = u.withTime; p.src = 'MATRIX'; p.basis = (s.base ? 'матрица: ' : 'справочник продуктов (значение не утверждено — сверьте с маркировкой): ') + s.matched + ' · ' + MC_RCV_MODES_[it.mode] + ': ' + mm.text; }
       }
       if (p.exp && p.src !== 'MATRIX' && p.exp.getTime() < today0.getTime() && !bad.some(function (b) { return b.indexOf(tag) === 0; })) bad.push(tag + 'срок годности истёк ' + _mcRcvFmt_(p.exp) + ' — такой товар не принимается');
       if (p.noLabel) {

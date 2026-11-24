@@ -26,7 +26,9 @@ var MC_ALLERGENS_ = [
   { code: 'SESAME', name: 'Кунжут', hint: /кунжут|тахини/ },
   { code: 'SULPHITES', name: 'Диоксид серы и сульфиты (>10 мг/кг)', hint: /вино|винн|уксус винн|курага|изюм|сухофрукт/ },
   { code: 'LUPIN', name: 'Люпин', hint: /люпин/ },
-  { code: 'MOLLUSCS', name: 'Моллюски', hint: /кальмар|осьмин|миди|устриц|гребешок|моллюск|каракатиц/ }
+  { code: 'MOLLUSCS', name: 'Моллюски', hint: /кальмар|осьмин|миди|устриц|гребешок|моллюск|каракатиц/ },
+  // добавлено 16.11.2026 (нормативный аудит, ДОК_12): в перечне ТР ТС 022/2011 на сайте ЕЭК 15 позиций
+  { code: 'ASPARTAME', name: 'Аспартам и аспартам-ацесульфамовая соль', hint: /аспартам|ацесульфам|[eе] ?951|[eе] ?962|подсластител|сахарозамен/ }
 ];
 function _alByCode_() { var m = {}; MC_ALLERGENS_.forEach(function (a) { m[a.code] = a; }); return m; }
 function _alKey_(n) { return String(_cleanProdName_(n) || n || '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim(); }

@@ -38,7 +38,7 @@ function v53RebuildProductIds(token){
   if(ni<0)return {ok:false,error:{code:'SCHEMA',message:'В справочнике нет «Название продукта»'}};
   var sh=_v53Sh_(V53.PRODUCTS,V53H.PRODUCTS), existing={};_v53Rows_(V53.PRODUCTS,V53H.PRODUCTS).forEach(function(r){existing[String(r.ProductID)]=r;});
   var added=0;
-  for(var i=1;i<rows.length;i++){var name=String(rows[i][ni]||'').trim();if(!name)continue;var type=ti>=0?String(rows[i][ti]||''):'';var id=_v53Pid_(name,type);if(!existing[id]){sh.appendRow([id,name,type,no>=0?rows[i][no]:'',_v53Dim_(type),_v53Dim_(''), 'YES','PRODUCTS_DB',new Date()]);added++;}}
+  for(var i=1;i<rows.length;i++){var name=String(rows[i][ni]||'').trim();if(!name)continue;var type=ti>=0?String(rows[i][ti]||''):'';var id=_v53Pid_(name,type);if(!existing[id]){sh.appendRow([id,name,type,no>=0?rows[i][no]:'','','UNKNOWN','YES','PRODUCTS_DB',new Date()]);/* единицы в базе продуктов нет — не выдумываем (ДОК_12) */added++;}}
   // Fix canonical unit/dimension from product type is intentionally NOT inferred.
   // Product type is not a unit. Canonical unit remains blank until mapping/TTK evidence.
   var pv=sh.getDataRange().getValues();for(var r=1;r<pv.length;r++){if(!pv[r][0])continue;if(pv[r][4]===_v53Dim_('')||pv[r][4]==='UNKNOWN'){sh.getRange(r+1,5).setValue('');sh.getRange(r+1,6).setValue('UNKNOWN');}}

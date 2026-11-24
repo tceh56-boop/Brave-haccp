@@ -21,7 +21,20 @@
 *      (или как исходный .xls). Пример: «Лосось в конверте с зелён фасолью 230 г.jpg».
 */
   
-var SHEET_ID        = '1yCYIBLdGHCpclL_NgpoX5Hf9zDy7MdLL7tBENjsdPNQ'; // «Mon Cher — База блюд (из ТТК)»
+var SHEET_ID        = '1yCYIBLdGHCpclL_NgpoX5Hf9zDy7MdLL7tBENjsdPNQ'; // «Mon Cher — База блюд (из ТТК)» — ЗАПАСНОЕ значение (V99)
+/** V99: таблица берётся из настроек установки — свойство скрипта MC_SHEET_ID («Настройки → Настройки установки») или файл
+ *  MonChef_InstallConfig.gs (пишет установщик: MC_INSTALL_SHEET_ID_). Константа SHEET_ID выше — запасная: при ней система работает,
+ *  но показывает предупреждение «таблица задана в коде». Прежние установщики, которые подставляют ID в Code.gs, продолжают работать. */
+var _MC_SHEET_ID_ = null;
+function _mcSheetIdInfo_() {
+  if (_MC_SHEET_ID_) return _MC_SHEET_ID_;
+  var ok = function (x) { return /^[A-Za-z0-9_-]{25,}$/.test(String(x || '')); }, id = '', src = '', bad = '';
+  try { var p = String(PropertiesService.getScriptProperties().getProperty('MC_SHEET_ID') || '').trim(); if (ok(p)) { id = p; src = 'PROPERTY'; } else if (p) bad = 'свойство MC_SHEET_ID не похоже на ID таблицы — не используется'; } catch (e) {}
+  if (!id && typeof MC_INSTALL_SHEET_ID_ !== 'undefined' && ok(MC_INSTALL_SHEET_ID_)) { id = String(MC_INSTALL_SHEET_ID_); src = 'INSTALL_CONFIG'; }
+  if (!id) { id = SHEET_ID; src = 'CODE'; }
+  return (_MC_SHEET_ID_ = { id: id, src: src, bad: bad });
+}
+function _mcSheetId_() { return _mcSheetIdInfo_().id; }
 var PHOTO_FOLDER_ID = '1Eu9NB20cYfVPZ9Pv0MvpsK76T7dDkD1_';            // папка «Фото блюд»
 var BLANKS_FOLDER_ID = '1X7DcZ0kxAH-Bk0EZHBtI1TlRi5vye8jc';           // папка «Бланки заявок»
 var INVOICES_FOLDER_ID = '1l4sxx6IgBTkjqGm9ZLvDA-aihhaGLujr';         // папка «Накладные»
@@ -62,6 +75,9 @@ function doGet(e) {
   var params = (e && e.parameter) || {};
   // ТЗ §39: QR «Проверить документ» — отдельная публичная страница, без входа и без доступа к системе
   if (params.verify) return _mcVerifyPage_(params.verify);
+  // V90: старая страница «Лаборатория» (Labs.html) вносила результат номером протокола без файла и SHA-256 —
+  // адрес ?labs=1 открывает экран V67 «Лаборатория: план, отбор, протоколы, решения»
+  if (params.labs === '1') { params.labx = '1'; delete params.labs; }
   // Этап 10.7: страница открывается только при праве (карта MC_RB_MODULES_); иначе — «403 — нет доступа» и запись в аудит.
   // Без ключа в адресе (QR партии с телефона) страница загрузится, но каждый вызов сервера проверит шлюз.
   if (params.audit !== '1') {
@@ -574,7 +590,7 @@ function _tenantFromSession_(session) {
    ========================================================================== */
 var _BOOK_CACHE_ = null;
 function _book_() {
-  if (!_BOOK_CACHE_) _BOOK_CACHE_ = _mcReadCache_(SpreadsheetApp.openById(SHEET_ID));
+  if (!_BOOK_CACHE_) _BOOK_CACHE_ = _mcReadCache_(SpreadsheetApp.openById(_mcSheetId_()));
   return _BOOK_CACHE_;
 }
 
@@ -1039,13 +1055,13 @@ function _recordMigration_(id, title, status, result, op, backupUrl) {
 function createSystemBackup(token) {
   try {
     _requireAuth_(token, 'archive');
-    var src = DriveApp.getFileById(SHEET_ID);
+    var src = DriveApp.getFileById(_mcSheetId_());
     var stamp = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd HH-mm');
     var name = 'BACKUP Mon Chef ' + stamp;
     var folder;
     try {
-      var it = DriveApp.getFoldersByName('Бэкапы Mon Chef');
-      folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы Mon Chef');
+      if (typeof _mcFolderLegacy_ === 'function') folder = _mcFolderLegacy_('backups', 'Бэкапы Mon Chef');   // V78: раздел «Резервные копии»
+      else { var it = DriveApp.getFoldersByName('Бэкапы Mon Chef'); folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы Mon Chef'); }
     } catch (e) { folder = null; }
     var copy = folder ? src.makeCopy(name, folder) : src.makeCopy(name);
     // ТЗ §24: бэкап содержит все данные предприятия — публичным не делаем
@@ -1832,7 +1848,7 @@ function runSafeTests(token) {
       _tcase_('доступ к таблице только через слой данных', function () {
         var src = _selfSource_();
         if (!src) return true;
-        var n = (src.match(/SpreadsheetApp\.openById\(SHEET_ID\)/g) || []).length;
+        var n = (src.match(/SpreadsheetApp\.openById\((?:SHEET_ID|_mcSheetId_\(\))\)/g) || []).length;
         if (n > 1) throw new Error('таблица открывается напрямую в ' + n + ' местах — шов для переезда на SQL потерян');
         return true;
       }),
@@ -4133,7 +4149,7 @@ function saveEvent(json, token) {
    if (id !== cand) _audit_(_op, 'EVENT_SAVE', 'Банкет', id, { номер: cand }, { номер: id });
    // ЭТАП 4 (ТЗ §16): фиксируем себестоимость на момент операции —
    // при будущем росте цен историческая стоимость банкета не изменится.
-   try { snapshotEventCost(id, token); } catch (csErr) { _log_('WARN', 'снимок себестоимости: ' + csErr, _op && _op.id); }
+   try { _snapshotEventCostCore_(id, _createOperation_('COST_SNAPSHOT', _op && _op.session, id)); } catch (csErr) { _log_('WARN', 'снимок себестоимости: ' + csErr, _op && _op.id); }
    _endOp_(_op);
    return id;
  } catch (err) { return 'err:' + err; }
@@ -5833,6 +5849,12 @@ function snapshotEventCost(eventId, token) {
   var _op = null;
   try { _op = _beginOp_(token, 'costs', 'COST_SNAPSHOT', 'Банкет', eventId, null); }
   catch (authErr) { return _failFrom_(authErr); }
+  return _snapshotEventCostCore_(eventId, _op);
+}
+// Снимок при сохранении банкета — системная запись (ТЗ «Итоговая структура», §2: «для банкета создаются снимки себестоимости»).
+// Раньше он делался через проверку права «себестоимость»: банкет, сохранённый администратором (без этого права),
+// оставался без снимка, а в аудит писался отказ доступа. Цифры себестоимости при этом администратору не показываются.
+function _snapshotEventCostCore_(eventId, _op) {
   try {
     var events = JSON.parse(getEvents());
     var ev = events.filter(function (e) { return String(e.id) === String(eventId); })[0];
@@ -6794,7 +6816,7 @@ function _fifoConsume_(name, unit, qty, opts) {
     if (expDate && expDate.getTime && expDate.getTime() < today0.getTime() && !opts.allowExpired) continue;
     matches.push({
       rowIdx: i, sheetRow: i + 1, remain: remain,
-      used: parseFloat(r[8]) || 0, expiry: expDate, unit: r[2], batchId: r[0]
+      used: parseFloat(r[8]) || 0, expiry: expDate, unit: r[2], batchId: r[0], price: parseFloat(r[6]) || 0
     });
   }
   // сортировка: сначала партии с сроком (по возрастанию даты), потом без срока
@@ -6825,7 +6847,8 @@ function _fifoConsume_(name, unit, qty, opts) {
       batchId: m.batchId,
       qty: Math.round(takeInRowUnit * 1000) / 1000,
       unit: m.unit,
-      expiry: expStr
+      expiry: expStr,
+      price: m.price   // цена за единицу партии по приёмке/выпуску — стоимость расхода считается по партии (ТЗ «Итоговая структура», §14.3)
     });
     // ФИКС: remaining считается в единице ЗАПРОСА (unit), а не в единице хранения текущей
     // партии (m.unit) — раньше здесь вычиталось takeInRowUnit (единица партии), что при
@@ -7310,11 +7333,11 @@ function _shelfLifeFor_(code) {
       break;
     }
   } catch (e) {}
-  try {
-    var def = getDefaultShelfLife(code);
-    if (def > 0) return { часы: def, источник: 'категория' };
+  try {   // база нормативов на Диске: утверждённая ответственным за ХАССП строка таблицы сроков (MonChef_V70_NormBase.gs)
+    var nb = typeof _v70ShelfFor_ === 'function' ? _v70ShelfFor_(code) : null;
+    if (nb && nb.hours > 0) return { часы: nb.hours, источник: nb.src };
   } catch (e) {}
-  return { часы: null, источник: 'не задан' };
+  return { часы: null, источник: 'не задан' };   // сроки «по категории» не применяются (ДОК_12)
 }
 function setDishShelfLife(code, hours, token) {
   var _op = null;
@@ -7946,8 +7969,12 @@ function _pfRawRequirement_(pfCode, qty, unit, idx, pfStock, pfUsed) {
   var base = _subYield_(sub);
   if (base <= 0) return null;
   var qb = _toBaseUnitServer_(qty, unit || 'г');
+  // Выпуск в порциях: у блюда состав в индексе уже приведён к одной порции (_buildDishIndexes_), у п/ф — на «Порций в карточке».
+  // Раньше порции делились на выход в граммах (4 порц. / 250 г) — сырья списывалось в сотни раз меньше нормы, себестоимость порции занижалась.
+  var uu = String(unit || '').toLowerCase().replace(/\./g, '').trim();
+  var factor = /^(порц|порция|порции|пор)$/.test(uu) ? (sub.semi ? qty / (Number(sub.portions) > 0 ? Number(sub.portions) : 1) : qty) : qb.qty / base;
   var acc = {};
-  _serverExplodeInto_(sub.ing, qb.qty / base, acc, [pfCode], 1, idx.dishByCode, idx.dishByNormName, pfStock || null, pfUsed || null, idx.dishByLooseName);
+  _serverExplodeInto_(sub.ing, factor, acc, [pfCode], 1, idx.dishByCode, idx.dishByNormName, pfStock || null, pfUsed || null, idx.dishByLooseName);
   return acc;
 }
 
@@ -8072,11 +8099,14 @@ function _produceCore_(pf, qty, unit, expiry, src, idx, op) {
     Object.keys(map).forEach(function (k) {
       var sep = k.lastIndexOf('|'), nm = k.slice(0, sep), un = k.slice(sep + 1), q = map[k];
       if (!(q > 0.0001)) return;
-      cost += (_currentAvgPrice_(nm, un) || 0) * q;
+      var avg = _currentAvgPrice_(nm, un) || 0, lineCost = 0, lineBatches = [];
       _logStockOp_('Расход', nm, q, un, 0, src, note);
       var got = _fifoConsume_(nm, un, q, { productId: pidOf[_prodKey_(nm)] || '' }), covered = 0;
       got.forEach(function (g) {
         covered += _toBaseUnitServer_(g.qty, g.unit).qty;
+        // стоимость — по цене списанной партии (FEFO), отдельной строкой на партию; партия без цены — по средней с пометкой
+        var gBase = _toBaseUnitServer_(g.qty, g.unit).qty, pc = g.price > 0 ? g.qty * g.price : gBase * (avg / (_toBaseUnitServer_(1, un).qty || 1));
+        lineCost += pc; lineBatches.push({ batchId: g.batchId, qty: g.qty, unit: g.unit, price: g.price || 0, cost: Math.round(pc * 100) / 100, priceSource: g.price > 0 ? 'BATCH' : 'AVG_MISSING_PRICE' });
         // V7: фиксируем точную партию сырья, ушедшую в этот выпуск.
         try {
           if (typeof _mcCreateTraceLink_ === 'function' && g.batchId) _mcCreateTraceLink_(
@@ -8086,9 +8116,12 @@ function _produceCore_(pf, qty, unit, expiry, src, idx, op) {
         } catch(traceErr) {}
       });
       var needBase = _toBaseUnitServer_(q, un).qty;
-      if (covered + 0.001 < needBase)   // остаток есть, а партий не хватает — приход без партии
+      if (covered + 0.001 < needBase) {   // остаток есть, а партий не хватает — приход без партии; эта часть — по средней цене
         shortfalls.push({ product: nm, unit: un, not_in_batches: Math.round((needBase - covered) * 1000) / 1000 });
-      consumed.push({ product: nm, qty: Math.round(q * 1000) / 1000, unit: un });
+        lineCost += (needBase - covered) * (avg / (_toBaseUnitServer_(1, un).qty || 1));
+      }
+      cost += lineCost;
+      consumed.push({ product: nm, qty: Math.round(q * 1000) / 1000, unit: un, cost: Math.round(lineCost * 100) / 100, batches: lineBatches });
     });
   }
   consume(pfUsed, 'П/Ф со склада на выпуск ' + pf.name);
@@ -8309,6 +8342,7 @@ function _deleteKanbanForEvent_(eventId) {
 var LABEL_SIZE_MM = 50;
 
 // Сроки реализации по умолчанию (часы), по категории блюда
+// НЕ ПРИМЕНЯЕТСЯ с 16.11.2026: значения без источника (нормативный аудит, ДОК_12). Оставлено для справки.
 var DEFAULT_SHELF_LIFE_HOURS = {
   'Полуфабрикаты (рыба)': 24,
   'Полуфабрикаты (мясо)': 24,
@@ -8619,14 +8653,12 @@ function calculateKBZHU(code) {
 
 function getDefaultShelfLife(code) {
   try {
-    var idx = _buildDishIndexes_();
-    var d = idx.dishByCode[code];
-    if (!d) return DEFAULT_SHELF_LIFE_FALLBACK;
-    var cat = d.cat || '';
-    if (DEFAULT_SHELF_LIFE_HOURS[cat]) return DEFAULT_SHELF_LIFE_HOURS[cat];
-    if (/п\/ф|п-ф/i.test(d.name)) return 24;
-    return DEFAULT_SHELF_LIFE_FALLBACK;
-  } catch (e) { return DEFAULT_SHELF_LIFE_FALLBACK; }
+    var nb = typeof _v70ShelfFor_ === 'function' ? _v70ShelfFor_(code) : null;   // утверждённая строка таблицы сроков предприятия
+    if (nb && nb.hours > 0) return nb.hours;
+    // Сроки «по категории» (DEFAULT_SHELF_LIFE_HOURS) и «12 ч по умолчанию» источника не имеют и больше не применяются
+    // (нормативный аудит 16.11.2026, ДОК_12; ГОСТ 30390-2013, п. 5.7). Нет срока в карте и в таблице — 0: «срок не указан».
+    return 0;
+  } catch (e) { return 0; }
 }
 
 // =====================================================================
@@ -9612,17 +9644,8 @@ var CLEANING_CHECKLISTS = {
   ]
 };
 
-// Холодильное оборудование (для температурного журнала)
-var DEFAULT_EQUIPMENT = [
-  { name:'Хол. камера №1 (мясо, птица)', mode:'+2...+4°C' },
-  { name:'Хол. камера №2 (рыба)', mode:'-2...+2°C' },
-  { name:'Хол. камера №3 (гастрономия)', mode:'0...+3°C' },
-  { name:'Морозильник №1 (заморозка)', mode:'-18°C' },
-  { name:'Морозильник №2 (полуфабрикаты)', mode:'-12°C' },
-  { name:'Витрина охлаждаемая (линия раздачи)', mode:'+2...+6°C' },
-  { name:'Мармит горячий (супы)', mode:'+65...+85°C' },
-  { name:'Мармит горячий (горячие блюда)', mode:'+65...+85°C' }
-];
+// Режимы холодильников «по умолчанию» удалены 16.11.2026: нигде не применялись и источника не имели (ДОК_12).
+// Пределы задаются по объектам контроля («Температуры → Объекты контроля») из документа.
 
 // Бактерицидные лампы (УФ-рециркуляторы/облучатели) — для журнала J37
 // serviceLifeHours — нормативный срок службы УФ-лампы (по паспорту, обычно 8000-9000 ч)
@@ -10308,7 +10331,7 @@ function exportJournalToPdf(journalId, token) {
     if (!sh) return JSON.stringify({ error: 'no-sheet' });
 
     var gid = sh.getSheetId();
-    var url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export' +
+    var url = 'https://docs.google.com/spreadsheets/d/' + _mcSheetId_() + '/export' +
       '?format=pdf&gid=' + gid +
       '&size=A4&portrait=false&fitw=true&gridlines=true' +
       '&top_margin=0.4&bottom_margin=0.4&left_margin=0.4&right_margin=0.4' +
@@ -10633,6 +10656,7 @@ function getSalesStats(dateFrom, dateTo) {
       var d = _parseDateStr_(v[i][1]);
       if (from && d < from) continue;
       if (to && d > to) continue;
+      if (typeof _v95IsVoid_ === 'function' && _v95IsVoid_(v[i][13])) continue;   // V95: отменённая продажа и её сторно
       var qty = parseFloat(v[i][4]) || 0;
       var sum = parseFloat(v[i][6]) || 0;
       var dish = v[i][3] || '—';
@@ -10748,6 +10772,7 @@ function _markEventProcessed_(eventId, evDate, evFormat, j02, j03, j36, sum) {
  * Проверяет все банкеты, время которых наступило за последние 2 часа,
  * и заполняет для них журналы J02/J03/J36. Безопасна для повторного вызова.
  */
+var MC_EVENTS_CATCHUP_DAYS_ = 3;   // V86: банкеты, пропущенные расписанием, догоняются до 3 суток
 function autoFillJournalsFromEvents() {
   var now = new Date();
   var twoHoursAgo = new Date(now.getTime() - 2 * 3600000);
@@ -10772,16 +10797,20 @@ function autoFillJournalsFromEvents() {
 
     // обрабатываем, если банкет начался в течение последних 2 часов
     // (или вот-вот начнётся — в пределах 10 минут)
+    // V86 (аудит R2, п. 5.2): окно не единственный механизм. Банкет, пропущенный расписанием (триггер не сработал,
+    // был выключен, система недоступна), догоняется до MC_EVENTS_CATCHUP_DAYS_ суток: задача ставится с пометкой
+    // «с опозданием». Необработанный (ошибка) — остаётся необработанным и берётся при следующем запуске.
     var inWindow = (evDateTime <= now && evDateTime >= twoHoursAgo) ||
                    (evDateTime > now && evDateTime <= new Date(now.getTime() + 10 * 60000));
-    if (!inWindow) return;
+    var late = !inWindow && evDateTime < twoHoursAgo && evDateTime >= new Date(now.getTime() - MC_EVENTS_CATCHUP_DAYS_ * 86400000);
+    if (!inWindow && !late) return;
 
     try {
-      var counts = _processEventForJournals_(ev, evDateTime);
+      var counts = _processEventForJournals_(ev, evDateTime, late);
       _markEventProcessed_(ev.id, ev.date, ev.format || ev.name || 'Банкет', counts.j02, counts.j03, counts.j36, counts.totalSum);
       results.processed.push({
         id: ev.id, format: ev.format || ev.name, date: ev.date, time: timeStr,
-        j02: counts.j02, j03: counts.j03, j36: counts.j36, sum: counts.totalSum
+        j02: counts.j02, j03: counts.j03, j36: counts.j36, sum: counts.totalSum, late: late
       });
     } catch (e) {
       results.errors.push({ id: ev.id, error: String(e) });
@@ -10794,7 +10823,7 @@ function autoFillJournalsFromEvents() {
 /**
  * Обработка одного банкета — заполнение J02, J03, J36.
  */
-function _processEventForJournals_(ev, evDateTime) {
+function _processEventForJournals_(ev, evDateTime, late) {
   // Этап 10.7. Раньше функция по расписанию сама писала в журналы бракеража «Соответствует / Отпуск разрешён (авто)»
   // от имени шеф-повара, в J03 — «+2°C / ПРИНЯТО (авто)» от имени кладовщика, а в журнал продаж — цену
   // «себестоимость × 3». Это выдуманные результаты, температура и подписи. Теперь система:
@@ -10816,12 +10845,13 @@ function _processEventForJournals_(ev, evDateTime) {
   });
   if (dishes.length) {
     try {
-      _notify_('brakerage_due', 'warning', 'Бракераж готовой продукции: банкет ' + (ev.format || ev.name || ev.id) + ' ' + dateStr + ' ' + timeStr,
-        'Проведите бракераж до выдачи и внесите результат (система его не заполняет): ' + dishes.slice(0, 25).join(', ') + (dishes.length > 25 ? ' и ещё ' + (dishes.length - 25) : '') +
+      _notify_('brakerage_due', 'warning', (late ? 'С опозданием — ' : '') + 'Бракераж готовой продукции: банкет ' + (ev.format || ev.name || ev.id) + ' ' + dateStr + ' ' + timeStr,
+        (late ? 'Задача не была поставлена вовремя: расписание не обработало банкет в срок. Проверьте, проведён ли бракераж, и внесите результат, если проводили; если не проводили — отметьте это ответственному. ' :
+          'Проведите бракераж до выдачи и внесите результат (система его не заполняет): ') + dishes.slice(0, 25).join(', ') + (dishes.length > 25 ? ' и ещё ' + (dishes.length - 25) : '') +
         (noPrice ? '. В журнал продаж не внесено ' + noPrice + ' поз.: в банкете нет цены.' : ''), 'Шеф-повар', 'brk|' + ev.id, null);
     } catch (e) {}
   }
-  return { j02: 0, j03: 0, j36: j36count, totalSum: Math.round(totalSum * 100) / 100, brakerageTask: dishes.length, noPrice: noPrice };
+  return { j02: 0, j03: 0, j36: j36count, totalSum: Math.round(totalSum * 100) / 100, brakerageTask: dishes.length, noPrice: noPrice, late: !!late };
 }
 
 /**
@@ -12859,7 +12889,7 @@ function uploadDocument(json, token) {
     if (!b64) { _endOp_(_op, 'FAILED'); return _fail_('VALIDATION', 'Не передан файл', _op.id); }
     var mime = d.mime || 'application/pdf';
     var blob = Utilities.newBlob(Utilities.base64Decode(b64), mime, d.название);
-    var file = _docsFolder_().createFile(blob);   // ТЗ §24: публичный доступ не выдаём
+    var file = (typeof _mcDocFolderFor_ === 'function' ? _mcDocFolderFor_(d.категория) : _docsFolder_()).createFile(blob);   // ТЗ §24: публичный доступ не выдаём; V78: в папку категории
     var id = 'DOC' + Date.now();
     var who = (_op.session && (_op.session.fullName || _op.session.name || _op.session.user_id)) || '';
     _docsSheet_().appendRow(_docRow_(d, id, file.getId(), mime, who, _op.id));
@@ -12882,12 +12912,13 @@ function createDocument(json, token) {
     var html = '<html><head><meta charset="utf-8"><style>body{font-family:Georgia,serif;padding:28px;line-height:1.5}' +
       'h1{font-size:18px;text-align:center}.meta{font-size:12px;color:#555;margin-bottom:18px}' +
       'pre{white-space:pre-wrap;font-family:Georgia,serif;font-size:14px}.sign{margin-top:40px;font-size:13px}</style></head><body>' +
+      (typeof _mcOrgHeaderHtml_ === 'function' ? _mcOrgHeaderHtml_('', '') : '') +   // реквизиты и логотип организации (ТЗ §9)
       '<h1>' + esc(d.название) + '</h1><div class="meta">' + esc(d.категория) +
       (d.номер ? ' · № ' + esc(d.номер) : '') + ' · ' + Utilities.formatDate(new Date(), _mcTz_(), 'dd.MM.yyyy') + '</div>' +
       '<pre>' + esc(d.текст) + '</pre>' +
       '<div class="sign">Утверждаю: ____________________ / ________________</div></body></html>';
     var pdf = Utilities.newBlob(html, 'text/html', d.название + '.html').getAs('application/pdf').setName(d.название + '.pdf');
-    var file = _docsFolder_().createFile(pdf);
+    var file = (typeof _mcDocFolderFor_ === 'function' ? _mcDocFolderFor_(d.категория) : _docsFolder_()).createFile(pdf);   // V78: в папку категории
     var id = 'DOC' + Date.now();
     var who = (_op.session && (_op.session.fullName || _op.session.name || _op.session.user_id)) || '';
     _docsSheet_().appendRow(_docRow_(d, id, file.getId(), 'application/pdf', who, _op.id));
@@ -13183,7 +13214,10 @@ function generateJournalPending() {
   for (var i = 1; i < pv.length; i++) {
     if (!pv[i][0]) continue;
     var dstr = pv[i][5] instanceof Date ? Utilities.formatDate(pv[i][5], _mcTz_(), 'yyyy-MM-dd') : String(pv[i][5]);
-    have[String(pv[i][1]) + '|' + dstr + '|' + String(pv[i][6])] = true;
+    // V87: таблица хранит «11:00» как время (дату 30.12.1899) — сравнивать нужно «ЧЧ:ММ», иначе каждый запуск
+    // (расписание, «Моя смена») заново создавал те же вопросы
+    var hm0 = pv[i][6] instanceof Date ? Utilities.formatDate(pv[i][6], _mcTz_(), 'HH:mm') : String(pv[i][6]).replace(/^(\d):/, '0$1:');
+    have[String(pv[i][1]) + '|' + dstr + '|' + hm0] = true;
   }
   var rows = [], grace = 60;   // на выполнение проверки даётся час
   var na = {}; try { if (typeof _mcJournalNA_ === 'function') na = _mcJournalNA_(); } catch (e) {}
@@ -13196,7 +13230,7 @@ function generateJournalPending() {
     if (na[String(tv[j][1])]) continue;
     var t = { id: tv[j][0], journalId: tv[j][1], объект: tv[j][2], вопрос: tv[j][3], тип: tv[j][4], параметр: tv[j][5] };
     _trigTimes_(t, shift, new Date()).forEach(function (hm) {
-      if (have[t.id + '|' + today + '|' + hm]) return;
+      if (have[t.id + '|' + today + '|' + String(hm).replace(/^(\d):/, '0$1:')]) return;
       var mins = _hm2min_(hm);
       rows.push(['JP' + Date.now() + '-' + rows.length + Utilities.getUuid().slice(0, 4), t.id, t.journalId, t.объект, t.вопрос,
         today, hm, _min2hm_(mins + grace), 'ожидает', '', '', '', '', '', 0, '']);
@@ -14153,7 +14187,8 @@ function autoRotationJournal(token) {
   catch (authErr) { return _failFrom_(authErr); }
   try {
     var batches = JSON.parse(getStockBatches(true) || '[]');
-    var скоро = batches.filter(function (b) { return b.daysLeft !== null && b.daysLeft <= 7; });
+    var порог = typeof _v80RotDays_ === 'function' ? _v80RotDays_() : 7;   // V80: только истекающие (по умолчанию сегодня и завтра) и просроченные
+    var скоро = batches.filter(function (b) { return b.daysLeft !== null && b.daysLeft <= порог; });
     var who = (_op.session && (_op.session.fullName || _op.session.name || _op.session.user_id)) || '';
     var d = Utilities.formatDate(new Date(), _mcTz_(), 'dd.MM.yyyy');
     var создано = 0, было = {};
@@ -14180,7 +14215,7 @@ function autoRotationJournal(token) {
     return _ok_({ партий: создано,
       примечание: создано
         ? 'Бланк заполнен из «Склад_Партии» целиком: подтвердить нужно только, что на полке так же.'
-        : 'Партий со сроком в пределах недели нет — записи не создавались.' }, _op.id);
+        : 'Партий со сроком, истекающим в ближайшие ' + порог + ' дн., и просроченных нет — записи не создавались.' }, _op.id);
   } catch (e) { _endOp_(_op, 'FAILED'); return _failFrom_(e, _op && _op.id); }
 }
 
@@ -14842,6 +14877,7 @@ function approveTTKVersion(code, version, json, token) {
       _dropCatalogCache_();
       _audit_(_op, 'TTK_APPROVE', 'ТТК', code, f.data[2],
         { версия: version, утвердил: who, условия: storage, срок: shelf, себестоимость: cost, архивировано: archived });
+      try { if (typeof _v64TtkSnapshot_ === 'function') _v64TtkSnapshot_(code, version, _op); } catch (e64) { _log_('WARN', 'снимок себестоимости ТТК: ' + e64, _op && _op.id); }   // TTK_COST_SNAPSHOT (ТЗ §14.11)
       _endOp_(_op);
       return _ok_({ code: code, version: version, статус: 'действующая',
         себестоимость_на_момент: cost, архивировано_версий: archived }, _op.id);

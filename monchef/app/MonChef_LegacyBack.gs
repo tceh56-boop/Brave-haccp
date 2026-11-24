@@ -434,7 +434,9 @@ function mcLabelData(token) {
   try {
     var idx = _buildDishIndexes_(), shelf = {};
     try { var sv = _shelfCol_().getDataRange().getValues(); for (var i = 1; i < sv.length; i++) { var h = parseFloat(sv[i][9]); if (h > 0) shelf[String(sv[i][0])] = h; } } catch (e) {}
-    var dishes = Object.keys(idx.dishByCode).map(function (c) { var d = idx.dishByCode[c]; return { code: c, name: d.name, semi: !!d.semi, shelfH: shelf[c] || null }; })
+    var nb = typeof _v70ShelfMatcher_ === 'function' ? _v70ShelfMatcher_() : null;   // база нормативов на Диске (утверждённая таблица сроков)
+    var dishes = Object.keys(idx.dishByCode).map(function (c) { var d = idx.dishByCode[c], b = !shelf[c] && nb ? nb(c, d.name, d.cat) : null;
+      return { code: c, name: d.name, semi: !!d.semi, shelfH: shelf[c] || (b ? b.hours : null), shelfSrc: shelf[c] ? 'карта' : (b ? b.src : '') }; })
       .sort(function (a, b) { return a.name.localeCompare(b.name, 'ru'); });
     var hist = []; try { hist = JSON.parse(getLabelHistory(60)); } catch (e) {}
     return _ok_({ dishes: dishes, history: hist, me: _author_(token).фио });
@@ -451,6 +453,7 @@ function _lbLabel_(d, token) {
   if (made.getTime() > Date.now() + 5 * 60000) throw new Error('VALIDATION: изготовлено позже, чем сейчас, — так не бывает');
   var card = _shelfLifeFor_(dish.code), hours = null, basis = '';
   if (card && card.источник === 'карта' && card.часы > 0) { hours = card.часы; basis = 'срок из карты блюда'; }
+  else if (card && /^база нормативов/.test(String(card.источник)) && card.часы > 0) { hours = card.часы; basis = card.источник; }
   else if (d.hours !== undefined && d.hours !== '' && d.hours !== null) {
     var hh = parseFloat(String(d.hours).replace(',', '.'));
     if (!(hh > 0 && hh <= 8760)) throw new Error('VALIDATION: срок — часы от 1 до 8760');
@@ -518,20 +521,25 @@ function mcSaleData(token) {
     var idx = _buildDishIndexes_(), dishes = Object.keys(idx.dishByCode).map(function (c) { return idx.dishByCode[c]; }).filter(function (d) { return !d.semi; })
       .map(function (d) { return { code: d.code, name: d.name }; }).sort(function (a, b) { return a.name.localeCompare(b.name, 'ru'); });
     var emps = []; try { emps = JSON.parse(getEmployees()).filter(function (e) { return e.active !== false; }).map(function (e) { return { name: e.name, position: e.position }; }); } catch (e) {}
-    var j = _mcJById_('J36'), sh = _book_().getSheetByName(j.sheetName), recent = [];
+    var j = _mcJById_('J36'), sh = _book_().getSheetByName(j.sheetName), recent = [], bySale = null;
     if (sh && sh.getLastRow() > 1) {
       var v = sh.getDataRange().getValues(), n = j.columns.length, c = function (name) { return j.columns.indexOf(name); };
       for (var i = v.length - 1; i >= 1 && recent.length < 40; i--) {
         var r = v[i]; if (!r[c('Блюдо')] && !r[c('Сумма')]) continue;
         recent.push({ date: _lbDateStr_(r[c('Дата')]), time: _lbTimeStr_(r[c('Время')]), dish: String(r[c('Блюдо')] || ''), qty: r[c('Количество')], price: r[c('Цена')], sum: r[c('Сумма')],
           seller: String(r[c('ФИО продавца')] || ''), source: String(r[n + 3] || ''), author: String(r[n] || '') });
+        var sid = /\b(SL-\d{8}-[0-9A-F]{8})\b/.exec(String(r[n + 3] || ''));
+        if (sid) { var rc = recent[recent.length - 1]; rc.saleId = sid[1]; rc.source = rc.source.replace(' · ' + sid[1], ''); var w = (bySale || (bySale = typeof _v71BySale_ === 'function' ? _v71BySale_() : {}))[sid[1]]; if (w) rc.stock = w; }
       }
     }
-    return _ok_({ dishes: dishes, employees: emps, recent: recent, me: _author_(token).фио, canAdd: !s.dev && _mcRbJournalAllowed_(s, 'J36'), roles: _mcRbJournalRoles_('J36') });
+    var goods = []; try { if (typeof _v71GoodsList_ === 'function') goods = _v71GoodsList_(idx); } catch (e) {}
+    return _ok_({ dishes: dishes, goods: goods, stockWriteOff: typeof _v71Run_ === 'function', employees: emps, recent: recent, me: _author_(token).фио, canAdd: !s.dev && _mcRbJournalAllowed_(s, 'J36'), roles: _mcRbJournalRoles_('J36') });
   } catch (e) { return _failFrom_(e); }
 }
-/** Ручная продажа: {dish, qty, price, sum?, seller?, date?, time?, check?}. Ведут роли журнала J36 (директор, администратор, шеф-повар).
- *  Продавец — сотрудник из списка (по умолчанию — вносящий). В строке — метка «вручную»; продажи при выдаче банкета идут как раньше. */
+/** Ручная продажа: {dish, kind? ('dish' | 'goods'), unit? (для товара), qty, price, sum?, seller?, date?, time?, check?}. Ведут роли журнала J36
+ *  (директор, администратор, шеф-повар). Продавец — сотрудник из списка (по умолчанию — вносящий). В строке — метка «вручную» и номер продажи SL-….
+ *  V71: блюдо — только из ТТК, товар — только со склада; склад списывается по партиям (MonChef_V71_SaleStock.gs), партии связываются с продажей.
+ *  Продажи при выдаче банкета идут как раньше (склад списывает выдача). */
 function mcSaleAdd(json, token) {
   var op = null;
   try { op = _beginOp_(token, 'banquets|journals', 'SALE_ENTRY', 'Журналы', 'J36', null); } catch (e) { return _failFrom_(e); }
@@ -551,14 +559,24 @@ function mcSaleAdd(json, token) {
     var date = today, time = pad(now.getHours()) + ':' + pad(now.getMinutes());
     if (d.date) { var d0 = _mcDateOnly_(d.date); if (!d0) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'Дата не распознана', op.id); }
       if (d0.getTime() > _mcDateOnly_(now).getTime()) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'Дата позже сегодняшней', op.id); }
-      date = pad(d0.getDate()) + '.' + pad(d0.getMonth() + 1) + '.' + d0.getFullYear(); }
+      date = pad(d0.getDate()) + '.' + pad(d0.getMonth() + 1) + '.' + d0.getFullYear();
+      if (typeof _v64AssertOpen_ === 'function') _v64AssertOpen_(d0, 'продажа');   // закрытый финансовый период (ТЗ §14.11)
+    }
     if (d.time) { var tm = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(String(d.time)); if (!tm || +tm[1] > 23 || +tm[2] > 59) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'Время — ЧЧ:ММ', op.id); }
       if (date === today) _mcEventTime_(d.time); time = pad(+tm[1]) + ':' + tm[2]; }
     _mcAssertJournalPeriodOpen_('J36', date);
     var sum = d.sum !== undefined && d.sum !== '' ? parseFloat(String(d.sum).replace(',', '.')) : Math.round(qty * price * 100) / 100;
     if (!(sum >= 0)) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', 'Сумма — число', op.id); }
+    var item = null;   // V71: что продано — блюдо по ТТК или товар со склада; иначе списать нечего
+    if (typeof _v71Resolve_ === 'function') {
+      item = _v71Resolve_(dish, d.kind, d.unit);
+      if (item.error) { _endOp_(op, 'FAILED'); return _fail_('VALIDATION', item.error, op.id); }
+      dish = item.name;
+    }
+    var unitLbl = item && item.kind === 'GOODS' ? item.unit : 'порц.';
     return _withLock_(function () {
       var j = _mcJById_('J36'), sh = _book_().getSheetByName(j.sheetName) || _createJournalSheet_(j);
+      var saleId = 'SL-' + Utilities.formatDate(new Date(), _mcTz_(), 'yyyyMMdd') + '-' + Utilities.getUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
       var row = j.columns.map(function (col) {
         switch (col) {
           case '№': return Math.max(0, sh.getLastRow() - 1) + 1;
@@ -566,13 +584,28 @@ function mcSaleAdd(json, token) {
           case 'ФИО продавца': return seller.name; case 'Должность': return seller.position; default: return '';
         }
       });
-      _mcJournalAppendTo_(sh, op, 'вручную' + (d.check ? ' · чек ' + String(d.check) : ''), row);
+      _mcJournalAppendTo_(sh, op, 'вручную' + (d.check ? ' · чек ' + String(d.check) : '') + (item ? ' · ' + saleId : ''), row);
       try { if (typeof _mcMirrorRow_ === 'function') _mcMirrorRow_('J36', sh.getLastRow()); } catch (er) {}
-      try { if (typeof _mcCreateFactInternal_ === 'function') _mcCreateFactInternal_({ factType: 'SALE', objectType: 'SALE', objectId: 'SALE-' + Date.now(), operationType: 'SALE', dateTime: new Date(),
-        value: sum, unit: 'RUB', result: 'RECORDED', source: 'J36', employeeName: seller.name, description: 'Продажа (вручную) ' + dish + ' × ' + qty, skipRules: true }, op.session); } catch (er) {}
-      _audit_(op, 'SALE_ENTRY', 'Журнал продаж', 'J36', null, { блюдо: dish, количество: qty, цена: price, сумма: sum, продавец: seller.name, дата: date, время: time, чек: d.check || '' });
+      try { if (typeof _mcCreateFactInternal_ === 'function') _mcCreateFactInternal_({ factType: 'SALE', objectType: 'SALE', objectId: item ? saleId : 'SALE-' + Date.now(), operationType: 'SALE', dateTime: new Date(),
+        value: sum, unit: 'RUB', result: 'RECORDED', source: 'J36', employeeName: seller.name, description: 'Продажа (вручную) ' + dish + ' × ' + qty + ' ' + unitLbl, skipRules: true }, op.session); } catch (er) {}
+      // V71: списание склада по партиям и связь партий с продажей. Строка журнала уже записана — продажа состоялась;
+      // если списание сорвалось, операция уходит в очередь разбора, а не теряется молча.
+      var stock = null;
+      if (item) {
+        try {
+          var at = typeof _v71At_ === 'function' ? _v71At_(_mcDateOnly_(date), time) : new Date();
+          var wo = _v71Run_(item, qty, { at: at, saleId: saleId, note: 'Продажа в зал ' + saleId });
+          _v71Commit_(saleId, wo, { at: at, seller: seller.name, author: _author_(op).фио, opId: op.id });
+          stock = _v71Brief_(wo);
+        } catch (er) {
+          try { _cascadeMarkForRecovery_(op, 'продажа ' + saleId + ' записана, склад не списан: ' + er); } catch (er2) {}
+          stock = { status: 'ERROR', statusRu: 'склад не списан', error: String(er && er.message || er), lines: [], short: [], unreleased: [] };
+        }
+      }
+      _audit_(op, 'SALE_ENTRY', 'Журнал продаж', 'J36', null, { блюдо: dish, количество: qty, цена: price, сумма: sum, продавец: seller.name, дата: date, время: time, чек: d.check || '',
+        продажа: item ? saleId : '', склад: stock ? { статус: stock.statusRu, партий: stock.lines.length, не_хватило: stock.short.map(function (x) { return x.text; }) } : '' });
       _endOp_(op);
-      return _ok_({ dish: dish, qty: qty, price: price, sum: sum, seller: seller.name, date: date, time: time }, op.id);
+      return _ok_({ dish: dish, qty: qty, unit: unitLbl, price: price, sum: sum, seller: seller.name, date: date, time: time, saleId: item ? saleId : '', stock: stock }, op.id);
     });
   } catch (e) { if (op) _endOp_(op, 'FAILED'); return _failFrom_(e, op && op.id); }
 }

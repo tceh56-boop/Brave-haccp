@@ -47,6 +47,11 @@ function _mcDecoratePage_(out, params) {
     'if(!PORTAL){try{if(T)localStorage.setItem("mc_token",T);else T=localStorage.getItem("mc_token")||"";}catch(e){}}' +
     'try{if(USER){localStorage.setItem("mc_user",JSON.stringify(USER));localStorage.setItem("mc_perms",JSON.stringify(PERMS||{}));}}catch(e){}' +
     'window.__MC_TOKEN=T;window.__MC_OPENV=OPENV;window.__MC_HOME=HOME;' +
+    // V100 (152-ФЗ): ключ входа не уходит в адрес перехода — одноразовый билет (10 мин, один раз); нет билета — ключ из адреса убирается
+    'window.__MC_TK=[];window.mcTkFill=function(){if(PORTAL||!window.__MC_TOKEN||!(window.google&&google.script&&google.script.run))return;try{google.script.run.withSuccessHandler(function(r){try{var x=typeof r==="string"?JSON.parse(r):r;if(x&&x.data&&x.data.tickets)window.__MC_TK=window.__MC_TK.concat(x.data.tickets);}catch(e){}}).withFailureHandler(function(){}).mcLinkTickets("{}",window.__MC_TOKEN);}catch(e){}};' +
+    'window.mcNavUrl=function(u){u=String(u||"");if(PORTAL||!/[?&]token=/.test(u))return u;var t=window.__MC_TK.shift();if(window.__MC_TK.length<2)setTimeout(window.mcTkFill,0);return u.replace(/([?&])token=[^&#]*/,t?"$1t="+t:"$1").replace("&&","&").replace("?&","?").replace(/[?&]$/,"");};' +
+    'document.addEventListener("click",function(ev){var a=ev.target&&ev.target.closest?ev.target.closest("a"):null;if(a&&/[?&]token=/.test(a.href))a.href=window.mcNavUrl(a.href);},true);' +
+    'setTimeout(function(){window.mcTkFill();},300);' +
     'var g0=URLSearchParams.prototype.get;URLSearchParams.prototype.get=function(k){var v=g0.call(this,k);return(k==="token"&&!v)?window.__MC_TOKEN:v;};' +
     'if(window.google&&google.script&&google.script.run&&window.Proxy){var R=google.script.run;' +
     'var W=function(st){return new Proxy({},{get:function(_,k){' +

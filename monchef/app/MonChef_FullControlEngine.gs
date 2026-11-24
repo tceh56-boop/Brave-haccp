@@ -279,6 +279,7 @@ function _mcJournalSnapshotPdf_(j){
   var rows=sh.getDataRange().getDisplayValues();
   var sig=null; try { var sv=_mcSignatureSheet_().getDataRange().getValues(); for(var i=sv.length-1;i>=1;i--) if(String(sv[i][1])===String(j.id)&&String(sv[i][14])==='SIGNED'){sig={name:sv[i][2],from:sv[i][3],to:sv[i][4],by:sv[i][8],role:sv[i][9],at:sv[i][10],hash:sv[i][12],code:sv[i][16]};break;} } catch(e){}
   var html='<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:8px}h1{font-size:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px;vertical-align:top}th{background:#eee}.meta{font-size:9px;margin:6px 0}</style></head><body>';
+  if(typeof _mcOrgHeaderHtml_==='function') html+=_mcOrgHeaderHtml_('','');   // реквизиты и логотип организации (ТЗ §9)
   html+='<h1>'+_mcHtmlEsc_(j.name)+'</h1><div class="meta">Технический ID: '+_mcHtmlEsc_(j.id)+' · записей: '+Math.max(0,rows.length-1)+'</div>';
   if(sig) html+='<div class="meta"><b>Подписан:</b> '+_mcHtmlEsc_(sig.by)+' · '+_mcHtmlEsc_(sig.role)+' · '+_mcHtmlEsc_(String(sig.at))+' · период '+_mcHtmlEsc_(sig.from)+' — '+_mcHtmlEsc_(sig.to)+' · код '+_mcHtmlEsc_(sig.code)+' · hash '+_mcHtmlEsc_(sig.hash)+'</div>';
   html+='<table><thead><tr>'+rows[0].map(_mcHtmlEsc_).map(function(x){return '<th>'+x+'</th>';}).join('')+'</tr></thead><tbody>';

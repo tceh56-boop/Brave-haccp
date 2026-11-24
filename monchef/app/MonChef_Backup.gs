@@ -44,8 +44,8 @@ function mcCreateBackup(token) {
     return _withLock_(function () {
       var book = _book_(), man = _bkManifest_(book), stamp = Utilities.formatDate(new Date(), _mcTz_(), 'yyyy-MM-dd HH-mm');
       var folder = null;
-      try { var it = DriveApp.getFoldersByName('Бэкапы Mon Chef'); folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы Mon Chef'); } catch (e) {}
-      var src = DriveApp.getFileById(book.getId ? book.getId() : SHEET_ID);
+      try { if (typeof _mcFolderLegacy_ === 'function') folder = _mcFolderLegacy_('backups', 'Бэкапы Mon Chef'); else { var it = DriveApp.getFoldersByName('Бэкапы Mon Chef'); folder = it.hasNext() ? it.next() : DriveApp.createFolder('Бэкапы Mon Chef'); } } catch (e) {}
+      var src = DriveApp.getFileById(book.getId ? book.getId() : _mcSheetId_());
       var copy = folder ? src.makeCopy('BACKUP Mon Chef ' + stamp, folder) : src.makeCopy('BACKUP Mon Chef ' + stamp);
       var id = 'BK-' + Date.now(), rows = man.sheets.reduce(function (a, x) { return a + x.rows; }, 0);
       _bcSheet_(MC_BK_SHEET_, MC_BK_HEAD_).appendRow([id, new Date(), s.name || '', 'BACKUP', copy.getId(), man.hash, man.sheets.length, rows, 'CREATED', JSON.stringify(man.sheets).slice(0, 48000)]);

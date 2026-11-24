@@ -22,6 +22,7 @@ textarea{min-height:56px}.chk{display:flex;align-items:center;gap:8px;font-size:
 </style></head><body><div class="wrap">
 <h1>Суточные пробы</h1>
 <div class="sub" id="sub">Проба отбирается от каждой допущенной к выдаче партии. Без пробы партия на банкет не выдаётся.</div>
+<div class="card" id="prof" style="padding:10px 12px;margin-bottom:10px;display:none"></div>
 <div class="tabs" id="tabs"></div>
 <div id="list"><div class="empty">Загрузка…</div></div>
 </div>
@@ -36,14 +37,52 @@ function load() {
   call('mcGetDailySamples', [TOKEN]).then(function (r) {
     if (!r || r.success === false) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(errText(r)) + '</div>'; return; }
     DATA = r.data; var c = DATA.cfg || {};
-    document.getElementById('sub').textContent = 'Проба отбирается от каждой допущенной к выдаче партии: не менее ' + c.minWeightG + ' г (или порция целиком), хранение ' + c.retentionHours + ' ч при ' + c.tMin + '…' + c.tMax + ' °C. Без пробы партия на банкет не выдаётся.';
+    var P = DATA.profile || { required: true };
+    document.getElementById('sub').textContent = P.required === false ? 'Суточные пробы не применяются по профилю предприятия — выдача партий без пробы не блокируется. Пробу можно отобрать по желанию.'
+      : 'Проба отбирается от каждой допущенной к выдаче партии: не менее ' + c.minWeightG + ' г (или порция целиком), хранение ' + c.retentionHours + ' ч' + (P.start === 'END_OF_SALE' ? ' с момента окончания срока реализации' : '') + ' при ' + c.tMin + '…' + c.tMax + ' °C. Без пробы партия на банкет не выдаётся.';
+    profile();
     draw();
   }, function () { document.getElementById('list').innerHTML = '<div class="empty">Нет связи</div>'; });
+}
+// V90: профиль предприятия — применимость суточной пробы по СанПиН 2.3/2.4.4282-26 (п. 56 подп. 4 и 12, п. 59 подп. 10, п. 65 подп. 3)
+function profile() {
+  var P = DATA.profile, box = document.getElementById('prof'); if (!P) return;
+  box.style.display = '';
+  box.innerHTML = '<div class="nm">Профиль: ' + esc(P.ru) + (P.code ? '' : ' <span class="chip r">укажите профиль</span>') + '</div><div class="meta" id="profText">' + esc(P.text) + '</div>' +
+    (DATA.canSetProfile ? '<div class="grid" style="margin-top:8px"><div><label>Профиль предприятия</label><select id="pfCode">' + (P.code ? '' : '<option value="">— выберите профиль —</option>') + (DATA.profiles || []).map(function (x) {
+      return '<option value="' + esc(x.code) + '"' + (x.code === P.code ? ' selected' : '') + '>' + esc(x.ru) + (x.ref ? ' — ' + esc(x.ref) : '') + '</option>'; }).join('') + '</select></div>' +
+      '<div><label>Причина / основание (для «не применяется» и «по ППК»)</label><input id="pfWhy" value="' + esc(P.reason || '') + '"></div></div>' +
+      '<div class="acts"><button class="btn" id="pfSave" onclick="saveProfile()">Сохранить профиль</button></div><div class="msg" id="pfMsg"></div>'
+      : '<div class="note">Профиль задаёт ответственный за ХАССП.</div>');
+}
+function saveProfile() {
+  var m = document.getElementById('pfMsg'), code = v('pfCode');
+  if (!confirm('От профиля зависит запрет выдачи партии без суточной пробы. Сохранить профиль?')) return;
+  call('v90SetSampleProfile', [JSON.stringify({ profile: code, reason: v('pfWhy'), confirm: true }), TOKEN]).then(function (r) {
+    if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    m.className = 'msg ok'; m.textContent = 'Профиль сохранён: ' + r.data.ru; load();
+  }, function () { m.className = 'msg err'; m.textContent = 'Нет связи — профиль не сохранён'; });
 }
 function draw() {
   document.getElementById('tabs').innerHTML = TABS.map(function (t) { return '<button class="' + (t[0] === TAB ? 'on' : '') + '" onclick="TAB=\'' + t[0] + '\';draw()">' + t[1] + '<b>' + (DATA[t[0]] || []).length + '</b></button>'; }).join('');
   var a = DATA[TAB] || [];
   document.getElementById('list').innerHTML = a.length ? a.map(TAB === 'missing' ? need : stored).join('') : '<div class="empty">' + ({ missing: 'Все допущенные партии с пробами', stored: 'Проб на хранении нет', destroyed: 'Уничтоженных проб нет' })[TAB] + '</div>';
+}
+function quick(x, i) {
+  var L = DATA.last; if (!L || !L.container || !L.location) return '';
+  return '<div class="quick" style="padding:8px 12px;border-top:1px dashed var(--line,#ddd)"><div class="grid"><div><label>t° в холодильнике для проб, °C</label><input id="qt' + i + '" inputmode="decimal"></div>' +
+    (L.portion ? '' : '<div><label>Масса, г</label><input id="qw' + i + '" inputmode="decimal"></div>') + '</div>' +
+    '<div class="meta">' + (L.portion ? 'Порция целиком · ' : '') + esc(L.container) + ' · ' + esc(L.location) + ' — как в прошлой пробе (' + esc(L.taken) + '). Другая тара или место — нажмите на название блюда.</div>' +
+    '<div class="acts"><button class="btn pri" onclick="quickTake(' + i + ')">✓ Проба отобрана</button></div><div class="msg" id="qm' + i + '"></div></div>';
+}
+function quickTake(i) {
+  var x = DATA.missing[i], L = DATA.last, m = document.getElementById('qm' + i), t = v('qt' + i);
+  if (t === '') { m.className = 'msg err'; m.textContent = 'Введите температуру в холодильнике для проб'; return; }
+  if (!confirm('Проба «' + x.dish + '» (партия ' + x.batchId + ') отобрана: ' + (L.portion ? 'порция целиком' : v('qw' + i) + ' г') + ', ' + L.container + ', ' + L.location + ', ' + t + ' °C?')) return;
+  call('mcTakeDailySample', [JSON.stringify({ batchId: x.batchId, weight: L.portion ? '' : v('qw' + i), portion: !!L.portion, container: L.container, location: L.location, temperature: t, equipmentId: L.equipmentId || '' }), TOKEN]).then(function (r) {
+    if (!r || r.success === false) { m.className = 'msg err'; m.textContent = errText(r); return; }
+    m.className = 'msg ok'; m.textContent = 'Проба записана, хранить до ' + r.data.keepUntil; setTimeout(load, 1000);
+  }, function () { m.className = 'msg err'; m.textContent = 'Нет связи — проба не записана'; });
 }
 function need(x, i) {
   return '<div class="card" id="c' + i + '"><div class="row" onclick="this.parentNode.classList.toggle(\'open\')"><div><div class="nm">' + esc(x.dish) + '</div><div class="meta">Партия ' + esc(x.batchId) + ' · ' + esc(x.qty) + ' ' + esc(x.unit) + ' · допущена ' + esc(x.released) + '</div></div><span class="chip r">Нет пробы</span></div>' +
@@ -51,7 +90,7 @@ function need(x, i) {
     '<div><label>t° в холодильнике, °C</label><input id="t' + i + '" inputmode="decimal"></div>' +
     (EQ.length ? '<div><label>Термометр</label><select id="e' + i + '"><option value="">—</option>' + EQ.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>'; }).join('') + '</select></div>' : '') + '</div>' +
     '<label class="chk" style="margin-top:8px"><input type="checkbox" id="p' + i + '">Порционное блюдо — отобрана порция целиком</label>' +
-    '<div class="acts"><button class="btn pri" onclick="take(' + i + ')">Записать отбор пробы</button></div><div class="msg" id="m' + i + '"></div></div></div>';
+    '<div class="acts"><button class="btn pri" onclick="take(' + i + ')">Записать отбор пробы</button></div><div class="msg" id="m' + i + '"></div></div>' + quick(x, i) + '</div>';
 }
 function stored(x, i) {
   return '<div class="card"><div class="row"><div><div class="nm">' + esc(x.dish) + '</div><div class="meta">Проба ' + esc(x.id) + ' · партия ' + esc(x.batchId) + ' · ' + esc(x.weight) + (x.weight === 'порция' ? '' : ' г') + ' · ' + esc(x.location) + ', ' + esc(x.temp) + ' °C</div>' +

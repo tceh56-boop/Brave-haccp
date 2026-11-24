@@ -122,7 +122,9 @@ function _bcClosePending_(batchId, vals, who) {
       var j = JOURNALS.filter(function (x) { return x.id === jid; })[0]; if (!j) continue;
       var jsh = _book_().getSheetByName(j.sheetName); var jr = parseInt(pv[i][16], 10); if (!jsh || !(jr > 1)) continue;
       var pc = j.columns.indexOf('Партия'); if (pc < 0 || String(jsh.getRange(jr, pc + 1).getValue()) !== String(batchId)) continue;
-      var col = String(pv[i][17] || ''), ci = j.columns.indexOf(col), ans = '', val = '';
+      // V87: в «Журналы_Ожидания» колонка записана номером (8, 9, 10 — как её пишет автозаполнение), а не названием —
+      // раньше вопросы J03 после входного контроля не закрывались, а строка J03 оставалась пустой
+      var raw = String(pv[i][17] || ''), col = /^\d+$/.test(raw) ? String(j.columns[Number(raw) - 1] || '') : raw, ci = j.columns.indexOf(col), ans = '', val = '';
       if (/t°/.test(col)) { val = vals.t === null ? 'не требуется' : vals.t; ans = vals.tOk ? 'да' : 'нет'; }
       else if (/органолепт/i.test(col)) { ans = vals.org ? 'да' : 'нет'; val = ans; }
       else if (/решение/i.test(col)) { ans = vals.release ? 'да' : 'нет'; val = vals.release ? 'принято' : 'карантин'; }

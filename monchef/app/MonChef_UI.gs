@@ -78,7 +78,7 @@ function _uiAccessFilter_(res, s) {
   if (res.kpis) res.kpis = res.kpis.filter(function (k) { return secOk(k.go); });
   if (res.readiness && !_mcRbSectionAllowed_(s, 'inspection')) delete res.readiness;
   if (res.readiness && res.readiness.items) res.readiness.items.forEach(function (x) { if (x.go && ((x.go.module && !modOk(x.go.module)) || !secOk(x.go))) delete x.go; });
-  var money = !_mcRbHasExact_(s, 'costs');
+  var money = !_mcRbHasExact_(s, 'costs|finance_view');   // суммы в ₽ — с правом «себестоимость» или «экономика — просмотр»
   (res.tabs || []).forEach(function (t) {
     var drop = {};
     if (money && t.columns) t.columns = t.columns.filter(function (c) { if (/₽/.test(String(c.l || ''))) { drop[c.k] = 1; return false; } return true; });
@@ -668,8 +668,9 @@ function uiDishDetail(token, code, portions) {
       steps: (function () { try { var st = JSON.parse(String((meta[code] || {}).steps || '[]')); return Array.isArray(st) ? st.map(String) : []; } catch (e) { return []; } })(),
       // срок реализации для этикеток заданий кухни (лист «Блюда», колонка J): из карты; если пусто — какой срок поставит система и откуда
       shelf: (function () { var h = parseFloat((meta[code] || {}).shelfH); if (h > 0) return { hours: h, src: 'карта' };
+        try { var nb = typeof _v70ShelfFor_ === 'function' ? _v70ShelfFor_(code) : null; if (nb && nb.hours > 0) return { hours: null, def: nb.hours, src: nb.src }; } catch (e) {}
         var c = d.cat || '', def = null, src = '';
-        try { if (DEFAULT_SHELF_LIFE_HOURS[c]) { def = DEFAULT_SHELF_LIFE_HOURS[c]; src = 'категория «' + c + '»'; } else if (/п\/ф|п-ф/i.test(d.name)) { def = 24; src = 'полуфабрикат по названию'; } else { def = DEFAULT_SHELF_LIFE_FALLBACK; src = 'общий срок по умолчанию'; } } catch (e) {}
+        def = null; src = 'не задан: укажите срок в карте или в таблице сроков предприятия (сроки «по категории» не применяются — ДОК_12)';
         return { hours: null, def: def, src: src }; })(),
       allergens: (function () { try { return _alDishAllergens_(idx, code); } catch (e) { return null; } })(),
       ttk: (function () { try { return _uiTtkState_(code, admin || perm.ttk_approve === true); } catch (e) { return null; } })() }));

@@ -157,6 +157,7 @@ function _mcSignedPdfCore_(signatureId) {
   var s = v[row], j = _mcJournal_(String(s[1])); if (!j) throw new Error('Журнал не найден');
   var rows = _mcPeriodRows_(j, s[3], s[4]), p = PropertiesService.getScriptProperties();
   var org = p.getProperty('ORG_NAME') || '— (свойство ORG_NAME не задано)', obj = p.getProperty('LOCATION_NAME') || '— (свойство LOCATION_NAME не задано)';
+  if (typeof _mcOrg_ === 'function') { var o9 = _mcOrg_(); if (o9.name) org = _mcOrgLine_(o9); if (o9.objectName || o9.actualAddress) obj = [o9.objectName, o9.actualAddress].filter(String).join(', '); }   // ТЗ §9: из настроек организации
   var url = _mcSigVerifyUrl_(s[16]), pos = _mcSignerPosition_(s[7]);
   var meta = [['Организация', org], ['Объект', obj], ['Журнал', j.name], ['Период', _mcFmtD_(s[3]) + ' — ' + _mcFmtD_(s[4])], ['Версия', s[5]], ['Количество записей', s[6]],
     ['Статус', String(s[14]) === 'SIGNED' ? 'ПОДПИСАН' : s[14]], ['Подписал', s[8] + (pos ? ', ' + pos : '') + (s[9] ? ' (' + s[9] + ')' : '')], ['Дата и время подписания', _mcFmtDt_(s[10])],
@@ -165,6 +166,7 @@ function _mcSignedPdfCore_(signatureId) {
   var h = '<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:9px;color:#111}h1{font-size:15px;margin:0 0 8px}table{border-collapse:collapse}' +
     '.m td{padding:2px 8px 2px 0;font-size:10px;vertical-align:top}.m td:first-child{color:#555}.r{width:100%}.r th,.r td{border:1px solid #bbb;padding:2px 3px;text-align:left;vertical-align:top}.r th{background:#f2ece4}' +
     '.foot{margin-top:10px;color:#666;font-size:8px}</style></head><body>' +
+    (typeof _mcOrgHeaderHtml_ === 'function' ? _mcOrgHeaderHtml_('', '') : '') +
     '<h1>' + _mcEsc_(j.name) + '</h1><table style="width:100%"><tr><td style="vertical-align:top"><table class="m">' + meta.map(function (m) { return '<tr><td>' + _mcEsc_(m[0]) + '</td><td><b>' + _mcEsc_(m[1]) + '</b></td></tr>'; }).join('') + '</table></td>' +
     (url ? '<td style="width:150px;text-align:center;vertical-align:top">' + _mcQrHtmlTable_(url, 3) + '<div style="font-size:9px;margin-top:4px"><b>Проверить документ</b></div><div style="font-size:7px;color:#666;word-break:break-all">' + _mcEsc_(url) + '</div></td>' : '') + '</tr></table>' +
     '<p style="font-size:9px;color:#444">Подпись — внутреннее подтверждение ответственного в системе MON CHEF, не квалифицированная электронная подпись.</p>' +

@@ -64,8 +64,21 @@ var MC_RB_PERMS_ = [
   ['haccp', 'ХАССП: план, ККТ карт, решения по отклонениям и партиям, сроки п/ф', 'ХАССП'],
   ['haccp_approve', 'Утверждение плана ХАССП, отзыв подписи журнала', 'ХАССП'],
   ['sanitation', 'Дезсредства, санобработка, вода, вредители, отходы', 'ХАССП'],
-  ['lab_view', 'Лаборатория, вода, вредители, дезсредства — просмотр', 'ХАССП'],
+  ['lab_view', 'Лаборатория, вода, вредители, дезсредства — просмотр лабораторных результатов', 'ХАССП'],
   ['lab', 'Лабораторный контроль', 'ХАССП'],
+  // ТЗ «Итоговая структура…», §19: финансы, ППК, ТУ, лаборатория
+  ['lab_edit', 'Лаборатория — планы исследований и отбор проб', 'Лаборатория'],
+  ['lab_upload', 'Лаборатория — загрузка протоколов испытаний', 'Лаборатория'],
+  ['lab_approve', 'Лаборатория — подтверждение результатов и решений по партиям', 'Лаборатория'],
+  ['ppk_view', 'ППК — просмотр', 'ППК и ТУ'],
+  ['ppk_edit', 'ППК — разработка (черновик, разделы, мероприятия, график)', 'ППК и ТУ'],
+  ['ppk_approve', 'ППК — утверждение и ввод в действие', 'ППК и ТУ'],
+  ['tu_view', 'ТУ — просмотр', 'ППК и ТУ'],
+  ['tu_edit', 'ТУ — разработка (версии, показатели, методы, сырьё, маркировка)', 'ППК и ТУ'],
+  ['tu_approve', 'ТУ — утверждение и ввод в действие', 'ППК и ТУ'],
+  ['finance_view', 'Экономика — просмотр финансовых расчётов (себестоимость, выручка, валовой вклад)', 'Экономика'],
+  ['finance_edit', 'Экономика — цены меню, упаковка, тарифы труда, расходы и правила распределения', 'Экономика'],
+  ['finance_close', 'Экономика — закрытие финансового периода и корректировки закрытого периода', 'Экономика'],
   ['medical_view', 'Медкнижки — просмотр и контроль допуска', 'Персонал'],
   ['medical', 'Медкнижки — изменение', 'Персонал'],
   ['personnel', 'Сотрудники — создание и изменение, назначение ролей', 'Персонал'],
@@ -75,6 +88,7 @@ var MC_RB_PERMS_ = [
   ['audit_create', 'QR-доступ проверяющему, пакет проверки', 'Проверка'],
   ['audit_revoke', 'Отзыв доступа проверяющего', 'Проверка'],
   ['archive', 'Резервные копии — создание', 'Настройки'],
+  ['org_edit', 'Реквизиты и логотип организации (подставляются в PDF)', 'Настройки'],
   ['system', 'Системные настройки, интеграции, миграция, восстановление (технический доступ)', 'Настройки']
 ];
 
@@ -85,16 +99,22 @@ var MC_RB_MATRIX_ = {
   'Директор': ['banquets_view', 'banquets', 'banquet_scan', 'catalog', 'ttk_edit', 'ttk_approve', 'ttk_history', 'costs', 'plan',
     'shop_all', 'stock_view', 'receiving', 'invoices_view', 'doc_correct', 'procurement', 'labels', 'documents_view', 'documents', 'vsd_view', 'brakerage',
     'haccp_view', 'haccp_approve', 'lab_view', 'medical_view', 'medical', 'personnel', 'grants', 'reports', 'audit_view',
-    'audit_create', 'audit_revoke', 'archive'],
+    'audit_create', 'audit_revoke', 'archive',
+    // §19: экономика полностью, утверждение ППК и ТУ, решения по лабораторным результатам, реквизиты организации
+    'finance_view', 'finance_edit', 'finance_close', 'ppk_view', 'ppk_approve', 'tu_view', 'tu_approve', 'lab_approve', 'org_edit'],
   'Администратор': ['banquets_view', 'banquets', 'banquet_scan'],
   'Шеф-повар': ['banquets_view', 'catalog', 'ttk_edit', 'ttk_approve', 'ttk_history', 'costs', 'plan', 'plan_edit', 'kanban', 'prod_manage', 'batch_use', 'hot_ccp',
     'shop_all', 'stock_view', 'stock', 'receiving', 'invoices_view', 'doc_correct', 'procurement', 'labels', 'documents_view', 'brakerage', 'journals', 'checklists', 'haccp_view',
-    'reports', 'audit_view'],
+    'reports', 'audit_view',
+    // §19: просмотр экономики; ТУ на свою продукцию; лабораторные планы, пробы и протоколы
+    'finance_view', 'ppk_view', 'tu_view', 'tu_edit', 'lab_view', 'lab_edit', 'lab_upload'],
   'Кондитер': ['catalog', 'ttk_history', 'plan', 'kanban', 'batch_use', 'shop_pastry', 'stock_view', 'labels', 'documents_view', 'journals', 'checklists'],
   'Повар холодного цеха': MC_RB_COOK_.concat(['shop_cold']),
   'Повар горячего цеха': MC_RB_COOK_.concat(['shop_hot', 'hot_ccp']),
   'Ответственный за ХАССП': ['catalog', 'ttk_history', 'shop_all', 'stock_view', 'invoices_view', 'documents_view', 'documents', 'mercury', 'vsd_cancel', 'brakerage',
-    'journals', 'checklists', 'haccp_view', 'haccp', 'sanitation', 'lab', 'medical_view', 'reports', 'audit_view', 'audit_create', 'audit_revoke']
+    'journals', 'checklists', 'haccp_view', 'haccp', 'sanitation', 'lab', 'medical_view', 'reports', 'audit_view', 'audit_create', 'audit_revoke',
+    // §19: разработка ППК и ТУ, лаборатория полностью (план, отбор, протоколы, решения)
+    'ppk_view', 'ppk_edit', 'tu_view', 'tu_edit', 'lab_view', 'lab_edit', 'lab_upload', 'lab_approve']
 };
 MC_RB_MATRIX_['Су-шеф'] = MC_RB_MATRIX_['Шеф-повар'].slice();
 MC_RB_MATRIX_[MC_RB_LEGACY_COOK_] = MC_RB_COOK_.concat(['shop_hot', 'shop_cold', 'hot_ccp']);
@@ -109,7 +129,12 @@ var MC_RB_GRANTABLE_ = {
   brakerage: ['Кондитер', 'Повар холодного цеха', 'Повар горячего цеха', MC_RB_LEGACY_COOK_],
   labels: ['Ответственный за ХАССП'],
   plan: ['Ответственный за ХАССП'],
-  doc_edit: ['Директор']
+  doc_edit: ['Директор'],
+  // §19: замещение — цены и расходы ведёт шеф; ППК — шеф при отсутствии ответственного за ХАССП; экономику видит администратор зала
+  finance_edit: ['Шеф-повар', 'Су-шеф'],
+  finance_view: ['Администратор'],
+  ppk_edit: ['Шеф-повар', 'Су-шеф'],
+  lab_upload: ['Кондитер']
 };
 
 /** Старые ключи, которые запрашивают функции изнутри (вторая линия), → новые ключи. Точная проверка — в шлюзе. */
@@ -127,6 +152,8 @@ var MC_RB_ALIAS_ = {
   sanitation: ['sanitation', 'checklists'],
   medical: ['medical', 'medical_view'],
   documents: ['documents', 'documents_view'],
+  lab: ['lab', 'lab_edit', 'lab_upload', 'lab_approve'],
+  lab_view: ['lab_view', 'lab', 'lab_edit', 'lab_upload', 'lab_approve'],
   production: ['kanban', 'prod_manage'], manager: ['prod_manage', 'personnel'], events: ['banquets', 'banquets_view'], admin: ['system']
 };
 
@@ -158,7 +185,8 @@ var MC_RB_JOURNAL_ROLES_ = (function () {
 var MC_RB_SECTIONS_ = {
   home: '*', banquets: 'banquets_view', menu: 'catalog', planning: 'plan', production: 'kanban|plan|prod_manage', stock: 'stock_view',
   revisions: 'stock', deficits: 'plan_edit|procurement', surplus: 'plan_edit|stock', procurement: 'procurement', issue: 'prod_manage',
-  haccp: 'haccp_view', sanitation: 'sanitation|checklists|lab_view', personnel: 'personnel|medical_view', lab: 'lab|lab_view', equipment: 'haccp_view',
+  haccp: 'haccp_view|ppk_view', sanitation: 'sanitation|checklists|lab_view', personnel: 'personnel|medical_view', lab: 'lab|lab_view|lab_edit|lab_upload|lab_approve|tu_view', equipment: 'haccp_view',
+  finance: 'finance_view',
   documents: 'documents_view|mercury|vsd_view', reports: 'reports', inspection: 'audit_create|audit_view|haccp_view', settings: 'system|grants|archive',
   picking: 'kanban|prod_manage'
 };
@@ -173,12 +201,28 @@ var MC_RB_MODULES_ = { haccptasks: 'haccp_view|journals', weekly: 'plan', procur
   deficitbridge: 'plan_edit|procurement', ttkrecalc: 'plan_edit', productunits: 'ttk_approve|stock', productionrelease: 'prod_manage', normative: 'haccp_view', ppkbuilder: 'haccp|haccp_approve|haccp_view', compliance: 'haccp_view',
   grants: 'grants', ttkhistory: 'ttk_history',
   // бывшие возможности старого интерфейса и страницы «Смена» — экраны главного окна
-  myshift: 'kanban|journals|checklists', kanban: 'kanban|plan|prod_manage', printqueue: 'labels', checklists: 'haccp|prod_manage|sanitation', minstock: 'stock',
-  nutrition: 'catalog|ttk_edit', wastenorms: 'stock|haccp|batch_use', lamps: 'journals|haccp_view', journaltriggers: 'journals|haccp_view|haccp', prices: 'costs', brakerage: 'brakerage', haccpevents: 'haccp|haccp_view',
+  myshift: '*', kanban: 'kanban|plan|prod_manage', printqueue: 'labels', checklists: 'haccp|prod_manage|sanitation', minstock: 'stock',
+  nutrition: 'catalog|ttk_edit|haccp|ttk_approve', wastenorms: 'stock|haccp|batch_use', lamps: 'journals|haccp_view', journaltriggers: 'journals|haccp_view|haccp', prices: 'costs', brakerage: 'brakerage', haccpevents: 'haccp|haccp_view',
   // после «полной инструкции»: списание по акту (питание персонала и др.), приход полуфабрикатов
   writeoff: 'stock|costs', pfincome: 'kanban|prod_manage|stock',
   // возвращено из прежнего интерфейса: выполнение чек-листов, журнал склада, задачи, этикетка вручную, контур ХАССП, журнал продаж
-  checklistrun: 'checklists|sanitation|haccp_view', stockops: 'stock|stock_view|costs', tasks: 'kanban|plan|prod_manage', labels: 'labels', haccpcontour: 'journals|haccp_view|audit_view', sales: 'banquets|journals'
+  checklistrun: 'checklists|sanitation|haccp_view', stockops: 'stock|stock_view|costs', tasks: 'kanban|plan|prod_manage', labels: 'labels', haccpcontour: 'journals|haccp_view|audit_view', sales: 'banquets|journals',
+  // ТЗ «Итоговая структура…»: экономика потока, ППК, ТУ, лаборатория, реквизиты организации, отчёты §20
+  finance: 'finance_view', ppk: 'ppk_view|ppk_edit|ppk_approve', tu: 'tu_view|tu_edit|tu_approve', labx: 'lab|lab_view|lab_edit|lab_upload|lab_approve',
+  org: 'org_edit|system', reports20: 'reports|finance_view|ppk_view|tu_view|lab_view|audit_view',
+  normbase: 'haccp|haccp_view|haccp_approve|ppk_view|lab_view|audit_view|system',
+  opforms: 'stock|finance_view',
+  recall: 'haccp|haccp_view|haccp_approve|stock',
+  hazards: 'haccp|haccp_view|haccp_approve|ttk_approve',
+  emergency: 'haccp|haccp_view|haccp_approve|ttk_approve',
+  metrology: 'haccp|haccp_view|haccp_approve|ttk_approve',
+  brakesales: 'brakerage',
+  shiftsales: 'banquets|journals',
+  fryer: 'journals|haccp_view',
+  health: '*',
+  eggs: 'haccp|haccp_view|stock|ttk_approve|journals',
+  pestact: 'haccp|haccp_view|sanitation|journals',
+  folders: 'documents|haccp|system'
 };
 /** Кнопки разделов, которые вызывают функцию экрана (Console.html), → право. Нет в списке — кнопка видна всем, кто видит раздел. */
 var MC_RB_UI_FN_ = { banqNew: 'banquets', banqScanPick: 'banquet_scan', dishNew: 'ttk_edit', dpOpen: 'ttk_edit', syncTtk: 'ttk_edit', ttkFixDoubled: 'ttk_approve', mcTtkIds: 'ttk_approve',
@@ -189,6 +233,22 @@ var MC_RB_MODULE_RU_ = { haccptoday: 'ХАССП — сегодня', income: '�
   fulfillment: 'Выдача банкета', closure: 'Закрытие банкета', ppkbuilder: 'Конструктор ППК', compliance: 'ХАССП: процессы и ККТ', normative: 'Нормативы', grants: 'Права сотрудников', ttkhistory: 'История ТТК',
   myshift: 'Моя смена', kanban: 'Задания кухни', printqueue: 'Очередь печати этикеток', checklists: 'Шаблоны чек-листов', minstock: 'Норма запаса', nutrition: 'КБЖУ продуктов',
   wastenorms: 'Нормы отходов', lamps: 'Бактерицидные лампы', journaltriggers: 'Вопросы журналов', prices: 'Изменения закупочных цен', brakerage: 'Бракераж', haccpevents: 'События → контроли ХАССП', writeoff: 'Списание по акту', pfincome: 'Приход полуфабрикатов', checklistrun: 'Чек-листы: выполнить', stockops: 'Журнал склада', tasks: 'Задачи', labels: 'Этикетка вручную', haccpcontour: 'Контур ХАССП за 7 дней', sales: 'Журнал продаж', disinfectants: 'Дезсредства' };
+// ТЗ «Итоговая структура…»: новые экраны
+MC_RB_MODULE_RU_.finance = 'Экономика потока'; MC_RB_MODULE_RU_.ppk = 'ППК: версии, разделы, график'; MC_RB_MODULE_RU_.tu = 'Технические условия';
+MC_RB_MODULE_RU_.labx = 'Лаборатория: план, отбор, протоколы'; MC_RB_MODULE_RU_.org = 'Организация: реквизиты и логотип'; MC_RB_MODULE_RU_.reports20 = 'Отчёты: экономика, ППК, ТУ, лаборатория';
+MC_RB_MODULE_RU_.normbase = 'Нормативы: база на Google Диске';
+MC_RB_MODULE_RU_.opforms = 'Документы ОП: унифицированные формы';
+MC_RB_MODULE_RU_.recall = 'Отзыв продукции';
+MC_RB_MODULE_RU_.hazards = 'Анализ опасностей и план ХАССП';
+MC_RB_MODULE_RU_.emergency = 'Чрезвычайные ситуации и аварии';
+MC_RB_MODULE_RU_.metrology = 'Средства измерения (п. 8.7)';
+MC_RB_MODULE_RU_.brakesales = 'Бракераж по продажам';
+MC_RB_MODULE_RU_.shiftsales = 'Продажи за смену';
+MC_RB_MODULE_RU_.fryer = 'Фритюр';
+MC_RB_MODULE_RU_.health = 'Здоровье на смену';
+MC_RB_MODULE_RU_.eggs = 'Яйца';
+MC_RB_MODULE_RU_.pestact = 'Акт 3-Д со снимка';
+MC_RB_MODULE_RU_.folders = 'Папки и документы на Диске';
 
 /** Уведомления, адресованные прежним ролям, → кто получает теперь. */
 var MC_RB_TARGETS_ = {

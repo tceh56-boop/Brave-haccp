@@ -600,6 +600,8 @@ function _jfJ52_(from, to) {
 /* ---------- шапка, сборка формы, API ---------- */
 /** Название предприятия: из утверждённого ППК (свойство MC_ORG_NAME заполняется при утверждении); пока нет — прочерк для бланка. */
 function _jfOrg_() {
+  // ТЗ «Итоговая структура», §9: реквизиты — из настроек организации (наименование, ИНН, адрес объекта); прежнее свойство — запасной вариант
+  try { if (typeof _mcOrg_ === 'function') { var o = _mcOrg_(); if (o.name) return _mcOrgLine_(o); } } catch (e) {}
   var n = ''; try { n = String(PropertiesService.getScriptProperties().getProperty('MC_ORG_NAME') || ''); } catch (e) {}
   return n || 'ООО «______________»';
 }

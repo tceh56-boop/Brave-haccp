@@ -622,7 +622,7 @@ function expHtml(r, i) {
   else {
     var opts = Object.keys(MODES).filter(function (k) { return s.modes[k]; }).map(function (k) { var m = s.modes[k]; return '<option value="' + k + '"' + (k === r.mode ? ' selected' : '') + '>' + MODES[k] + ': ' + esc(String(m.text).slice(0, 60)) + (m.until ? '' : ' — срока нет') + '</option>'; });
     if (!r.mode && opts.length) opts.unshift('<option value="" selected>режим хранения…</option>');
-    h += (e.src === 'MATRIX' ? '<span class="chip g">Годен до ' + esc(e.lbl) + '</span><span class="meta">по матрице</span>' : '<span class="chip a">По матрице срока нет</span>') +
+    h += (e.src === 'MATRIX' ? '<span class="chip g">Годен до ' + esc(e.lbl) + '</span><span class="meta">' + (s.base ? 'по базе нормативов на Диске' : 'по матрице') + '</span>' : '<span class="chip a">' + (s.base ? 'В базе нормативов срока нет' : 'По матрице срока нет') + '</span>') +
       (opts.length ? '<select title="Режим хранения" onchange="ROWS[' + i + '].mode=this.value;drawExp(' + i + ')">' + opts.join('') + '</select>' : '') +
       '<span class="meta">«' + esc(s.matched) + '»' + (s.method && s.method !== 'точно' ? ' · ' + esc(s.method) + (/проверьте/.test(s.method) ? '' : ' — проверьте') : '') + '</span>';
   }
