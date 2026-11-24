@@ -70,7 +70,7 @@
     "Staff shift schedule and shortage (V98)",
     "Working spreadsheet ID in installation settings (V99)",
     "Personal data technical measures (V100)",
-    "Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split (V101, stages 2–3)"
+    "Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split; guest menu Reels with in-app media, publication, guest requests by table QR; role editor (V101, stages 2, 3, 5)"
   ],
   "validation": {
     "gs_syntax": "PASS",
@@ -114,8 +114,8 @@
     },
     {
       "file": "Code.gs",
-      "bytes": 994764,
-      "sha256": "3a0315ebe79e1f74f9945042e416e30abb339125171a44895c709583f2f2c21f"
+      "bytes": 995767,
+      "sha256": "cb260eccbc43f0e3b3804ec49c0445b50843596e00877e75312719ffd78c4280"
     },
     {
       "file": "Console.html",
@@ -148,14 +148,19 @@
       "sha256": "1338f3190a9c08ebfffda45c1cddf8d90102c503605e5391e1bd2b74e14ece05"
     },
     {
+      "file": "GuestMenu.html",
+      "bytes": 22035,
+      "sha256": "d99c0cf626932ce22c313381c325d5040763cb3faef28cbb4b7f043a33a93ce2"
+    },
+    {
       "file": "HaccpToday.html",
       "bytes": 8039,
       "sha256": "24ae48e276e3c2261914c40653d8c3a1b3cc25ad665f368a5840577549a2e53b"
     },
     {
       "file": "Hall.html",
-      "bytes": 63608,
-      "sha256": "fae23930efbb8c063cf9122f86c309f15ff34476e2adc96cd929e12ce0ebcfda"
+      "bytes": 65629,
+      "sha256": "6a2d9ff25aeaec905ffe62da3e2b2bbb3ecfa7f36c1b433eeaa7d0541d986fb6"
     },
     {
       "file": "Income.html",
@@ -176,6 +181,11 @@
       "file": "Labs.html",
       "bytes": 11123,
       "sha256": "3ccc537f8fb7ff4a88f9980fef4a2ea19f1c6e572e96170f01e3d44f0dda94a3"
+    },
+    {
+      "file": "MenuEditor.html",
+      "bytes": 19162,
+      "sha256": "6ede9fdcceb730c4b6a91ae720b55a428c607059343d92a62f5dd8db3b9d681b"
     },
     {
       "file": "MonChef_Allergens.gs",
@@ -439,13 +449,18 @@
     },
     {
       "file": "MonChef_V101_RS_Core.gs",
-      "bytes": 22778,
-      "sha256": "4f933f64356b66dac9307ef0c7b4e38bf17233932b55443288011d9e9eae9d02"
+      "bytes": 24154,
+      "sha256": "e0c031e04cca242b15e782a0974d8d9ce0ca5db1f56daef25e9062b90e77039b"
     },
     {
       "file": "MonChef_V101_RS_Hall.gs",
-      "bytes": 12811,
-      "sha256": "57844c6a171ce60ebf17841c4305eeb17f68d18dbfec2a0284734de86142881e"
+      "bytes": 13422,
+      "sha256": "348db66ad80d4b64ae7aa67cd060c075ca2d49343f5d793a0c26fde698e63b69"
+    },
+    {
+      "file": "MonChef_V101_RS_Menu.gs",
+      "bytes": 37911,
+      "sha256": "26846d400c2056851c2e236ca756677cc2760eb5d867132ae13fcf87da44760a"
     },
     {
       "file": "MonChef_V101_RS_Orders.gs",
@@ -454,13 +469,13 @@
     },
     {
       "file": "MonChef_V101_RS_Roles.gs",
-      "bytes": 5075,
-      "sha256": "7b3a5b093f5fa6928a738fb0bb8a5b525fd0755a4bf7e517231987eae89b0b81"
+      "bytes": 5809,
+      "sha256": "7ec48b1f7ea94afc28bd153d5d0e7322bd5ab651da574aaeac90bf9209f975fc"
     },
     {
       "file": "MonChef_V101_RS_UI.gs",
-      "bytes": 3101,
-      "sha256": "8e39724a3524f918c25c8a33005e71828e5ab016efd9848fd5150886eacdd285"
+      "bytes": 4030,
+      "sha256": "b97281225f652c3044fb103bffa221d1ebbb49ab89143d8b36b9e66eb8cff6d7"
     },
     {
       "file": "MonChef_V10_OCR_Engine.gs",
@@ -938,6 +953,11 @@
       "sha256": "33c7d4d9da12f66df469ac1d4e88e9406f1f914bb169ee6f1e345f142cc1f286"
     },
     {
+      "file": "Roles.html",
+      "bytes": 10414,
+      "sha256": "036dc2b5c9cadaf2eb1602bd1b0de3ec0a7a989897ef75dc0983f91267ba9021"
+    },
+    {
       "file": "Staff.html",
       "bytes": 12597,
       "sha256": "93c810c97801f66a249bc9a2745b69689f729034c11203ac58012475eb63a38d"
@@ -961,6 +981,11 @@
       "file": "appsscript.json",
       "bytes": 560,
       "sha256": "e0c8eaa908a14c9e140b3416569cc725e9f6b2c7087f4039ce4074e8b4c7f5d8"
+    },
+    {
+      "file": "zz_MonChef_RS_RoleMatrix.gs",
+      "bytes": 14035,
+      "sha256": "307a8f65f8cba701ef59d513e60c728a1b3dc6f4589cb901e3d5d87a7d18b086"
     },
     {
       "file": "zz_MonChef_Runtime.gs",

@@ -30,8 +30,15 @@
         ],
         tabs: [{ title: 'Сегодня', columns: cols, rows: td.map(row) },
           { title: 'Неделя', columns: cols, rows: act.filter(function (b) { return b.date > today; }).sort(function (a, b) { return a.startAbs - b.startAbs; }).map(row) }],
-        actions: [{ label: 'Зал и бронирование', module: 'hall' }]
+        actions: [{ label: 'Зал и бронирование', module: 'hall' }].concat(s && _mcRbHasExact_(s, 'menu_publish') ? [{ label: 'Гостевое меню', module: 'menuedit' }] : [])
       };
     };
+  } catch (e) {}
+  // ссылки в разделах главного окна (как V97): редактор ролей — «Настройки» и «Персонал», гостевое меню — «Меню и ТТК»
+  try {
+    var sec = function (k, btn, need) { var orig = _UI_BUILDERS_[k]; if (typeof orig !== 'function') return; _UI_BUILDERS_[k] = function (token, opts, s) { var r = orig(token, opts, s) || {}; if (!s || _mcRbHasExact_(s, need)) r.actions = (r.actions || []).concat([btn]); return r; }; };
+    sec('settings', { label: 'Редактор ролей', module: 'roles' }, 'roles_edit');
+    sec('personnel', { label: 'Редактор ролей', module: 'roles' }, 'roles_edit');
+    sec('menu', { label: 'Гостевое меню (Reels)', module: 'menuedit' }, 'menu_publish');
   } catch (e) {}
 })();

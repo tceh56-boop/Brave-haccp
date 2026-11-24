@@ -87,7 +87,7 @@ function doGet(e) {
   }
   var out = _doGetRaw_(e);
   try {
-    if (out && out.getContent) {
+    if (out && out.getContent && params.menu !== '1') {   // V101: гостевое меню — без ключа входа и служебной полосы
       var dp = params;
       if (String(out.getTitle()) === 'MON CHEF') { dp = {}; Object.keys(params).forEach(function (k) { dp[k] = params[k]; }); dp.__console = '1'; dp.__openview = _mcViewOfParams_(params); }
       _mcDecoratePage_(out, dp);
@@ -211,6 +211,22 @@ function _doGetRaw_(e) {
  if (params.hall === '1' && params.token) {
    return HtmlService.createHtmlOutputFromFile('Hall')
      .setTitle('MON CHEF — Зал и бронирование')
+     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+ }
+ // V101 этап 5: гостевое меню — без входа (данные только через rsPublicMenu / rsPublicMedia); редактор меню и ролей — по праву
+ if (params.menu === '1') {
+   return HtmlService.createHtmlOutputFromFile('GuestMenu')
+     .setTitle('Меню')
+     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+ }
+ if (params.menuedit === '1' && params.token) {
+   return HtmlService.createHtmlOutputFromFile('MenuEditor')
+     .setTitle('MON CHEF — Гостевое меню')
+     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+ }
+ if (params.roles === '1' && params.token) {
+   return HtmlService.createHtmlOutputFromFile('Roles')
+     .setTitle('MON CHEF — Редактор ролей')
      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
  }
  if (params.batchcontrol === '1' && params.token) {

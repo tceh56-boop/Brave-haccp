@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Гостевое меню</title>
+<!-- MON CHEF V101 Restaurant Service — редактор гостевого меню (публикация, медиа, предпросмотр, QR, заказ гостей).
+     Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович. -->
+<style>
+:root{--wine:#6e1423;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--green:#2f7d4f;--green-bg:#e3f2e8;--amber:#a86a12;--amber-bg:#fbefd9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:12px}
+.tabs,.seg{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button,.seg button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;cursor:pointer;font:inherit;min-height:40px}
+.tabs button.on,.seg button.on{background:var(--wine);color:#fff;border-color:var(--wine)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;cursor:pointer}.nm{font-weight:650}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;background:#efe6e3;white-space:nowrap}.pub{background:var(--green-bg);color:var(--green)}.unp{background:var(--amber-bg);color:var(--amber)}
+label{display:block;font-size:12px;color:var(--mut);margin:8px 0 3px}input,select,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff;min-height:40px}textarea{min-height:80px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr}}
+.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink);min-height:42px}.btn.pri{background:var(--wine);color:#fff}.btn.ok{background:var(--green-bg);color:var(--green)}.btn.bad{background:var(--red-bg);color:var(--red)}.btn:disabled{opacity:.5}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.msg{margin:8px 0;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.media{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:8px}
+.mt{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#111;position:relative}.mt .pv{aspect-ratio:4/5;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px}
+.mt img,.mt video{width:100%;height:100%;object-fit:cover;display:block}.mt .bar{background:#fff;padding:6px;display:flex;gap:4px;flex-wrap:wrap}.mt .bar button{border:0;background:#efe6e3;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer}
+.mt .cv{position:absolute;top:6px;left:6px;background:var(--gold);color:#fff;border-radius:999px;font-size:11px;padding:2px 8px}
+.prog{height:8px;background:#eee;border-radius:4px;overflow:hidden;margin-top:6px}.prog i{display:block;height:100%;background:var(--wine);width:0}
+.phone{width:300px;max-width:100%;aspect-ratio:9/16;border-radius:26px;overflow:hidden;position:relative;background:#140f11;color:#f7efe9;margin:10px auto;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.phone .ph{position:absolute;inset:0}.phone .ph img,.phone .ph video{width:100%;height:100%;object-fit:cover}
+.phone .inf{position:absolute;left:0;right:0;bottom:0;padding:50px 14px 14px;background:linear-gradient(0deg,rgba(0,0,0,.9),transparent)}
+.qrs{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}.qr{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;break-inside:avoid}.qr svg{width:100%;height:auto}
+@media print{.tabs,.sub,h1,.acts,.noprint{display:none!important}.wrap{padding:0}.qr{border:1px solid #000}}
+</style></head>
+<body><div class="wrap">
+<h1>Гостевое меню</h1>
+<div class="sub">Публикация блюд для гостей: фото, видео, GIF, описание. Состав (без граммовок), КБЖУ и аллергены берутся из ТТК и утверждённых данных автоматически. Медиа хранятся в закрытой папке и показываются только через приложение.</div>
+<div class="tabs" id="tabs"></div><div id="msg"></div><div id="view"></div>
+</div>
+<script>
+var S = { tab: 'dishes', data: null, open: '', filter: 'all', q: '', pend: {}, urls: {} };
+function $(i) { return document.getElementById(i); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function money(k) { if (k === null || k === undefined) return 'нет цены'; var r = (k / 100).toFixed(2).split('.'); return r[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (r[1] === '00' ? '' : ',' + r[1]) + ' ₽'; }
+function uuid() { return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+function note(t, ok) { $('msg').innerHTML = t ? '<div class="msg ' + (ok ? 'ok' : 'err') + '">' + esc(t) + '</div>' : ''; }
+function call(fn, data, done, fail) {
+  google.script.run.withSuccessHandler(function (r) { var x; try { x = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) { x = null; } if (x && x.success) done(x.data); else (fail || note)(x && x.error ? x.error.message || x.error : 'Ошибка'); })
+    .withFailureHandler(function (e) { (fail || note)('Нет связи с сервером — повторите: ' + (e && e.message || e)); })[fn](JSON.stringify(data || {}));
+}
+function act(slot, fn, data, done, fail) { var k = S.pend[slot] || (S.pend[slot] = uuid()); data.idem = k; call(fn, data, function (r) { delete S.pend[slot]; done(r); }, function (m) { if (!/Нет связи/.test(m)) delete S.pend[slot]; (fail || note)(m); }); }
+function load(cb) { call('rsMenuAdmin', {}, function (d) { S.data = d; tabs(); render(); if (cb) cb(); }); }
+function tabs() { $('tabs').innerHTML = [['dishes', 'Блюда'], ['qr', 'QR-коды'], ['settings', 'Настройки']].map(function (t) { return '<button class="' + (S.tab === t[0] ? 'on' : '') + '" onclick="S.tab=\'' + t[0] + '\';tabs();render()">' + t[1] + '</button>'; }).join(''); }
+function render() { ({ dishes: rDishes, qr: rQr, settings: rSettings })[S.tab](); }
+
+/* ---------- блюда ---------- */
+var ST = { DRAFT: ['не опубликовано', ''], PUBLISHED: ['опубликовано', 'pub'], UNPUBLISHED: ['снято', 'unp'] };
+function rDishes() {
+  var l = S.data.dishes.filter(function (d) { return (S.filter === 'all' || d.pub.status === S.filter) && (!S.q || d.name.toLowerCase().indexOf(S.q.toLowerCase()) >= 0); });
+  var h = '<div class="seg">' + [['all', 'Все'], ['PUBLISHED', 'Опубликованные'], ['DRAFT', 'Не опубликованные'], ['UNPUBLISHED', 'Снятые']].map(function (f) { return '<button class="' + (S.filter === f[0] ? 'on' : '') + '" onclick="S.filter=\'' + f[0] + '\';rDishes()">' + f[1] + '</button>'; }).join('') +
+    '</div><input placeholder="Найти блюдо" value="' + esc(S.q) + '" oninput="S.q=this.value;rDishes();var i=document.querySelector(\'input\');i.focus();i.setSelectionRange(i.value.length,i.value.length)" style="margin-bottom:10px">';
+  h += l.map(function (d) {
+    var st = ST[d.pub.status] || ST.DRAFT, open = S.open === d.code;
+    return '<div class="card"><div class="row" onclick="S.open=S.open===\'' + d.code + '\'?\'\':\'' + d.code + '\';rDishes()"><div><span class="nm">' + esc(d.name) + '</span><div class="meta">' + esc(d.pub.category || d.category) + ' · ' + money(d.priceKop) + (d.priceFor ? ' за ' + esc(d.priceFor) : '') +
+      ' · медиа: ' + d.media.filter(function (m) { return m.status === 'ACTIVE'; }).length + (d.dishPhotos ? ' + фото блюда: ' + d.dishPhotos : '') + (d.pub.publishedAt ? ' · опубликовано ' + esc(d.pub.publishedAt) : '') + '</div></div><span class="chip ' + st[1] + '">' + st[0] + '</span></div>' +
+      (open ? editor(d) : '') + '</div>';
+  }).join('') || '<div class="meta">Нет блюд</div>';
+  $('view').innerHTML = h;
+  if (S.open) loadThumbs();
+}
+function dish(code) { return S.data.dishes.filter(function (d) { return d.code === code; })[0]; }
+function editor(d) {
+  return '<div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px"><div class="grid"><div><label>Категория для гостя</label><input id="e_cat" value="' + esc(d.pub.category || d.category) + '"></div>' +
+    '<div><label>Порядок в категории</label><input id="e_ord" type="number" value="' + (d.pub.order || 0) + '"></div><div><label>Где готовят</label><input disabled value="' + (d.dept === 'BAR' ? 'бар' : 'кухня') + '"></div></div>' +
+    '<label>Описание для гостя</label><textarea id="e_desc" maxlength="600">' + esc(d.pub.description) + '</textarea>' +
+    '<label>Фото, видео, GIF (первое — обложка). Фото и GIF — до 8 МБ, видео — до 30 МБ (MP4, WebM, MOV)</label>' +
+    '<div class="media">' + d.media.map(function (m) {
+      return '<div class="mt">' + (m.cover ? '<span class="cv">обложка</span>' : '') + '<div class="pv" id="pv_' + m.id + '">' + esc(m.type === 'VIDEO' ? 'видео' : m.type === 'GIF' ? 'GIF' : 'фото') + (m.status === 'HIDDEN' ? ' · скрыто' : '') + '</div><div class="bar">' +
+        (m.cover ? '' : '<button onclick="mUpd(\'' + m.id + '\',{cover:true})">обложка</button>') + '<button onclick="mUpd(\'' + m.id + '\',{order:' + (m.order - 1.5) + '})">◀</button><button onclick="mUpd(\'' + m.id + '\',{order:' + (m.order + 1.5) + '})">▶</button>' +
+        '<button onclick="mUpd(\'' + m.id + '\',{status:\'' + (m.status === 'HIDDEN' ? 'ACTIVE' : 'HIDDEN') + '\'})">' + (m.status === 'HIDDEN' ? 'показать' : 'скрыть') + '</button><button onclick="mDel(\'' + m.id + '\')">удалить</button></div></div>';
+    }).join('') + '</div>' + (d.dishPhotos ? '<div class="meta" style="margin-top:6px">Ещё ' + d.dishPhotos + ' фото из карточки блюда (MON CHEF «Фото блюд») — показываются гостю после загруженных.</div>' : '') +
+    '<input type="file" id="e_file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" style="margin-top:8px"><div class="prog" id="e_prog" style="display:none"><i></i></div>' +
+    '<div id="f_msg"></div><div class="acts"><button class="btn" onclick="upload(\'' + d.code + '\')">Загрузить файл</button><button class="btn" onclick="save(\'' + d.code + '\',\'save\')">Сохранить</button>' +
+    '<button class="btn" onclick="preview(\'' + d.code + '\')">Предпросмотр</button><button class="btn pri" onclick="save(\'' + d.code + '\',\'publish\')">' + (d.pub.status === 'PUBLISHED' ? 'Опубликовать изменения' : 'Опубликовать') + '</button>' +
+    (d.pub.status === 'PUBLISHED' ? '<button class="btn bad" onclick="save(\'' + d.code + '\',\'unpublish\')">Снять с публикации</button>' : '') + '</div><div id="e_prev"></div></div>';
+}
+function fmsg(t, ok) { var b = $('f_msg') || $('msg'); b.innerHTML = '<div class="msg ' + (ok ? 'ok' : 'err') + '">' + esc(t) + '</div>'; }
+function save(code, action) {
+  var d = dish(code);
+  if (action === 'unpublish' && !confirm('Снять «' + d.name + '» с публикации? Гости перестанут видеть блюдо.')) return;
+  act('save-' + code + action, 'rsMenuSave', { code: code, version: d.pub.version || '', category: $('e_cat').value, description: $('e_desc').value, order: $('e_ord').value, action: action },
+    function () { load(function () { fmsg(action === 'publish' ? 'Опубликовано — гости видят блюдо' : action === 'unpublish' ? 'Снято с публикации' : 'Сохранено', true); }); }, fmsg);
+}
+function mUpd(id, ch) {
+  var m = null; S.data.dishes.forEach(function (d) { d.media.forEach(function (x) { if (x.id === id) m = x; }); });
+  ch.id = id; ch.version = m.version; act('m-' + id, 'rsMediaUpdate', ch, function () { load(function () { fmsg('Изменено. Для опубликованного блюда нажмите «Опубликовать изменения».', true); }); }, fmsg);
+}
+function mDel(id) { if (confirm('Удалить файл? Он будет перемещён в корзину Google Диска.')) mUpd(id, { status: 'DELETED' }); }
+/* загрузка частями */
+function upload(code) {
+  var f = $('e_file').files[0]; if (!f) { fmsg('Выберите файл'); return; }
+  var prog = $('e_prog'), bar = prog.querySelector('i'); prog.style.display = 'block'; bar.style.width = '2%';
+  call('rsMediaUploadStart', { code: code, name: f.name, mime: f.type, size: f.size }, function (st) {
+    var send = function (i, tries) {
+      if (i >= st.parts) {
+        act('fin-' + st.uploadId, 'rsMediaUploadFinish', { uploadId: st.uploadId }, function () { bar.style.width = '100%'; load(function () { fmsg('Файл загружен', true); }); }, fmsg);
+        return;
+      }
+      var rd = new FileReader();
+      rd.onload = function () {
+        var b64 = String(rd.result).split(',')[1];
+        call('rsMediaUploadPart', { uploadId: st.uploadId, index: i, data: b64 }, function () { bar.style.width = Math.round((i + 1) / st.parts * 95) + '%'; send(i + 1, 0); },
+          function (m) { if (tries < 2 && /Нет связи/.test(m)) send(i, tries + 1); else fmsg(m); });
+      };
+      rd.readAsDataURL(f.slice(i * st.chunk, (i + 1) * st.chunk));
+    };
+    send(0, 0);
+  }, fmsg);
+}
+/* миниатюры и предпросмотр: файлы частями через приложение */
+function media(id, cb) {
+  if (S.urls[id]) return cb(S.urls[id]);
+  var parts = [], next = function (i) {
+    call('rsMediaGet', { id: id, part: i }, function (d) { parts[i] = d.data; if (i + 1 < d.parts) return next(i + 1);
+      var bins = parts.map(function (b) { var s = atob(b), a = new Uint8Array(s.length); for (var k = 0; k < s.length; k++) a[k] = s.charCodeAt(k); return a; });
+      S.urls[id] = { url: URL.createObjectURL(new Blob(bins, { type: d.mime })), mime: d.mime }; cb(S.urls[id]); }, function () {});
+  };
+  next(0);
+}
+function tag(u) { return /^video\//.test(u.mime) ? '<video src="' + u.url + '" muted playsinline loop autoplay></video>' : '<img src="' + u.url + '">'; }
+function loadThumbs() { var d = dish(S.open); if (!d) return; d.media.forEach(function (m) { if (m.type !== 'VIDEO' || m.size < 4e6) media(m.id, function (u) { var e = $('pv_' + m.id); if (e) e.innerHTML = tag(u); }); }); }
+function preview(code) {
+  call('rsMenuPreview', { code: code }, function (s) {
+    var h = '<div class="phone"><div class="ph" id="pp"></div><div class="inf"><div style="color:#d4af37;font-size:11px;text-transform:uppercase;letter-spacing:.1em">' + esc(s.category) + '</div><div style="font-size:20px;font-weight:800">' + esc(s.name) + '</div>' +
+      '<div style="font-weight:700">' + money(s.priceKop) + ' <span style="opacity:.7;font-weight:400">' + esc(s.priceFor) + '</span></div><div style="font-size:13px;opacity:.9">' + esc(s.description) + '</div></div></div>' +
+      '<div class="card"><div class="meta"><b>Состав для гостя:</b> ' + esc(s.composition.join(', ') || '—') + '</div><div class="meta"><b>КБЖУ на порцию:</b> ' + (s.kbju ? s.kbju.kcal + ' ккал · Б ' + s.kbju.protein + ' · Ж ' + s.kbju.fat + ' · У ' + s.kbju.carbs : esc(s.kbjuNote)) + '</div>' +
+      '<div class="meta"><b>Аллергены:</b> ' + esc(s.allergens.join(', ') || '—') + (s.allergensComplete ? '' : ' (сведения неполные — гость увидит «уточняйте у официанта»)') + '</div><div class="meta"><b>Медиа:</b> ' + s.media.length + '</div></div>';
+    $('e_prev').innerHTML = h;
+    var m0 = s.media[0]; if (m0 && !/^DP-/.test(m0.id)) media(m0.id, function (u) { $('pp').innerHTML = tag(u); });
+  }, fmsg);
+}
+/* ---------- QR ---------- */
+function rQr() {
+  $('view').innerHTML = '<div class="meta">Загрузка…</div>';
+  call('rsMenuQrs', {}, function (q) {
+    $('view').innerHTML = '<div class="card noprint"><div class="nm">Общая ссылка меню (только просмотр)</div><div class="meta" style="word-break:break-all">' + esc(q.common.url) + '</div></div>' +
+      (q.missing ? '<div class="card noprint"><div class="meta">Столов без QR-кода: ' + q.missing + '</div><div class="acts"><button class="btn pri" onclick="act(\'qr\',\'rsTablesQrIssue\',{},function(r){note(\'Выдано кодов: \'+r.issued,true);rQr();})">Выдать коды</button></div></div>' : '') + '<div class="acts noprint"><button class="btn" onclick="print()">Печать QR-кодов</button></div>' +
+      '<div class="qrs"><div class="qr">' + q.common.svg + '<div class="nm">Меню</div></div>' + q.tables.map(function (t) { return '<div class="qr">' + t.svg + '<div class="nm">Стол № ' + esc(t.table) + '</div><div class="meta">' + esc(t.hall) + '</div></div>'; }).join('') + '</div>';
+  }, note);
+}
+/* ---------- настройки ---------- */
+function rSettings() {
+  $('view').innerHTML = '<div class="card"><label class="nm" style="color:var(--ink);font-size:15px"><input type="checkbox" id="s_go" style="width:auto;min-height:0" ' + (S.data.guestOrder ? 'checked' : '') + '> Гость может отправить заявку официанту из меню (по QR-коду стола)</label>' +
+    '<div class="meta">Заявка не уходит на кухню: официант принимает её в заказ стола или отклоняет с причиной. По общей ссылке меню — только просмотр.</div>' +
+    '<label>Заголовок меню для гостя</label><input id="s_t" maxlength="60" placeholder="например, название ресторана" value="' + esc(S.data.title || '') + '"><div class="acts"><button class="btn pri" onclick="saveSettings()">Сохранить</button></div></div>';
+}
+function saveSettings() { act('settings', 'rsMenuSettings', { guestOrder: $('s_go').checked, title: $('s_t').value }, function (r) { S.data.guestOrder = r.guestOrder; S.data.title = r.title; note('Сохранено', true); }); }
+load();
+</script>
+</body></html>

@@ -21,12 +21,14 @@ var MC_RS_PERMS_ = [
   ['order_all', 'Заказы зала — все официанты: перенос стола, смена официанта, закрытие, отмена', 'Зал'],
   ['bill_split', 'Внутренние счета — разделить, объединить, перенести позиции', 'Зал'],
   ['discount', 'Скидка и сервисный сбор в счёте (вручную, с причиной)', 'Зал'],
-  ['payment_confirm', 'Подтверждение оплаты счёта (по кассе; сверка с Z-отчётом)', 'Зал']
+  ['payment_confirm', 'Подтверждение оплаты счёта (по кассе; сверка с Z-отчётом)', 'Зал'],
+  ['menu_publish', 'Гостевое меню — фото, видео, GIF, описания, публикация, заказ гостей по QR', 'Зал'],
+  ['roles_edit', 'Редактор ролей — права ролей и новые роли (с причиной, в аудите)', 'Персонал']
 ];
 var MC_RS_ROLES_NEW_ = ['Официант'];
 var MC_RS_MATRIX_ADD_ = {
-  'Директор': ['hall_view', 'booking', 'hall_manage', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm'],
-  'Администратор': ['hall_view', 'booking', 'hall_manage', 'catalog', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm'],
+  'Директор': ['hall_view', 'booking', 'hall_manage', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm', 'menu_publish', 'roles_edit'],
+  'Администратор': ['hall_view', 'booking', 'hall_manage', 'catalog', 'order_edit', 'order_send', 'order_all', 'bill_split', 'discount', 'payment_confirm', 'menu_publish'],
   'Официант': ['hall_view', 'catalog', 'order_edit', 'order_send', 'bill_split']
 };
 
@@ -47,7 +49,10 @@ var MC_RS_MATRIX_ADD_ = {
   grant('discount', ['Руководитель смены', 'Администратор площадки']);
   grant('order_all', ['Руководитель смены', 'Администратор площадки']);
   grant('order_edit', ['Руководитель смены', 'Администратор площадки']);
+  grant('menu_publish', ['Шеф-повар', 'Су-шеф', 'Администратор площадки']);
   // раздел главного окна и страница
   try { MC_RB_SECTIONS_.hall = 'hall_view|booking|hall_manage'; } catch (e) {}
   try { MC_RB_MODULES_.hall = 'hall_view|booking|hall_manage'; MC_RB_MODULE_RU_.hall = 'Зал и бронирование'; } catch (e) {}
+  try { MC_RB_MODULES_.menuedit = 'menu_publish'; MC_RB_MODULE_RU_.menuedit = 'Гостевое меню — редактор'; } catch (e) {}
+  try { MC_RB_MODULES_.roles = 'roles_edit'; MC_RB_MODULE_RU_.roles = 'Редактор ролей'; } catch (e) {}
 })();

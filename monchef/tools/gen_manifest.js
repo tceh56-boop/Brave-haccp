@@ -12,7 +12,7 @@ if (!fs.existsSync(path.join(A, 'Console.html'))) throw new Error('нет Consol
 const b = read('BUILD_MANIFEST.json');
 const upd = new Date().toISOString().slice(0, 10);
 const entry = { server: 'Code.gs', function: 'doGet', doGet: doGet, doPost: doPost, ui: 'Console.html', gate: 'zzz_MonChef_Gate.gs (загружается последним)' };
-const mods = b.modules.filter(m => !/Restaurant Service/.test(m)).concat(['Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split (V101, stages 2–3)']);
+const mods = b.modules.filter(m => !/Restaurant Service/.test(m)).concat(['Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split; guest menu Reels with in-app media, publication, guest requests by table QR; role editor (V101, stages 2, 3, 5)']);
 fs.writeFileSync(path.join(A, 'BUILD_MANIFEST.json'), JSON.stringify(Object.assign({}, b, { entrypoint: undefined, server: undefined, entry: entry, modules: mods,
   validation: Object.assign({}, b.validation, { app_javascript_syntax: undefined, ui: 'Console.html (App.html удалён)' }), files: files, updated: upd }), null, 2) + '\n');
 const d = read('DEPLOY_MANIFEST_FINAL.json');

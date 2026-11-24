@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Редактор ролей</title>
+<!-- MON CHEF V101 — редактор ролей для директора. Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович. -->
+<style>
+:root{--wine:#6e1423;--gold:#b3893f;--bg:#f7f3f1;--card:#fff;--ink:#2a1a1d;--mut:#7d6b6e;--line:#eadfdc;--red:#a8231f;--red-bg:#f8e1df;--green:#2f7d4f;--green-bg:#e3f2e8;--amber:#a86a12;--amber-bg:#fbefd9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:16px}h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:12px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;cursor:pointer;font:inherit;min-height:40px}.tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+select,input,textarea{width:100%;padding:9px 10px;border:1px solid #d9cfcc;border-radius:9px;font:inherit;background:#fff;min-height:40px}label.l{display:block;font-size:12px;color:var(--mut);margin:8px 0 3px}
+.perm{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}.perm input{width:22px;height:22px;min-height:0;margin-top:2px;flex:0 0 auto}.perm .k{color:var(--mut);font-size:12px}
+.chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:6px}.ch{background:var(--amber-bg);color:var(--amber)}.lk{background:#eee;color:#666}
+h3{margin:14px 0 4px;font-size:15px;color:var(--wine)}
+.btn{border:0;border-radius:10px;padding:10px 14px;font:600 14px inherit;cursor:pointer;background:#efe6e3;color:var(--ink);min-height:42px}.btn.pri{background:var(--wine);color:#fff}.btn.bad{background:var(--red-bg);color:var(--red)}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.msg{margin:8px 0}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}.meta{color:var(--mut);font-size:13px}
+.save{position:sticky;bottom:0;background:var(--bg);padding:10px 0;border-top:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left}th{color:var(--mut);font-size:12px}
+</style></head>
+<body><div class="wrap">
+<h1>Редактор ролей</h1>
+<div class="sub">Права ролей по умолчанию заданы в MON CHEF. Здесь директор включает и выключает права роли и заводит свои роли. Каждое изменение — с причиной, в истории и аудите; действует сразу. Технический доступ ролью не является и здесь не настраивается.</div>
+<div class="tabs" id="tabs"></div><div id="msg"></div><div id="view"></div>
+</div>
+<script>
+var S = { tab: 'edit', d: null, role: '', want: {}, pend: {} };
+function $(i) { return document.getElementById(i); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function uuid() { return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+function note(t, ok) { $('msg').innerHTML = t ? '<div class="msg ' + (ok ? 'ok' : 'err') + '">' + esc(t) + '</div>' : ''; }
+function call(fn, data, done, fail) {
+  google.script.run.withSuccessHandler(function (r) { var x; try { x = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) { x = null; } if (x && x.success) done(x.data); else (fail || note)(x && x.error ? x.error.message || x.error : 'Ошибка'); })
+    .withFailureHandler(function (e) { (fail || note)('Нет связи с сервером — повторите'); })[fn](JSON.stringify(data || {}));
+}
+function act(slot, fn, data, done) { var k = S.pend[slot] || (S.pend[slot] = uuid()); data.idem = k; call(fn, data, function (r) { delete S.pend[slot]; done(r); }, function (m) { if (!/Нет связи/.test(m)) delete S.pend[slot]; note(m); }); }
+function load(cb) { call('rsRolesGet', {}, function (d) { S.d = d; if (!S.role || !role()) S.role = d.roles[0].name; S.want = {}; tabs(); render(); if (cb) cb(); }); }
+function role() { return S.d.roles.filter(function (r) { return r.name === S.role; })[0]; }
+function tabs() { $('tabs').innerHTML = [['edit', 'Права роли'], ['new', 'Новая роль'], ['hist', 'История']].map(function (t) { return '<button class="' + (S.tab === t[0] ? 'on' : '') + '" onclick="S.tab=\'' + t[0] + '\';tabs();render()">' + t[1] + '</button>'; }).join(''); }
+function render() { ({ edit: rEdit, new: rNew, hist: rHist })[S.tab](); }
+function rEdit() {
+  var r = role(), secs = [];
+  S.d.perms.forEach(function (p) { if (secs.indexOf(p.section) < 0) secs.push(p.section); });
+  var h = '<div class="card"><label class="l">Роль</label><select onchange="S.role=this.value;S.want={};rEdit()">' + S.d.roles.map(function (x) { return '<option' + (x.name === S.role ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
+    '<div class="meta" style="margin-top:6px">' + (r.custom ? 'Своя роль на основе «' + esc(r.base) + '». ' : '') + 'Сотрудников с ролью: ' + r.employees + '. Права: ' + r.perms.length + ' из ' + S.d.perms.length + '.</div>' +
+    (r.custom ? '<div class="acts"><button class="btn bad" onclick="archive()">Отправить роль в архив</button></div>' : '') + '</div>';
+  h += '<div class="card">' + secs.map(function (sec) {
+    return '<h3>' + esc(sec) + '</h3>' + S.d.perms.filter(function (p) { return p.section === sec; }).map(function (p) {
+      var on = S.want[p.key] !== undefined ? S.want[p.key] : r.perms.indexOf(p.key) >= 0, def = r.defaults.indexOf(p.key) >= 0, lock = r.locked.indexOf(p.key) >= 0 && on;
+      return '<label class="perm"><input type="checkbox" ' + (on ? 'checked ' : '') + (lock ? 'disabled ' : '') + 'onchange="S.want[\'' + p.key + '\']=this.checked;rEdit()"><div>' + esc(p.ru) +
+        (on !== def ? '<span class="chip ch">' + (on ? 'добавлено' : 'снято') + ' — не как по умолчанию</span>' : '') + (lock ? '<span class="chip lk">нельзя снять</span>' : '') + '<div class="k">' + esc(p.key) + '</div></div></label>';
+    }).join('');
+  }).join('') + '</div>';
+  var n = Object.keys(S.want).filter(function (k) { return S.want[k] !== (r.perms.indexOf(k) >= 0); }).length;
+  h += '<div class="save"><label class="l">Причина изменения (обязательно)</label><input id="why" maxlength="300" placeholder="например: администратор зала ведёт приёмку по выходным"><div class="acts"><button class="btn pri" ' + (n ? '' : 'disabled ') + 'onclick="save()">Сохранить изменения (' + n + ')</button>' +
+    (n ? '<button class="btn" onclick="S.want={};rEdit()">Отменить</button>' : '') + '</div></div>';
+  $('view').innerHTML = h;
+}
+function save() {
+  var why = $('why').value.trim(); if (!why) { note('Укажите причину'); return; }
+  if (!confirm('Изменить права роли «' + S.role + '»? Изменение подействует на всех сотрудников с этой ролью сразу.')) return;
+  act('save-' + S.role, 'rsRoleSave', { role: S.role, perms: S.want, reason: why }, function (r) { load(function () { note('Сохранено изменений: ' + r.changed, true); }); });
+}
+function archive() { var why = prompt('Отправить роль «' + S.role + '» в архив? Причина:'); if (why) act('arch-' + S.role, 'rsRoleArchive', { name: S.role, reason: why }, function () { S.role = ''; load(function () { note('Роль в архиве', true); }); }); }
+function rNew() {
+  $('view').innerHTML = '<div class="card"><label class="l">Название роли</label><input id="n_name" maxlength="40" placeholder="например, Хостес"><label class="l">Основа (права, цех и медицинский допуск копируются)</label><select id="n_base">' +
+    S.d.roles.filter(function (r) { return !r.custom; }).map(function (r) { return '<option>' + esc(r.name) + '</option>'; }).join('') + '</select><label class="l">Описание</label><input id="n_desc" maxlength="200">' +
+    '<label class="l">Причина</label><input id="n_why" maxlength="300"><div class="acts"><button class="btn pri" onclick="create()">Создать роль</button></div><div class="meta">После создания настройте её права во вкладке «Права роли» и назначьте сотрудникам.</div></div>';
+}
+function create() { act('new', 'rsRoleCreate', { name: $('n_name').value, base: $('n_base').value, description: $('n_desc').value, reason: $('n_why').value }, function (r) { S.role = r.role; S.tab = 'edit'; load(function () { note('Роль «' + r.role + '» создана', true); }); }); }
+function rHist() {
+  var ru = {}; S.d.perms.forEach(function (p) { ru[p.key] = p.ru; });
+  $('view').innerHTML = S.d.history.length ? '<div class="card"><table><tr><th>Когда</th><th>Роль</th><th>Право</th><th></th><th>Причина</th><th>Кто</th></tr>' + S.d.history.map(function (h) {
+    return '<tr' + (h.status !== 'ACTIVE' ? ' style="opacity:.55"' : '') + '><td>' + esc(h.at) + '</td><td>' + esc(h.role) + '</td><td>' + esc(ru[h.perm] || h.perm) + '</td><td>' + (h.allow ? 'добавлено' : 'снято') + (h.status !== 'ACTIVE' ? ' (заменено)' : '') + '</td><td>' + esc(h.reason) + '</td><td>' + esc(h.by) + '</td></tr>';
+  }).join('') + '</table></div>' : '<div class="card meta">Изменений ещё не было — действуют права по умолчанию.</div>';
+}
+load();
+</script>
+</body></html>

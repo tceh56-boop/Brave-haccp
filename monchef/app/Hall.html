@@ -132,7 +132,24 @@ function rPlan() {
        t.booking ? esc(t.booking.start) + ' · ' + t.booking.guests + ' гост.' : t.next ? 'с ' + esc(t.next.start) : t.seatsMax + ' мест') + '</div>' : '<div class="cell"></div>';
   }
   html += '</div><div class="meta" style="margin-top:6px">Состояние на ' + ru(d.date) + ' ' + esc(d.time) + '. Нажмите на стол, чтобы открыть заказ или бронь.</div>';
-  $('view').innerHTML = html;
+  $('view').innerHTML = '<div id="greq"></div>' + html;
+  if (d.can.order) guestReqs();
+}
+/* заявки гостей из меню по QR (этап 5): на кухню — только после решения официанта */
+function guestReqs() {
+  call('rsGuestRequests', { siteId: $('site').value }, function (l) {
+    S.greq = l; var b = $('greq'); if (!b) return;
+    b.innerHTML = l.length ? '<div class="card" style="border-color:var(--gold)"><div class="nm">Заявки гостей из меню: ' + l.length + '</div>' + l.map(function (r) {
+      return '<div class="bk" style="border-top:1px solid var(--line);padding-top:8px;margin-top:8px;cursor:default"><div><b>Стол № ' + esc(r.table) + '</b> · ' + esc(r.at) + '<div class="meta">' +
+        r.items.map(function (x) { return esc(x.name) + ' × ' + x.qty + (x.comment ? ' (' + esc(x.comment) + ')' : ''); }).join(', ') + (r.comment ? ' · ' + esc(r.comment) : '') + '</div></div>' +
+        '<div class="acts" style="margin-top:0"><button class="btn ok" onclick="greqDo(\'' + r.id + '\',true)">Принять в заказ</button><button class="btn bad" onclick="greqDo(\'' + r.id + '\',false)">Отклонить</button></div></div>';
+    }).join('') + '<div class="meta" style="margin-top:6px">Принятые блюда попадают в заказ стола как «не отправлено» — отправьте их на кухню сами.</div></div>' : '';
+  }, function () {});
+}
+function greqDo(id, accept) {
+  var r = (S.greq || []).filter(function (x) { return x.id === id; })[0], d = { id: id, version: r.version, accept: accept };
+  if (!accept) { d.reason = prompt('Причина отказа (гость её не видит, она в истории):'); if (!d.reason) return; }
+  act('greq-' + id, 'rsGuestRequestDecide', d, function (x) { note(accept ? 'Заявка принята: ' + x.items + ' поз. в заказе стола' : 'Заявка отклонена', true); load(); if (accept) openOrder(x.orderId); }, note);
 }
 function tableCard(id) {
   var t = S.data.tables.filter(function (x) { return x.id === id; })[0], d = S.data;

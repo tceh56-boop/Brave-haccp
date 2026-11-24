@@ -25,11 +25,12 @@ var MC_RS_SH_ = {
   HALLS: 'Залы_V1', TABLES: 'Столы_V1', BOOKINGS: 'Бронирования_V1', PREORDERS: 'Предзаказы_V1',
   EVENTS: 'СобытияОбслуживания_V1', IDEM: 'Идемпотентность_V1', TX: 'ЖурналТранзакций_RS',
   ORDERS: 'ЗаказыЗала_V1', GUESTS: 'ГостиЗаказа_V1', COURSES: 'КурсыЗаказа_V1', ITEMS: 'ПозицииЗаказа_V1', QUEUE: 'ОчередьПроизводства_V1',
-  BILLS: 'СчетаВнутренние_V1', ALLOC: 'РаспределениеСчета_V1'
+  BILLS: 'СчетаВнутренние_V1', ALLOC: 'РаспределениеСчета_V1',
+  MENU_PUB: 'МенюПубликация_V1', MEDIA: 'МедиаМеню_V1', MENU_SNAP: 'МенюСнимок_V1', GUEST_REQ: 'ГостевыеЗаявки_V1'
 };
 var MC_RS_HEAD_ = {};
 MC_RS_HEAD_[MC_RS_SH_.HALLS] = ['HallID', 'SiteID', 'Название', 'Порядок', 'Ширина', 'Высота', 'Статус'].concat(MC_RS_STD_);
-MC_RS_HEAD_[MC_RS_SH_.TABLES] = ['TableID', 'HallID', 'SiteID', 'Номер', 'Мест мин', 'Мест макс', 'X', 'Y', 'Форма', 'Можно объединять с', 'Статус'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.TABLES] = ['TableID', 'HallID', 'SiteID', 'Номер', 'Мест мин', 'Мест макс', 'X', 'Y', 'Форма', 'Можно объединять с', 'Статус'].concat(MC_RS_STD_).concat(['QR-код']);   // QR-код — этап 5, в конце
 MC_RS_HEAD_[MC_RS_SH_.BOOKINGS] = ['BookingID', 'SiteID', 'HallID', 'Столы', 'Гость', 'Телефон', 'Дата', 'Начало', 'Длительность, мин', 'Окончание',
   'Гостей', 'Пожелания', 'Комментарий', 'Менеджер', 'PreorderID', 'Статус', 'Причина', 'OrderID', 'IdempotencyKey'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.PREORDERS] = ['PreorderID', 'BookingID', 'Позиции', 'Статус', 'ConvertedOrderID', 'ConvertedAt'].concat(MC_RS_STD_);
@@ -46,11 +47,15 @@ MC_RS_HEAD_[MC_RS_SH_.QUEUE] = ['TicketID', 'OrderItemID', 'OrderID', 'TableID',
 MC_RS_HEAD_[MC_RS_SH_.BILLS] = ['BillID', 'OrderID', 'Название', 'Гость', 'Скидка вид', 'Скидка значение', 'Скидка, коп', 'Причина скидки', 'Сбор вид', 'Сбор значение',
   'Сбор, коп', 'Причина сбора', 'Итого, коп', 'Статус', 'Способ оплаты', 'Чек', 'Подтвердил', 'Подтверждено', 'Объединён в', 'Комментарий'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.ALLOC] = ['AllocID', 'BillID', 'OrderID', 'OrderItemID', 'Доля числитель', 'Доля знаменатель', 'Статус'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.MENU_PUB] = ['DishCode', 'Категория', 'Описание', 'Порядок', 'Статус', 'Опубликовал', 'Опубликовано'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.MEDIA] = ['MediaID', 'DishCode', 'Тип', 'FileID', 'Файл', 'MIME', 'Размер', 'SHA-256', 'Обложка', 'Порядок', 'Статус', 'Загрузил', 'Загружено'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.MENU_SNAP] = ['DishCode', 'Снимок', 'Опубликовано'].concat(MC_RS_STD_);
+MC_RS_HEAD_[MC_RS_SH_.GUEST_REQ] = ['RequestID', 'SiteID', 'TableID', 'Стол', 'Позиции', 'Комментарий', 'Статус', 'OrderID', 'Решил', 'Решено', 'Причина', 'Создано', 'IdempotencyKey'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.EVENTS] = ['EventID', 'Время', 'ObjectType', 'ObjectID', 'BookingID', 'OrderID', 'Событие', 'Было', 'Стало', 'Сотрудник', 'EmployeeID', 'OperationID'];
 MC_RS_HEAD_[MC_RS_SH_.IDEM] = ['IdempotencyKey', 'Функция', 'EmployeeID', 'Создано', 'Статус', 'Ответ', 'OperationID'];
 MC_RS_HEAD_[MC_RS_SH_.TX] = ['TxID', 'OperationID', 'Тип', 'План', 'Шагов', 'Выполнено', 'Статус', 'Ошибка', 'Начато', 'Завершено'];
 /** Колонки, которые хранятся текстом (иначе таблица превращает «2026-11-25» и «19:00» в дату и время). */
-var MC_RS_TEXT_COLS_ = ['Дата', 'Начало', 'Окончание', 'Телефон', 'Номер', 'IdempotencyKey', 'Стол', 'Чек'];
+var MC_RS_TEXT_COLS_ = ['Дата', 'Начало', 'Окончание', 'Телефон', 'Номер', 'IdempotencyKey', 'Стол', 'Чек', 'QR-код', 'DishCode'];
 var MC_RS_TX_STALE_MIN_ = 6;   // предел выполнения Apps Script — 6 минут: PENDING старше этого уже никто не допишет
 
 /* ---------------- листы ---------------- */
@@ -63,6 +68,8 @@ function _rsSheet_(name) {
     sh.setFrozenRows(1);
     try { sh.getRange(1, 1, 1, head.length).setFontWeight('bold'); } catch (e) {}
     head.forEach(function (h, i) { if (MC_RS_TEXT_COLS_.indexOf(h) >= 0) { try { sh.getRange(2, i + 1, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@'); } catch (e) {} } });
+  } else if (sh.getLastColumn() < head.length) {   // колонки, добавленные в конец в новых версиях: дописать заголовок, данные не сдвигаются
+    var n0 = sh.getLastColumn(); sh.getRange(1, n0 + 1, 1, head.length - n0).setValues([head.slice(n0)]);
   }
   return sh;
 }

@@ -13,6 +13,8 @@
  */
 var MC_RS_SOON_MIN_ = 120;
 var MC_RS_SHAPES_ = ['round', 'square', 'rect'];
+/** Код стола для QR гостевого меню: 12 знаков без похожих букв. Не секрет — заявка гостя всё равно ждёт подтверждения официанта. */
+function _rsQrCode_() { var a = 'abcdefghjkmnpqrstuvwxyz23456789', u = Utilities.getUuid().replace(/-/g, ''), out = ''; for (var i = 0; i < 12; i++) out += a[parseInt(u.substr(i * 2, 2), 16) % a.length]; return out; }
 
 function _rsHallObj_(r) {
   return { id: String(r.HallID), siteId: String(r.SiteID), name: String(r['Название'] || ''), order: parseInt(r['Порядок'], 10) || 0,
@@ -21,7 +23,7 @@ function _rsHallObj_(r) {
 function _rsTableObj_(r) {
   return { id: String(r.TableID), hallId: String(r.HallID), siteId: String(r.SiteID), number: String(r['Номер']), seatsMin: parseInt(r['Мест мин'], 10) || 1,
     seatsMax: parseInt(r['Мест макс'], 10) || 1, x: parseInt(r.X, 10) || 0, y: parseInt(r.Y, 10) || 0, shape: String(r['Форма'] || 'square'),
-    combine: _rsJ_(r['Можно объединять с'], []) || [], status: String(r['Статус'] || 'ACTIVE'), version: parseInt(r.Version, 10) || 1 };
+    combine: _rsJ_(r['Можно объединять с'], []) || [], status: String(r['Статус'] || 'ACTIVE'), version: parseInt(r.Version, 10) || 1, qr: String(r['QR-код'] || '') };
 }
 
 /** Схема зала на дату и время: залы, столы, бронирования дня, состояние столов. */
@@ -110,6 +112,7 @@ function rsTableSave(json, token) {
     var o = cur ? JSON.parse(JSON.stringify(cur)) : { TableID: id, HallID: hallId, SiteID: String(hall.SiteID) };
     var before = cur ? _rsTableObj_(cur) : null, oldComb = before ? before.combine : [];
     o['Номер'] = num; o['Мест мин'] = mn; o['Мест макс'] = mx; o.X = x; o.Y = y; o['Форма'] = shape; o['Можно объединять с'] = JSON.stringify(comb); o['Статус'] = st;
+    if (!o['QR-код']) o['QR-код'] = _rsQrCode_();   // код стола для гостевого меню (этап 5)
     _rsStamp_(o, c.s, c.op, !cur); delete o._row;
     var plan = [{ sheet: MC_RS_SH_.TABLES, row: o }];
     // объединение — взаимное: у добавленных столов дописать этот, у убранных — убрать

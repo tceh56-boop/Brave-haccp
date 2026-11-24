@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ru"><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Меню</title>
+<!-- MON CHEF V101 Restaurant Service — гостевое меню MON CHEF REELS.
+     Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович.
+     Публичная страница без входа: данные — только опубликованные блюда (rsPublicMenu), медиа — частями через приложение (rsPublicMedia).
+     Заказ гостя — заявка официанту (rsGuestRequest), на кухню без подтверждения официанта не уходит. -->
+<style>
+:root{--bg:#0d0a0b;--ink:#f7efe9;--mut:#b9aaa3;--gold:#d4af37;--wine:#7a1729;--card:#1a1416;--line:rgba(255,255,255,.12);--ok:#7fd1a0;--bad:#ff8f8f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+button{font:inherit;cursor:pointer}
+.top{position:fixed;top:0;left:0;right:0;z-index:20;padding:calc(env(safe-area-inset-top) + 10px) 12px 8px;background:linear-gradient(180deg,rgba(13,10,11,.92),rgba(13,10,11,.55) 75%,transparent)}
+.row{display:flex;gap:8px;align-items:center}
+.title{font-weight:800;letter-spacing:.06em;font-size:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ic{border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--ink);border-radius:999px;min-width:40px;height:40px;padding:0 12px}
+.ic.on{background:var(--gold);color:#1a1200;border-color:var(--gold)}
+.cats{display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none}.cats::-webkit-scrollbar{display:none}
+.cats button{flex:0 0 auto;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);border-radius:999px;padding:7px 14px;white-space:nowrap}
+.cats button.on{background:var(--ink);color:#111}
+.search{display:none;margin-top:8px}.search.on{display:flex;gap:6px}
+.search input{flex:1;height:40px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--ink);padding:0 12px;font:inherit}
+/* лента */
+.feed{height:100dvh;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none}.feed::-webkit-scrollbar{display:none}
+.reel{position:relative;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#140f11}
+.media{position:absolute;inset:0}.media img,.media video{width:100%;height:100%;object-fit:cover;display:block}
+.ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:800;letter-spacing:.04em;color:rgba(255,255,255,.14);text-align:center;padding:20px;background:radial-gradient(circle at 30% 20%,#3a1a22,#120c0e 70%)}
+.dots{position:absolute;top:calc(env(safe-area-inset-top) + 104px);left:0;right:0;display:flex;gap:4px;justify-content:center;z-index:3}
+.dots i{width:22px;height:3px;border-radius:2px;background:rgba(255,255,255,.35)}.dots i.on{background:#fff}
+.tapL,.tapR{position:absolute;top:20%;bottom:40%;width:35%;z-index:2}.tapL{left:0}.tapR{right:0}
+.info{position:absolute;left:0;right:0;bottom:0;z-index:4;padding:80px 16px calc(env(safe-area-inset-bottom) + 18px);background:linear-gradient(0deg,rgba(0,0,0,.88),rgba(0,0,0,.55) 60%,transparent)}
+.cat{color:var(--gold);font-size:12px;text-transform:uppercase;letter-spacing:.12em;font-weight:700}
+.nm{font-size:24px;font-weight:800;line-height:1.15;margin:4px 0}
+.pr{font-size:20px;font-weight:700}.pr small{font-size:13px;color:var(--mut);font-weight:500}
+.desc{color:#e6dad3;margin-top:6px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn{border:0;border-radius:14px;padding:12px 16px;font-weight:700;min-height:46px}
+.btn.gold{background:var(--gold);color:#1a1200}.btn.ghost{background:rgba(255,255,255,.12);color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.45}
+.na{display:inline-block;background:rgba(255,120,120,.2);color:#ffc3c3;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;margin-left:6px;vertical-align:middle}
+.side{position:absolute;right:12px;bottom:200px;z-index:5;display:flex;flex-direction:column;gap:12px}
+.side button{width:48px;height:48px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:22px}
+.side button.on{color:#ff5a7a}
+/* окно подробностей, корзина, фильтры */
+.ov{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center}.ov.on{display:flex}
+.sheet{background:#17110f;width:100%;max-width:640px;max-height:88dvh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom) + 18px);border:1px solid var(--line)}
+@media(min-width:900px){.ov{align-items:center}.sheet{border-radius:20px}}
+.sheet h2{margin:0 0 4px;font-size:22px}.sec{margin-top:14px}.sec b{display:block;color:var(--gold);font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.kb{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.kb div{background:rgba(255,255,255,.06);border-radius:12px;padding:8px;text-align:center}.kb div span{display:block;font-size:18px;font-weight:800}
+.mut{color:var(--mut);font-size:13px}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 10px;margin:3px 4px 0 0;font-size:13px}
+.chk{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.chk input{width:20px;height:20px}
+.cartbar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);z-index:30;display:none}.cartbar.on{display:block}
+.cartbar button{width:100%}
+.line{display:flex;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.line .n{flex:1}
+.q{display:flex;align-items:center;gap:6px}.q button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--ink)}
+textarea{width:100%;min-height:60px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);padding:10px;font:inherit}
+.msg{padding:10px 12px;border-radius:12px;margin-top:10px}.msg.ok{background:rgba(127,209,160,.15);color:var(--ok)}.msg.err{background:rgba(255,143,143,.15);color:var(--bad)}
+.empty{height:100dvh;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mut)}
+/* компьютер: каталог */
+@media(min-width:900px){
+  .feed{height:auto;overflow:visible;scroll-snap-type:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;padding:150px 28px 110px;max-width:1400px;margin:0 auto}
+  .reel{height:auto;aspect-ratio:4/5;border-radius:18px;scroll-snap-align:none;cursor:pointer}
+  .side{bottom:auto;top:12px;right:12px}.dots{top:10px}.nm{font-size:20px}.info{padding-top:60px}.desc{-webkit-line-clamp:2}
+  .cartbar{left:auto;right:24px;width:360px}
+}
+</style></head>
+<body>
+<div class="top">
+  <div class="row"><div class="title" id="ttl">Меню</div>
+    <button class="ic" id="bSearch" aria-label="Поиск" onclick="toggleSearch()">⌕</button>
+    <button class="ic" id="bFilter" aria-label="Фильтры" onclick="openFilters()">⚙</button>
+    <button class="ic" id="bFav" aria-label="Избранное" onclick="F.fav=!F.fav;draw()">♡</button></div>
+  <div class="search" id="search"><input id="q" placeholder="Блюдо или продукт" oninput="F.q=this.value;draw()"><button class="ic" onclick="F.q='';$('q').value='';toggleSearch()">✕</button></div>
+  <div class="cats" id="cats"></div>
+</div>
+<div class="feed" id="feed"><div class="empty">Загружаем меню…</div></div>
+<div class="cartbar" id="cartbar"><button class="btn gold" onclick="openCart()" id="cartBtn"></button></div>
+<div class="ov" id="ov" onclick="if(event.target===this)closeOv()"><div class="sheet" id="sheet"></div></div>
+<script>
+var M = null, T = '', F = { cat: '', q: '', fav: false, avail: false, noAl: [] }, FAV = {}, CART = [], URLS = {}, LOAD = {}, Q = [], BUSY = 0, PEND = null;
+function $(i) { return document.getElementById(i); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function money(k) { var r = (k / 100).toFixed(2).split('.'); return r[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (r[1] === '00' ? '' : ',' + r[1]) + ' ₽'; }
+function uuid() { return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+try { FAV = JSON.parse(localStorage.getItem('mc_menu_fav') || '{}') || {}; } catch (e) { FAV = {}; }
+function saveFav() { try { localStorage.setItem('mc_menu_fav', JSON.stringify(FAV)); } catch (e) {} }
+function srv(fn, data, ok, fail) {
+  google.script.run.withSuccessHandler(function (r) { var x; try { x = typeof r === 'string' ? JSON.parse(r) : r; } catch (e) { x = null; } if (x && x.success) ok(x.data); else (fail || function () {})(x && x.error ? x.error.message : 'Ошибка'); })
+    .withFailureHandler(function () { (fail || function () {})('Нет связи. Попробуйте ещё раз.'); })[fn](JSON.stringify(data || {}));
+}
+/* ---------- загрузка ---------- */
+function start(params) {
+  T = (params && params.t) || '';
+  srv('rsPublicMenu', { t: T }, function (d) {
+    M = d; $('ttl').textContent = d.title + (d.table ? ' · стол ' + d.table.number : ''); document.title = d.title;
+    var cats = []; d.dishes.forEach(function (x) { if (cats.indexOf(x.category) < 0) cats.push(x.category); });
+    $('cats').innerHTML = ['<button class="on" data-c="">Все</button>'].concat(cats.map(function (c) { return '<button data-c="' + esc(c) + '">' + esc(c) + '</button>'; })).join('');
+    $('cats').onclick = function (e) { var b = e.target.closest('button'); if (!b) return; F.cat = b.getAttribute('data-c'); [].forEach.call($('cats').children, function (x) { x.classList.toggle('on', x === b); }); draw(); };
+    draw();
+  }, function (m) { $('feed').innerHTML = '<div class="empty">' + esc(m) + '</div>'; });
+}
+function list() {
+  var q = F.q.trim().toLowerCase();
+  return M.dishes.filter(function (x) {
+    if (F.cat && x.category !== F.cat) return false;
+    if (F.fav && !FAV[x.id]) return false;
+    if (F.avail && !x.available) return false;
+    if (F.noAl.length && (!x.allergensComplete || x.allergens.some(function (a) { return F.noAl.indexOf(a) >= 0; }))) return false;
+    if (q && (x.name + ' ' + x.composition.join(' ') + ' ' + x.category).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+function amount(x) { return x.weighted ? 'за ' + x.priceFor : (x.yield ? x.yield + ' ' + x.yunit : ''); }
+function draw() {
+  $('bFav').classList.toggle('on', F.fav); $('bFilter').classList.toggle('on', F.avail || F.noAl.length > 0);
+  var l = list();
+  if (!l.length) { $('feed').innerHTML = '<div class="empty">' + (M.dishes.length ? 'Ничего не найдено — измените фильтры' : 'Меню скоро появится') + '</div>'; return; }
+  $('feed').innerHTML = l.map(function (x) {
+    return '<section class="reel" data-id="' + esc(x.id) + '" data-i="0"><div class="media" id="m_' + esc(x.id) + '"><div class="ph">' + esc(x.name) + '</div></div>' +
+      (x.media.length > 1 ? '<div class="dots">' + x.media.map(function (_, i) { return '<i class="' + (i ? '' : 'on') + '"></i>'; }).join('') + '</div><div class="tapL" onclick="slide(this,-1)"></div><div class="tapR" onclick="slide(this,1)"></div>' : '') +
+      '<div class="side"><button class="' + (FAV[x.id] ? 'on' : '') + '" onclick="fav(event,\'' + esc(x.id) + '\',this)" aria-label="В избранное">' + (FAV[x.id] ? '♥' : '♡') + '</button></div>' +
+      '<div class="info" onclick="details(\'' + esc(x.id) + '\')"><div class="cat">' + esc(x.category) + '</div><div class="nm">' + esc(x.name) + (x.available ? '' : '<span class="na">сейчас нет</span>') + '</div>' +
+      '<div class="pr">' + money(x.priceKop) + ' <small>' + esc(amount(x)) + '</small></div>' + (x.description ? '<div class="desc">' + esc(x.description) + '</div>' : '') +
+      '<div class="acts"><button class="btn ghost" onclick="event.stopPropagation();details(\'' + esc(x.id) + '\')">Подробнее</button>' +
+      (M.guestOrder ? '<button class="btn gold" ' + (x.available ? '' : 'disabled ') + 'onclick="event.stopPropagation();add(\'' + esc(x.id) + '\')">Добавить в заказ</button>' : '') + '</div></div></section>';
+  }).join('');
+  observe();
+}
+/* ---------- медиа: по мере прокрутки, частями ---------- */
+var IO = null;
+function observe() {
+  if (IO) IO.disconnect();
+  IO = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      var sec = e.target, x = byId(sec.getAttribute('data-id'));
+      if (e.isIntersecting) { show(sec, x, +sec.getAttribute('data-i')); var nx = sec.nextElementSibling; if (nx) { var y = byId(nx.getAttribute('data-id')); if (y && y.media[0]) want(y.media[0]); } }
+      var v = sec.querySelector('video'); if (v) { if (e.intersectionRatio > 0.6) { var p = v.play(); if (p && p.catch) p.catch(function () {}); } else v.pause(); }
+    });
+  }, { threshold: [0, 0.6] });
+  [].forEach.call(document.querySelectorAll('.reel'), function (s) { IO.observe(s); });
+}
+function byId(id) { return M.dishes.filter(function (x) { return x.id === id; })[0]; }
+function want(m, cb) {
+  if (URLS[m.id]) { if (cb) cb(URLS[m.id]); return; }
+  (LOAD[m.id] = LOAD[m.id] || []).push(cb || function () {});
+  if (LOAD[m.id].length > 1) return;
+  Q.push(m); pump();
+}
+function pump() {
+  if (BUSY >= 2 || !Q.length) return;
+  var m = Q.shift(); BUSY++;
+  var parts = [], mime = '';
+  var next = function (i) {
+    srv('rsPublicMedia', { id: m.id, part: i }, function (d) {
+      mime = d.mime; parts[i] = d.data;
+      if (i + 1 < d.parts) return next(i + 1);
+      var bins = parts.map(function (b64) { var s = atob(b64), a = new Uint8Array(s.length); for (var k = 0; k < s.length; k++) a[k] = s.charCodeAt(k); return a; });
+      URLS[m.id] = { url: URL.createObjectURL(new Blob(bins, { type: mime })), mime: mime };
+      done();
+    }, function () { done(); });
+  };
+  var done = function () { BUSY--; (LOAD[m.id] || []).forEach(function (f) { try { f(URLS[m.id]); } catch (e) {} }); delete LOAD[m.id]; pump(); };
+  next(0);
+}
+function show(sec, x, i) {
+  var m = x.media[i]; if (!m) return;
+  want(m, function (u) {
+    if (!u || +sec.getAttribute('data-i') !== i) return;
+    var box = sec.querySelector('.media');
+    box.innerHTML = /^video\//.test(u.mime) ? '<video src="' + u.url + '" muted playsinline loop autoplay preload="auto"></video>' : '<img src="' + u.url + '" alt="' + esc(x.name) + '">';
+  });
+}
+function slide(el, d) {
+  var sec = el.closest('.reel'), x = byId(sec.getAttribute('data-id')), i = (+sec.getAttribute('data-i') + d + x.media.length) % x.media.length;
+  sec.setAttribute('data-i', i); [].forEach.call(sec.querySelectorAll('.dots i'), function (e, k) { e.classList.toggle('on', k === i); }); show(sec, x, i);
+}
+function fav(ev, id, b) { ev.stopPropagation(); if (FAV[id]) delete FAV[id]; else FAV[id] = 1; saveFav(); b.classList.toggle('on', !!FAV[id]); b.textContent = FAV[id] ? '♥' : '♡'; }
+/* ---------- подробнее ---------- */
+function details(id) {
+  var x = byId(id), h = '<div class="cat">' + esc(x.category) + '</div><h2>' + esc(x.name) + '</h2><div class="pr">' + money(x.priceKop) + ' <small>' + esc(amount(x)) + '</small>' + (x.available ? '' : '<span class="na">сейчас нет</span>') + '</div>';
+  if (x.description) h += '<div class="sec"><b>Описание</b>' + esc(x.description) + '</div>';
+  if (x.composition.length) h += '<div class="sec"><b>Состав</b>' + esc(x.composition.join(', ')) + '</div>';
+  h += '<div class="sec"><b>КБЖУ на порцию</b>' + (x.kbju ? '<div class="kb"><div><span>' + x.kbju.kcal + '</span>ккал</div><div><span>' + x.kbju.protein + '</span>белки, г</div><div><span>' + x.kbju.fat + '</span>жиры, г</div><div><span>' + x.kbju.carbs + '</span>углеводы, г</div></div>'
+    : '<span class="mut">' + esc(x.kbjuNote || 'КБЖУ не определено') + '</span>') + '</div>';
+  h += '<div class="sec"><b>Аллергены</b>' + (x.allergens.length ? x.allergens.map(function (a) { return '<span class="chip">' + esc(a) + '</span>'; }).join('') : '') +
+    (x.allergensComplete ? (x.allergens.length ? '' : '<span class="mut">Не содержит аллергенов из перечня ТР ТС 022/2011</span>') : '<div class="mut" style="margin-top:4px">Сведения неполные — уточните у официанта</div>') + '</div>';
+  h += '<div class="acts">' + (M.guestOrder && x.available ? '<button class="btn gold" onclick="add(\'' + esc(x.id) + '\');closeOv()">Добавить в заказ</button>' : '') + '<button class="btn ghost" onclick="closeOv()">Закрыть</button></div>';
+  $('sheet').innerHTML = h; $('ov').classList.add('on');
+}
+function closeOv() { $('ov').classList.remove('on'); }
+function toggleSearch() { var s = $('search'); s.classList.toggle('on'); if (s.classList.contains('on')) $('q').focus(); else { F.q = ''; draw(); } }
+function openFilters() {
+  var al = []; M.dishes.forEach(function (x) { x.allergens.forEach(function (a) { if (al.indexOf(a) < 0) al.push(a); }); });
+  $('sheet').innerHTML = '<h2>Фильтры</h2><label class="chk"><input type="checkbox" ' + (F.avail ? 'checked' : '') + ' onchange="F.avail=this.checked">Только доступные сейчас</label>' +
+    (al.length ? '<div class="sec"><b>Без аллергенов</b>' + al.sort().map(function (a) { return '<label class="chk"><input type="checkbox" ' + (F.noAl.indexOf(a) >= 0 ? 'checked' : '') + ' onchange="togAl(\'' + esc(a) + '\',this.checked)">' + esc(a) + '</label>'; }).join('') +
+      '<div class="mut">Блюда с неполными сведениями об аллергенах при этом фильтре скрываются.</div></div>' : '') +
+    '<div class="acts"><button class="btn gold" onclick="closeOv();draw()">Показать</button><button class="btn ghost" onclick="F.avail=false;F.noAl=[];closeOv();draw()">Сбросить</button></div>';
+  $('ov').classList.add('on');
+}
+function togAl(a, on) { var i = F.noAl.indexOf(a); if (on && i < 0) F.noAl.push(a); if (!on && i >= 0) F.noAl.splice(i, 1); }
+/* ---------- заявка официанту ---------- */
+function add(id) { var c = CART.filter(function (x) { return x.id === id; })[0]; if (c) c.qty = Math.min(20, c.qty + 1); else CART.push({ id: id, qty: 1, comment: '' }); PEND = null; bar(); }
+function bar() {
+  var n = CART.reduce(function (a, x) { return a + x.qty; }, 0), s = CART.reduce(function (a, x) { var d = byId(x.id); return a + (d && !d.weighted ? d.priceKop * x.qty : 0); }, 0);
+  $('cartbar').classList.toggle('on', n > 0); $('cartBtn').textContent = 'Мой заказ: ' + n + ' · ' + money(s) + (CART.some(function (x) { var d = byId(x.id); return d && d.weighted; }) ? ' + весовые' : '');
+}
+function openCart() {
+  var h = '<h2>Заявка официанту</h2><div class="mut">Стол ' + esc(M.table ? M.table.number : '') + '. Официант подтвердит заказ — только после этого блюда начнут готовить. Итог и оплата — у официанта.</div>' +
+    CART.map(function (c, i) { var d = byId(c.id); return '<div class="line"><div class="n">' + esc(d.name) + '<div class="mut">' + money(d.priceKop) + ' ' + esc(amount(d)) + '</div></div><div class="q"><button onclick="qty(' + i + ',-1)">−</button><b>' + c.qty + '</b><button onclick="qty(' + i + ',1)">+</button></div></div>'; }).join('') +
+    '<div class="sec"><b>Пожелания</b><textarea id="cc" maxlength="200" placeholder="Например: без лука, принести вместе"></textarea></div><div id="cmsg"></div>' +
+    '<div class="acts"><button class="btn gold" id="send" onclick="sendCart()">Отправить официанту</button><button class="btn ghost" onclick="closeOv()">Ещё посмотреть</button></div>';
+  $('sheet').innerHTML = h; $('ov').classList.add('on');
+}
+function qty(i, d) { CART[i].qty += d; if (CART[i].qty <= 0) CART.splice(i, 1); PEND = null; bar(); if (CART.length) openCart(); else closeOv(); }
+function sendCart() {
+  var b = $('send'); b.disabled = true; PEND = PEND || uuid();
+  srv('rsGuestRequest', { idem: PEND, t: T, items: CART.map(function (c) { return { id: c.id, qty: c.qty }; }), comment: $('cc').value }, function (r) {
+    PEND = null; CART = []; bar(); $('cmsg').innerHTML = '<div class="msg ok">' + esc(r.note || 'Заявка передана официанту') + '</div>'; b.style.display = 'none';
+  }, function (m) { b.disabled = false; $('cmsg').innerHTML = '<div class="msg err">' + esc(m) + '</div>'; });
+}
+/* ---------- старт: параметры адреса (в Apps Script — через google.script.url) ---------- */
+(function () {
+  var fromSearch = function () { var o = {}; (location.search || '').replace(/^\?/, '').split('&').forEach(function (p) { var kv = p.split('='); if (kv[0]) o[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || ''); }); return o; };
+  try { if (google.script.url && google.script.url.getLocation) { google.script.url.getLocation(function (l) { start((l && l.parameter) || fromSearch()); }); return; } } catch (e) {}
+  start(fromSearch());
+})();
+</script>
+</body></html>
