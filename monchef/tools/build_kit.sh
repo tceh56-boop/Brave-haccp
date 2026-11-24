@@ -21,6 +21,7 @@ R="$T/$K"; mkdir -p "$R/2_Загрузить_на_Диск" "$R/3_Установ
 cp docs/ДОК_13_Установка_Restaurant_Service.pdf "$R/1_Инструкция_по_установке.pdf"; cp docs/ДОК_13_Установка_Restaurant_Service.md "$R/1_Инструкция_по_установке.md"
 cp dist/$APP "$R/2_Загрузить_на_Диск/"
 cp install/MonChefInstaller.gs install/installer_appsscript.json "$R/3_Установщик/"
+node tools/build_menu_demo.js >/dev/null && cp "dist/MonChef_Гостевое_меню_демо.html" "$R/6_Демо_гостевого_меню.html"
 cp docs/ДОК_14_Restaurant_Service_инструкция_по_ролям.pdf docs/ДОК_14_Restaurant_Service_инструкция_по_ролям.md "$R/4_Для_персонала/"
 cp docs/ДОК_*.md docs/ДОК_*.pdf docs/ДОК_8_Функции_и_роли.csv docs/Шаблон_таблицы_сроков.csv "$R/5_Документы/"
 rm -f "$R/5_Документы/ДОК_13_"* "$R/5_Документы/ДОК_14_"*

@@ -51,6 +51,7 @@ button{font:inherit;cursor:pointer}
 .chk{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.chk input{width:20px;height:20px}
 .cartbar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);z-index:30;display:none}.cartbar.on{display:block}
 .cartbar button{width:100%}
+body.hascart .info{padding-bottom:calc(env(safe-area-inset-bottom) + 84px)}body.hascart .side{transform:translateY(-66px)}   /* плашка «Мой заказ» не закрывает кнопки блюда */
 .line{display:flex;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.line .n{flex:1}
 .q{display:flex;align-items:center;gap:6px}.q button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--ink)}
 textarea{width:100%;min-height:60px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);padding:10px;font:inherit}
@@ -62,6 +63,7 @@ textarea{width:100%;min-height:60px;border-radius:12px;border:1px solid var(--li
   .reel{height:auto;aspect-ratio:4/5;border-radius:18px;scroll-snap-align:none;cursor:pointer}
   .side{bottom:auto;top:12px;right:12px}.dots{top:10px}.nm{font-size:20px}.info{padding-top:60px}.desc{-webkit-line-clamp:2}
   .cartbar{left:auto;right:24px;width:360px}
+  body.hascart .info{padding-bottom:18px}body.hascart .side{transform:none}body.hascart #feed{padding-bottom:84px}
 }
 </style></head>
 <body>
@@ -202,7 +204,7 @@ function togAl(a, on) { var i = F.noAl.indexOf(a); if (on && i < 0) F.noAl.push(
 function add(id) { var c = CART.filter(function (x) { return x.id === id; })[0]; if (c) c.qty = Math.min(20, c.qty + 1); else CART.push({ id: id, qty: 1, comment: '' }); PEND = null; bar(); }
 function bar() {
   var n = CART.reduce(function (a, x) { return a + x.qty; }, 0), s = CART.reduce(function (a, x) { var d = byId(x.id); return a + (d && !d.weighted ? d.priceKop * x.qty : 0); }, 0);
-  $('cartbar').classList.toggle('on', n > 0); $('cartBtn').textContent = 'Мой заказ: ' + n + ' · ' + money(s) + (CART.some(function (x) { var d = byId(x.id); return d && d.weighted; }) ? ' + весовые' : '');
+  $('cartbar').classList.toggle('on', n > 0); document.body.classList.toggle('hascart', n > 0); $('cartBtn').textContent = 'Мой заказ: ' + n + ' · ' + money(s) + (CART.some(function (x) { var d = byId(x.id); return d && d.weighted; }) ? ' + весовые' : '');
 }
 function openCart() {
   var h = '<h2>Заявка официанту</h2><div class="mut">Стол ' + esc(M.table ? M.table.number : '') + '. Официант подтвердит заказ — только после этого блюда начнут готовить. Итог и оплата — у официанта.</div>' +
