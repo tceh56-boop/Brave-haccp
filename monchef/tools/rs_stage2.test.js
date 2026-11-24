@@ -183,11 +183,11 @@ t('каждая запись — в аудите и в журнале транз
   const st = ss.getSheetByName('ЖурналТранзакций_RS').getDataRange().getValues().slice(1).map(r => r[6]);
   assert.ok(st.every(s => s === 'COMMITTED' || s === 'RECOVERED'), st.join(','));
 });
-t('страница ?hall=1 открывается администратору и закрыта повару', () => {
+t('адрес ?hall=1: администратору — главное окно сразу на экране «Зал и бронирование», повару — нет доступа', () => {
   const p = C.doGet({ parameter: { hall: '1', token: ADM } });
-  assert.ok(/Зал и бронирование/.test(p.getTitle()));
+  assert.strictEqual(p.getTitle(), 'MON CHEF'); assert.ok(/OPENV="hall"/.test(p.getContent()), 'главное окно откроется на экране зала');
   const q = C.doGet({ parameter: { hall: '1', token: COOK } });
-  assert.ok(!/Зал и бронирование/.test(q.getTitle()));
+  assert.ok(/403|нет доступа|НЕДОСТАТОЧНО/i.test(q.getContent()) && !/id="app"/.test(q.getContent()), 'повару — страница «нет доступа»');
 });
 
 console.log(`\nИтого: ${pass} пройдено, ${fail} не пройдено`);

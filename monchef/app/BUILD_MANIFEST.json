@@ -70,7 +70,7 @@
     "Staff shift schedule and shortage (V98)",
     "Working spreadsheet ID in installation settings (V99)",
     "Personal data technical measures (V100)",
-    "Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split; guest menu Reels with in-app media, publication, guest requests by table QR; role editor; kitchen and bar display, Stop/Go, serve, replace, cancel with consumption; bar roles, bar recipes and preps via MON CHEF production, stock write-off by TTK at «ready»; sale posting to J36 at order close with V64 cost, refunds by storno, shift report with Z reconciliation, preorder ingredient forecast (V101, stages 2–7)"
+    "Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split; guest menu Reels with in-app media, publication, guest requests by table QR; role editor; kitchen and bar display, Stop/Go, serve, replace, cancel with consumption; bar roles, bar recipes and preps via MON CHEF production, stock write-off by TTK at «ready»; sale posting to J36 at order close with V64 cost, refunds by storno, shift report with Z reconciliation, preorder ingredient forecast; all staff screens inside the main window (V101, stages 2–8.1)"
   ],
   "validation": {
     "gs_syntax": "PASS",
@@ -114,13 +114,13 @@
     },
     {
       "file": "Code.gs",
-      "bytes": 997389,
-      "sha256": "4f0ec2eb9dea55b8c0e0c9384ec360b0c45b69b5e99a746d0f20fdb5729987f2"
+      "bytes": 996560,
+      "sha256": "30dcfadbaeccd4df637a1c8865621fc3ba63210852813b7db0189f69f3d28e36"
     },
     {
       "file": "Console.html",
-      "bytes": 1250606,
-      "sha256": "a98645ea2374b04526f087685a1a3886a1f38287bc9f8c4f96bd9437e730f2de"
+      "bytes": 1260296,
+      "sha256": "6a93091450bde342d06dea45660dc7ab4af4c9b19d9bb42345b7b6164d18b68a"
     },
     {
       "file": "Corrections.html",
@@ -501,6 +501,11 @@
       "file": "MonChef_V101_RS_UI.gs",
       "bytes": 4329,
       "sha256": "8dd3bbb38de31ab4562cc1e5dfd4836178cea7dbab6c65ac2b266236a7504a06"
+    },
+    {
+      "file": "MonChef_V101_RS_Views.gs",
+      "bytes": 2329,
+      "sha256": "fcdcc68b9d04c5be5fc2e2ccd95e051b01f830f485cb7ca9d77c0f27d7bef55d"
     },
     {
       "file": "MonChef_V10_OCR_Engine.gs",

@@ -38,7 +38,7 @@ function seed() {
     page.on('pageerror', e => errors.push(vp.name + ': ' + e.message));
     const answers = [];
     page.on('dialog', d => (d.type() === 'confirm' ? d.accept() : d.accept(answers.length ? answers.shift() : '')));
-    await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return typeof r === 'string' ? r : JSON.stringify(r); });
+    await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return r === undefined ? null : r; });
     await page.addInitScript(() => {
       const runner = st => new Proxy({}, { get: (_, key) => {
         if (key === 'withSuccessHandler') return f => runner(Object.assign({}, st, { ok: f }));
@@ -51,7 +51,7 @@ function seed() {
       window.Date = class extends D { constructor(...a) { if (!a.length) super(fixed); else super(...a); } static now() { return fixed; } };
     });
     await page.route('http://monchef.test/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
-    await page.goto('http://monchef.test/exec?hall=1');
+    await page.goto('http://monchef.test/exec?hall=1'); await page.addStyleTag({ content: '#mcxScreen{display:none!important}' });
     await page.waitForSelector('.tbl');
     await page.click('.tbl:has-text("12")');
     await page.fill('#o_guests', '2');

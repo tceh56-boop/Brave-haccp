@@ -35,7 +35,7 @@ J(C.rsOrderSend(JSON.stringify({ idem: k(), orderId: o, mode: 'all' }), WAI));
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1024, height: 768 }, timezoneId: 'Asia/Yekaterinburg', deviceScaleFactor: shots ? 2 : 1 });
   const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('dialog', d => d.accept());
-  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return typeof r === 'string' ? r : JSON.stringify(r); });
+  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return r === undefined ? null : r; });
   await page.addInitScript(() => {
     const runner = st => new Proxy({}, { get: (_, key) => {
       if (key === 'withSuccessHandler') return f => runner(Object.assign({}, st, { ok: f }));
@@ -47,7 +47,7 @@ J(C.rsOrderSend(JSON.stringify({ idem: k(), orderId: o, mode: 'all' }), WAI));
   });
   const html = C.doGet({ parameter: { kds: '1', token: BAR } }).getContent();
   await page.route('http://monchef.test/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
-  await page.goto('http://monchef.test/exec');
+  await page.goto('http://monchef.test/exec'); await page.addStyleTag({ content: '#mcxScreen{display:none!important}' });
   await page.waitForSelector('.tk');
   const tabs = await page.$$eval('.tabs button', e => e.map(x => x.textContent));
   assert.deepStrictEqual(tabs, ['Бар', 'Stop/Go', 'Рецептуры бара', 'Заготовки бара'], 'у бармена — только бар: ' + tabs);

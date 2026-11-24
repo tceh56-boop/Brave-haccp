@@ -207,32 +207,13 @@ function _doGetRaw_(e) {
      .setTitle('MON CHEF — Приборы и поверка')
      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
  }
- // V101 Restaurant Service: зал, столы, бронирование, предзаказ (право — MC_RB_MODULES_.hall, проверка выше в doGet)
- if (params.hall === '1' && params.token) {
-   return HtmlService.createHtmlOutputFromFile('Hall')
-     .setTitle('MON CHEF — Зал и бронирование')
-     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
- }
+ // V101 Restaurant Service: зал, кухня и бар, редактор меню, редактор ролей — экраны главного окна (MonChef_V101_RS_Views.gs):
+ // адреса ?hall=1, ?kds=1, ?menuedit=1, ?roles=1 открывают главное окно на нужном экране (MC_UI_VIEWS_).
  // V101 этап 5: гостевое меню — без входа (данные только через rsPublicMenu / rsPublicMedia); редактор меню и ролей — по праву
  if (params.menu === '1') {
    return HtmlService.createHtmlOutputFromFile('GuestMenu')
      .setTitle('Меню')
      .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
- }
- if (params.menuedit === '1' && params.token) {
-   return HtmlService.createHtmlOutputFromFile('MenuEditor')
-     .setTitle('MON CHEF — Гостевое меню')
-     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
- }
- if (params.kds === '1' && params.token) {   // V101 этап 4: экран кухни и бара, Stop/Go
-   return HtmlService.createHtmlOutputFromFile('Kds')
-     .setTitle('MON CHEF — Кухня и бар')
-     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
- }
- if (params.roles === '1' && params.token) {
-   return HtmlService.createHtmlOutputFromFile('Roles')
-     .setTitle('MON CHEF — Редактор ролей')
-     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
  }
  if (params.batchcontrol === '1' && params.token) {
    return HtmlService.createHtmlOutputFromFile('BatchControl')

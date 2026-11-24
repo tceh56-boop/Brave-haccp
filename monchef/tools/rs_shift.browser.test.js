@@ -44,7 +44,7 @@ call('rsOrderClose', WAI, { idem: k(), orderId: o, version: od.version });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1024, height: 768 }, timezoneId: 'Asia/Yekaterinburg', deviceScaleFactor: shots ? 2 : 1 });
   const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('dialog', d => d.accept('гость отказался, блюдо остыло'));
-  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return typeof r === 'string' ? r : JSON.stringify(r); });
+  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return r === undefined ? null : r; });
   await page.addInitScript(() => {
     const runner = st => new Proxy({}, { get: (_, key) => {
       if (key === 'withSuccessHandler') return f => runner(Object.assign({}, st, { ok: f }));
@@ -56,7 +56,7 @@ call('rsOrderClose', WAI, { idem: k(), orderId: o, version: od.version });
   });
   const html = C.doGet({ parameter: { hall: '1', token: DIR } }).getContent();
   await page.route('http://monchef.test/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
-  await page.goto('http://monchef.test/exec');
+  await page.goto('http://monchef.test/exec'); await page.addStyleTag({ content: '#mcxScreen{display:none!important}' });
   await page.waitForSelector('#tabs button:has-text("Смена")');
   await page.click('#tabs button:has-text("Смена")');
   await page.waitForSelector('text=Проведено в журнал продаж из зала');

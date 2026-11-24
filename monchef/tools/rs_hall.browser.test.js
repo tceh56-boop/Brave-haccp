@@ -31,7 +31,7 @@ J(C.rsBookingCreate(JSON.stringify({ idem: k(), tables: [tb[1].id], guest: 'Ив
     page.on('pageerror', e => errors.push(vp.name + ': ' + e.message));
     await page.exposeFunction('__srv', (fn, args) => {
       if (typeof C[fn] !== 'function') return JSON.stringify({ success: false, error: { message: 'нет функции ' + fn } });
-      const r = C[fn].apply(null, args); return typeof r === 'string' ? r : JSON.stringify(r);
+      const r = C[fn].apply(null, args); return r === undefined ? null : r;
     });
     await page.addInitScript(() => {
       const runner = st => new Proxy({}, { get: (_, key) => {
@@ -45,7 +45,7 @@ J(C.rsBookingCreate(JSON.stringify({ idem: k(), tables: [tb[1].id], guest: 'Ив
       window.Date = class extends D { constructor(...a) { if (!a.length) super(fixed); else super(...a); } static now() { return fixed; } };
     });
     await page.route('http://monchef.test/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
-    await page.goto('http://monchef.test/exec?hall=1');
+    await page.goto('http://monchef.test/exec?hall=1'); await page.addStyleTag({ content: '#mcxScreen{display:none!important}' });
     await page.waitForSelector('.tbl', { timeout: 10000 });
     const states = await page.$$eval('.tbl', els => els.map(e => e.className));
     assert.strictEqual(states.length, 4, 'на схеме 4 стола');
@@ -61,7 +61,7 @@ J(C.rsBookingCreate(JSON.stringify({ idem: k(), tables: [tb[1].id], guest: 'Ив
     await page.fill('#f_guests', '4');
     await page.waitForTimeout(200);
     await page.check('#f_tables label:has-text("№ 15") input');
-    await page.waitForFunction(() => window.S && S.dishes);
+    await page.waitForFunction(() => window.RSV && RSV.cur && RSV.cur.ev('S && S.dishes'));
     await page.fill('#f_dq', 'стейк');
     await page.click('#f_dl .bk');
     if (shots) await page.screenshot({ path: shots + '/hall-' + vp.name + '-booking.png', fullPage: true });

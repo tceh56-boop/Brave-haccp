@@ -34,7 +34,7 @@ J(C.rsOrderSend(JSON.stringify({ idem: k(), orderId: o7, mode: 'all' }), WAI));
 async function open(browser, html, vp) {
   const page = await browser.newPage({ viewport: vp, timezoneId: 'Asia/Yekaterinburg', deviceScaleFactor: shots ? 2 : 1 });
   page.__err = []; page.on('pageerror', e => page.__err.push(e.message)); page.on('dialog', d => d.accept(d.type() === 'prompt' ? 'проверка' : undefined));
-  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return typeof r === 'string' ? r : JSON.stringify(r); });
+  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return r === undefined ? null : r; });
   await page.addInitScript(() => {
     const runner = st => new Proxy({}, { get: (_, key) => {
       if (key === 'withSuccessHandler') return f => runner(Object.assign({}, st, { ok: f }));
@@ -47,7 +47,7 @@ async function open(browser, html, vp) {
     window.Date = class extends D { constructor(...a) { if (!a.length) super(fixed); else super(...a); } static now() { return fixed; } };
   });
   await page.route('http://monchef.test/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
-  await page.goto('http://monchef.test/exec');
+  await page.goto('http://monchef.test/exec'); await page.addStyleTag({ content: '#mcxScreen{display:none!important}' });
   return page;
 }
 (async () => {

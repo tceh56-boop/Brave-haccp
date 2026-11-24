@@ -37,7 +37,7 @@ function env() {
 async function open(browser, C, html, vp, url) {
   const page = await browser.newPage({ viewport: vp, timezoneId: 'Asia/Yekaterinburg', deviceScaleFactor: shots ? 2 : 1, hasTouch: vp.width < 600, isMobile: vp.width < 600 });
   page.__errors = []; page.on('pageerror', e => page.__errors.push(e.message)); page.on('dialog', d => d.accept(d.type() === 'prompt' ? 'проверка' : undefined));
-  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return typeof r === 'string' ? r : JSON.stringify(r); });
+  await page.exposeFunction('__srv', (fn, args) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; const r = C[fn].apply(null, args); return r === undefined ? null : r; });
   await page.addInitScript(() => {
     const runner = st => new Proxy({}, { get: (_, key) => {
       if (key === 'withSuccessHandler') return f => runner(Object.assign({}, st, { ok: f }));
@@ -48,7 +48,7 @@ async function open(browser, C, html, vp, url) {
     window.google = { script: { run: runner({}) } };
   });
   await page.route('http://monchef.test/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
-  await page.goto('http://monchef.test/exec' + url);
+  await page.goto('http://monchef.test/exec' + url); await page.addStyleTag({ content: '#mcxScreen{display:none!important}' });
   return page;
 }
 

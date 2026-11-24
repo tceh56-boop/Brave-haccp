@@ -487,6 +487,10 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:#fbf3e8}
 .hrow{border-top:1px solid var(--line,#eee);padding:8px 0}.hrow b{display:block;font-size:14px}.hrow small{color:var(--muted,#8a6d73)}.hrow ul{margin:6px 0 0 18px;padding:0}.hrow li{font-size:13px;margin:2px 0}
 #dhist select{padding:8px;border:1px solid var(--line,#ddd);border-radius:10px}
 .mvhead{align-items:flex-start}.mvhead h1{margin-top:8px}.mvback{padding:6px 12px;font-size:13px}
+/* V101 Restaurant Service: экраны в главном окне; «На весь экран» — для планшета кухни и бара */
+.rshost{display:block}
+body.rskiosk .side,body.rskiosk .top,body.rskiosk .mvhead,body.rskiosk .scrim{display:none!important}body.rskiosk .main{margin-left:0!important}body.rskiosk .content{max-width:none;padding:10px 12px}
+#rskx{display:none;position:fixed;right:12px;bottom:12px;z-index:60;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--paper);box-shadow:var(--shadow);font-weight:600}body.rskiosk #rskx{display:block}
 .mvcard{margin-bottom:16px}.mvcard .ch h3{margin:0;font-size:16px}.mvb{padding:14px 16px}.mvb>.tw,.mvb>.cards{margin:0 -16px}
 .mvbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.mvact{white-space:nowrap}.mvact .btn{padding:6px 10px;font-size:13px;margin:2px}
 .mvf select,.mvf textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;box-sizing:border-box}
@@ -527,6 +531,7 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:#fbf3e8}
       <div class="user" onclick="switchUser()" title="Сменить сотрудника"><span class="av" id="uav">?</span><div><b id="uname"></b><small id="urole"></small></div></div>
     </header>
     <main class="content" id="content"></main>
+    <button id="rskx" onclick="rsKiosk(false)">✕ Выйти из полноэкранного</button>
   </div>
 </div>
 
@@ -731,6 +736,7 @@ function goTo(g) {
   openSec(g.sec, g);
 }
 function openSec(sec, g) {
+  if (window.rsUnmount) rsUnmount();   // V101: экран Restaurant Service — снять таймеры и подписки
   VIEW = null;
   CUR = sec; TAB = (g && g.tab) || 0; FQ = (g && g.q) || '';
   window.scrollTo(0, 0);
@@ -791,7 +797,7 @@ function actHtml(a) {
 function render() {
   var d = DATA, h = '';
   h += '<div class="head"><div><h1>' + esc(d.title) + (STALE ? ' <span class="stale">⟳ обновляю…</span>' : '') + '</h1>' + (d.subtitle ? '<div class="sub">' + esc(d.subtitle) + '</div>' : '') + '</div>';
-  var acts = (d.actions || []).filter(function (a) { return a.fn || APP_URL; });
+  var acts = (d.actions || []).filter(function (a) { return a.fn || APP_URL || (a.module && VIEWS[a.module]); });   // экран главного окна открывается и без адреса приложения
   if (acts.length) h += '<div class="acts">' + acts.map(actHtml).join('') + '</div>';
   h += '</div>';
   if (d.kpis && d.kpis.length) {
@@ -2188,6 +2194,7 @@ function vResult(head, res, tone) {
 function mcNoLink() { alert('Нет ответа сервера. Неизвестно, сохранилось ли действие: откройте экран заново и проверьте, прежде чем повторять.'); }
 function openView(id, arg) {
   var V = VIEWS[id]; if (!V) return;
+  if (window.rsUnmount) rsUnmount();   // V101: экран Restaurant Service — снять таймеры и подписки
   if (!canMod(id)) { noAccess(id); return; }
   if (!VIEW) VPREV = CUR && String(CUR).indexOf('v:') !== 0 ? CUR : (VPREV || 'home');
   VIEW = { id: id, arg: arg, h: V.h || {} }; CUR = 'v:' + id; DATA = null;
@@ -6999,6 +7006,100 @@ VIEWS.reports20 = {
     pdf: function (a, btn) { var V = VIEWS.reports20; vDo(btn, 'v68ReportPdf', [JSON.stringify({ id: V._cur.id, params: V.h.params() })], 'PDF готов', m9Url); }
   }
 };
+
+/* ========================================================================
+   V101 Restaurant Service — экраны главного окна: «Зал и бронирование», «Кухня и бар», «Гостевое меню — редактор», «Редактор ролей».
+   Собственность Слепцова Дениса Владимировича. Разработчик кода — Слепцов Денис Владимирович.
+   Разметка экрана приходит с сервера один раз за сеанс (rsViewSource) и монтируется в изолированный блок (Shadow DOM):
+   стили экрана не задевают главное окно, функции экрана живут в своей области (не затирают функции главного окна).
+   Обработчики on…="…" экрана выполняются в его области; таймеры и подписки снимаются при уходе с экрана.
+   ======================================================================== */
+var RSV = { src: {}, cur: null };
+var RSV_EV_ = ['click', 'change', 'input', 'keyup', 'keydown', 'submit'];
+var RSV_CSS_ = ':host{display:block;--bg:#f5efe6;--card:#fffdf9;--paper:#fffdf9;--ink:#241c17;--mut:#8a7b6a;--line:#eadfcf}' +
+  '.rsroot{background:transparent!important;min-height:0;font:14px/1.45 -apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--ink)}' +
+  '.rsroot .wrap{max-width:none;padding:0;margin:0}.rsroot .wrap>h1:first-child,.rsroot .wrap>h1:first-child+.sub,.rsroot .top>h1{display:none}.ov{z-index:40!important}';   // окно экрана — поверх меню главного окна
+function rsvSplit_(html) {
+  var css = [], js = [], body = String(html);
+  body.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, function (_, c) { css.push(c); return ''; });
+  body.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, function (_, c) { js.push(c); return ''; });
+  var m = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(body); body = (m ? m[1] : body).replace(/<script[\s\S]*?<\/script>/gi, '');
+  css = css.join('\n').replace(/:root\b/g, ':host').replace(/(^|[}\s,])(?:html\s*,\s*)?body(?=\s*[{,.:#\[\s])/g, '$1.rsroot');
+  return { css: css, body: body, js: js.join('\n;\n') };
+}
+function rsvOn_(s) { return String(s).replace(/(^|[^\w.$-])on(click|change|input|keyup|keydown|submit)="/g, '$1data-rson$2="'); }
+function rsUnmount() {
+  var c = RSV.cur; if (!c) return; RSV.cur = null;
+  c.timers.forEach(function (t) { clearInterval(t); clearTimeout(t); });
+  c.docEv.forEach(function (x) { document.removeEventListener(x[0], x[1], x[2]); });
+  document.body.classList.remove('rskiosk');
+  try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e) {}
+}
+function rsMount(name) {
+  rsUnmount();
+  var go = function (d) {
+    if (!VIEW || VIEW.id !== name) return;   // пока грузилось, ушли на другой экран
+    var p = rsvSplit_(d.src), b = document.getElementById('vbody'); if (!b) return;
+    b.innerHTML = '<div class="rshost" id="rshost"></div>';
+    var host = b.firstChild, root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<style>' + p.css + '\n' + RSV_CSS_ + '</style><div class="rsroot">' + rsvOn_(p.body) + '</div>';
+    var cur = { name: name, root: root, timers: [], docEv: [], ev: null }; RSV.cur = cur;
+    var T = function () { return window.__MC_TOKEN || TOKEN || ''; }, MAP = d.map || {};
+    var runW = function (st) { return new Proxy({}, { get: function (_, k) {
+      if (k === 'withSuccessHandler') return function (f) { return runW(Object.assign({}, st, { ok: f })); };
+      if (k === 'withFailureHandler') return function (f) { return runW(Object.assign({}, st, { fail: f })); };
+      if (k === 'withUserObject') return function (u) { return runW(Object.assign({}, st, { uo: u, hu: true })); };
+      return function () {
+        var a = [].slice.call(arguments), i = MAP[k];
+        if (i !== undefined) { if (i < 0) a.push({ __mct: T(), __mcn: a.length }); else { while (a.length <= i) a.push(''); if (!a[i]) a[i] = T(); } }
+        var r = google.script.run; if (st.ok) r = r.withSuccessHandler(function (x, u) { if (RSV.cur === cur) st.ok(x, u); });
+        r = r.withFailureHandler(function (e, u) { if (RSV.cur === cur && st.fail) st.fail(e, u); }); if (st.hu) r = r.withUserObject(st.uo);
+        return r[k].apply(r, a);
+      };
+    } }); };
+    var G = { script: { run: runW({}), host: window.google && google.script && google.script.host } };
+    var D = new Proxy(document, { get: function (t, k) {
+      if (k === 'getElementById') return function (id) { return root.getElementById(id); };
+      if (k === 'querySelector') return function (s) { return root.querySelector(s); };
+      if (k === 'querySelectorAll') return function (s) { return root.querySelectorAll(s); };
+      if (k === 'activeElement') return root.activeElement || document.body;
+      if (k === 'addEventListener') return function (e, f, o) { cur.docEv.push([e, f, o]); document.addEventListener(e, f, o); };
+      var v = t[k]; return typeof v === 'function' ? v.bind(t) : v;
+    } });
+    var SI = function (f, ms) { var id = setInterval(function () { if (RSV.cur === cur) f(); }, ms); cur.timers.push(id); return id; };
+    var ST = function (f, ms) { var id = setTimeout(function () { if (RSV.cur === cur) f(); }, ms); cur.timers.push(id); return id; };
+    try {
+      cur.ev = new Function('document', 'google', 'setInterval', 'setTimeout', rsvOn_(p.js) +
+        '\n;return function (__c, __el, __ev) { return (function (event) { return eval(__c); }).call(__el, __ev); };')(D, G, SI, ST);
+    } catch (e) { vMsg('Экран не открылся: ' + (e && e.message || e), 'err'); return; }
+    RSV_EV_.forEach(function (type) {
+      root.addEventListener(type, function (ev) {
+        if (RSV.cur !== cur) return;
+        var path = ev.composedPath ? ev.composedPath() : [ev.target];
+        for (var i = 0; i < path.length && path[i] !== root; i++) {
+          var el = path[i], code = el.getAttribute && el.getAttribute('data-rson' + type);
+          if (code) { var r; try { r = cur.ev(code, el, ev); } catch (e) { if (window.console) console.error(e); vMsg('Ошибка экрана: ' + (e && e.message || e), 'err'); } if (r === false) ev.preventDefault(); if (ev.cancelBubble) break; }
+          if (type === 'click' && el.tagName === 'A' && el.getAttribute('href') === '#') ev.preventDefault();
+        }
+      });
+    });
+  };
+  if (RSV.src[name]) { go(RSV.src[name]); return; }
+  vCall('rsViewSource', [JSON.stringify({ name: name }), TOKEN]).then(function (r) {
+    var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; }
+    RSV.src[name] = vData(r); go(RSV.src[name]);
+  }, function (e) { vMsg('Нет связи с сервером: ' + (e && e.message || e), 'err'); vBody(''); });
+}
+function rsKiosk(on) {
+  var b = document.body; on = on === undefined ? !b.classList.contains('rskiosk') : on;
+  b.classList.toggle('rskiosk', on);
+  try { if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () {}); else if (!on && document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+  window.scrollTo(0, 0);
+}
+VIEWS.hall = { title: 'Зал и бронирование', sub: 'Схема зала, заказы столов, брони гостей и предзаказ. Нажмите на стол: открыть стол, заказ, бронь.', open: function () { rsMount('hall'); }, h: {} };
+VIEWS.kds = { title: 'Кухня и бар', sub: 'Задания кухни и бара, Stop/Go, рецептуры и заготовки бара.', acts: [['На весь экран', 'full']], open: function () { rsMount('kds'); }, h: { full: function () { rsKiosk(true); } } };
+VIEWS.menuedit = { title: 'Гостевое меню', sub: 'Публикация блюд для гостей: фото, видео, GIF, описание. Состав (без граммовок), КБЖУ и аллергены — из ТТК.', open: function () { rsMount('menuedit'); }, h: {} };
+VIEWS.roles = { title: 'Редактор ролей', sub: 'Права ролей по умолчанию заданы в MON CHEF. Здесь директор включает и выключает права роли и заводит свои роли.', open: function () { rsMount('roles'); }, h: {} };
 
 </script>
 <div id="mcxScreen"><div class="mcx-loader" id="mcxLoader"></div></div>
