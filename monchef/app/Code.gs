@@ -4158,6 +4158,8 @@ function saveEvent(json, token) {
    // ЭТАП 4 (ТЗ §16): фиксируем себестоимость на момент операции —
    // при будущем росте цен историческая стоимость банкета не изменится.
    try { _snapshotEventCostCore_(id, _createOperation_('COST_SNAPSHOT', _op && _op.session, id)); } catch (csErr) { _log_('WARN', 'снимок себестоимости: ' + csErr, _op && _op.id); }
+   // V101 этап 9: банкет в зале — бронь столов зала (Restaurant Service); пересечения — уведомление администратору
+   try { if (typeof _rsBanquetSync_ === 'function') _rsBanquetSync_(id, e, _op); } catch (rsErr) { _log_('WARN', 'Зал: бронь банкета ' + id + ': ' + rsErr, _op && _op.id); }
    _endOp_(_op);
    return id;
  } catch (err) { return 'err:' + err; }
@@ -4180,6 +4182,7 @@ function deleteEvent(id, token) {
    var sh = _eventsSheet_(); var v = sh.getDataRange().getValues();
    for (var i = v.length - 1; i >= 1; i--) if (String(v[i][0]) === String(id)) sh.deleteRow(i + 1);
    });
+   try { if (typeof _rsBanquetSync_ === 'function') _rsBanquetSync_(id, null, _op); } catch (rsErr) { _log_('WARN', 'Зал: бронь банкета ' + id + ': ' + rsErr, _op && _op.id); }   // V101 этап 9: столы освобождаются
    _endOp_(_op); return 'ok';
  } catch (e) { return 'err:' + e; }
 }

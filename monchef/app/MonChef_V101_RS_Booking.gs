@@ -38,7 +38,7 @@ function _rsBkObj_(r) {
     phone: String(r['Телефон'] || ''), date: day, start: st, duration: dur, end: end.hm, endDate: end.day, startAbs: a, endAbs: a + dur,
     guests: parseInt(r['Гостей'], 10) || 0, wishes: String(r['Пожелания'] || ''), comment: String(r['Комментарий'] || ''), manager: String(r['Менеджер'] || ''),
     preorderId: String(r.PreorderID || ''), status: String(r['Статус'] || 'NEW'), reason: String(r['Причина'] || ''), orderId: String(r.OrderID || ''),
-    version: parseInt(r.Version, 10) || 1, createdBy: String(r.CreatedBy || '') };
+    version: parseInt(r.Version, 10) || 1, createdBy: String(r.CreatedBy || ''), eventId: String(r['Банкет'] || '') };
 }
 function _rsBookingsBetween_(siteId, fromAbs, toAbs) {
   return _rsRows_(MC_RS_SH_.BOOKINGS).map(_rsBkObj_).filter(function (b) { return (!siteId || b.siteId === siteId) && !isNaN(b.startAbs) && b.endAbs > fromAbs && b.startAbs < toAbs; });
@@ -224,6 +224,7 @@ function rsBookingUpdate(json, token) {
     if (!r) return { fail: ['NOT_FOUND', 'Бронь не найдена'] };
     _rsCheckVersion_(r, d.version);
     var cur = _rsBkObj_(r);
+    if (cur.eventId) return { fail: ['VALIDATION', 'Это бронь банкета: дата, время и гости меняются в разделе «Банкеты», столы — «Банкеты» → «Привязать к залу» в бронях'] };
     if (MC_RS_BK_FINAL_.indexOf(cur.status) >= 0) return { fail: ['VALIDATION', 'Бронь ' + MC_RS_BK_RU_[cur.status] + ' — изменить нельзя'] };
     if (cur.status === 'SEATED' && (d.tables !== undefined || d.date !== undefined || d.start !== undefined)) return { fail: ['VALIDATION', 'Гости уже за столом: стол и время меняются переносом заказа (этап 3)'] };
     var chk = _rsBkCheck_(d, cur, cur.status); if (chk.err) return { fail: [chk.conflict ? 'CONFLICT' : 'VALIDATION', chk.err] };
@@ -244,6 +245,7 @@ function rsBookingStatus(json, token) {
     _rsCheckVersion_(r, d.version);
     var cur = _rsBkObj_(r), to = String(d.status || '');
     if (MC_RS_BK_ST_.indexOf(to) < 0) return { fail: ['VALIDATION', 'Неизвестный статус'] };
+    if (cur.eventId && ['CANCELLED', 'NO_SHOW', 'WAITING'].indexOf(to) >= 0) return { fail: ['VALIDATION', 'Это бронь банкета: отмена — в разделе «Банкеты» (или «Отвязать от зала»)'] };
     if ((MC_RS_BK_NEXT_[cur.status] || []).indexOf(to) < 0) return { fail: ['VALIDATION', 'Из статуса «' + MC_RS_BK_RU_[cur.status] + '» нельзя перейти в «' + MC_RS_BK_RU_[to] + '»'] };
     var reason = _rsS_(d.reason).slice(0, 300);
     if ((to === 'CANCELLED' || to === 'NO_SHOW') && !reason) return { fail: ['VALIDATION', 'Укажите причину'] };

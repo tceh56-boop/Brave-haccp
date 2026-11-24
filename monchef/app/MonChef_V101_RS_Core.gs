@@ -33,7 +33,7 @@ var MC_RS_HEAD_ = {};
 MC_RS_HEAD_[MC_RS_SH_.HALLS] = ['HallID', 'SiteID', 'Название', 'Порядок', 'Ширина', 'Высота', 'Статус'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.TABLES] = ['TableID', 'HallID', 'SiteID', 'Номер', 'Мест мин', 'Мест макс', 'X', 'Y', 'Форма', 'Можно объединять с', 'Статус'].concat(MC_RS_STD_).concat(['QR-код']);   // QR-код — этап 5, в конце
 MC_RS_HEAD_[MC_RS_SH_.BOOKINGS] = ['BookingID', 'SiteID', 'HallID', 'Столы', 'Гость', 'Телефон', 'Дата', 'Начало', 'Длительность, мин', 'Окончание',
-  'Гостей', 'Пожелания', 'Комментарий', 'Менеджер', 'PreorderID', 'Статус', 'Причина', 'OrderID', 'IdempotencyKey'].concat(MC_RS_STD_);
+  'Гостей', 'Пожелания', 'Комментарий', 'Менеджер', 'PreorderID', 'Статус', 'Причина', 'OrderID', 'IdempotencyKey'].concat(MC_RS_STD_).concat(['Банкет']);   // этап 9 — в конце
 MC_RS_HEAD_[MC_RS_SH_.PREORDERS] = ['PreorderID', 'BookingID', 'Позиции', 'Статус', 'ConvertedOrderID', 'ConvertedAt'].concat(MC_RS_STD_);
 MC_RS_HEAD_[MC_RS_SH_.ORDERS] = ['OrderID', 'SiteID', 'HallID', 'TableID', 'BookingID', 'Гостей', 'Официант', 'WaiterID', 'Открыт', 'Комментарий', 'Статус', 'Причина', 'Закрыт',
   'IdempotencyKey'].concat(MC_RS_STD_);

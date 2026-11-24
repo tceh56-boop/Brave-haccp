@@ -228,12 +228,54 @@ function rBook() {
         return '<div class="week"><h3>' + ru(dd) + ' · ' + l.length + ' брон.</h3>' + (l.length ? l.map(bkRow).join('') : '<div class="meta">нет броней</div>') + '</div>';
       }).join('');
     }
-    $('view').innerHTML = head + body;
+    $('view').innerHTML = head + '<div id="bqv"></div>' + body;
+    rBanq(from, to);
   }, function (m) { $('view').innerHTML = head; note(m); });
+}
+/* банкеты раздела «Банкеты» в зале (этап 9): бронь столов, пересечения, ручная привязка */
+function rBanq(from, to) {
+  call('rsBanquetList', { from: from, to: to }, function (r) {
+    S.banq = r; if (!$('bqv')) return;
+    if (!r.banquets.length) { $('bqv').innerHTML = ''; return; }
+    $('bqv').innerHTML = '<div class="card"><div class="nm">Банкеты · ' + r.banquets.length + '</div><div class="meta">Из раздела «Банкеты». Банкет занимает столы зала — на эти часы столы не бронируются.</div>' + r.banquets.map(function (b) {
+      var bk = b.booking, h = '<div style="border-top:1px solid var(--line);padding:8px 0"><b>' + ru(b.date) + ' ' + esc(b.allDay ? 'весь день' : b.time || b.start) + '</b> · ' + esc(b.format) + ' · ' + b.guests + ' гост.' +
+        (b.place ? ' <span class="meta">место: ' + esc(b.place) + '</span>' : '');
+      h += bk ? '<div class="meta">Зал «' + esc(bk.hall) + '», стол ' + esc(bk.tableNumbers.join(', ')) + ' · ' + esc(bk.start) + '–' + esc(bk.end) + '</div>'
+        : '<div class="msg err" style="margin:4px 0">Не привязан к залу: столы не заняты' + (b.place ? ' («' + esc(b.place) + '» — нет такого зала)' : '') + '</div>';
+      if (b.conflicts.length) h += '<div class="msg err" style="margin:4px 0">Пересекается с бронями: ' + b.conflicts.map(function (c) { return esc(c.guest) + ' ' + esc(c.start) + '–' + esc(c.end) + ', стол ' + esc(c.tables.join(', ')); }).join('; ') + '. Перенесите брони или банкет.</div>';
+      if (r.can.link) h += '<button class="btn" onclick="bqLink(\'' + b.id + '\')">' + (bk ? 'Изменить столы' : 'Привязать к залу') + '</button>' + (bk ? ' <button class="btn" onclick="bqUnlink(\'' + b.id + '\')">Отвязать от зала</button>' : '');
+      return h + '</div>';
+    }).join('') + '</div>';
+  }, function () {});
+}
+var bqTables = function () { return ''; };
+function bqFind(id) { return (S.banq && S.banq.banquets || []).filter(function (x) { return x.id === id; })[0]; }
+function bqLink(id) {
+  var b = bqFind(id), bk = b.booking, hallId = bk ? bk.hallId : (b.suggestedHall || S.hall);
+  var halls = S.data.halls.filter(function (h) { return h.status === 'ACTIVE'; });
+  var tb = function (hid) { return S.data.tables.filter(function (t) { return t.hallId === hid && t.status === 'ACTIVE'; }).map(function (t) {
+    var on = bk ? bk.tables.indexOf(t.id) >= 0 : true; return '<label style="margin-right:10px"><input type="checkbox" class="bq_t" value="' + esc(t.id) + '"' + (on ? ' checked' : '') + '> № ' + esc(t.number) + '</label>'; }).join(''); };
+  openOv('<h2>Банкет в зале</h2><div class="meta">' + ru(b.date) + ' · ' + esc(b.format) + ' · ' + b.guests + ' гост. Дата, гости и отмена — в разделе «Банкеты».</div>' +
+    '<label>Зал</label><select id="bq_h" onchange="$(\'bq_ts\').innerHTML=bqTables(this.value)">' + halls.map(function (h) { return '<option value="' + esc(h.id) + '"' + (h.id === hallId ? ' selected' : '') + '>' + esc(h.name) + '</option>'; }).join('') + '</select>' +
+    '<label>Столы</label><div id="bq_ts">' + tb(hallId) + '</div>' +
+    '<div class="bar"><div><label>Начало</label><input type="time" id="bq_s" value="' + esc(bk ? bk.start : b.start) + '"></div><div><label>Длительность, мин</label><input type="number" id="bq_d" value="' + (b.duration || 300) + '"></div></div>' +
+    '<label><input type="checkbox" id="bq_f"> привязать, даже если пересекается с бронями</label><div id="bq_m"></div>' +
+    '<div class="bar"><button class="btn pri" id="bq_go">Сохранить</button><button class="btn" onclick="closeOv()">Закрыть</button></div>');
+  bqTables = tb;
+  $('bq_go').onclick = function () {
+    var ts = [].slice.call(document.querySelectorAll('.bq_t')).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+    if (!ts.length) { $('bq_m').innerHTML = '<div class="msg err">Выберите столы</div>'; return; }
+    act('bq-' + id, 'rsBanquetLink', { eventId: id, tables: ts, start: $('bq_s').value, duration: $('bq_d').value, force: $('bq_f').checked }, function () { closeOv(); note('Банкет привязан к залу', true); rBook(); },
+      function (m) { $('bq_m').innerHTML = '<div class="msg err">' + esc(m) + '</div>'; });
+  };
+}
+function bqUnlink(id) {
+  if (!window.confirm('Отвязать банкет от зала? Столы освободятся для броней.')) return;
+  act('bqu-' + id, 'rsBanquetLink', { eventId: id, tables: [] }, function () { note('Банкет отвязан от зала', true); rBook(); });
 }
 function shift(n) { var d = $('date').value; if (S.mode === 'day') d = addDays(d, n); else if (S.mode === 'week') d = addDays(d, 7 * n); else { var p = d.split('-'); d = iso(new Date(+p[0], +p[1] - 1 + n, 1)); } $('date').value = d; rBook(); }
 function bkRow(b) {
-  return '<div class="card bk" onclick="openBkId(\'' + b.id + '\')"><div><span class="t">' + esc(b.start) + '–' + esc(b.end) + '</span> <span class="nm">' + esc(b.guest) + '</span>' +
+  return '<div class="card bk" onclick="openBkId(\'' + b.id + '\')"><div><span class="t">' + esc(b.start) + '–' + esc(b.end) + '</span> <span class="nm">' + esc(b.guest) + '</span>' + (b.eventId ? ' <span class="chip st-SEATED">банкет</span>' : '') +
     '<div class="meta">' + b.guests + ' гост. · стол ' + esc((b.tableNumbers || []).join(', ') || '—') + (b.preorder ? ' · предзаказ: ' + esc(b.preorder.statusRu) : '') + (b.wishes ? ' · ' + esc(b.wishes) : '') + '</div></div>' + chip(b.status) + '</div>';
 }
 function month(from, to, list) {
