@@ -110,10 +110,39 @@ function tabs() {
   if (S.data && S.data.can.order) t.push(['mine', S.data.can.orderAll ? 'Заказы' : 'Мои заказы']);
   t = t.concat([['book', 'Брони'], ['fc', 'Прогноз по предзаказам']]);
   if (S.data && S.data.can.stopgo) t.push(['stop', 'Stop/Go']);
+  if (S.data && S.data.can.shift) t.push(['shift', 'Смена']);
   if (S.data && S.data.can.manage) t.push(['setup', 'Настройка зала']);
   $('tabs').innerHTML = t.map(function (x) { return '<button class="' + (S.tab === x[0] ? 'on' : '') + '" onclick="S.tab=\'' + x[0] + '\';tabs();render()">' + x[1] + '</button>'; }).join('');
 }
-function render() { ({ plan: rPlan, mine: rMine, book: rBook, fc: rFc, setup: rSetup, stop: rStopH })[S.tab](); }
+function render() { ({ plan: rPlan, mine: rMine, book: rBook, fc: rFc, setup: rSetup, stop: rStopH, shift: rShift })[S.tab](); }
+/* смена: оплаты, журнал продаж, Z-отчёт, food cost, расхождения (этап 7) */
+var PM = { CASH: 'наличные', CARD: 'карта', OTHER: 'другое' };
+function rShift() {
+  $('view').innerHTML = '<div class="empty">Загрузка…</div>';
+  call('rsShiftReport', { siteId: $('site').value, date: $('date').value }, function (r) {
+    S.shift = r;
+    var h = '<div class="card"><div class="nm">Смена ' + ru(r.date) + '</div><div class="meta">' + esc(r.note) + '</div>' +
+      '<table class="f" style="margin-top:8px"><tr><td>Заказов открыто / закрыто / сейчас открыто</td><td>' + r.orders.opened + ' / ' + r.orders.closed + ' / ' + r.orders.open + '</td></tr>' +
+      '<tr><td>Оплачено по счетам (' + r.paid.bills + ')</td><td><b>' + money(r.paid.kop) + '</b> ' + Object.keys(r.paid.byMethod).map(function (k) { return '<span class="meta">' + PM[k] + ': ' + money(r.paid.byMethod[k]) + '</span>'; }).join(' · ') + '</td></tr>' +
+      (r.refunds.bills ? '<tr><td>Возвраты (' + r.refunds.bills + ')</td><td>−' + money(r.refunds.kop) + '</td></tr>' : '') +
+      '<tr><td>Проведено в журнал продаж из зала</td><td><b>' + money(r.journal.hallKop) + '</b> <span class="meta">всего в журнале за день: ' + money(r.journal.allKop) + '</span></td></tr>' +
+      '<tr><td>Z-отчёт кассы</td><td>' + (r.z ? money(Math.round(r.z.z * 100)) + ' — ' + (r.z.status === 'MATCH' ? '<span class="chip st-CONFIRMED">сходится</span>' : '<span class="chip st-CANCELLED">расхождение ' + r.z.diff + ' ₽</span>') : '<span class="meta">не загружен</span>') + '</td></tr>' +
+      (r.cost ? '<tr><td>Себестоимость проданного / произведённого / потери при отменах</td><td>' + money(r.cost.soldKop) + ' / ' + money(r.cost.producedKop) + ' / ' + money(r.cost.lossKop) + '</td></tr><tr><td>Food cost</td><td><b>' + (r.foodCostPct === null ? '—' : r.foodCostPct + ' %') + '</b></td></tr>' : '') +
+      '</table></div>';
+    h += r.issues.length ? '<div class="card"><div class="nm">Расхождения и что сделать</div>' + r.issues.map(function (x) { return '<div class="msg ' + (x.severity === 'info' ? '' : 'err') + '" style="margin:4px 0">' + esc(x.text) + '</div>'; }).join('') + '</div>' : '<div class="card msg ok">Расхождений нет</div>';
+    h += r.closed.length ? '<div class="card"><div class="nm">Закрытые заказы</div>' + r.closed.map(function (o) {
+      return '<div style="border-top:1px solid var(--line);padding:6px 0"><b>Стол № ' + esc(o.table) + '</b> · ' + esc(o.waiter) + o.bills.map(function (b) {
+        return '<div class="bk" style="cursor:default"><div>' + esc(b.name) + ' · ' + money(b.totalKop) + ' · ' + esc(PM[b.method] || '') + (b.status === 'REFUNDED' ? ' · <span class="chip st-CANCELLED">возврат</span>' : '') + '</div>' +
+          (r.can.refund && b.status === 'PAID' ? '<button class="btn bad" onclick="refund(\'' + b.id + '\')">Возврат по счёту</button>' : '') + '</div>'; }).join('') + '</div>'; }).join('') + '</div>' : '';
+    $('view').innerHTML = h;
+  }, function (m) { $('view').innerHTML = ''; note(m); });
+}
+function refund(id) {
+  var b = null; S.shift.closed.forEach(function (o) { o.bills.forEach(function (x) { if (x.id === id) b = x; }); });
+  var why = prompt('Возврат по счёту «' + b.name + '» на ' + money(b.totalKop) + ': в журнале продаж будет сторно, продукты на склад не возвращаются (блюда приготовлены). Деньги гостю возвращает касса. Причина:');
+  if (!why) return;
+  act('refund-' + id, 'rsBillRefund', { billId: id, version: b.version, reason: why }, function (r) { note('Возврат оформлен: ' + r.doc + ', ' + r.sum + ' ₽', true); rShift(); }, note);
+}
 /* Stop/Go для зала — просмотр; ставят и снимают кухня и бар (экран «Кухня и бар») */
 function rStopH() {
   $('view').innerHTML = '<div class="empty">Загрузка…</div>';
@@ -336,6 +365,8 @@ function rFc() {
     h += r.rows.length ? '<div class="card"><table class="f"><tr><th>Дата</th><th>Где готовят</th><th>Блюдо</th><th>Кол-во</th><th>Вес/объём</th></tr>' + r.rows.map(function (x) {
       return '<tr><td>' + ru(x.date) + '</td><td>' + (x.dept === 'BAR' ? 'бар' : 'кухня') + '</td><td>' + esc(x.name) + '</td><td>' + x.qty + ' ' + esc(x.unit) + '</td><td>' + (x.amount ? x.amount + ' ' + esc(x.amountUnit) : '—') + '</td></tr>';
     }).join('') + '</table></div>' : '<div class="empty">Подтверждённых предзаказов на неделю нет</div>';
+    if (r.ingredients && r.ingredients.length) h += '<div class="card"><div class="nm">Сырьё по ТТК</div><table class="f"><tr><th>Где</th><th>Продукт</th><th>Количество</th></tr>' + r.ingredients.map(function (x) {
+      return '<tr><td>' + (x.dept === 'BAR' ? 'бар' : 'кухня') + '</td><td>' + esc(x.product) + '</td><td>' + x.qty + ' ' + esc(x.unit) + '</td></tr>'; }).join('') + '</table></div>';
     $('view').innerHTML = h;
   }, function (m) { $('view').innerHTML = ''; note(m); });
 }
@@ -492,7 +523,7 @@ function oCancelItem(id) {
   else if (!confirm('Убрать «' + x.name + '» из заказа?')) return;
   act('c-' + id + '-' + O.id, 'rsItemCancel', { itemId: id, version: x.version, reason: reason }, function (r) { reloadOrder(r && r.requested ? 'Кухня уже готовит — запрос отмены отправлен кухне' : 'Позиция отменена'); }, fmsg);
 }
-function oClose() { if (confirm('Закрыть заказ? Все счета должны быть оплачены.')) oAct('close', 'rsOrderClose', { orderId: O.id, version: O.version }, 'Заказ закрыт'); }
+function oClose() { if (confirm('Закрыть заказ? Все счета должны быть оплачены. Оплаты будут проведены в журнал продаж.')) act('close-' + O.id, 'rsOrderClose', { orderId: O.id, version: O.version }, function (r) { closeOv(); note('Заказ закрыт, в журнал продаж проведено строк: ' + r.sales, true); load(); }, fmsg); }
 function oCancel() { var r = prompt('Отменить заказ целиком? Возможно, только если ничего не ушло на кухню. Причина:'); if (r) oAct('cancel', 'rsOrderCancel', { orderId: O.id, version: O.version, reason: r }, 'Заказ отменён'); }
 
 /* добавление блюд */

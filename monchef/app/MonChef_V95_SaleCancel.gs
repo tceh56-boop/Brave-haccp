@@ -96,6 +96,7 @@ function _v95Deny_(s, f) {
   if (f.storno) return 'Это строка сторно — её не отменяют';
   if (f.cancelled) return 'Продажа уже отменена (' + f.cancelled + ')';
   if (f.banquet) return 'Продажа банкета отменяется закрытием банкета (возврат, брак), а не здесь';
+  if (/\bRS-ALLOC\s/.test(f.src)) return 'Продажа зала (заказ стола): блюдо приготовлено, продукты израсходованы — возврат оформляется «Возвратом по счёту» в заказе, без возврата на склад';   // V101
   if (!(f.qty > 0)) return 'В строке нет количества — отменять нечего';
   var fin = _mcRbHasExact_(s, 'finance_edit');
   if (!fin && !_mcRbJournalAllowed_(s, 'J36')) return 'Отменяют продажу: ' + _mcRbJournalRoles_('J36').join(', ') + '; продажу прошлого дня — директор или бухгалтер.';

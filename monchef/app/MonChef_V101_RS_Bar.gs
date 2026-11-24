@@ -34,7 +34,7 @@ function _rsPortions_(tk, item, dish) {
     var a = item['Вес факт'] !== '' && item['Вес факт'] !== undefined ? _rsNum_(item['Вес факт']) : _rsNum_(item['Вес план']);
     if (a > 0 && String(item['Ед. веса']) === String(dish.yieldUnit)) q = a / dish.yieldBase;
   }
-  return Math.round(q * 1000) / 1000;
+  return q;   // без округления: V71 округляет количество вниз до 0,1 — 1,133333 × 300 дало бы 339,9 г вместо 340
 }
 /**
  * Списать ингредиенты задания по действующей ТТК (dry — только проверить). Возвращает
@@ -44,9 +44,16 @@ function _rsConsume_(tk, item, dry) {
   if (!dry && _rsConsumed_(String(tk.TicketID))) return { status: 'ALREADY', lines: [], short: [], unreleased: [], costKop: 0 };
   var idx = _buildDishIndexes_(), dish = idx.dishByCode[String(tk.DishCode)];
   if (!dish || !dish.ing || !dish.ing.length) return { status: 'NO_TTK', lines: [], short: [], unreleased: [], costKop: 0, note: 'в ТТК нет состава — списать нечего' };
-  var portions = _rsPortions_(tk, item, dish);
-  var r = _v71Run_({ kind: 'DISH', name: String(dish.name), code: String(dish.code), dish: dish, unit: 'порц.' }, portions,
-    { at: new Date(), dry: !!dry, src: _rsConsumeSrc_(tk.TicketID), note: 'Заказ ' + tk.OrderID + ', стол ' + tk['Стол'], site: String(tk.SiteID || ''), idx: idx });
+  var portions = _rsPortions_(tk, item, dish), runQty = portions, runIdx = idx, runDish = dish;
+  if (Math.abs(portions - Math.round(portions)) > 1e-9) {
+    // дробные порции (весовое блюдо): V71 округляет остаток порций до тысячных — состав пересчитывается на фактический вес, списывается 1 «порция»
+    runDish = {}; Object.keys(dish).forEach(function (k) { runDish[k] = dish[k]; });
+    runDish.ing = (dish.ing || []).map(function (x) { return [x[0], (Number(x[1]) || 0) * portions, x[2], (Number(x[3]) || 0) * portions, (Number(x[4]) || 0) * portions]; });
+    var byCode = {}; Object.keys(idx.dishByCode).forEach(function (k) { byCode[k] = idx.dishByCode[k]; }); byCode[String(dish.code)] = runDish;
+    runIdx = { dishByCode: byCode, dishByNormName: idx.dishByNormName, dishByLooseName: idx.dishByLooseName }; runQty = 1;
+  }
+  var r = _v71Run_({ kind: 'DISH', name: String(dish.name), code: String(dish.code), dish: runDish, unit: 'порц.' }, runQty,
+    { at: new Date(), dry: !!dry, src: _rsConsumeSrc_(tk.TicketID), note: 'Заказ ' + tk.OrderID + ', стол ' + tk['Стол'], site: String(tk.SiteID || ''), idx: runIdx });
   if (!dry && typeof _mcCreateTraceLink_ === 'function') {
     var agg = {}; r.lines.forEach(function (l) { agg[l.batchId] = (agg[l.batchId] || 0) + l.qty; });
     Object.keys(agg).forEach(function (bid) { try { _mcCreateTraceLink_('BATCH', bid, 'РЕАЛИЗОВАНА_В', 'ORDER_ITEM', String(tk.OrderItemID), { dateTime: new Date(), source: String(tk.TicketID), weight: Math.round(agg[bid] * 1000) / 1000 }); } catch (e) {} });

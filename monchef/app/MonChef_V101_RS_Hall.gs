@@ -50,7 +50,7 @@ function rsHallData(json, token) {
     });
     return { sites: _rsSites_(), siteId: siteId, date: day, time: hm, halls: halls, tables: tables, bookings: bookings.map(function (b) { return _rsBkPublic_(b, s); }),
       can: { booking: _mcRbHasExact_(s, 'booking'), manage: manage, order: _mcRbHasExact_(s, 'order_edit|order_all'), orderAll: _mcRbHasExact_(s, 'order_all'), send: _mcRbHasExact_(s, 'order_send|order_all'),
-        split: _mcRbHasExact_(s, 'bill_split|order_all'), discount: _mcRbHasExact_(s, 'discount'), pay: _mcRbHasExact_(s, 'payment_confirm'), stopgo: _mcRbHasExact_(s, 'stopgo_view|stopgo_kitchen|stopgo_bar') }, me: String(s.user_id || '') };
+        split: _mcRbHasExact_(s, 'bill_split|order_all'), discount: _mcRbHasExact_(s, 'discount'), pay: _mcRbHasExact_(s, 'payment_confirm'), stopgo: _mcRbHasExact_(s, 'stopgo_view|stopgo_kitchen|stopgo_bar'), shift: _mcRbHasExact_(s, 'finance_view|order_all|payment_confirm|cash_view') }, me: String(s.user_id || '') };
   });
 }
 function _rsBkShort_(b) { return { id: b.id, guest: b.guest, guests: b.guests, start: b.start, end: b.end, status: b.status }; }

@@ -511,14 +511,18 @@ function rsOrderClose(json, token) {
       if (full.unallocated && full.unallocated.length) return { fail: ['VALIDATION', 'Не все позиции распределены по счетам'] };
       if ((full.bills || []).some(function (b) { return b.status === 'OPEN'; })) return { fail: ['VALIDATION', 'Есть неоплаченные счета'] };
     }
+    // этап 7: оплаченные счета → журнал продаж J36 (склад не списывается повторно — списан производством)
+    var posting = typeof _rsPostSales_ === 'function' ? _rsPostSales_(c, full) : { sales: [], bills: {} };
     var row = _rsCopy_(L.row); delete row._row; row['Статус'] = 'CLOSED'; row['Закрыт'] = new Date(); _rsStamp_(row, c.s, c.op, false);
     var plan = [{ sheet: MC_RS_SH_.ORDERS, row: row }];
+    _rsRows_(MC_RS_SH_.BILLS).forEach(function (b) { var ids = posting.bills[String(b.BillID)]; if (!ids) return; var x = _rsCopy_(b); x['Проведено в J36'] = JSON.stringify(ids); _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BILLS, row: x }); });
     if (L.o.bookingId) {
       var b = _rsRows_(MC_RS_SH_.BOOKINGS).filter(function (x) { return String(x.BookingID) === L.o.bookingId; })[0];
       if (b && String(b['Статус']) === 'SEATED') { var b2 = _rsCopy_(b); delete b2._row; b2['Статус'] = 'CLOSED'; _rsStamp_(b2, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.BOOKINGS, row: b2 }); }
     }
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'ORDER', L.o.id, { booking: L.o.bookingId, order: L.o.id }, 'ORDER_CLOSED', { status: 'OPEN' }, { status: 'CLOSED', totalKop: full.totalKop, paidKop: full.paidKop }) });
-    return { data: { orderId: L.o.id, totalKop: full.totalKop, paidKop: full.paidKop }, plan: plan, audit: { action: 'RS_ORDER_CLOSED', entity: MC_RS_SH_.ORDERS, id: L.o.id, after: { totalKop: full.totalKop, paidKop: full.paidKop } } };
+    return { data: { orderId: L.o.id, totalKop: full.totalKop, paidKop: full.paidKop, sales: posting.sales.length }, plan: plan,
+      audit: { action: 'RS_ORDER_CLOSED', entity: MC_RS_SH_.ORDERS, id: L.o.id, after: { totalKop: full.totalKop, paidKop: full.paidKop, sales: posting.sales.map(function (x) { return x.saleId; }) } } };
   });
 }
 /** Отменить заказ (ошибочно открыт): только если ничего не ушло на кухню. Право order_all. {idem, orderId, version, reason} */

@@ -303,8 +303,16 @@ function rsPreorderForecast(json, token) {
       });
     });
     var rows = Object.keys(agg).map(function (k) { return agg[k]; }).sort(function (x, y) { return x.date < y.date ? -1 : x.date > y.date ? 1 : (x.dept < y.dept ? -1 : x.name < y.name ? -1 : 1); });
-    return { from: from, to: to, siteId: siteId, bookings: bookings, rows: rows,
-      note: 'Подтверждённые предзаказы. Склад не резервируется и не списывается: предзаказ — не продажа.' };
+    // этап 7: потребность в сырье по ТТК (п/ф раскрываются до сырья, как в планировании MON CHEF) — по кухне и бару
+    var need = {}; try { var idx = _buildDishIndexes_();
+      rows.forEach(function (x) {
+        var acc = _pfRawRequirement_(x.code, x.qty, 'порц.', idx, null, null) || {};
+        Object.keys(acc).forEach(function (k) { var sep = k.lastIndexOf('|'), nm = k.slice(0, sep), un = k.slice(sep + 1), kk = x.dept + '|' + nm + '|' + un;
+          var o = need[kk] || (need[kk] = { dept: x.dept, product: nm, unit: un, qty: 0, dates: [] }); o.qty += acc[k]; if (o.dates.indexOf(x.date) < 0) o.dates.push(x.date); });
+      }); } catch (e) {}
+    var ingredients = Object.keys(need).map(function (k) { var o = need[k]; o.qty = Math.round(o.qty * 1000) / 1000; return o; }).sort(function (a, b) { return a.dept < b.dept ? -1 : a.dept > b.dept ? 1 : (a.product < b.product ? -1 : 1); });
+    return { from: from, to: to, siteId: siteId, bookings: bookings, rows: rows, ingredients: ingredients,
+      note: 'Подтверждённые предзаказы. Склад не резервируется и не списывается: предзаказ — не продажа. Сырьё — по действующим ТТК (брутто).' };
   });
 }
 /** История брони: события обслуживания по BookingID. */

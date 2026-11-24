@@ -222,8 +222,10 @@ t('закрытие: неоплаченный счёт не даёт закры�
   const a = ss.getSheetByName('Audit_Log').getDataRange().getValues().map(r => r[7]);
   ['RS_ORDER_OPENED', 'RS_ORDER_SENT', 'RS_BILL_PAID'].forEach(x => assert.ok(a.includes(x), x));
 });
-t('журнал продаж и склад не тронуты (оплата — внутренний счёт; проводка — этап 7)', () => {
-  ['Склад_Операции', 'Продажи_Списание_V71', 'Ж_Продажи'].forEach(n => { const sh = ss.getSheetByName(n); assert.ok(!sh || sh.getLastRow() <= 1, n); });
+t('склад не тронут; в журнал продаж попадают только оплаченные счета закрытого заказа (этап 7)', () => {
+  ['Склад_Операции', 'Продажи_Списание_V71'].forEach(n => { const sh = ss.getSheetByName(n); assert.ok(!sh || sh.getLastRow() <= 1, n); });
+  const j = ss.getSheetByName('Ж_Продажи'), v = j ? j.getDataRange().getValues() : [[]], src = v[0].indexOf('Источник записи');
+  assert.ok(v.length > 1, 'закрытый оплаченный заказ проведён'); assert.ok(v.slice(1).every(r => /RS-ALLOC/.test(r[src])), 'только строки зала');
 });
 
 console.log(`\nИтого: ${pass} пройдено, ${fail} не пройдено`);
