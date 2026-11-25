@@ -449,10 +449,15 @@ function v64GetDishEconomics(dishCode, fromDate, toDate, token) {
     var prices = _v64MenuPrices_(), mp = _v64PriceFor_(prices, dish.name, '', new Date()), lastSale = revenue.filter(function (l) { return l.price > 0; }).slice(-1)[0];
     var price = mp ? mp.price : (lastSale ? lastSale.price : 0), priceSrc = mp ? (mp.source === 'CONTRACT' ? 'договор' : 'меню') : (lastSale ? 'последняя продажа' : '');
     var producedQty = prodD.reduce(function (a, p) { return a + (p.fact || 0); }, 0), actualIng = producedQty > 0 ? _v64R2_(sum(inD) / producedQty) : null;
+    // V102 (MC-013): блюдо под заказ (без выпуска) — фактическая стоимость ингредиентов на поданную порцию: себестоимость обслуженного ÷ поданные порции
+    // (возврат по счёту блюдо не «отменяет» — порция подана; отмена ошибочной продажи V95 — не подана)
+    var servedQty = revenue.reduce(function (a, l) { return a + ((l.flags || []).indexOf('SALE_REFUND') >= 0 ? 0 : (Number(l.qty) || 0)); }, 0);
+    var actualSrc = actualIng !== null ? 'фактическая (партии за период)' : '';
+    if (actualIng === null && servedQty > 0 && S > 0) { actualIng = _v64R2_(S / servedQty); actualSrc = 'фактическая (партии поданных порций: ' + _v64R3_(servedQty) + ')'; }
     var lossPer = producedQty > 0 ? _v64R2_(steps[7].amount / producedQty) : 0;
     var packPer = (_v64PackNorms_()[key] || []).reduce(function (a, n) { return a + n.qty * n.price; }, 0), lab = _v64LaborFor_(dish);
     var ing = actualIng !== null ? actualIng : norm.cost;
-    var card = { salePrice: price, salePriceSource: priceSrc, ingredients: ing, ingredientsSource: actualIng !== null ? 'фактическая (партии за период)' : 'нормативная (ТТК и текущие цены)',
+    var card = { salePrice: price, salePriceSource: priceSrc, ingredients: ing, ingredientsSource: actualIng !== null ? actualSrc : 'нормативная (ТТК и текущие цены)',
       normativeIngredients: norm.cost, technologicalLosses: lossPer, packaging: _v64R2_(packPer), directLabor: lab.labor, laborMinutes: lab.minutes, laborRate: lab.rate, variableCosts: lab.variable };
     card.productCost = _v64R2_(card.ingredients + card.technologicalLosses + card.packaging + card.directLabor + card.variableCosts);
     card.grossContribution = price > 0 ? _v64R2_(price - card.productCost) : null;
@@ -460,7 +465,7 @@ function v64GetDishEconomics(dishCode, fromDate, toDate, token) {
     card.status = price > 0 ? (norm.missing.length ? 'MISSING_PRICE' : 'PASS') : 'MISSING_SALE_PRICE';
     card.deviationFromNormative = actualIng !== null && norm.cost > 0 ? _v64R2_(actualIng - norm.cost) : null;
     card.warnings = [].concat(norm.missing.length ? ['нет цены закупки: ' + norm.missing.join(', ')] : [], price > 0 ? [] : ['нет цены продажи — введите цену меню или договора (не рассчитывается от себестоимости)'], lab.missing ? [lab.missing] : []);
-    return _ok_({ code: dish.code, name: dish.name, from: rg.fromIso, to: rg.toIso, card: card, normative: norm, producedQty: _v64R3_(producedQty), soldQty: _v64R3_(soldQty), steps: steps,
+    return _ok_({ code: dish.code, name: dish.name, from: rg.fromIso, to: rg.toIso, card: card, normative: norm, producedQty: _v64R3_(producedQty), soldQty: _v64R3_(soldQty), servedQty: _v64R3_(servedQty), steps: steps,
       note: 'П/ф в ТТК блюда — отдельный ингредиент по цене своей партии, его состав не раскрывается. Полная управленческая себестоимость — шаг 16, отдельно от продуктовой.' });
   } catch (e) { return _failFrom_(e); }
 }

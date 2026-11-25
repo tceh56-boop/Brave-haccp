@@ -23,7 +23,7 @@ var MC_V64_STAGE_RU = { PURCHASE: 'Закупка', STORAGE: 'Хранение',
   PACKAGING: 'Упаковка', ISSUE: 'Выдача', SALE: 'Продажа', RETURN: 'Возврат', WASTE: 'Отходы и брак', LAB: 'Лабораторный контроль', CORRECTION: 'Корректировка', EXPENSE: 'Управленческие расходы' };
 var MC_V64_FLAG_RU = { MISSING_PRICE: 'нет цены закупки', MISSING_SALE_PRICE: 'нет цены продажи', NO_BATCH: 'расход без партии', NO_PASSPORT: 'нет паспорта приёмки',
   NO_SUPPLIER_DOC: 'нет поставщика или накладной', COST_DIFF: 'себестоимость выпуска отличается от расчёта по партиям', PRICE_FROM_MENU: 'цена из меню / договора',
-  NO_ISSUE_BATCH: 'продажа без выдачи по партии', NORMATIVE_COST: 'себестоимость по нормативу ТТК', SALE_CANCELLED: 'сторно отменённой продажи (V95)', SALE_STOCK_SHORT: 'продажа: на складе не хватило', EXTRA_ALLOCATED: 'с доп. расходами партии',
+  NO_ISSUE_BATCH: 'продажа без выдачи по партии', NORMATIVE_COST: 'себестоимость по нормативу ТТК', SALE_CANCELLED: 'сторно отменённой продажи (V95)', SALE_REFUND: 'возврат по счёту зала (себестоимость остаётся)', SALE_STOCK_SHORT: 'продажа: на складе не хватило', EXTRA_ALLOCATED: 'с доп. расходами партии',
   CHANGED_AFTER_SNAPSHOT: 'изменилось после снимка', CLOSED_PERIOD_CHANGED: 'изменение в закрытом периоде', BANQUET_NOT_CLOSED: 'банкет не закрыт',
   WASTE_ABOVE_NORM: 'отходы выше нормы', NO_UNIT_MATCH: 'единицы не сопоставимы', MASS_NOT_MEASURED: 'масса не измерялась' };
 
@@ -315,6 +315,11 @@ function _v64Build_(rg) {
     }
     var dobj = _v64DishOf_(dish);
     var srcTxt = String(_v64G_(st7, r, 'Источник записи', '')), cxm = /сторно\s+(CN-\d{8}-[0-9A-F]{8})/i.exec(srcTxt);
+    if (cxm && /возврат по счёту/i.test(srcTxt)) {   // V102 (MC-013): возврат по счёту зала — выручка со знаком минус; продукты и упаковка израсходованы — себестоимость остаётся
+      push({ date: dd, stage: 'SALE', dir: 'IN', objType: 'SALE', objId: 'J36-' + (i + 2), product: dish, productId: dobj ? dobj.code : '', qty: q, unit: 'порц.', price: price, amount: _v64R2_(amount),
+        source: 'Ж_Продажи', ref: 'строка ' + (i + 2), employee: seller, trace: 'PASS', flags: ['SALE_REFUND'], note: 'возврат по счёту зала ' + cxm[1] + ' (блюдо подано — себестоимость остаётся)' });
+      return;
+    }
     if (cxm) {   // V95: сторно отменённой продажи — выручка со знаком минус; себестоимость возвращённых на склад партий — со знаком минус
       push({ date: dd, stage: 'SALE', dir: 'IN', objType: 'SALE', objId: 'J36-' + (i + 2), product: dish, productId: dobj ? dobj.code : '', qty: q, unit: 'порц.', price: price, amount: _v64R2_(amount),
         source: 'Ж_Продажи', ref: 'строка ' + (i + 2), employee: seller, trace: 'PASS', flags: ['SALE_CANCELLED'], note: 'сторно продажи ' + cxm[1] + ' (отмена ошибочной продажи)' });

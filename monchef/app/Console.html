@@ -5894,7 +5894,7 @@ VIEWS.org = {
 /* ---------- Экономика (V64) ---------- */
 VIEWS.finance = {
   fns: { rebuild: 'v64RebuildLedger', price: 'v64SaveMenuPrice', pack: 'v64SavePackagingNorm', labor: 'v64SaveLaborRate', exp: 'v64SaveExpense', rule: 'v64SaveAllocationRule', approve: 'v64ApproveAllocationRule',
-    op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk' },
+    check: 'v102EconomyCheck', op: 'v64SaveFinOperation', cancel: 'v64CancelRecord', close: 'v64ClosePeriod', corr: 'v64CreateCorrection', confirm: 'v64ConfirmCorrection', reject: 'v64ConfirmCorrection', snap: 'v64SnapshotTtk' },
   title: 'Экономика потока', sub: 'Себестоимость по партиям FEFO, выручка из продаж и договоров, валовой вклад. Первичные листы не меняются; закрытый период — только корректировкой.',
   acts: [['Пересобрать журнал', 'rebuild', '', true]],
   open: function (arg) { this._tab = arg || this._tab || 'dash'; this.h.tab(this._tab); },
@@ -5902,12 +5902,23 @@ VIEWS.finance = {
     tab: function (k) {
       var V = VIEWS.finance; V._tab = k;
       var head = m9Tabs([['dash', 'Сводка'], ['dish', 'Карточка блюда'], ['batch', 'Партия'], ['prod', 'Выпуск'], ['flow', 'Продукт'], ['prices', 'Цены меню'], ['pack', 'Упаковка'], ['labor', 'Тарифы труда'],
-        ['exp', 'Расходы и распределение'], ['ops', 'Финансовые операции'], ['close', 'Закрытие периода']], k);
+        ['exp', 'Расходы и распределение'], ['ops', 'Финансовые операции'], ['close', 'Закрытие периода'], ['check', 'Сверка']], k);
       var per = vForm([['from', 'Период с', 'date', V._from || ''], ['to', 'по', 'date', V._to || '']]);
       var need = function (cb) { if (V._set && !V._dirty) { cb(V._set); return; } vCall('v64GetFinanceSettings', []).then(function (r) { var d = m9Ok(r); if (d) { V._set = d; V._dirty = false; cb(d); } }); };
       var cancel = function (kind, idk) { return function (x) { return x.Status === 'ACTIVE' || x.Status === 'DRAFT' ? vBtn('Отменить', 'cancel', kind + '|' + x[idk]) : vChip(x.Status); }; };
       vBody(head + '<div id="m9fin"><div class="loading"><div class="spin"></div>Загрузка…</div></div>');
       var box = function (h) { var b = document.getElementById('m9fin'); if (b) b.innerHTML = h; };
+      if (k === 'check') {   // V102 (MC-013): сквозная сверка — журнал продаж, списание при продаже, счета зала ↔ экономика
+        vCall('v102EconomyCheck', [JSON.stringify({ from: V._from || '', to: V._to || '' })]).then(function (r) { var d = m9Ok(r); if (!d) { box(''); return; }
+          var h = per + vKpis([['Выручка: журнал', d.revenue.journal + ' ₽'], ['Выручка: экономика', d.revenue.economy + ' ₽', d.revenue.journal === d.revenue.economy ? 'green' : 'red'], ['Отмен (V95)', d.cancelled], ['Возвратов зала', d.refunds],
+            ['Итог', d.ok ? 'сходится' : 'есть расхождения', d.ok ? 'green' : 'red']]);
+          if (d.hall) h += vCard('Зал: оплачено ↔ проведено', vTable([{ k: 'k', l: '' }, { k: 'v', l: '' }], [['Оплачено по счетам', d.hall.paidKop / 100 + ' ₽'], ['Проведено в журнал продаж', d.hall.postedKop / 100 + ' ₽'], ['Возвраты (сторно)', d.hall.refundsKop / 100 + ' ₽'], ['Оплачено, но заказ не закрыт', d.hall.unpostedKop / 100 + ' ₽']].map(function (x) { return { k: x[0], v: x[1] }; })));
+          h += vCard('Расхождения и полнота данных', d.issues.length ? vTable([{ l: 'Важность', html: true, f: function (x) { return vChip(x.severity === 'error' ? 'ошибка' : x.severity === 'warning' ? 'внимание' : 'сведения', x.severity === 'error' ? 'r' : x.severity === 'warning' ? 'a' : ''); } }, { k: 'text', l: 'Что' }, { k: 'ref', l: 'Где' }], d.issues) : '<div class="sub">Расхождений нет.</div>');
+          h += vCard('Продажи: себестоимость в момент продажи ↔ в экономике', vTable([{ k: 'date', l: 'Дата', t: 'date' }, { k: 'dish', l: 'Блюдо' }, { k: 'qty', l: 'Кол-во', t: 'num' }, { k: 'revenue', l: 'Выручка', t: 'num' }, { k: 'costAtSale', l: 'При продаже', t: 'num' }, { k: 'costEconomy', l: 'В экономике', t: 'num' }, { k: 'diff', l: 'Разница', t: 'num' },
+            { l: '', f: function (x) { return (x.hall ? 'зал' : '') + (x.cancelled ? ' · отменена/возврат' : ''); } }], d.sales, null, 'Продаж за период нет') + '<div class="sub" style="margin-top:6px">' + esc(d.note) + '</div>');
+          box(h); });
+        return;
+      }
       if (k === 'dash') {
         vCall('v64GetDashboard', ['', V._from || '', V._to || '']).then(function (r) {
           var d = m9Ok(r); if (!d) { box(''); return; } var t = d.totals;
