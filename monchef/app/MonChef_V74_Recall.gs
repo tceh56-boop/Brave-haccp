@@ -232,8 +232,12 @@ function _v74Scope_(sc) {
 function _v74Links_() {
   try { if (typeof _mcSyncBatchRelationsToTrace_ === 'function') _mcSyncBatchRelationsToTrace_(); } catch (e) {}
   var v = _mcTraceSheet_().getDataRange().getValues(), from = {};
+  // V101 этап 9: блюдо зала связано с партией дважды — при «Готово» (позиция заказа: стол, подача) и при закрытии заказа
+  // (продажа SL-… для экономики). Для отзыва берётся первая связь, иначе порция в балансе партии посчиталась бы дважды.
+  var rsSales = {}; try { if (typeof _rsSaleIdSet_ === 'function') rsSales = _rsSaleIdSet_(); } catch (e) {}
   for (var i = 1; i < v.length; i++) {
     var r = v[i]; if (!r[0] || String(r[12]) === 'REVOKED') continue;
+    if (String(r[1]) === 'BATCH' && String(r[3]) === 'РЕАЛИЗОВАНА_В' && String(r[4]) === 'SALE' && rsSales[String(r[5])]) continue;
     var k = String(r[1]) + '|' + String(r[2]);
     (from[k] = from[k] || []).push({ rel: String(r[3]), toType: String(r[4]), toId: String(r[5]), at: r[7], actor: String(r[8] || ''), w: r[10], unit: String(r[11] || '') });
   }
@@ -273,7 +277,9 @@ function _v74Recipients_(outs, from, B, P) {
     var q = _v74Conv_(o.qty, o.unit || info.unit, info.unit);
     if (r) { if (q !== null) r.qty = _v74R3_((r.qty || 0) + q); return; }
     r = rows[k] = { type: o.kind, objectId: o.toId, batchId: o.batchId, product: info.product, qty: q === null ? null : _v74R3_(q), unit: info.unit, at: o.at, atText: _v74Day_(o.at), to: '', contact: '', what: info.product, need: false };
-    if (o.kind === 'SALE') {
+    var ri = o.kind === 'SALE' && o.toType === 'ORDER_ITEM' && typeof _rsRecallInfo_ === 'function' ? _rsRecallInfo_(o.toId) : null;   // V101: блюдо зала
+    if (ri) { r.to = ri.to; r.what = ri.what; r.contact = ri.contact; r.need = ri.need; if (ri.at) { r.at = ri.at; r.atText = ri.atText; } }
+    else if (o.kind === 'SALE') {
       var d = (from['SALE|' + o.toId] || []).filter(function (x) { return x.rel === 'ПО_БЛЮДУ' || x.rel === 'ПО_ТОВАРУ'; })[0];
       r.to = 'Конечный потребитель (продажа в зале)'; r.what = d ? (dishName[d.toId] || d.toId) : 'продажа ' + o.toId;
     } else if (o.kind === 'BANQUET') {

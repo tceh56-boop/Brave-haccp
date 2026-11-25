@@ -366,3 +366,22 @@ function _rsBrakSales_(fromDay, toDay) {
 }
 
 MC_GATE_EXT_.rsTicketCcp = { need: 'kitchen_queue|bar_queue', mut: true };
+
+/*
+ * 5. Отзыв продукции (V74): партия, ушедшая в блюдо зала, показывается с адресатом — стол, заказ, время подачи, официант,
+ *    гость брони (имя и телефон, если заказ открыт по брони: по нему можно известить гостя). Блюдо приготовлено, но не подано
+ *    (отменено с расходом) — так и написано. Дубль связи «партия → продажа» при закрытии заказа отзыв не считает (V74).
+ */
+function _rsRecallInfo_(itemId) {
+  try {
+    var it = _rsRows_(MC_RS_SH_.ITEMS).filter(function (r) { return String(r.OrderItemID) === String(itemId); })[0];
+    if (!it) return null;
+    var o = _rsRows_(MC_RS_SH_.ORDERS).filter(function (r) { return String(r.OrderID) === String(it.OrderID); })[0] || {};
+    var t = _rsTablesIdx_()[String(o.TableID || '')], bk = o.BookingID ? _rsRows_(MC_RS_SH_.BOOKINGS).filter(function (r) { return String(r.BookingID) === String(o.BookingID); })[0] : null;
+    var fmt = function (d) { return _rsIsDate_(d) ? Utilities.formatDate(d, _mcTz_(), 'dd.MM.yyyy HH:mm') : ''; };
+    var served = _rsIsDate_(it['Подано']), st = String(it['Статус']), when = served ? it['Подано'] : (o['Открыт'] || '');
+    var to = 'Гость зала: стол № ' + (t ? t.number : '?') + ', заказ ' + String(it.OrderID).slice(-8) + (st === 'CANCELLED' ? ' — блюдо отменено, гостю не подано' : served ? ', подано ' + fmt(it['Подано']) + (it['Подал'] ? ' (' + it['Подал'] + ')' : '') : ', ' + (MC_RS_IT_RU_ && MC_RS_IT_RU_[st] || st)) +
+      (o['Официант'] ? ', официант ' + o['Официант'] : '') + (bk ? ', бронь: ' + String(bk['Гость'] || '') : '');
+    return { to: to, what: String(it['Название'] || ''), contact: bk && bk['Телефон'] ? String(bk['Телефон']) : '', need: !!(bk && st !== 'CANCELLED'), at: when, atText: fmt(when) || '' };
+  } catch (e) { return null; }
+}

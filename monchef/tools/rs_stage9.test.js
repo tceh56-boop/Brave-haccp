@@ -206,5 +206,15 @@ t('бракераж: стейк зала — «продано без браке�
   drop(); b = J(C.v77BrakData(CHEF)); it = b.data.items.find(x => x.dish === 'Стейк рибай'); assert.strictEqual(it.soldToday, 1, 'без двойного счёта');
 });
 
+console.log(' 5) отзыв продукции: стол и время подачи');
+t('отзыв партии говядины: получатель — гость зала, стол № 2, время подачи, официант; в балансе партии стейк учтён один раз (300 г)', () => {
+  drop(); const bid = ss.getSheetByName('Склад_Партии').getDataRange().getValues().slice(1).filter(r => r[1] === 'Говядина рибай').map(r => String(r[0]));
+  const r = J(C.v74Preview(JSON.stringify({ scope: { batchIds: bid } }), HACCP)); assert.ok(r.success || r.ok, JSON.stringify(r).slice(0, 300));
+  const rec = r.data.recipients.filter(x => x.type === 'SALE'); assert.strictEqual(rec.length, 1, JSON.stringify(rec));
+  assert.ok(/Гость зала: стол № 2, заказ .*подано \d{2}\.\d{2}\.\d{4} \d{2}:\d{2}.*официант Официантов Иван/.test(rec[0].to), rec[0].to);
+  assert.strictEqual(rec[0].what, 'Стейк рибай'); assert.strictEqual(rec[0].qty, 300);
+  const bal = r.data.balance.find(b => bid.indexOf(b.batchId) >= 0 && b.traced > 0); assert.strictEqual(bal.traced, 300); assert.ok(!bal.over);
+});
+
 console.log('\nИтого: ' + pass + ' пройдено, ' + fail + ' не пройдено');
 process.exit(fail ? 1 : 0);
