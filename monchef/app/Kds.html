@@ -24,7 +24,7 @@
 .st{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;background:#eee}
 .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
 .btn{border:0;border-radius:12px;padding:12px 14px;font:700 16px inherit;cursor:pointer;background:#eee6e3;color:var(--ink);min-height:50px;flex:1}
-.btn.main{background:var(--wine);color:#fff;flex:2}.btn.ok{background:var(--green);color:#fff;flex:2}.btn.small{flex:0 0 auto;font-size:14px;min-height:44px;padding:8px 12px}.btn.bad{background:var(--red-bg);color:var(--red)}
+.btn.bad{background:var(--red,#a8231f);color:#fff}.btn.main{background:var(--wine);color:#fff;flex:2}.btn.ok{background:var(--green);color:#fff;flex:2}.btn.small{flex:0 0 auto;font-size:14px;min-height:44px;padding:8px 12px}.btn.bad{background:var(--red-bg);color:var(--red)}
 .btn:disabled{opacity:.5}
 .msg{margin:6px 0 10px;font-size:15px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
 .empty{color:var(--mut);text-align:center;padding:40px}
@@ -118,11 +118,35 @@ function closeOv() { $('ov').classList.remove('on'); }
 function beep() { try { var c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.value = 0.15; o.start(); o.stop(c.currentTime + 0.25); } catch (e) {} }
 /* ---------- Stop/Go ---------- */
 var STRU = { STOP: 'STOP', LIMITED: 'ограничено', REVIEW: 'на проверке', GO: 'доступно' };
-function loadStop() { $('chips').innerHTML = ''; call('rsStopList', {}, function (d) { S.stop = d; drawStop(); }, note); }
+function loadStop() { $('chips').innerHTML = ''; call('rsStopList', {}, function (d) { S.stop = d; S.sug = []; drawStop(); call('rsStopSuggestions', {}, function (x) { S.sug = x.suggestions; drawStop(); }, function () {}); }, note); }
+/* этап 9: предложения Stop/Go по остаткам (не хватает на следующую порцию / сырьё снова есть) */
+function sugHtml() {
+  var d = S.stop, l = S.sug || [], canAny = d.can.kitchen || d.can.bar || d.can.approve;
+  var h = canAny ? '<div class="btns" style="margin-bottom:10px"><button class="btn" style="flex:0 0 auto" onclick="sugRun()">Проверить остатки</button></div>' : '';
+  if (!l.length) return h;
+  return h + '<div class="card" style="border-color:var(--amber)"><b>Предложения по остаткам · ' + l.length + '</b><div class="meta">Система проверяет, хватит ли партий на следующую порцию. Решение — за кухней и баром.</div>' + l.map(function (x) {
+    var mine = x.dept === 'BAR' ? d.can.bar : d.can.kitchen;
+    return '<div class="row"><div><b>' + esc(x.name) + '</b> · ' + (x.dept === 'BAR' ? 'бар' : 'кухня') + ' — ' + esc(x.kindRu) + '<div class="meta">' +
+      (x.kind === 'STOP' ? 'не хватит на следующую порцию: ' + x.short.map(function (z) { return esc(z.product) + ' ' + z.qty + ' ' + esc(z.unit); }).join(', ') : 'сырьё снова есть') + ' · ' + esc(x.at) + '</div></div>' +
+      ((mine || d.can.approve) ? '<div class="btns" style="flex:0 0 auto">' + (x.kind === 'STOP' ? '<button class="btn bad small" onclick="sugStop(\'' + x.id + '\')">Поставить STOP</button>' :
+        '<button class="btn ok small" onclick="goForm(\'' + esc(x.code) + '\',\'' + x.dept + '\')">Вернуть GO</button>') + '<button class="btn small" onclick="sugNo(\'' + x.id + '\')">Отклонить</button></div>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+function sugRun() { note('Проверяю остатки…', true); call('rsStopWatchRun', { at: Date.now() }, function (r) { note('Проверено блюд: ' + r.checked + (r.opened.length ? ', новых предложений: ' + r.opened.length : ', новых предложений нет'), true); loadStop(); }, note); }
+function sugStop(id) {
+  var x = (S.sug || []).filter(function (z) { return z.id === id; })[0]; if (!x) return;
+  var keep = window.confirm('STOP: ' + x.name + ' — «Закончилось сырьё». Уже принятые заказы этого блюда выполним? (OK — выполним, Отмена — официантам согласовать замену)');
+  act('sug-' + id, 'rsStopSuggestDecide', { id: id, accept: true, affected: keep ? 'KEEP' : 'PROBLEM' }, function () { note('STOP: ' + x.name, true); loadStop(); }, note);
+}
+function sugNo(id) {
+  var why = window.prompt('Почему не ставим? (например: приход ещё не оформлен, продукт есть)'); if (why === null) return;
+  act('sugn-' + id, 'rsStopSuggestDecide', { id: id, accept: false, comment: why }, function () { note('Предложение отклонено', true); loadStop(); }, note);
+}
 function drawStop() {
   var d = S.stop, canAny = d.can.kitchen || d.can.bar;
   $('sum').textContent = 'ограничений: ' + d.current.length;
   var h = canAny ? '<div class="btns" style="margin-bottom:10px"><button class="btn main" style="flex:0 0 auto" onclick="stopForm()">+ Поставить STOP / ограничение</button></div>' : '';
+  h += sugHtml();
   h += d.current.length ? d.current.map(function (r) {
     var mine = r.dept === 'BAR' ? d.can.bar : d.can.kitchen, canGo = (r.status === 'REVIEW' ? d.can.approve : (mine || d.can.approve));
     return '<div class="card"><div class="row" style="border:0;padding:0"><div><b>' + esc(r.name) + '</b> · ' + (r.dept === 'BAR' ? 'бар' : 'кухня') + '<div class="meta">' + esc(STRU[r.status]) + (r.status === 'LIMITED' ? ', осталось ' + r.left : '') + ' · ' + esc(r.reason) +

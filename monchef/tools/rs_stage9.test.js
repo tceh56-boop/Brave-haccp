@@ -126,5 +126,46 @@ t('отменённая бронь — предзаказ из плана ухо
   assert.ok(!rows('Склад_Операции').length);
 });
 
+console.log(' 3) Stop/Go по остаткам');
+const income = (name, qty, unit) => { drop(); C._withLock_(() => C._incomeWithBatches_([{ name, qty, unit, price: 1 }], 'Поставщик', '', null)); const sh = ss.getSheetByName('Склад_Партии'), n = sh.getLastRow(); for (let i = 2; i <= n; i++) sh.getRange(i, 11).setValue('active'); };
+const sugs = () => rows('СтопГО_Предложения_V1');
+t('«Готово» по дайкири: на следующую порцию рома не хватает — предложение STOP бару и уведомление менеджеру бара; STOP сам не ставится', () => {
+  income('Ром белый', 120, 'мл');
+  const o = ok(call('rsOrderOpen', WAI, { idem: key(), tableId: V[1].id, guests: 2 })).orderId;
+  ok(call('rsItemAdd', WAI, { idem: key(), orderId: o, items: [{ code: 'B010', qty: 2 }] }));
+  ok(call('rsOrderSend', WAI, { idem: key(), orderId: o, mode: 'all' }));
+  let tk = ok(call('rsKdsData', BAR, { dept: 'BAR' })).tickets[0];
+  tk = ok(call('rsTicketAct', BAR, { idem: key(), ticketId: tk.id, version: tk.version, action: 'start' })).ticket;
+  ok(call('rsTicketAct', BAR, { idem: key(), ticketId: tk.id, version: tk.version, action: 'ready' }));
+  const sg = sugs().filter(r => r.DishCode === 'B010' && r['Статус'] === 'OPEN'); assert.strictEqual(sg.length, 1); assert.strictEqual(sg[0]['Предложение'], 'STOP'); assert.strictEqual(sg[0]['Подразделение'], 'BAR');
+  assert.ok(/Ром белый/.test(sg[0]['Нехватка']));
+  assert.ok(rows('Уведомления').some(r => /Не хватит на следующую порцию: Дайкири/.test(JSON.stringify(r))));
+  assert.ok(!ok(call('rsStopList', BAR, { dept: 'BAR' })).current.some(x => x.code === 'B010'), 'STOP не поставлен автоматически');
+});
+t('проверка всего меню (кнопка): стейк без говядины — предложение кухне; повтор не дублирует предложения', () => {
+  const r = ok(call('rsStopWatchRun', CHEF, {})); assert.ok(r.checked >= 2);
+  assert.ok(sugs().some(x => x.DishCode === 'D001' && x['Статус'] === 'OPEN' && x['Подразделение'] === 'KITCHEN'));
+  const n = sugs().length; ok(call('rsStopWatchRun', CHEF, {})); assert.strictEqual(sugs().length, n);
+  err(call('rsStopWatchRun', WAI, {}));
+});
+t('экран: предложения по подразделению; бармен ставит STOP одним нажатием (причина «Закончилось сырьё»), кухонное — не может', () => {
+  const l = ok(call('rsStopSuggestions', BAR, { dept: 'BAR' })).suggestions; assert.deepStrictEqual(l.map(x => x.code), ['B010']);
+  const k = ok(call('rsStopSuggestions', CHEF, { dept: 'KITCHEN' })).suggestions.find(x => x.code === 'D001');
+  err(call('rsStopSuggestDecide', BAR, { idem: key(), id: k.id, accept: true }));
+  ok(call('rsStopSuggestDecide', BAR, { idem: key(), id: l[0].id, accept: true }));
+  const cur = ok(call('rsStopList', BAR, { dept: 'BAR' })).current.find(x => x.code === 'B010'); assert.strictEqual(cur.status, 'STOP'); assert.strictEqual(cur.reason, 'Закончилось сырьё');
+  assert.ok(/По остаткам: нет Ром белый/.test(cur.comment)); assert.strictEqual(sugs().find(x => x.SuggID === l[0].id)['Статус'], 'APPLIED');
+  err(call('rsItemAdd', WAI, { idem: key(), orderId: ok(call('rsOrderOpen', WAI, { idem: key(), tableId: T[2].id, guests: 1 })).orderId, items: [{ code: 'B010', qty: 1 }] }));
+});
+t('приход рома — предложение вернуть GO; приход говядины — предложение STOP по стейку закрывается само', () => {
+  income('Ром белый', 700, 'мл'); income('Говядина рибай', 3000, 'г'); income('Сливки 33%', 1000, 'мл'); income('Перец чёрный', 100, 'г');
+  ok(call('rsStopWatchRun', CHEF, {}));
+  const go = sugs().filter(x => x.DishCode === 'B010' && x['Предложение'] === 'GO' && x['Статус'] === 'OPEN'); assert.strictEqual(go.length, 1);
+  assert.ok(sugs().filter(x => x.DishCode === 'D001' && x['Предложение'] === 'STOP').every(x => x['Статус'] !== 'OPEN'), 'предложение по стейку закрыто');
+  ok(call('rsStopSuggestDecide', BAR, { idem: key(), id: go[0].SuggID, accept: false, comment: 'вернём после проверки льда' }));
+  assert.strictEqual(sugs().find(x => x.SuggID === go[0].SuggID)['Статус'], 'DISMISSED');
+  assert.ok(C.MC_SCHEDULE.some(j => j.fn === 'rsStopWatchTick_' && j.everyMin === 60), 'проверка раз в час — в расписании');
+});
+
 console.log('\nИтого: ' + pass + ' пройдено, ' + fail + ' не пройдено');
 process.exit(fail ? 1 : 0);

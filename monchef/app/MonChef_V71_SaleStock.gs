@@ -236,8 +236,10 @@ function _v71AfterBanquet_(r, eventId, token, what) {
 function _v71Run_(item, qty, o) {
   o = o || {};
   var at = o.at || new Date();
-  var ctx = { dry: !!o.dry, day: _v71Day_(at), sh: _stockBatchesSheet_(), res: _v71Reserved_(), blocked: _v71Blocked_(), taken: {} };
-  ctx.v = ctx.sh.getDataRange().getValues();
+  // V101 этап 9: o.snap — общий снимок партий, резервов и блокировок для серии проверок без списания (Stop/Go по остаткам)
+  var sn = o.dry && o.snap ? o.snap : null;
+  var ctx = { dry: !!o.dry, day: _v71Day_(at), sh: _stockBatchesSheet_(), res: sn ? sn.res : _v71Reserved_(), blocked: sn ? sn.blocked : _v71Blocked_(), taken: {} };
+  ctx.v = sn ? sn.v : ctx.sh.getDataRange().getValues();
   try { if (typeof _v97SkipRows_ === 'function') ctx.skip = _v97SkipRows_(ctx.v, o.site); } catch (e) {}   // V97: только склады площадки продажи
   var src = o.src || ('Продажа ' + (o.saleId || '')), lines = [], short = [], unreleased = [], pid = {};   // V101: o.src — «Производство заказа …»
   try { pid = _ttkPidByProdKey_(); } catch (e) {}

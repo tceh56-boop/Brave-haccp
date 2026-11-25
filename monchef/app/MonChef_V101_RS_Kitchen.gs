@@ -84,7 +84,7 @@ function _rsLoadTicket_(c) {
  * Действие с заданием. {idem, ticketId, version, action: accept | start | ready | issue | problem | resolve, reason, result}
  */
 function rsTicketAct(json, token) {
-  return _rsMutate_(token, 'kitchen_queue|bar_queue', 'RS_TICKET_ACT', json, function (c) {
+  var res = _rsMutate_(token, 'kitchen_queue|bar_queue', 'RS_TICKET_ACT', json, function (c) {
     var L = _rsLoadTicket_(c); if (L.fail) return L;
     var a = String(c.d.action || ''), st = L.tk.status, to = null, now = new Date(), who = _rsWho_(c.s), reason = _rsS_(c.d.reason).slice(0, 300);
     var NEXT = { accept: { NEW: 'ACCEPTED' }, start: { NEW: 'COOKING', ACCEPTED: 'COOKING' }, ready: { ACCEPTED: 'READY', COOKING: 'READY' }, issue: { READY: 'ISSUED' },
@@ -120,6 +120,9 @@ function rsTicketAct(json, token) {
     return { data: { ticket: _rsTk_(t), warning: warn, stock: cons ? { status: cons.status, lines: (cons.lines || []).length, short: (cons.short || []).length } : null }, plan: plan,
       audit: { action: 'RS_TICKET_' + to, entity: MC_RS_SH_.QUEUE, id: L.tk.id, before: { status: st }, after: { status: to, reason: reason, stock: cons ? cons.status : '', costKop: cons ? cons.costKop : '' } } };
   });
+  // этап 9: после «Готово» — хватит ли партий на следующую порцию (предложение STOP)
+  try { var x = JSON.parse(res); if (x && x.success && x.data && x.data.ticket && x.data.ticket.status === 'READY' && typeof _rsStopWatch_ === 'function') _rsStopWatch_([x.data.ticket.code], null, null); } catch (e) {}
+  return res;
 }
 /**
  * Отмена задания кухней. {idem, ticketId, version, reason, consumption: NONE | FULL | PARTIAL, note}

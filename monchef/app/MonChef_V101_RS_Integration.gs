@@ -180,3 +180,108 @@ function _rsPreorderDemand_(from, to) {
   });
   return out;
 }
+
+/*
+ * 3. Stop/Go по остаткам. Система проверяет, хватит ли партий на СЛЕДУЮЩУЮ порцию (тем же движком V71 без списания, что и
+ *    при «Готовить»): после каждого «Готово» — для этого блюда, раз в час и по кнопке — для всего меню (блюда с ценой на сегодня).
+ *    Не хватает — ПРЕДЛОЖЕНИЕ «поставить STOP» на экране Stop/Go (и уведомление шеф-повару / менеджеру бара). Ставит STOP
+ *    человек одним нажатием: причина «Закончилось сырьё», принятые заказы сохраняются. Сам STOP система не ставит —
+ *    остаток мог не дойти до учёта (приход не оформлен), решение за кухней. Сырьё снова есть, а блюдо на STOP «Закончилось
+ *    сырьё» — предложение вернуть GO (GO — как обычно, с проверкой «продукты есть, оборудование работает, качество в норме»).
+ *    Предложение, ставшее неактуальным (приход, ревизия), закрывается само.
+ */
+MC_RS_SH_.STOPSUG = 'СтопГО_Предложения_V1';
+MC_RS_HEAD_[MC_RS_SH_.STOPSUG] = ['SuggID', 'DishCode', 'Название', 'Подразделение', 'Предложение', 'Нехватка', 'Статус', 'Создано', 'Решил', 'Решено', 'Комментарий'].concat(MC_RS_STD_);
+var MC_RS_SUG_RU_ = { STOP: 'поставить STOP', GO: 'вернуть GO' };
+
+/** Хватит ли партий на одну порцию: {code: {short: [{product, qty, unit}], noTtk}}. Один снимок склада на всю серию. */
+function _rsStockGap_(codes) {
+  var idx = _buildDishIndexes_(), out = {}, sn = { v: _stockBatchesSheet_().getDataRange().getValues(), res: _v71Reserved_(), blocked: _v71Blocked_() };
+  codes.forEach(function (code) {
+    var dish = idx.dishByCode[code];
+    if (!dish || !dish.ing || !dish.ing.length) { out[code] = { short: [], noTtk: true }; return; }
+    try {
+      var r = _v71Run_({ kind: 'DISH', name: String(dish.name), code: String(dish.code), dish: dish, unit: 'порц.' }, 1, { at: new Date(), dry: true, snap: sn, idx: idx });
+      out[code] = { short: (r.short || []).map(function (x) { return { product: x.product, qty: Math.round(x.qty * 1000) / 1000, unit: x.unit }; }) };
+    } catch (e) { out[code] = { short: [], error: String(e && e.message || e) }; }
+  });
+  return out;
+}
+function _rsSugObj_(r) {
+  return { id: String(r.SuggID), code: String(r.DishCode), name: String(r['Название'] || ''), dept: String(r['Подразделение']), kind: String(r['Предложение']), kindRu: MC_RS_SUG_RU_[r['Предложение']] || r['Предложение'],
+    short: _rsJ_(r['Нехватка'], []) || [], status: String(r['Статус']), at: _rsIsDate_(r['Создано']) ? Utilities.formatDate(r['Создано'], _mcTz_(), 'dd.MM HH:mm') : '', version: parseInt(r.Version, 10) || 1 };
+}
+/**
+ * Проверка остатков и предложения Stop/Go. codes — блюда (null — всё меню на сегодня). s, op — кто запустил (null — расписание).
+ * Возвращает {checked, opened[], closed[]}.
+ */
+function _rsStopWatch_(codes, s, op) {
+  var dishes = _rsDishes_();
+  if (!codes) { var pi = {}; try { pi = _rsPriceIdx_(_rsToday_()); } catch (e) { pi = {}; } codes = Object.keys(pi).filter(function (c) { return dishes[c]; }); }
+  codes = codes.filter(function (c, i, a) { return dishes[c] && a.indexOf(c) === i; });
+  if (!codes.length) return { checked: 0, opened: [], closed: [] };
+  var gap = _rsStockGap_(codes), eop = op || { id: _rsId_('OP') }, opened = [], closed = [];
+  _withLock_(function () {
+    var stops = _rsStopRows_(), sugs = _rsRows_(MC_RS_SH_.STOPSUG), plan = [], now = new Date();
+    var open = function (code, dept, kind) { return sugs.filter(function (r) { return String(r.DishCode) === code && String(r['Подразделение']) === dept && String(r['Предложение']) === kind && String(r['Статус']) === 'OPEN'; })[0]; };
+    var close = function (r, why) { var o = _rsCopy_(r); delete o._row; o['Статус'] = 'CLOSED'; o['Решено'] = now; o['Решил'] = 'система'; o['Комментарий'] = why; _rsStamp_(o, s, eop, false); plan.push({ sheet: MC_RS_SH_.STOPSUG, row: o }); closed.push(_rsSugObj_(o)); };
+    codes.forEach(function (code) {
+      var g = gap[code]; if (!g || g.noTtk || g.error) return;
+      var dept = dishes[code].dept === 'BAR' ? 'BAR' : 'KITCHEN', cur = _rsStopCur_(stops, code, dept), st = cur ? String(cur['Статус']) : 'GO', lack = g.short.length > 0;
+      var sStop = open(code, dept, 'STOP'), sGo = open(code, dept, 'GO');
+      if (lack && (st === 'GO' || st === 'LIMITED') && !sStop) {
+        var row = _rsStamp_({ SuggID: _rsId_('SUG'), DishCode: code, 'Название': dishes[code].name, 'Подразделение': dept, 'Предложение': 'STOP', 'Нехватка': JSON.stringify(g.short), 'Статус': 'OPEN', 'Создано': now }, s, eop, true);
+        plan.push({ sheet: MC_RS_SH_.STOPSUG, row: row }); opened.push(_rsSugObj_(row));
+        try { _notify_('RS_STOP_SUGGEST', 'warning', 'Не хватит на следующую порцию: ' + dishes[code].name + (dept === 'BAR' ? ' (бар)' : ''), 'Нет: ' + g.short.map(function (x) { return x.product + ' ' + x.qty + ' ' + x.unit; }).join(', ') + '. Поставьте STOP на экране «Кухня и бар → Stop/Go» или оформите приход.', dept === 'BAR' ? 'Менеджер бара' : 'Шеф-повар', 'RS_SUG_' + row.SuggID, eop); } catch (e) {}
+      }
+      if (!lack && sStop) close(sStop, 'сырьё есть');
+      if (lack && sGo) close(sGo, 'сырья снова нет');
+      if (!lack && st === 'STOP' && String(cur['Причина']) === 'Закончилось сырьё' && !sGo) {
+        var rg = _rsStamp_({ SuggID: _rsId_('SUG'), DishCode: code, 'Название': dishes[code].name, 'Подразделение': dept, 'Предложение': 'GO', 'Нехватка': '[]', 'Статус': 'OPEN', 'Создано': now }, s, eop, true);
+        plan.push({ sheet: MC_RS_SH_.STOPSUG, row: rg }); opened.push(_rsSugObj_(rg));
+        try { _notify_('RS_GO_SUGGEST', 'info', 'Сырьё есть: ' + dishes[code].name + ' можно вернуть в GO', 'Проверьте и верните GO на экране «Кухня и бар → Stop/Go».', dept === 'BAR' ? 'Менеджер бара' : 'Шеф-повар', 'RS_SUG_' + rg.SuggID, eop); } catch (e) {}
+      }
+    });
+    if (plan.length) _rsTxApply_(eop, 'RS_STOP_WATCH', plan);
+  });
+  return { checked: codes.length, opened: opened, closed: closed };
+}
+/** Предложения Stop/Go (открытые) для экрана: {dept}. */
+function rsStopSuggestions(json, token) {
+  return _rsRead_(token, 'stopgo_view|stopgo_kitchen|stopgo_bar|stopgo_approve|kitchen_queue|bar_queue', function () {
+    var d = _rsJ_(json, {}) || {}, dept = d.dept === 'BAR' ? 'BAR' : d.dept === 'KITCHEN' ? 'KITCHEN' : '';
+    return { suggestions: _rsRows_(MC_RS_SH_.STOPSUG).map(_rsSugObj_).filter(function (x) { return x.status === 'OPEN' && (!dept || x.dept === dept); }) };
+  });
+}
+/** Проверить остатки сейчас (всё меню на сегодня). */
+function rsStopWatchRun(json, token) {
+  var s; try { s = _requireAuth_(token, null); } catch (e) { return _failFrom_(e); }
+  if (!_mcRbHasExact_(s, 'stopgo_kitchen|stopgo_bar|stopgo_approve')) return _mcRbDenyJson_('Проверка остатков — кухне и бару (Stop/Go).');
+  try { var r = _rsStopWatch_(null, s, null); return _ok_(r); } catch (e) { return _rsFail_(e, null); }
+}
+/** Решение по предложению: {idem, id, version, accept, affected: KEEP|PROBLEM}. STOP — ставится с причиной «Закончилось сырьё»; GO — только отклонить (GO возвращается обычной кнопкой). */
+function rsStopSuggestDecide(json, token) {
+  var d = _rsJ_(json, {}) || {}, row = _rsRows_(MC_RS_SH_.STOPSUG).filter(function (r) { return String(r.SuggID) === String(d.id); })[0];
+  if (!row) return _fail_('NOT_FOUND', 'Предложение не найдено');
+  var sg = _rsSugObj_(row), stopRes = null;
+  if (d.accept && sg.kind === 'STOP') {
+    stopRes = JSON.parse(rsStopSet(JSON.stringify({ idem: String(d.idem || '') + '-stop', code: sg.code, dept: sg.dept, status: 'STOP', reason: 'Закончилось сырьё',
+      comment: 'По остаткам: нет ' + sg.short.map(function (x) { return x.product + ' ' + x.qty + ' ' + x.unit; }).join(', '), affected: d.affected === 'PROBLEM' ? 'PROBLEM' : 'KEEP' }), token));
+    if (!stopRes.success) return JSON.stringify(stopRes);
+  }
+  return _rsMutate_(token, _rsStopNeed_(sg.dept) + '|stopgo_approve', 'RS_STOP_SUGGEST', json, function (c) {
+    var r = _rsRows_(MC_RS_SH_.STOPSUG).filter(function (x) { return String(x.SuggID) === sg.id; })[0];
+    if (String(r['Статус']) !== 'OPEN') return { fail: ['VALIDATION', 'Предложение уже закрыто'] };
+    var o = _rsCopy_(r); delete o._row; o['Статус'] = c.d.accept && sg.kind === 'STOP' ? 'APPLIED' : 'DISMISSED'; o['Решено'] = new Date(); o['Решил'] = _rsWho_(c.s);
+    o['Комментарий'] = _rsS_(c.d.comment).slice(0, 300); _rsStamp_(o, c.s, c.op, false);
+    return { data: { status: o['Статус'], stop: stopRes ? stopRes.data : null }, plan: [{ sheet: MC_RS_SH_.STOPSUG, row: o }],
+      audit: { action: 'RS_STOP_SUGGEST_' + o['Статус'], entity: MC_RS_SH_.STOPSUG, id: sg.id, after: { code: sg.code, dept: sg.dept, kind: sg.kind, status: o['Статус'] } } };
+  });
+}
+/** Расписание: раз в час — проверка всего меню. */
+function rsStopWatchTick_() { try { return _rsStopWatch_(null, null, null); } catch (e) { try { _log_('WARN', 'Stop/Go по остаткам: ' + e); } catch (x) {} return null; } }
+(function () { try { if (!MC_SCHEDULE.some(function (j) { return j.fn === 'rsStopWatchTick_'; })) MC_SCHEDULE.push({ fn: 'rsStopWatchTick_', everyMin: 60 }); } catch (e) {} })();
+
+MC_GATE_EXT_.rsStopSuggestions = { need: 'stopgo_view|stopgo_kitchen|stopgo_bar|stopgo_approve|kitchen_queue|bar_queue' };
+MC_GATE_EXT_.rsStopWatchRun = { need: 'stopgo_kitchen|stopgo_bar|stopgo_approve' };   // повтор безопасен: открытые предложения не дублируются
+MC_GATE_EXT_.rsStopSuggestDecide = { need: 'stopgo_kitchen|stopgo_bar|stopgo_approve', mut: true };
