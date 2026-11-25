@@ -11,10 +11,10 @@ const E = boot({ now: '2026-11-25T08:00:00Z' }), C = E.ctx, ss = E.ss;
 E.props[C.MC_MED_GATE_PROP_] = 'off';
 const emp = ss.insertSheet('Сотрудники');
 emp.appendRow(['Фамилия', 'Имя', 'Отчество', 'Должность', 'Роль', 'ДР', 'Телефон', 'Адрес', 'ПИН-код', '', '', '', 'Активен']);
-[['Директорова', 'Анна', 'Директор', '1111'], ['Админов', 'Пётр', 'Администратор', '2222'], ['Официантов', 'Иван', 'Официант', '3333'], ['Шефов', 'Марк', 'Шеф-повар', '7777'], ['Барменов', 'Лев', 'Бармен', '8888']]
+[['Директорова', 'Анна', 'Директор', '1111'], ['Админов', 'Пётр', 'Администратор', '2222'], ['Официантов', 'Иван', 'Официант', '3333'], ['Шефов', 'Марк', 'Шеф-повар', '7777'], ['Барменов', 'Лев', 'Бармен', '8888'], ['Холодов', 'Ян', 'Повар холодного цеха', '4444'], ['Хасапов', 'Ким', 'Ответственный за ХАССП', '5555']]
   .forEach(r => emp.appendRow([r[0], r[1], '', r[2], r[2], '', '', '', r[3], '', '', '', true]));
 const login = pin => J(C.loginWithPin(pin, 'dev-' + pin)).token;
-const DIR = login('1111'), ADM = login('2222'), WAI = login('3333'), CHEF = login('7777'), BAR = login('8888');
+const DIR = login('1111'), ADM = login('2222'), WAI = login('3333'), CHEF = login('7777'), BAR = login('8888'), COLD = login('4444'), HACCP = login('5555');
 const drop = () => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; };
 const call = (fn, tok, d) => { drop(); return J(C[fn](JSON.stringify(d || {}), tok)); };
 const ok = r => { assert.ok(r.success === true || r.ok === true, JSON.stringify(r).slice(0, 400)); return r.data !== undefined ? r.data : r; };
@@ -165,6 +165,45 @@ t('приход рома — предложение вернуть GO; прих�
   ok(call('rsStopSuggestDecide', BAR, { idem: key(), id: go[0].SuggID, accept: false, comment: 'вернём после проверки льда' }));
   assert.strictEqual(sugs().find(x => x.SuggID === go[0].SuggID)['Статус'], 'DISMISSED');
   assert.ok(C.MC_SCHEDULE.some(j => j.fn === 'rsStopWatchTick_' && j.everyMin === 60), 'проверка раз в час — в расписании');
+});
+
+console.log(' 4) ХАССП у плиты: ККТ при «Готово», бракераж блюд зала');
+let o4, tk4;
+t('стейку назначена ККТ «t° в толще ≥ 75 °C»: на карточке задания — поле замера; «Готово» без замера заблокировано', () => {
+  C._v30Init_();
+  ss.getSheetByName('HACCP_ТочкиКонтроля_V30').appendRow(['CCP-T1', 'P1', 'H1', 'CCP', 'Температура в толще', '≥ 75', '°C', 'термощуп', 'каждая порция', 'повар', 'догреть', 'проверка шефом', 'J', 'ACTIVE', 1, '', '', new Date(), 'test']);
+  ss.getSheetByName('HACCP_Мониторинг_V30').appendRow(['MON-T1', 'CCP-T1', 'Стейк', 't° в толще', '°C', 75, '', 'каждая порция', 'повар', '', 'CCP', '', true, 'ACTIVE', new Date(), 'test']);
+  drop(); const a = J(C.mcSetTtkCcp(JSON.stringify({ code: 'D001', controlId: 'CCP-T1' }), HACCP)); assert.ok(a.success, JSON.stringify(a));
+  o4 = ok(call('rsOrderOpen', WAI, { idem: key(), tableId: T[1].id, guests: 1 })).orderId;
+  ok(call('rsItemAdd', WAI, { idem: key(), orderId: o4, items: [{ code: 'D001', amount: 300 }] }));
+  ok(call('rsOrderSend', WAI, { idem: key(), orderId: o4, mode: 'all' }));
+  tk4 = ok(call('rsKdsData', CHEF, { dept: 'KITCHEN' })).tickets.find(x => x.orderId === o4);
+  tk4 = ok(call('rsTicketAct', CHEF, { idem: key(), ticketId: tk4.id, version: tk4.version, action: 'start' })).ticket;
+  const card = ok(call('rsKdsData', CHEF, { dept: 'KITCHEN' })).tickets.find(x => x.id === tk4.id);
+  assert.ok(card.ccp && !card.ccp.ok && card.ccp.items[0].point === 'Температура в толще' && card.ccp.items[0].status === 'MISSING' && card.ccp.items[0].thermal);
+  err(call('rsTicketAct', CHEF, { idem: key(), ticketId: tk4.id, version: tk4.version, action: 'ready' }), 'CCP_REQUIRED');
+});
+t('замер 62 °C — вне предела, «Готово» заблокировано; повар холодного цеха тепловую ККТ не вносит; 78 °C — «Готово» проходит, склад списан', () => {
+  const r1 = J(C.rsTicketCcp(JSON.stringify({ ticketId: tk4.id, controlId: 'CCP-T1', value: 62, correctiveAction: 'догреть до 75 °C' }), CHEF)); drop();
+  assert.ok(r1.success || r1.ok, JSON.stringify(r1).slice(0, 300)); assert.strictEqual(r1.data.state.items[0].status, 'DEVIATION');
+  err(call('rsTicketAct', CHEF, { idem: key(), ticketId: tk4.id, version: tk4.version, action: 'ready' }), 'CCP_REQUIRED');
+  const r0 = J(C.rsTicketCcp(JSON.stringify({ ticketId: tk4.id, controlId: 'CCP-T1', value: 80 }), COLD)); assert.ok(!(r0.success || r0.ok), 'холодный цех — нельзя');
+  drop(); const r2 = J(C.rsTicketCcp(JSON.stringify({ ticketId: tk4.id, controlId: 'CCP-T1', value: 78 }), CHEF)); assert.ok(r2.success || r2.ok); assert.ok(r2.data.state.ok);
+  ok(call('rsTicketAct', CHEF, { idem: key(), ticketId: tk4.id, version: tk4.version, action: 'ready' }));
+  assert.ok(rows('HACCP_Факты_V31').filter(r => String(Object.values(r)[13]) === tk4.id).length === 2, 'два факта HACCP по заданию');
+});
+t('бракераж: стейк зала — «продано без бракеража» сразу после «Готово»; после оплаты и закрытия заказа второй раз не считается', () => {
+  drop(); let b = J(C.v77BrakData(CHEF)); assert.ok(b.success || b.ok, JSON.stringify(b).slice(0, 300));
+  let it = b.data.items.find(x => x.dish === 'Стейк рибай'); assert.ok(it && it.status === 'SOLD' && it.soldToday === 1, JSON.stringify(it));
+  const od = ok(call('rsOrderGet', WAI, { id: o4 }));
+  ok(call('rsItemServe', WAI, { idem: key(), orderId: o4, itemIds: od.items.map(x => x.id) }));
+  const st4 = ok(call('rsOrderGet', WAI, { id: o4 })).items[0]; ok(call('rsItemWeight', WAI, { idem: key(), itemId: st4.id, version: st4.version, amount: 300 }));
+  ok(call('rsBillSplit', WAI, { idem: key(), orderId: o4, mode: 'one' }));
+  const bl = ok(call('rsOrderGet', ADM, { id: o4 })).bills[0];
+  ok(call('rsBillPay', ADM, { idem: key(), billId: bl.id, version: bl.version, method: 'CARD', receipt: '9', amountKop: bl.totalKop }));
+  ok(call('rsOrderClose', WAI, { idem: key(), orderId: o4, version: ok(call('rsOrderGet', ADM, { id: o4 })).version }));
+  assert.ok(rows('Продажи_Списание_V71').length >= 1, 'продажа зала проведена');
+  drop(); b = J(C.v77BrakData(CHEF)); it = b.data.items.find(x => x.dish === 'Стейк рибай'); assert.strictEqual(it.soldToday, 1, 'без двойного счёта');
 });
 
 console.log('\nИтого: ' + pass + ' пройдено, ' + fail + ' не пройдено');

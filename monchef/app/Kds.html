@@ -24,7 +24,7 @@
 .st{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;background:#eee}
 .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
 .btn{border:0;border-radius:12px;padding:12px 14px;font:700 16px inherit;cursor:pointer;background:#eee6e3;color:var(--ink);min-height:50px;flex:1}
-.btn.bad{background:var(--red,#a8231f);color:#fff}.btn.main{background:var(--wine);color:#fff;flex:2}.btn.ok{background:var(--green);color:#fff;flex:2}.btn.small{flex:0 0 auto;font-size:14px;min-height:44px;padding:8px 12px}.btn.bad{background:var(--red-bg);color:var(--red)}
+.btn.bad{background:var(--red,#a8231f);color:#fff}.chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:600}.ccp{margin:6px 0;padding:6px 8px;border-radius:10px;background:#fbefd9;font-size:14px}.ccp.ok{background:#e3f2e8}.chip.okc{background:#e3f2e8;color:#2f7d4f}.chip.badc{background:#f8e1df;color:#a8231f}.btn.main{background:var(--wine);color:#fff;flex:2}.btn.ok{background:var(--green);color:#fff;flex:2}.btn.small{flex:0 0 auto;font-size:14px;min-height:44px;padding:8px 12px}.btn.bad{background:var(--red-bg);color:var(--red)}
 .btn:disabled{opacity:.5}
 .msg{margin:6px 0 10px;font-size:15px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
 .empty{color:var(--mut);text-align:center;padding:40px}
@@ -86,6 +86,13 @@ function card(t) {
     (t.acceptedAt ? ' · принят ' + esc(t.acceptedAt) + (t.acceptedBy ? ' (' + esc(t.acceptedBy) + ')' : '') : '') + (t.readyAt ? ' · готово ' + esc(t.readyAt) : '') + (t.issuedAt ? ' · выдано ' + esc(t.issuedAt) : '') + '</div>';
   if (t.recipe && t.recipe.ing.length) h += '<details class="meta"><summary>Рецепт' + (t.recipe.yield ? ' · выход ' + t.recipe.yield + ' ' + esc(t.recipe.yunit) : '') + '</summary>' +
     t.recipe.ing.map(function (x) { return esc(x.name) + ' — ' + x.qty + ' ' + esc(x.unit); }).join('<br>') + (t.recipe.tech ? '<div style="margin-top:4px;white-space:pre-wrap">' + esc(t.recipe.tech) + '</div>' : '') + '</details>';
+  if (t.ccp && t.ccp.items.length) h += '<div class="ccp' + (t.ccp.ok ? ' ok' : '') + '"><b>ККТ' + (t.ccp.ok ? ' — выполнены' : ' — замер до «Готово»') + '</b>' + t.ccp.items.map(function (c) {   /* этап 9 */
+    var lim = c.limit ? ' (' + esc(c.limit) + (c.unit && String(c.limit).indexOf(c.unit) < 0 ? ' ' + esc(c.unit) : '') + ')' : '';
+    var st = c.status === 'OK' ? '<span class="chip okc">' + esc(c.value) + ' ' + esc(c.unit) + ' ✓</span>' : c.status === 'DEVIATION' ? '<span class="chip badc">' + esc(c.value) + ' ' + esc(c.unit) + ' — вне предела</span>' : c.status === 'INACTIVE' ? '<span class="chip badc">ККТ не действует в плане</span>' : '';
+    return '<div class="row" style="border:0;padding:4px 0;gap:6px"><div>' + esc(c.point) + lim + ' ' + st + '</div>' + (c.status !== 'OK' && c.status !== 'INACTIVE' && S.d.can.act ?
+      '<div class="btns" style="flex:0 0 auto;margin:0"><input type="number" step="0.1" id="cc_' + esc(t.id) + '_' + esc(c.controlId) + '" placeholder="' + esc(c.unit || 'значение') + '" style="width:90px">' +
+      '<button class="btn small" onclick="ccpRec(\'' + t.id + '\',\'' + esc(c.controlId) + '\')">Записать</button></div>' : '') + '</div>';
+  }).join('') + '</div>';
   if (t.problem) h += '<div class="warn">' + esc(t.problem) + '</div>';
   if (t.cancelRequest && ['CANCELLED', 'ISSUED'].indexOf(t.status) < 0) h += '<div class="warn">Официант просит отменить: ' + esc(t.cancelRequest) + '</div>';
   if (S.d.can.act && NEXT[t.status]) {
@@ -96,6 +103,16 @@ function card(t) {
   return h + '</div>';
 }
 function tk(id) { return S.d.tickets.filter(function (t) { return t.id === id; })[0]; }
+/* этап 9: замер ККТ по заданию — факт HACCP; вне предела — корректирующее действие, затем повторный замер */
+function ccpRec(id, cid) {
+  var t = tk(id), c = t.ccp.items.filter(function (x) { return x.controlId === cid; })[0], v = $('cc_' + id + '_' + cid).value;
+  if (v === '') { note('Внесите значение замера'); return; }
+  var num = Number(v), bad = (c.min !== '' && c.min !== null && num < Number(c.min)) || (c.max !== '' && c.max !== null && num > Number(c.max)), corr = '';
+  if (bad) { corr = window.prompt('Замер ' + v + ' ' + (c.unit || '') + ' вне предела «' + c.point + '». Корректирующее действие (например: догреть до 75 °C и повторить замер):'); if (!corr) return; }
+  call('rsTicketCcp', { ticketId: id, controlId: cid, value: v, correctiveAction: corr }, function (r) {
+    note(r.state && r.state.ok ? 'ККТ выполнены — можно «Готово»' : bad ? 'Записано: вне предела. После корректирующего действия — повторный замер' : 'Замер записан', !bad); load(true);
+  }, note);
+}
 function go(id, a, extra) { var t = tk(id), d = { ticketId: id, version: t.version, action: a }; for (var k in (extra || {})) d[k] = extra[k];
   act(a + '-' + id, 'rsTicketAct', d, function (r) { if (r.warning) note(t.name + ' — ' + r.ticket.statusRu + '. Внимание: ' + r.warning); else note(t.name + ' — ' + r.ticket.statusRu + (r.stock && r.stock.lines ? ', ингредиенты списаны со склада' : ''), true); S.gen = ''; load(); }); }
 function problem(id) { var t = tk(id); openOv('<h2>Проблема: ' + esc(t.name) + ', стол ' + esc(t.table) + '</h2><div class="meta">Официант увидит описание и согласует с гостем замену или ожидание.</div><label>Что случилось</label><textarea id="p_r" maxlength="300"></textarea>' +

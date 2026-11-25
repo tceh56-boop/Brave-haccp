@@ -66,6 +66,7 @@ function rsKdsData(json, token) {
     // этап 6: рецепт на карточке (состав на порцию и технология из ТТК) — для активных заданий
     try { var codes = []; list.forEach(function (t) { if (['CANCELLED', 'ISSUED'].indexOf(t.status) < 0 && codes.indexOf(t.code) < 0) codes.push(t.code); });
       var rec = typeof _rsRecipeIdx_ === 'function' ? _rsRecipeIdx_(codes) : {}; list.forEach(function (t) { if (rec[t.code]) t.recipe = rec[t.code]; }); } catch (e) {}
+    try { if (typeof _rsCcpAttach_ === 'function') _rsCcpAttach_(list); } catch (e) {}   // этап 9: ККТ блюда — замеры на карточке
     var rank = { PROBLEM: 0, NEW: 1, ACCEPTED: 2, COOKING: 3, READY: 4, WAIT_COURSE: 5, ISSUED: 6, CANCELLED: 7 };
     list.sort(function (a, b) { return (rank[a.status] - rank[b.status]) || (b.priority - a.priority) || (b.waitMin - a.waitMin); });
     return { gen: gen, dept: dept, can: { act: can, stop: _mcRbHasExact_(s, dept === 'BAR' ? 'stopgo_bar' : 'stopgo_kitchen'), approve: _mcRbHasExact_(s, 'stopgo_approve') },
@@ -103,6 +104,10 @@ function rsTicketAct(json, token) {
     // этап 6: «Готовить» — проверка наличия партий (без списания); «Готово» — списание ингредиентов по ТТК (V71, FEFO), себестоимость
     var cons = null, warn = '';
     if (a === 'start') { try { warn = _rsConsumeText_(_rsConsume_(L.row, L.item, true)); } catch (e) { warn = ''; } }
+    if (to === 'READY' && typeof _rsCcpGate_ === 'function') {   // этап 9: обязательные ККТ блюда — до «Готово»
+      var cg = _rsCcpGate_(String(L.row.DishCode), String(L.row.TicketID));
+      if (!cg.ok) return { fail: ['CCP_REQUIRED', '«Готово» заблокировано — ККТ: ' + _tccpBlockText_(cg)] };
+    }
     if (to === 'READY') {
       cons = _rsConsume_(L.row, L.item, false);
       if (cons.status !== 'ALREADY') { t['Списано по партиям'] = JSON.stringify({ status: cons.status, portions: cons.portions, lines: cons.lines, short: cons.short, unreleased: cons.unreleased }).slice(0, 45000); t['Себестоимость, коп'] = cons.costKop; }

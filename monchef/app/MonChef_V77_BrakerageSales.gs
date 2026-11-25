@@ -32,11 +32,13 @@ function _v77HM_(x) { if (x instanceof Date) return Utilities.formatDate(x, _mcT
 function _v77Sales_(fromDay, toDay) {
   var out = [], sh = null;
   try { sh = _book_().getSheetByName(MC_V71.SHEET); } catch (e) {}
-  if (!sh) return out;
+  if (!sh) { try { if (typeof _rsBrakSales_ === 'function') out = _rsBrakSales_(fromDay, toDay); } catch (e) {} return out; }   // V101: продаж ещё нет — блюда зала по «Готово»
   var v = sh.getDataRange().getValues(), H = v[0] || [], c = function (n) { return H.indexOf(n); };
   var cD = c('Дата продажи'), cT = c('Время'), cN = c('Что продано'), cK = c('Вид'), cC = c('Код ТТК / ProductID'), cQ = c('Кол-во'), cL = c('Списано по партиям (JSON)'), cS = c('Продавец');
+  var rs = {}; try { if (typeof _rsSaleIdSet_ === 'function') rs = _rsSaleIdSet_(); } catch (e) {}   // V101 этап 9: продажи зала — по «Готово» кухни (ниже)
   for (var i = 1; i < v.length; i++) {
     if (!v[i][0] || !/ттк/i.test(String(v[i][cK] || ''))) continue;
+    if (rs[String(v[i][0])]) continue;
     var d = _v77D_(v[i][cD]); if (!d) continue; var day = _v77Day_(d);
     if (day < fromDay || day > toDay) continue;
     var lines = []; try { lines = JSON.parse(String(v[i][cL] || '[]')) || []; } catch (e) {}
@@ -44,6 +46,7 @@ function _v77Sales_(fromDay, toDay) {
     if (!toOrder) continue;
     out.push({ day: day, hm: _v77HM_(v[i][cT]), name: String(v[i][cN] || ''), code: String(v[i][cC] || ''), qty: Number(v[i][cQ]) || 0, seller: String(v[i][cS] || '') });
   }
+  try { if (typeof _rsBrakSales_ === 'function') out = out.concat(_rsBrakSales_(fromDay, toDay)); } catch (e) {}   // V101 этап 9: блюда зала — когда кухня их приготовила
   return out;
 }
 /** Оценки бракеража блюд под заказ за день из J02 (строки без партии склада): { ключ блюда → [{ hm, by, decision, dish }] }. */

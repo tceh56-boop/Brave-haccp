@@ -285,3 +285,84 @@ function rsStopWatchTick_() { try { return _rsStopWatch_(null, null, null); } ca
 MC_GATE_EXT_.rsStopSuggestions = { need: 'stopgo_view|stopgo_kitchen|stopgo_bar|stopgo_approve|kitchen_queue|bar_queue' };
 MC_GATE_EXT_.rsStopWatchRun = { need: 'stopgo_kitchen|stopgo_bar|stopgo_approve' };   // повтор безопасен: открытые предложения не дублируются
 MC_GATE_EXT_.rsStopSuggestDecide = { need: 'stopgo_kitchen|stopgo_bar|stopgo_approve', mut: true };
+
+/*
+ * 4. ХАССП у плиты.
+ *  а) ККТ при «Готово». Блюду (ТТК) назначены обязательные ККТ (лист «ТТК_ККТ», как для выпуска п/ф, §9) — на карточке
+ *     задания кухни и бара поля замера; замер — обычный факт HACCP (V31) с привязкой к номеру задания (RelatedBatchID).
+ *     «Готово» блокируется, пока нет замера по каждой ККТ в пределах; замер вне предела — корректирующее действие и повторный
+ *     замер. Тепловые ККТ (термообработка, t° в толще, охлаждение, разогрев, фритюр) вносит горячий цех / шеф / су-шеф
+ *     (кондитер — свою выпечку), как в производстве. Значения вносит человек; система их не подставляет.
+ *  б) Бракераж (V77 «бракераж по продажам»). Блюда, приготовленные кухней по заказам зала («Готово» сегодня), попадают
+ *     в список «Продано без бракеража» сразу, а не после закрытия заказа; продажа зала при закрытии второй раз не считается.
+ */
+function _rsCcpAssign_() {
+  var sh = null; try { sh = _book_().getSheetByName(MC_TCCP_SHEET_); } catch (e) {}
+  if (!sh || sh.getLastRow() < 2) return {};
+  var v = sh.getDataRange().getValues(), last = {}, out = {};
+  for (var i = 1; i < v.length; i++) last[String(v[i][0]) + '|' + String(v[i][1])] = String(v[i][2]);
+  Object.keys(last).forEach(function (k) { if (last[k] !== 'ACTIVE') return; var p = k.split('|'); (out[p[0]] = out[p[0]] || []).push(p[1]); });
+  return out;
+}
+/** Карточкам заданий (в работе) — ККТ и их состояние: t.ccp = {items[], ok}. Один проход по листам. */
+function _rsCcpAttach_(list) {
+  var asg = _rsCcpAssign_(), act = list.filter(function (t) { return asg[t.code] && ['ACCEPTED', 'COOKING', 'PROBLEM', 'NEW'].indexOf(t.status) >= 0; });
+  if (!act.length) return;
+  var ctl = _tccpActiveControls_(), ids = {}, facts = [];
+  act.forEach(function (t) { ids[t.id] = 1; });
+  try { facts = _v31Rows_(MC_V31.FACT).filter(function (r) { return ids[String(r[13])]; }); } catch (e) {}
+  act.forEach(function (t) {
+    var items = asg[t.code].map(function (cid) {
+      var c = ctl[cid] || { id: cid, point: cid, inactive: true }, f = facts.filter(function (r) { return String(r[13]) === t.id && String(r[1]) === cid; }).slice(-1)[0];
+      var st = c.inactive ? 'INACTIVE' : !f ? 'MISSING' : String(f[7]) === 'OK' ? 'OK' : 'DEVIATION';
+      return { controlId: cid, point: c.point, limit: c.limit || '', unit: c.unit || '', min: c.min, max: c.max, status: st, value: f ? f[5] : '', thermal: MC_RB_HOT_CCP_RE_.test(String(c.point || '') + ' ' + String(c.parameter || '')) };
+    });
+    t.ccp = { items: items, ok: items.every(function (x) { return x.status === 'OK'; }) };
+  });
+}
+/** Можно ли «Готово»: ККТ блюда выполнены по этому заданию. */
+function _rsCcpGate_(code, ticketId) {
+  if (!(_rsCcpAssign_()[code] || []).length) return { ok: true };
+  return _tccpState_(code, ticketId);
+}
+/** Замер ККТ по заданию кухни/бара: {ticketId, controlId, value, correctiveAction?, equipmentId?}. */
+function rsTicketCcp(json, token) {
+  var s; try { s = _requireAuth_(token, null); } catch (e) { return _failFrom_(e); }
+  try {
+    var d = _rsJ_(json, {}) || {}, row = _rsRows_(MC_RS_SH_.QUEUE).filter(function (r) { return String(r.TicketID) === String(d.ticketId); })[0];
+    if (!row) return _fail_('NOT_FOUND', 'Задание не найдено');
+    var dept = String(row['Подразделение']), code = String(row.DishCode);
+    if (!_mcRbHasExact_(s, dept === 'BAR' ? 'bar_queue' : 'kitchen_queue') || (typeof _rsCanTicket_ === 'function' && !_rsCanTicket_(s, row))) return _mcRbDenyJson_('Задание другого цеха или подразделения.');
+    if (['NEW', 'ACCEPTED', 'COOKING', 'PROBLEM'].indexOf(String(row['Статус'])) < 0) return _fail_('VALIDATION', 'Замер вносится, пока блюдо готовится');
+    var ctl = _tccpFor_(code).filter(function (x) { return x.id === String(d.controlId); })[0];
+    if (!ctl) return _fail_('VALIDATION', 'Эта ККТ не назначена блюду «' + row['Название'] + '»');
+    if (dept !== 'BAR' && MC_RB_HOT_CCP_RE_.test(String(ctl.point || '') + ' ' + String(ctl.parameter || '')) && !_mcRbHasExact_(s, 'hot_ccp') && !(_mcRbHasExact_(s, 'shop_pastry') && /кондитер/i.test(String(row['Цех'] || '')))) {
+      _mcRbAuditDenied_(s, 'rsTicketCcp', 'hot_ccp', String(row.TicketID));
+      return _mcRbDenyJson_('ККТ «' + ctl.point + '» (тепловая обработка, охлаждение, разогрев, фритюр) вносит повар горячего цеха, шеф-повар или су-шеф.');
+    }
+    var r = v31RecordHaccpFact(JSON.stringify({ controlId: ctl.id, value: d.value, equipmentId: d.equipmentId || '', relatedBatchId: String(row.TicketID),
+      object: 'Заказ ' + row.OrderID + ' · стол ' + row['Стол'] + ' · ' + row['Название'], correctiveAction: d.correctiveAction || '' }), token);
+    var j = typeof r === 'string' ? JSON.parse(r) : r;
+    if (j && (j.success || j.ok)) { j.data = j.data || {}; j.data.state = _tccpState_(code, String(row.TicketID)); try { if (typeof _mcGenBump_ === 'function') _mcGenBump_(); } catch (e) {} }
+    return JSON.stringify(j);
+  } catch (e) { return _rsFail_(e, null); }
+}
+/** Номера продаж зала (SL-…) из журнала продаж — чтобы бракераж не считал блюдо второй раз при закрытии заказа. */
+function _rsSaleIdSet_() {
+  var out = {}, sh = null; try { sh = _book_().getSheetByName('Ж_Продажи'); } catch (e) {}
+  if (!sh || sh.getLastRow() < 2) return out;
+  sh.getDataRange().getValues().slice(1).forEach(function (r) { r.forEach(function (c) { var m = /RS-ALLOC .*?\b(SL-\d{8}-[0-9A-F]{8})\b/.exec(String(c || '')); if (m) out[m[1]] = 1; }); });
+  return out;
+}
+/** «Продажи под заказ» для бракеража из заданий кухни: «Готово» в периоде, не отменено. Бар (напитки) — нет: бракераж — блюда кухни. */
+function _rsBrakSales_(fromDay, toDay) {
+  var out = [];
+  _rsRows_(MC_RS_SH_.QUEUE).forEach(function (r) {
+    if (String(r['Подразделение']) !== 'KITCHEN' || ['READY', 'ISSUED'].indexOf(String(r['Статус'])) < 0 || !_rsIsDate_(r['Готово'])) return;
+    var day = Utilities.formatDate(r['Готово'], _mcTz_(), 'yyyy-MM-dd'); if (day < fromDay || day > toDay) return;
+    out.push({ day: day, hm: Utilities.formatDate(r['Готово'], _mcTz_(), 'HH:mm'), name: String(r['Название'] || ''), code: String(r.DishCode), qty: _rsNum_(r['Кол-во']) || 1, seller: String(r['Исполнитель'] || '') });
+  });
+  return out;
+}
+
+MC_GATE_EXT_.rsTicketCcp = { need: 'kitchen_queue|bar_queue', mut: true };
