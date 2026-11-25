@@ -385,3 +385,107 @@ function _rsRecallInfo_(itemId) {
     return { to: to, what: String(it['Название'] || ''), contact: bk && bk['Телефон'] ? String(bk['Телефон']) : '', need: !!(bk && st !== 'CANCELLED'), at: when, atText: fmt(when) || '' };
   } catch (e) { return null; }
 }
+
+/*
+ * 6. График смен (V98) ↔ зал, кухня, бар.
+ *  • Кто на смене сегодня (из «График_Смен_V98», статус «в графике»): официанты и администраторы зала, кухня, бар — на схеме зала
+ *    и на экране кухни и бара; «сейчас» — по часам смены (смена через полночь учитывается).
+ *  • Закрепление столов за официантами на день (администратор, «Зал → Смена»): только официанты из графика этого дня
+ *    (графика на день нет — любой действующий официант, с предупреждением). Стол закреплён за одним официантом.
+ *  • Открытие стола: администратор — заказ сразу на закреплённого официанта (можно выбрать другого из смены);
+ *    официант открывает и чужой закреплённый стол (гостей не держим), но видит предупреждение; нет в графике — предупреждение.
+ *    Блокировок нет: график — план, а не пропуск в систему (допуск к работе — медкнижки, этап 4).
+ */
+MC_RS_SH_.TABLEASSIGN = 'Закрепление_Столов_V1';
+MC_RS_HEAD_[MC_RS_SH_.TABLEASSIGN] = ['AssignID', 'Дата', 'SiteID', 'WaiterID', 'Официант', 'Столы', 'Статус'].concat(MC_RS_STD_);
+var MC_RS_GRP_ = { hall: /официант|администратор|руководитель смены|хостес/i, bar: /бармен|менеджер бара|бариста/i, kitchen: /повар|шеф|кондитер|заготов|мойщ|кухн/i };
+function _rsGrp_(role) { role = String(role || ''); return MC_RS_GRP_.bar.test(role) ? 'bar' : MC_RS_GRP_.kitchen.test(role) ? 'kitchen' : MC_RS_GRP_.hall.test(role) ? 'hall' : 'other'; }
+/** Смена дня: {has (график на день есть), list[{id, name, role, group, start, end, now}]}. hm — «сейчас» (пусто — весь день). */
+function _rsOnShift_(siteId, day, hm) {
+  var A = []; try { A = _v98Assigns_(); } catch (e) { return { has: false, list: [] }; }
+  var prev = _rsFromAbs_(_rsAbsMin_(day, '00:00') - 1440).day, m = hm ? _v98Min_(hm) : null, out = [], seen = {};
+  var has = A.some(function (a) { return a.day === day && a.status !== 'CANCELLED' && (!siteId || a.site === siteId); });
+  A.forEach(function (a) {
+    if (a.status !== 'PLANNED' || (siteId && a.site !== siteId) || (a.day !== day && a.day !== prev)) return;
+    var sp = _v98Span_(a.start, a.end); if (!sp) return;
+    if (a.day === prev && sp[1] <= 1440) return;   // вчерашняя смена, не переходящая через полночь
+    var now = m === null ? true : a.day === day ? (m >= sp[0] && m < sp[1]) : m < sp[1] - 1440;
+    if (a.day === prev && !now) return;
+    var k = a.emp + '|' + a.start; if (seen[k]) return; seen[k] = 1;
+    out.push({ id: a.emp, name: a.name, role: a.role, group: _rsGrp_(a.role), start: a.start, end: a.end, now: now });
+  });
+  out.sort(function (x, y) { return x.group < y.group ? -1 : x.group > y.group ? 1 : x.start < y.start ? -1 : 1; });
+  return { has: has, list: out };
+}
+/** Закрепление столов на день: {tableId: {waiterId, waiter, assignId}}. */
+function _rsTableAssign_(siteId, day) {
+  var out = {};
+  _rsRows_(MC_RS_SH_.TABLEASSIGN).forEach(function (r) {
+    if (String(r['Статус']) !== 'ACTIVE' || _rsDay_(r['Дата']) !== day || (siteId && String(r.SiteID) !== siteId)) return;
+    (_rsJ_(r['Столы'], []) || []).forEach(function (t) { out[String(t)] = { waiterId: String(r.WaiterID), waiter: String(r['Официант'] || ''), assignId: String(r.AssignID) }; });
+  });
+  return out;
+}
+/** Сотрудник по номеру (тот же, что в сессии): {id, name, role} или null. Справочник прав — без ключа входа (getEmployees его требует). */
+function _rsEmp_(id) {
+  try { var e = _mcRbEmpState_()[String(id || '')]; return e && e.active !== false && !e.hidden ? { id: String(id), name: String(e.name || ''), role: String(e.role || '') } : null; } catch (x) { return null; }
+}
+function _rsWaitersActive_() {
+  var out = [], st = {}; try { st = _mcRbEmpState_(); } catch (e) {}
+  Object.keys(st).forEach(function (id) { var e = st[id]; if (e && e.active !== false && !e.hidden && /официант/i.test(String(e.role || e.position || ''))) out.push({ id: id, name: String(e.name || ''), role: String(e.role || '') }); });
+  return out;
+}
+/** Смена и закрепление столов на день: {date, siteId}. */
+function rsShiftTables(json, token) {
+  return _rsRead_(token, 'hall_view|order_edit|order_all', function (s) {
+    var d = _rsJ_(json, {}) || {}, siteId = _rsSite_(d.siteId), day = _rsDay_(d.date) || _rsToday_(), sh = _rsOnShift_(siteId, day, '');
+    var cands = sh.has ? sh.list.filter(function (x) { return x.group === 'hall' && /официант/i.test(x.role); }).map(function (x) { return { id: x.id, name: x.name, start: x.start, end: x.end, inSchedule: true }; })
+      : _rsWaitersActive_().map(function (x) { return { id: x.id, name: x.name, inSchedule: false }; });
+    return { date: day, siteId: siteId, schedule: sh, waiters: cands, assign: _rsTableAssign_(siteId, day), can: { edit: _mcRbHasExact_(s, 'order_all') } };
+  });
+}
+/** Закрепить столы за официантом на день: {idem, date, siteId, waiterId, tables[]} (tables [] — снять закрепление). */
+function rsShiftTablesSave(json, token) {
+  return _rsMutate_(token, 'order_all', 'RS_SHIFT_TABLES', json, function (c) {
+    var d = c.d, siteId = _rsSite_(d.siteId), day = _rsDay_(d.date) || _rsToday_();
+    if (day < _rsToday_()) return { fail: ['VALIDATION', 'Прошедший день не меняется'] };
+    var sh = _rsOnShift_(siteId, day, ''), wid = String(d.waiterId || ''), w = null;
+    if (sh.has) { w = sh.list.filter(function (x) { return x.id === wid && x.group === 'hall'; })[0]; if (!w) return { fail: ['VALIDATION', 'Официанта нет в графике смен на ' + day.split('-').reverse().join('.') + ' — сначала поставьте его в «График смен»'] }; }
+    else { w = _rsWaitersActive_().filter(function (x) { return x.id === wid; })[0]; if (!w) return { fail: ['VALIDATION', 'Официант не найден'] }; }
+    var tidx = _rsTablesIdx_(), tables = (Array.isArray(d.tables) ? d.tables : []).map(String).filter(function (t, i, a) { return a.indexOf(t) === i; });
+    for (var i = 0; i < tables.length; i++) { var t = tidx[tables[i]]; if (!t || t.status !== 'ACTIVE' || t.siteId !== siteId) return { fail: ['VALIDATION', 'Стол не найден на этой площадке'] }; }
+    var rows = _rsRows_(MC_RS_SH_.TABLEASSIGN).filter(function (r) { return String(r['Статус']) === 'ACTIVE' && _rsDay_(r['Дата']) === day && String(r.SiteID) === siteId; }), plan = [], moved = [];
+    var mine = rows.filter(function (r) { return String(r.WaiterID) === wid; })[0];
+    rows.forEach(function (r) {
+      if (r === mine) return;
+      var ts = _rsJ_(r['Столы'], []) || [], left = ts.filter(function (x) { return tables.indexOf(String(x)) < 0; });
+      if (left.length === ts.length) return;
+      ts.filter(function (x) { return tables.indexOf(String(x)) >= 0; }).forEach(function (x) { moved.push({ table: tidx[x] ? tidx[x].number : x, from: String(r['Официант']) }); });
+      var o = _rsCopy_(r); delete o._row; o['Столы'] = JSON.stringify(left); if (!left.length) o['Статус'] = 'CANCELLED'; _rsStamp_(o, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.TABLEASSIGN, row: o });
+    });
+    var row = mine ? _rsCopy_(mine) : { AssignID: _rsId_('TA'), 'Дата': day, SiteID: siteId, WaiterID: wid, 'Официант': w.name };
+    delete row._row; row['Столы'] = JSON.stringify(tables); row['Статус'] = tables.length ? 'ACTIVE' : 'CANCELLED'; _rsStamp_(row, c.s, c.op, !mine);
+    if (mine || tables.length) plan.push({ sheet: MC_RS_SH_.TABLEASSIGN, row: row });
+    var nums = tables.map(function (x) { return tidx[x].number; });
+    plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, c.s, 'SHIFT_TABLES', row.AssignID, null, 'SHIFT_TABLES_SET', null, { date: day, waiter: w.name, tables: nums, moved: moved }) });
+    return { data: { waiter: w.name, tables: nums, moved: moved, inSchedule: sh.has }, plan: plan,
+      audit: { action: 'RS_SHIFT_TABLES', entity: MC_RS_SH_.TABLEASSIGN, id: row.AssignID, after: { date: day, waiterId: wid, tables: nums } } };
+  });
+}
+/** Для открытия стола: официант по закреплению и предупреждения. */
+function _rsOpenWaiter_(s, t, waiter, explicit) {
+  var day = _rsToday_(), warn = [], asg = null, sh = { has: false, list: [] };
+  try { asg = _rsTableAssign_(t.siteId, day)[t.id] || null; } catch (e) {}
+  if (asg && !explicit && asg.waiterId !== waiter.id) {
+    if (_mcRbHasExact_(s, 'order_all')) waiter = { id: asg.waiterId, name: asg.waiter };
+    else warn.push('Стол № ' + t.number + ' закреплён на сегодня за ' + asg.waiter);
+  }
+  try { sh = _rsOnShift_(t.siteId, day, _rsNowHm_()); } catch (e) {}
+  if (sh.has) { var mine = sh.list.filter(function (x) { return x.id === waiter.id; });
+    if (!mine.length) warn.push(waiter.name + ' — нет в графике смен на сегодня');
+    else if (!mine.some(function (x) { return x.now; })) warn.push(waiter.name + ' — нет в графике смен на сейчас (смена ' + mine.map(function (x) { return x.start + '–' + x.end; }).join(', ') + ')'); }
+  return { waiter: waiter, warnings: warn };
+}
+
+MC_GATE_EXT_.rsShiftTables = { need: 'hall_view|order_edit|order_all' };
+MC_GATE_EXT_.rsShiftTablesSave = { need: 'order_all', mut: true };

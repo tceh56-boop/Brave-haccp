@@ -11,10 +11,10 @@ const E = boot({ now: '2026-11-25T08:00:00Z' }), C = E.ctx, ss = E.ss;
 E.props[C.MC_MED_GATE_PROP_] = 'off';
 const emp = ss.insertSheet('Сотрудники');
 emp.appendRow(['Фамилия', 'Имя', 'Отчество', 'Должность', 'Роль', 'ДР', 'Телефон', 'Адрес', 'ПИН-код', '', '', '', 'Активен']);
-[['Директорова', 'Анна', 'Директор', '1111'], ['Админов', 'Пётр', 'Администратор', '2222'], ['Официантов', 'Иван', 'Официант', '3333'], ['Шефов', 'Марк', 'Шеф-повар', '7777'], ['Барменов', 'Лев', 'Бармен', '8888'], ['Холодов', 'Ян', 'Повар холодного цеха', '4444'], ['Хасапов', 'Ким', 'Ответственный за ХАССП', '5555']]
+[['Директорова', 'Анна', 'Директор', '1111'], ['Админов', 'Пётр', 'Администратор', '2222'], ['Официантов', 'Иван', 'Официант', '3333'], ['Шефов', 'Марк', 'Шеф-повар', '7777'], ['Барменов', 'Лев', 'Бармен', '8888'], ['Холодов', 'Ян', 'Повар холодного цеха', '4444'], ['Хасапов', 'Ким', 'Ответственный за ХАССП', '5555'], ['Петров', 'Олег', 'Официант', '3334']]
   .forEach(r => emp.appendRow([r[0], r[1], '', r[2], r[2], '', '', '', r[3], '', '', '', true]));
 const login = pin => J(C.loginWithPin(pin, 'dev-' + pin)).token;
-const DIR = login('1111'), ADM = login('2222'), WAI = login('3333'), CHEF = login('7777'), BAR = login('8888'), COLD = login('4444'), HACCP = login('5555');
+const DIR = login('1111'), ADM = login('2222'), WAI = login('3333'), CHEF = login('7777'), BAR = login('8888'), COLD = login('4444'), HACCP = login('5555'), WAI2 = login('3334');
 const drop = () => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; };
 const call = (fn, tok, d) => { drop(); return J(C[fn](JSON.stringify(d || {}), tok)); };
 const ok = r => { assert.ok(r.success === true || r.ok === true, JSON.stringify(r).slice(0, 400)); return r.data !== undefined ? r.data : r; };
@@ -214,6 +214,36 @@ t('отзыв партии говядины: получатель — гость
   assert.ok(/Гость зала: стол № 2, заказ .*подано \d{2}\.\d{2}\.\d{4} \d{2}:\d{2}.*официант Официантов Иван/.test(rec[0].to), rec[0].to);
   assert.strictEqual(rec[0].what, 'Стейк рибай'); assert.strictEqual(rec[0].qty, 300);
   const bal = r.data.balance.find(b => bid.indexOf(b.batchId) >= 0 && b.traced > 0); assert.strictEqual(bal.traced, 300); assert.ok(!bal.over);
+});
+
+console.log(' 6) график смен ↔ зал, кухня, бар');
+const empId = name => { drop(); const st = C._mcRbEmpState_(), id = Object.keys(st).find(k => String(st[k].name).indexOf(name) === 0); assert.ok(id, 'нет сотрудника ' + name); return id; };
+const assign = (name, date, start, end) => { drop(); const r = J(C.v98Assign(JSON.stringify({ date, employeeId: empId(name), start, end, siteId: 'SITE-MAIN', confirm: true }), DIR)); assert.ok(r.success || r.ok, JSON.stringify(r).slice(0, 300)); };
+t('зал видит смену из графика: официанты, кухня, бар; «сейчас» — по часам смены; ночная смена учитывается на следующий день', () => {
+  assign('Официантов', '2026-11-25', '10:00', '22:00'); assign('Шефов', '2026-11-25', '09:00', '21:00'); assign('Барменов', '2026-11-25', '12:00', '23:00');
+  assign('Петров', '2026-11-25', '18:00', '02:00');
+  const sh = ok(call('rsHallData', ADM, { date: '2026-11-25', time: '13:00' })).shift; assert.ok(sh && sh.has);
+  const g = x => sh.list.filter(y => y.group === x).map(y => y.name.split(' ')[0] + (y.now ? '*' : ''));
+  assert.deepStrictEqual(g('hall').sort(), ['Официантов*', 'Петров'].sort()); assert.deepStrictEqual(g('kitchen'), ['Шефов*']); assert.deepStrictEqual(g('bar'), ['Барменов*']);
+  drop(); const night = C._rsOnShift_('SITE-MAIN', '2026-11-26', '01:00'); assert.ok(night.list.some(x => /^Петров/.test(x.name) && x.now), 'ночная смена до 02:00');
+});
+t('администратор закрепляет столы за официантами из графика; не из графика — отказ; стол переходит от одного официанта к другому', () => {
+  ok(call('rsShiftTablesSave', ADM, { idem: key(), date: '2026-11-25', waiterId: empId('Официантов'), tables: [T[0].id, T[1].id] }));
+  err(call('rsShiftTablesSave', ADM, { idem: key(), date: '2026-11-25', waiterId: empId('Холодов'), tables: [T[2].id] }), 'VALIDATION');
+  err(call('rsShiftTablesSave', WAI, { idem: key(), date: '2026-11-25', waiterId: empId('Официантов'), tables: [T[2].id] }));
+  const r = ok(call('rsShiftTablesSave', ADM, { idem: key(), date: '2026-11-25', waiterId: empId('Петров'), tables: [T[1].id, T[2].id] }));
+  assert.deepStrictEqual(r.moved, [{ table: '2', from: 'Официантов Иван' }]);
+  const a = ok(call('rsShiftTables', ADM, { date: '2026-11-25' })).assign;
+  assert.strictEqual(a[T[0].id].waiter, 'Официантов Иван'); assert.ok(/^Петров/.test(a[T[1].id].waiter)); assert.ok(/^Петров/.test(a[T[2].id].waiter));
+  const tb = ok(call('rsHallData', WAI2, { date: '2026-11-25', time: '13:00' })).tables.find(x => x.id === T[2].id); assert.ok(tb.assigned.mine);
+});
+t('открытие стола: администратор — заказ сразу на закреплённого официанта; официант на чужом столе и вне смены — с предупреждением', () => {
+  const o1 = ok(call('rsOrderOpen', ADM, { idem: key(), tableId: T[0].id, guests: 2 })); assert.strictEqual(o1.waiter, 'Официантов Иван'); assert.deepStrictEqual(o1.warnings, []);
+  const t8 = ok(call('rsTableSave', ADM, { idem: key(), hallId: hall.id, number: '8', x: 6, y: 4, seatsMax: 2 }));
+  ok(call('rsShiftTablesSave', ADM, { idem: key(), date: '2026-11-25', waiterId: empId('Петров'), tables: [T[1].id, T[2].id, t8.id] }));
+  const o2 = ok(call('rsOrderOpen', WAI, { idem: key(), tableId: t8.id, guests: 2 })); assert.ok(o2.warnings.some(w => /закреплён на сегодня за Петров/.test(w)), JSON.stringify(o2.warnings));
+  const t9 = ok(call('rsTableSave', ADM, { idem: key(), hallId: hall.id, number: '9', x: 7, y: 4, seatsMax: 2 }));
+  const o3 = ok(call('rsOrderOpen', WAI2, { idem: key(), tableId: t9.id, guests: 1 })); assert.ok(o3.warnings.some(w => /нет в графике смен на сейчас/.test(w)), JSON.stringify(o3.warnings));
 });
 
 console.log('\nИтого: ' + pass + ' пройдено, ' + fail + ' не пройдено');

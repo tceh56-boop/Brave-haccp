@@ -173,10 +173,12 @@ function rsOrderOpen(json, token) {
     var waiter = { id: String(s.user_id || ''), name: _rsWho_(s) };
     if (d.waiterId && String(d.waiterId) !== waiter.id) {
       if (!_mcRbHasExact_(s, 'order_all')) return { fail: ['FORBIDDEN', 'Назначить другого официанта может администратор'] };
-      var e = null; try { e = JSON.parse(getEmployees()).filter(function (x) { return String(x.id) === String(d.waiterId) && x.active !== false; })[0]; } catch (er) {}
+      var e = typeof _rsEmp_ === 'function' ? _rsEmp_(d.waiterId) : null;   // этап 9: справочник сотрудников без ключа входа (getEmployees его требует)
       if (!e) return { fail: ['VALIDATION', 'Официант не найден'] };
       waiter = { id: String(e.id), name: e.name || e.fullName || '' };
     }
+    var ow = typeof _rsOpenWaiter_ === 'function' ? _rsOpenWaiter_(s, t, waiter, !!d.waiterId) : { waiter: waiter, warnings: [] };   // этап 9: закрепление столов и график смен
+    waiter = ow.waiter;
     var id = _rsId_('ORD'), plan = [], day = _rsToday_();
     var o = { OrderID: id, SiteID: t.siteId, HallID: t.hallId, TableID: t.id, BookingID: '', 'Гостей': guests, 'Официант': waiter.name, WaiterID: waiter.id, 'Открыт': new Date(),
       'Комментарий': _rsS_(d.comment).slice(0, 300), 'Статус': 'OPEN', IdempotencyKey: d.idem };
@@ -214,7 +216,7 @@ function rsOrderOpen(json, token) {
       });
     }
     plan.push({ sheet: MC_RS_SH_.EVENTS, row: _rsEventRow_(c.op, s, 'ORDER', id, { booking: o.BookingID, order: id }, 'ORDER_OPENED', null, { table: t.number, guests: guests, waiter: waiter.name, booking: o.BookingID, preorderItems: made.length, skipped: skipped }) });
-    return { data: { orderId: id, table: t.number, fromPreorder: made.length, skipped: skipped }, plan: plan,
+    return { data: { orderId: id, table: t.number, fromPreorder: made.length, skipped: skipped, waiter: waiter.name, warnings: ow.warnings }, plan: plan,
       audit: { action: 'RS_ORDER_OPENED', entity: MC_RS_SH_.ORDERS, id: id, after: { table: t.number, guests: guests, waiter: waiter.name, booking: o.BookingID, preorderItems: made.length } } };
   });
 }
@@ -479,7 +481,7 @@ function rsOrderUpdate(json, token) {
         var x = _rsCopy_(q); delete x._row; x.TableID = t.id; x['Стол'] = t.number; _rsStamp_(x, c.s, c.op, false); plan.push({ sheet: MC_RS_SH_.QUEUE, row: x }); });
     }
     if (d.waiterId && d.waiterId !== o.waiterId) {
-      var e = null; try { e = JSON.parse(getEmployees()).filter(function (x) { return String(x.id) === String(d.waiterId) && x.active !== false; })[0]; } catch (er) {}
+      var e = typeof _rsEmp_ === 'function' ? _rsEmp_(d.waiterId) : null;   // этап 9: справочник сотрудников без ключа входа (getEmployees его требует)
       if (!e) return { fail: ['VALIDATION', 'Официант не найден'] };
       row.WaiterID = String(e.id); row['Официант'] = e.name || e.fullName || '';
     }

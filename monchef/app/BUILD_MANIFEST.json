@@ -70,14 +70,14 @@
     "Staff shift schedule and shortage (V98)",
     "Working spreadsheet ID in installation settings (V99)",
     "Personal data technical measures (V100)",
-    "Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split; guest menu Reels with in-app media, publication, guest requests by table QR; role editor; kitchen and bar display, Stop/Go, serve, replace, cancel with consumption; bar roles, bar recipes and preps via MON CHEF production, stock write-off by TTK at «ready»; sale posting to J36 at order close with V64 cost, refunds by storno, shift report with Z reconciliation, preorder ingredient forecast; all staff screens inside the main window (V101, stages 2–8.1)"
+    "Restaurant Service: halls, tables, bookings, preorders, forecast; waiter order book — orders, courses, weighed items, production queue, internal bills and split; guest menu Reels with in-app media, publication, guest requests by table QR; role editor; kitchen and bar display, Stop/Go, serve, replace, cancel with consumption; bar roles, bar recipes and preps via MON CHEF production, stock write-off by TTK at «ready»; sale posting to J36 at order close with V64 cost, refunds by storno, shift report with Z reconciliation, preorder ingredient forecast; all staff screens inside the main window; banquets ↔ hall bookings, preorders in weekly plan, Stop/Go by stock, CCP at «ready», hall dishes in brakerage and recall, shift schedule and table assignment (V101, stages 2–9)"
   ],
   "validation": {
     "gs_syntax": "PASS",
     "duplicate_functions": "PASS",
     "ui": "Console.html (App.html удалён)"
   },
-  "updated": "2026-11-24",
+  "updated": "2026-11-25",
   "entry": {
     "server": "Code.gs",
     "function": "doGet",
@@ -114,8 +114,8 @@
     },
     {
       "file": "Code.gs",
-      "bytes": 996560,
-      "sha256": "30dcfadbaeccd4df637a1c8865621fc3ba63210852813b7db0189f69f3d28e36"
+      "bytes": 997187,
+      "sha256": "a7fc3ce1e01c84f858692ab95d35d556b450bbbc3fab8e1e5aec821df847c8cc"
     },
     {
       "file": "Console.html",
@@ -159,8 +159,8 @@
     },
     {
       "file": "Hall.html",
-      "bytes": 75110,
-      "sha256": "ddc4bf6aaac016a4f275f8233ec0067a7c500340d45116f56a0d07889b0e34bd"
+      "bytes": 84753,
+      "sha256": "ea459fa1672b02be7b8ba0a7e38611ca5b44a07736b460b4c82cb30bf663c490"
     },
     {
       "file": "Income.html",
@@ -179,8 +179,8 @@
     },
     {
       "file": "Kds.html",
-      "bytes": 27006,
-      "sha256": "67900a83a40fd81386c3be22ba17d60df08709f7c1aba5a7efba1569bd26bf32"
+      "bytes": 33193,
+      "sha256": "715e280d0fe95d1c48b012fd4662f3943db17702a4e984bf8febcd25a712de55"
     },
     {
       "file": "Labs.html",
@@ -454,13 +454,13 @@
     },
     {
       "file": "MonChef_V101_RS_Booking.gs",
-      "bytes": 29694,
-      "sha256": "530cb6757f383b9c262466cbefe094194169ac499c8bb5a14d5e1140d2b3d7b3"
+      "bytes": 30417,
+      "sha256": "b35e604c474bc3cd33896c392b47f97f150689b158e3d833a0a22a7f29b84c5c"
     },
     {
       "file": "MonChef_V101_RS_Core.gs",
-      "bytes": 25678,
-      "sha256": "30ddaeb062b8465664a1ff74cf914337ce3f8c63ec81bee24bf1478b389c8049"
+      "bytes": 25737,
+      "sha256": "0bcfedcaba11b3b52ad91342b57375a23f678d7985458215f0ec2183ce87ab23"
     },
     {
       "file": "MonChef_V101_RS_Economy.gs",
@@ -469,13 +469,18 @@
     },
     {
       "file": "MonChef_V101_RS_Hall.gs",
-      "bytes": 13514,
-      "sha256": "f4ae51e095e72ff258f20e0b3ee35671b64e7e8f29f619fa1d05b526cc8c8c51"
+      "bytes": 14122,
+      "sha256": "8c306e0bfb8ab8d2f02bb0bb05af7a45d3aeecb803f0d5892c16cb10624b472e"
+    },
+    {
+      "file": "MonChef_V101_RS_Integration.gs",
+      "bytes": 49156,
+      "sha256": "af6404a6e5ea83eafc7aab2b7d7bf9122c7b89889dfcd6c09d0b4d6ae4ad0018"
     },
     {
       "file": "MonChef_V101_RS_Kitchen.gs",
-      "bytes": 24307,
-      "sha256": "fe7ebd6cbc8c5cbb04563e5742d3210bdbaf6641861708d54eadfd6b447a98ee"
+      "bytes": 25660,
+      "sha256": "0336c2850867060261962b7d8f7165ff6e72091fb400e05d9b0b4a2df4ca034a"
     },
     {
       "file": "MonChef_V101_RS_Menu.gs",
@@ -484,8 +489,8 @@
     },
     {
       "file": "MonChef_V101_RS_Orders.gs",
-      "bytes": 58417,
-      "sha256": "98ce3f940ff1695a3b4f93aaacc7ec51acbe1fe4e6bb2f26f0dcb51195fb545e"
+      "bytes": 58760,
+      "sha256": "d1ad7ac04bca61820d7b2b87a839f7ce871b73816177a03fb470f03c184db885"
     },
     {
       "file": "MonChef_V101_RS_Roles.gs",
@@ -529,8 +534,8 @@
     },
     {
       "file": "MonChef_V14_WeeklyPlanning.gs",
-      "bytes": 11240,
-      "sha256": "0ba5287f74aa8e95fe23735619e85380c3100cdd3732a454bd5c9d13a810e3a5"
+      "bytes": 11827,
+      "sha256": "440f7be5c4fbfc0c86be988ea8896dd482e15f2be20d8aefeb1e66ffec351af6"
     },
     {
       "file": "MonChef_V15_HaccpControlEngine.gs",
@@ -794,8 +799,8 @@
     },
     {
       "file": "MonChef_V71_SaleStock.gs",
-      "bytes": 28999,
-      "sha256": "2a7421b12c3b73b873494d2242f33213a6ce4a3555c14ad54725538e9b2fce34"
+      "bytes": 29290,
+      "sha256": "d786fe2faea2f5f8249b02243cf3968caf8c2fd26f514aef14a4f358dbcf49d7"
     },
     {
       "file": "MonChef_V72_OpForms.gs",
@@ -809,8 +814,8 @@
     },
     {
       "file": "MonChef_V74_Recall.gs",
-      "bytes": 110639,
-      "sha256": "a1e317e3e4a967ae692596d3fa8c768ac3fb6684ce370167206df502eb890cc7"
+      "bytes": 111625,
+      "sha256": "5e25575c062132e6ce98b4b9a7946e68ff4f9f89f6006a75783b54fef08004c0"
     },
     {
       "file": "MonChef_V75_HazardAnalysis.gs",
@@ -824,8 +829,8 @@
     },
     {
       "file": "MonChef_V77_BrakerageSales.gs",
-      "bytes": 12788,
-      "sha256": "245d1fcb6188a506dfff9184feb5b9e6e13330ec3f10c54b0bdc7b88e35ccc8d"
+      "bytes": 13416,
+      "sha256": "c24581b5fe4ff2cb24f8c2a70656833b247ceb9f9b1c387c81f43e45e27c2928"
     },
     {
       "file": "MonChef_V78_DriveLayout.gs",

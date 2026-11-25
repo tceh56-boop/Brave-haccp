@@ -70,7 +70,9 @@ function rsKdsData(json, token) {
     var rank = { PROBLEM: 0, NEW: 1, ACCEPTED: 2, COOKING: 3, READY: 4, WAIT_COURSE: 5, ISSUED: 6, CANCELLED: 7 };
     list.sort(function (a, b) { return (rank[a.status] - rank[b.status]) || (b.priority - a.priority) || (b.waitMin - a.waitMin); });
     return { gen: gen, dept: dept, can: { act: can, stop: _mcRbHasExact_(s, dept === 'BAR' ? 'stopgo_bar' : 'stopgo_kitchen'), approve: _mcRbHasExact_(s, 'stopgo_approve') },
-      shops: shops.sort(), myShops: _rsShopsOf_(s), tickets: list, me: _rsWho_(s) };
+      shops: shops.sort(), myShops: _rsShopsOf_(s), tickets: list, me: _rsWho_(s),
+      onShift: (function () { try { if (typeof _rsOnShift_ !== 'function') return null; var sh = _rsOnShift_('', _rsToday_(), _rsNowHm_());   // этап 9: смена из графика
+        return sh.has ? sh.list.filter(function (x) { return x.group === (dept === 'BAR' ? 'bar' : 'kitchen') && x.now; }).map(function (x) { return x.name.split(' ').slice(0, 2).join(' ') + ' до ' + x.end; }) : null; } catch (e) { return null; } })() };
   });
 }
 function _rsLoadTicket_(c) {

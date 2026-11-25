@@ -48,7 +48,11 @@ function rsHallData(json, token) {
       var ord = orders[t.id];
       if (ord) { t.state = 'order'; t.order = { id: ord.id, guests: ord.guests, waiter: ord.waiter, waiterId: ord.waiterId, totalKop: ord.totalKop, ready: ord.ready, waiting: ord.waiting, draft: ord.draft, mine: ord.waiterId === String(s.user_id || '') }; }
     });
-    return { sites: _rsSites_(), siteId: siteId, date: day, time: hm, halls: halls, tables: tables, bookings: bookings.map(function (b) { return _rsBkPublic_(b, s); }),
+    var shift = null;   // этап 9: смена из графика и закрепление столов
+    try { if (typeof _rsOnShift_ === 'function') { var asg = _rsTableAssign_(siteId, day); shift = _rsOnShift_(siteId, day, day === _rsToday_() ? _rsNowHm_() : '');
+      tables.forEach(function (t) { if (asg[t.id]) t.assigned = { waiterId: asg[t.id].waiterId, waiter: asg[t.id].waiter, mine: asg[t.id].waiterId === String(s.user_id || '') }; });
+      shift.me = shift.list.filter(function (x) { return x.id === String(s.user_id || ''); })[0] || null; } } catch (e) { shift = null; }
+    return { sites: _rsSites_(), siteId: siteId, date: day, time: hm, halls: halls, tables: tables, shift: shift, bookings: bookings.map(function (b) { return _rsBkPublic_(b, s); }),
       can: { booking: _mcRbHasExact_(s, 'booking'), manage: manage, order: _mcRbHasExact_(s, 'order_edit|order_all'), orderAll: _mcRbHasExact_(s, 'order_all'), send: _mcRbHasExact_(s, 'order_send|order_all'),
         split: _mcRbHasExact_(s, 'bill_split|order_all'), discount: _mcRbHasExact_(s, 'discount'), pay: _mcRbHasExact_(s, 'payment_confirm'), stopgo: _mcRbHasExact_(s, 'stopgo_view|stopgo_kitchen|stopgo_bar'), shift: _mcRbHasExact_(s, 'finance_view|order_all|payment_confirm|cash_view') }, me: String(s.user_id || '') };
   });

@@ -25,7 +25,7 @@ textarea{min-height:56px}
 .chip{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap;background:#efe6e3}
 .st-NEW{background:var(--blue-bg);color:var(--blue)}.st-CONFIRMED{background:var(--green-bg);color:var(--green)}.st-WAITING{background:var(--amber-bg);color:var(--amber)}
 .st-ARRIVED,.st-SEATED{background:#f1e4c8;color:#7a5512}.st-CLOSED{background:#eee;color:#666}.st-CANCELLED,.st-NO_SHOW{background:var(--red-bg);color:var(--red)}
-.msg{margin:8px 0;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+.asg{font-size:11px;margin-top:2px;opacity:.8}.asg.me{font-weight:700;color:var(--gold)}.msg{margin:8px 0;font-size:14px}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}
 .empty{color:var(--mut);text-align:center;padding:24px}
 /* схема зала */
 .plan{display:grid;gap:6px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;overflow-x:auto}
@@ -117,6 +117,35 @@ function tabs() {
 function render() { ({ plan: rPlan, mine: rMine, book: rBook, fc: rFc, setup: rSetup, stop: rStopH, shift: rShift })[S.tab](); }
 /* смена: оплаты, журнал продаж, Z-отчёт, food cost, расхождения (этап 7) */
 var PM = { CASH: 'наличные', CARD: 'карта', OTHER: 'другое' };
+/* этап 9: смена из графика (V98) на схеме зала и закрепление столов за официантами */
+function shiftLine(d) {
+  var sh = d.shift; if (!sh) return '';
+  if (!sh.has) return d.can.orderAll ? '<div class="meta" style="margin-top:4px">График смен на ' + ru(d.date) + ' не заполнен — раздел «График смен».</div>' : '';
+  var g = function (k, nm) { var l = sh.list.filter(function (x) { return x.group === k; }); return l.length ? '<b>' + nm + ':</b> ' + l.map(function (x) { return esc(x.name.split(' ').slice(0, 2).join(' ')) + ' ' + esc(x.start) + '–' + esc(x.end) + (x.now ? '' : ' (не сейчас)'); }).join(', ') : ''; };
+  return '<div class="meta" style="margin-top:4px">На смене · ' + [g('hall', 'зал'), g('kitchen', 'кухня'), g('bar', 'бар')].filter(Boolean).join(' · ') + (sh.me ? '' : d.can.order && !d.can.orderAll ? ' · <span style="color:var(--red)">вас нет в графике на сегодня</span>' : '') + '</div>';
+}
+function rTasg() {
+  if (!$('tasg')) return;
+  call('rsShiftTables', { siteId: $('site').value, date: $('date').value }, function (r) {
+    S.tasg = r; if (!$('tasg')) return;
+    var tb = (S.data.tables || []).filter(function (t) { return t.status === 'ACTIVE'; }).sort(function (a, b) { return (a.hallId + ('000' + a.number).slice(-4)) < (b.hallId + ('000' + b.number).slice(-4)) ? -1 : 1; });
+    var h = '<div class="card"><div class="nm">Закрепление столов · ' + ru(r.date) + '</div><div class="meta">' + (r.schedule.has ? 'Официанты из графика смен на этот день.' : 'Графика смен на этот день нет — закрепить можно любого официанта. Заполните «График смен».') + '</div>';
+    if (!r.waiters.length) h += '<div class="meta">Официантов нет.</div>';
+    h += r.waiters.map(function (w) {
+      return '<div style="border-top:1px solid var(--line);padding:6px 0"><b>' + esc(w.name) + '</b>' + (w.start ? ' <span class="meta">смена ' + esc(w.start) + '–' + esc(w.end) + '</span>' : '') + '<div>' + tb.map(function (t) {
+        var a = r.assign[t.id], on = a && a.waiterId === w.id;
+        return '<label style="margin-right:10px;white-space:nowrap"><input type="checkbox" class="ta_' + esc(w.id) + '" value="' + esc(t.id) + '"' + (on ? ' checked' : '') + (r.can.edit ? '' : ' disabled') + '> № ' + esc(t.number) + (a && !on ? ' <span class="meta">(' + esc(a.waiter.split(' ')[0]) + ')</span>' : '') + '</label>';
+      }).join('') + '</div>' + (r.can.edit ? '<button class="btn" onclick="tasgSave(\'' + esc(w.id) + '\')">Сохранить столы</button>' : '') + '</div>';
+    }).join('') + '</div>';
+    $('tasg').innerHTML = h;
+  }, function () {});
+}
+function tasgSave(wid) {
+  var ts = [].slice.call(document.querySelectorAll('.ta_' + wid)).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+  act('tasg-' + wid, 'rsShiftTablesSave', { siteId: $('site').value, date: $('date').value, waiterId: wid, tables: ts }, function (r) {
+    note('Столы ' + r.waiter + ': ' + (r.tables.join(', ') || 'нет') + (r.moved.length ? '. Переданы: ' + r.moved.map(function (m) { return '№ ' + m.table + ' от ' + m.from; }).join(', ') : ''), true); load(); rTasg();
+  }, note);
+}
 function rShift() {
   $('view').innerHTML = '<div class="empty">Загрузка…</div>';
   call('rsShiftReport', { siteId: $('site').value, date: $('date').value }, function (r) {
@@ -134,8 +163,8 @@ function rShift() {
       return '<div style="border-top:1px solid var(--line);padding:6px 0"><b>Стол № ' + esc(o.table) + '</b> · ' + esc(o.waiter) + o.bills.map(function (b) {
         return '<div class="bk" style="cursor:default"><div>' + esc(b.name) + ' · ' + money(b.totalKop) + ' · ' + esc(PM[b.method] || '') + (b.status === 'REFUNDED' ? ' · <span class="chip st-CANCELLED">возврат</span>' : '') + '</div>' +
           (r.can.refund && b.status === 'PAID' ? '<button class="btn bad" onclick="refund(\'' + b.id + '\')">Возврат по счёту</button>' : '') + '</div>'; }).join('') + '</div>'; }).join('') + '</div>' : '';
-    $('view').innerHTML = h;
-  }, function (m) { $('view').innerHTML = ''; note(m); });
+    $('view').innerHTML = '<div id="tasg"></div>' + h; rTasg();
+  }, function (m) { $('view').innerHTML = '<div id="tasg"></div>'; note(m); rTasg(); });
 }
 function refund(id) {
   var b = null; S.shift.closed.forEach(function (o) { o.bills.forEach(function (x) { if (x.id === id) b = x; }); });
@@ -168,9 +197,11 @@ function rPlan() {
     var t = cells[x + ':' + y];
     html += t ? '<div class="tbl ' + esc(t.shape) + ' s-' + t.state + (t.order && t.order.mine ? ' mine' : '') + '" onclick="tableCard(\'' + t.id + '\')"><b>' + esc(t.number) + '</b>' +
       (t.order ? t.order.guests + ' гост. · ' + money(t.order.totalKop) + (t.order.ready ? '<br>готово: ' + t.order.ready : '') :
-       t.booking ? esc(t.booking.start) + ' · ' + t.booking.guests + ' гост.' : t.next ? 'с ' + esc(t.next.start) : t.seatsMax + ' мест') + '</div>' : '<div class="cell"></div>';
+       t.booking ? esc(t.booking.start) + ' · ' + t.booking.guests + ' гост.' : t.next ? 'с ' + esc(t.next.start) : t.seatsMax + ' мест') +
+      (t.assigned && !t.order ? '<div class="asg' + (t.assigned.mine ? ' me' : '') + '">' + esc(t.assigned.mine ? 'мой стол' : t.assigned.waiter.split(' ')[0]) + '</div>' : '') + '</div>' : '<div class="cell"></div>';
   }
   html += '</div><div class="meta" style="margin-top:6px">Состояние на ' + ru(d.date) + ' ' + esc(d.time) + '. Нажмите на стол, чтобы открыть заказ или бронь.</div>';
+  html += shiftLine(d);
   $('view').innerHTML = '<div id="greq"></div>' + html;
   if (d.can.order) guestReqs();
 }
@@ -201,6 +232,8 @@ function tableCard(id) {
     var mineBk = bks.filter(function (b) { return ['NEW', 'CONFIRMED', 'ARRIVED'].indexOf(b.status) >= 0 && !b.orderId; });
     h += '<div class="card"><div class="nm">Открыть стол</div><div class="grid" style="margin-top:8px"><div><label>Гостей</label><input id="o_guests" type="number" min="1" value="' + (mineBk[0] ? mineBk[0].guests : 2) + '"></div>' +
       '<div style="grid-column:span 2"><label>Бронь</label><select id="o_bk"><option value="">без брони</option>' + mineBk.map(function (b, i) { return '<option value="' + b.id + '"' + (i === 0 ? ' selected' : '') + '>' + esc(b.start + ' ' + b.guest + ', ' + b.guests + ' гост.' + (b.preorderId ? ' · с предзаказом' : '')) + '</option>'; }).join('') + '</select></div>' +
+      (d.can.orderAll ? '<div style="grid-column:1/-1"><label>Официант</label><select id="o_waiter"><option value="">' + esc(t.assigned ? 'закреплённый: ' + t.assigned.waiter : 'я') + '</option>' +
+        ((d.shift && d.shift.list) || []).filter(function (x) { return x.group === 'hall'; }).map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name) + ' · смена ' + esc(x.start) + '–' + esc(x.end) + (x.now ? '' : ' (не сейчас)') + '</option>'; }).join('') + '</select></div>' : '') +
       '<div style="grid-column:1/-1"><label>Комментарий</label><input id="o_comment"></div></div><div id="f_msg"></div>' +
       '<div class="acts"><button class="btn pri" id="o_open" onclick="openTable(\'' + id + '\')">Открыть стол</button></div></div>';
   }
@@ -470,8 +503,9 @@ function oServe(ids) { act('serve-' + ids.join(','), 'rsItemServe', { orderId: O
 function oReplace(id) { REPL = findIt(id); OV = 'add'; renderOrder(); }
 function openTable(tableId) {
   var b = $('o_open'); b.disabled = true;
-  act('open-' + tableId, 'rsOrderOpen', { tableId: tableId, guests: $('o_guests').value, bookingId: $('o_bk').value, comment: $('o_comment').value }, function (r) {
-    b.disabled = false; note('Стол № ' + r.table + ' открыт' + (r.fromPreorder ? ', из предзаказа: ' + r.fromPreorder + ' поз.' : '') + (r.skipped && r.skipped.length ? '. Не перенесено: ' + r.skipped.join('; ') : ''), true);
+  act('open-' + tableId, 'rsOrderOpen', { tableId: tableId, guests: $('o_guests').value, bookingId: $('o_bk').value, comment: $('o_comment').value, waiterId: $('o_waiter') ? $('o_waiter').value : '' }, function (r) {
+    b.disabled = false; note('Стол № ' + r.table + ' открыт' + (r.waiter ? ' · официант ' + r.waiter : '') + (r.fromPreorder ? ', из предзаказа: ' + r.fromPreorder + ' поз.' : '') + (r.skipped && r.skipped.length ? '. Не перенесено: ' + r.skipped.join('; ') : '') +
+      (r.warnings && r.warnings.length ? '. Внимание: ' + r.warnings.join('; ') : ''), !(r.warnings && r.warnings.length));
     load(); openOrder(r.orderId);
   }, function (m) { b.disabled = false; fmsg(m); });
 }

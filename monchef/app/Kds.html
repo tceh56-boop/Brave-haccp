@@ -70,7 +70,7 @@ function draw() {
   $('chips').innerHTML = d.shops.length > 1 ? ['<button class="' + (!S.shop ? 'on' : '') + '" onclick="S.shop=\'\';draw()">Все цеха</button>'].concat(d.shops.map(function (s) { return '<button class="' + (S.shop === s ? 'on' : '') + '" onclick="S.shop=\'' + esc(s) + '\';draw()">' + esc(s) + '</button>'; })).join('') : '';
   var l = d.tickets.filter(function (t) { return !S.shop || t.shop === S.shop; });
   var cnt = function (st) { return l.filter(function (t) { return t.status === st; }).length; };
-  $('sum').textContent = 'новых ' + cnt('NEW') + ' · готовятся ' + (cnt('ACCEPTED') + cnt('COOKING')) + ' · готово ' + cnt('READY') + (cnt('PROBLEM') ? ' · проблем ' + cnt('PROBLEM') : '') + ' · ждут курса ' + cnt('WAIT_COURSE');
+  $('sum').textContent = 'новых ' + cnt('NEW') + ' · готовятся ' + (cnt('ACCEPTED') + cnt('COOKING')) + ' · готово ' + cnt('READY') + (cnt('PROBLEM') ? ' · проблем ' + cnt('PROBLEM') : '') + ' · ждут курса ' + cnt('WAIT_COURSE') + (S.d.onShift && S.d.onShift.length ? ' · на смене: ' + S.d.onShift.join(', ') : '');
   var fresh = l.filter(function (t) { return t.status === 'NEW' && !S.seen[t.id]; }); l.forEach(function (t) { S.seen[t.id] = 1; });
   if (fresh.length && S.ready) beep();
   S.ready = true;
