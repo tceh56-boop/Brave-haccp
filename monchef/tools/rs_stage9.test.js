@@ -173,6 +173,9 @@ t('стейку назначена ККТ «t° в толще ≥ 75 °C»: на
   C._v30Init_();
   ss.getSheetByName('HACCP_ТочкиКонтроля_V30').appendRow(['CCP-T1', 'P1', 'H1', 'CCP', 'Температура в толще', '≥ 75', '°C', 'термощуп', 'каждая порция', 'повар', 'догреть', 'проверка шефом', 'J', 'ACTIVE', 1, '', '', new Date(), 'test']);
   ss.getSheetByName('HACCP_Мониторинг_V30').appendRow(['MON-T1', 'CCP-T1', 'Стейк', 't° в толще', '°C', 75, '', 'каждая порция', 'повар', '', 'CCP', '', true, 'ACTIVE', new Date(), 'test']);
+  // ККТ назначается по процессу блюда: стейк входит в подтверждённую на площадке схему, где есть процесс P1 (MC-024)
+  C._v75Append_('FLW', { FlowID: 'FLW-HOT', 'Название': 'Горячие блюда из мяса', 'Для продукции (JSON)': '["D001"]', 'Шаги (JSON)': '[{"processId":"P0"},{"processId":"P1"}]', 'Версия': 1, 'Статус': 'ACTIVE' });
+  C._v75Append_('CNF', { ConfID: 'CNF-1', FlowID: 'FLW-HOT', 'Версия схемы': 1, 'Результат': 'CONFIRMED', 'Подтвердил': 'Хасапов Ким' });
   drop(); const a = J(C.mcSetTtkCcp(JSON.stringify({ code: 'D001', controlId: 'CCP-T1' }), HACCP)); assert.ok(a.success, JSON.stringify(a));
   o4 = ok(call('rsOrderOpen', WAI, { idem: key(), tableId: T[1].id, guests: 1 })).orderId;
   ok(call('rsItemAdd', WAI, { idem: key(), orderId: o4, items: [{ code: 'D001', amount: 300 }] }));

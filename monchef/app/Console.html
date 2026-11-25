@@ -1911,10 +1911,12 @@ function shelfSave() {
   var r = DISH; if (!r) return; var v = String(document.getElementById('shH').value || '').replace(',', '.').trim(), h = parseFloat(v);
   if (!(h > 0 && h <= 8760)) { alert('Срок реализации: от 1 до 8760 часов'); return; }
   var b = document.getElementById('shSave'); b.disabled = true; b.textContent = 'Сохраняю…';
-  run('setDishShelfLife', [r.code, h, TOKEN], function (res) {
+  var basis = prompt('Основание срока (обязательно): документ и пункт (СанПиН, ТР ТС, ТУ), протокол исследований или утверждённая валидация. Срок начнёт действовать после утверждения ответственным за ХАССП или директором.');
+  if (!basis) { b.disabled = false; b.textContent = '💾 Сохранить срок'; return; }
+  run('setDishShelfLife', [r.code, h, TOKEN, basis], function (res) {
     var t = typeof res === 'string' ? res : JSON.stringify(res);
     if (!/"(success|ok)":true/.test(t)) { b.disabled = false; b.textContent = '💾 Сохранить срок'; var je = pj(t); alert('Не сохранено: ' + (je && je.error ? jerr(je) : t)); return; }
-    if (DISH === r) { r.shelf = { hours: h, src: 'карта' }; document.getElementById('dshelf').innerHTML = dishShelfHtml(r); }
+    if (DISH === r) { document.getElementById('dshelf').innerHTML = dishShelfHtml(r) + '<div class="dnote">Предложено: ' + n2(h) + ' ч — на утверждении (ответственный за ХАССП или директор).</div>'; }
   }, function (e) { b.disabled = false; b.textContent = '💾 Сохранить срок'; alert('Не сохранено: ' + (e && e.message || e)); });
 }
 // где лежит карточка в папке ttk (после синхронизации), иначе категория
@@ -2750,14 +2752,14 @@ VIEWS.ppkbuilder = {
 /* ---------- ХАССП: процессы, опасности, ККТ, мониторинг и верификация (V30) ---------- */
 // раньше план мониторинга ККТ заводил только технический доступ — экрана не было; теперь — здесь, у ответственного за ХАССП
 VIEWS.compliance = {
-  fns: { snap: 'v30BuildAuditSnapshot', proc: 'v30SaveProcess', haz: 'v30SaveHazard', ctl: 'v30SaveControl', mon: 'v30SaveMonitoring', ver: 'v30SaveVerification', san: 'v30SaveSanitation' },
+  fns: { ccpok: 'v102ControlApprove', shok: 'v102ShelfDecide', shno: 'v102ShelfDecide', snap: 'v30BuildAuditSnapshot', proc: 'v30SaveProcess', haz: 'v30SaveHazard', ctl: 'v30SaveControl', mon: 'v30SaveMonitoring', ver: 'v30SaveVerification', san: 'v30SaveSanitation' },
   title: 'ХАССП: процессы и ККТ', sub: 'Процессы → опасности → ККТ и мониторинг → верификация. Пределы вносит ответственный — система их не придумывает.',
   acts: [['Обновить', 'load'], ['Снимок для аудита', 'snap']],
   open: function () { this.h.load(); },
   h: {
     load: function () {
       vLoading();
-      Promise.all([vCall('v30GetReadiness', []), vCall('v30GetMasterData', [])]).then(function (rr) {
+      Promise.all([vCall('v30GetReadiness', []), vCall('v30GetMasterData', []), vCall('v102ControlReadiness', []).catch(function () { return null; }), vCall('v102ShelfData', []).catch(function () { return null; })]).then(function (rr) {
         var e = vErr(rr[0]) || vErr(rr[1]); if (e) { vMsg(e, 'err'); vBody(''); return; }
         var d = vData(rr[0]) || {}, c = d.counts || {}, m = vData(rr[1]) || {};
         var P = m.processes || [], H = m.hazards || [], C = m.controls || [], M = m.monitoring || [];
@@ -2766,6 +2768,16 @@ VIEWS.compliance = {
         var opt = function (list, lab) { return [['', '— выберите —']].concat(list.map(function (x) { return [x.id, lab(x)]; })); };
         var h = vKpis([['Готовность контура', (d.score || 0) + '%', d.score >= 100 ? 'green' : 'gold'], ['Процессы', c.processes], ['Опасности', c.hazards], ['ККТ и контроли', c.controls], ['Мониторинг', c.monitoring], ['Проблемы', (d.items || []).filter(function (x) { return !x.ok; }).length, 'red']]);
         h += vCard('Проверка контура', vTable([{ k: 'name', l: 'Что' }, { k: 'detail', l: 'Подробно' }, { l: 'Состояние', html: true, f: function (x) { return vChip(x.ok ? 'в порядке' : 'нужно внести', x.ok ? 'g' : 'r'); } }], d.items || []));
+        // V102 (MC-024): точка контроля действует только после утверждения директором; полнота — по анализу опасностей, мониторингу и валидации
+        var CR = rr[2] && vData(rr[2]); if (CR && CR.controls) h += vCard('Утверждение ККТ и контрольных точек', vTable([{ k: 'type', l: 'Тип' }, { k: 'point', l: 'Точка' }, { k: 'limit', l: 'Предел' },
+          { l: 'Статус', html: true, f: function (x) { return vChip(x.status === 'ACTIVE' ? 'действует · ' + x.approvedBy : 'проект — не действует', x.status === 'ACTIVE' ? 'g' : 'a'); } },
+          { l: 'Чего не хватает', f: function (x) { return x.missing.join('; ') || (x.status === 'ACTIVE' ? '' : 'всё заполнено — можно утверждать'); } }], CR.controls,
+          function (x) { return CR.can.approve && x.status !== 'ACTIVE' && !x.missing.length ? vBtn('Утвердить', 'ccpok', x.id, true) : ''; }, 'Точек контроля нет') +
+          '<div class="sub" style="margin-top:6px">Изменение предела, мониторинга, ответственного или действий возвращает точку в проект — до повторного утверждения выпуск и «Готово» с ней блокируются. ККТ блюду назначается только по процессу из подтверждённой технологической схемы.</div>');
+        var SD = rr[3] && vData(rr[3]); if (SD && (SD.proposed.length || SD.unapproved.length)) h += vCard('Сроки годности в картах (MC-025)',
+          (SD.proposed.length ? vTable([{ k: 'name', l: 'Блюдо / п/ф' }, { k: 'hours', l: 'Часы', t: 'num' }, { k: 'basis', l: 'Основание' }, { k: 'by', l: 'Предложил' }], SD.proposed,
+            function (x) { return SD.can.decide ? vBtn('Утвердить', 'shok', x.id, true) + vBtn('Отклонить', 'shno', x.id) : ''; }) : '') +
+          (SD.unapproved.length ? '<div class="sub" style="margin-top:8px">Без утверждённого основания (не применяются к партиям и этикеткам): ' + SD.unapproved.map(function (x) { return esc(x.name) + ' — ' + x.hours + ' ч'; }).join(', ') + '. Предложите срок с основанием в карте блюда.</div>' : ''));
         h += vCard('Процессы', vTable([{ k: 'name', l: 'Процесс' }, { k: 'code', l: 'Код' }, { k: 'responsible', l: 'Ответственный' }, { k: 'status', l: 'Статус', t: 'status' }], P, null, 'Процессов нет') +
           vForm([['prName', 'Новый процесс *', 'text', '', 'например: тепловая обработка'], ['prCode', 'Код', 'text'], ['prResp', 'Ответственный', 'text'], ['prSeq', 'Порядок', 'number'], ['prSt', 'Статус', 'select', 'DRAFT', ST], ['prNotes', 'Примечание', 'textarea']]) + '<div class="mvbar">' + vBtn('Сохранить процесс', 'proc') + '</div>');
         h += vCard('Опасности', vTable([{ l: 'Процесс', f: function (x) { return pn[x.processId] || x.processId; } }, { k: 'category', l: 'Категория' }, { k: 'hazard', l: 'Опасность' }, { l: 'Значимая', f: function (x) { return x.significant === true || String(x.significant).toUpperCase() === 'TRUE' ? 'да' : 'нет'; } }, { k: 'status', l: 'Статус', t: 'status' }], H, null, 'Опасностей нет') +
@@ -2779,6 +2791,9 @@ VIEWS.compliance = {
         vBody(h);
       });
     },
+    ccpok: function (id, btn) { var c = prompt('Утвердить точку контроля? Комментарий (что проверено):', ''); if (c === null) return; vDo(btn, 'v102ControlApprove', [JSON.stringify({ controlId: id, comment: c })], 'Точка утверждена — действует', function () { VIEWS.compliance.h.load(); }); },
+    shok: function (id, btn) { vDo(btn, 'v102ShelfDecide', [JSON.stringify({ id: id, approve: true })], 'Срок утверждён — применяется к новым партиям и этикеткам', function () { VIEWS.compliance.h.load(); }); },
+    shno: function (id, btn) { var c = prompt('Почему отклонить?'); if (!c) return; vDo(btn, 'v102ShelfDecide', [JSON.stringify({ id: id, approve: false, comment: c })], 'Отклонено', function () { VIEWS.compliance.h.load(); }); },
     snap: function (a, btn) { vDo(btn, 'v30BuildAuditSnapshot', [], function (d) { return 'Снимок для аудита создан' + (d && d.auditId ? ': ' + d.auditId : ''); }); },
     proc: function (a, btn) { if (!vV('prName')) { vMsg('Укажите название процесса', 'err'); return; } vDo(btn, 'v30SaveProcess', [JSON.stringify({ name: vV('prName'), code: vV('prCode'), responsible: vV('prResp'), sequence: vV('prSeq'), notes: vV('prNotes'), status: vV('prSt') })], 'Процесс сохранён', function () { VIEWS.compliance.h.load(); }); },
     haz: function (a, btn) { if (!vV('hzProc') || !vV('hzHaz')) { vMsg('Выберите процесс и опишите опасность', 'err'); return; } vDo(btn, 'v30SaveHazard', [JSON.stringify({ processId: vV('hzProc'), category: vV('hzCat'), hazard: vV('hzHaz'), cause: vV('hzCause'), preventiveMeasure: vV('hzPrev'), risk: vV('hzRisk'), significant: vV('hzSig'), status: vV('hzSt') })], 'Опасность сохранена', function () { VIEWS.compliance.h.load(); }); },
@@ -5983,7 +5998,7 @@ VIEWS.finance = {
 
 /* ---------- ППК (V65) ---------- */
 VIEWS.ppk = {
-  fns: { create: 'v65CreatePpk', gen: 'v65Generate', submit: 'v65Submit', approve: 'v65Approve', ret: 'v65Return', activate: 'v65Activate', archive: 'v65Archive', pdf: 'v65PpkPdf', sched: 'v65BuildSchedule', sec: 'v65SaveSection', act: 'v65SaveActivity', done: 'v65CompleteScheduleItem' },
+  fns: { create: 'v65CreatePpk', gen: 'v65Generate', submit: 'v65Submit', approve: 'v65Approve', ret: 'v65Return', rev: 'v102PpkReview', agree: 'v102PpkAgree', revstart: 'v102PpkRevisionStart', activate: 'v65Activate', archive: 'v65Archive', pdf: 'v65PpkPdf', sched: 'v65BuildSchedule', sec: 'v65SaveSection', act: 'v65SaveActivity', done: 'v65CompleteScheduleItem' },
   title: 'Программа производственного контроля', sub: 'Черновик → На проверке → Утверждён → Действует → Архив. Разделы и мероприятия — из данных предприятия; с пробелами ППК не утверждается.',
   open: function (id) { if (id) { this._id = id; this.h.one(); } else this.h.list(); },
   h: {
@@ -6002,16 +6017,22 @@ VIEWS.ppk = {
     tab: function (k) { VIEWS.ppk._t = k; VIEWS.ppk.h.one(); },
     one: function () {
       var V = VIEWS.ppk, k = V._t || 'card'; vLoading();
-      vCall('v65GetPpk', [V._id]).then(function (r) { var d = m9Ok(r); if (!d) { vBody(''); return; } var p = d.ppk, st = p.Status, c = d.check;
+      vCall('v65GetPpk', [V._id]).then(function (r) { var d = m9Ok(r); if (!d) { vBody(''); return; } var p = d.ppk, st = p.Status, c = d.check; V._st = st;
         var head = '<div class="mvbar">' + vBtn('‹ Все версии', 'list') + '</div>' + m9Tabs([['card', 'Статус и проверка'], ['sections', 'Разделы'], ['acts', 'Мероприятия'], ['sched', 'График'], ['apr', 'Согласование']], k);
         var h = head;
         if (k === 'card') {
           h += vKpis([['Версия', p.Version], ['Статус', d.statusRu, st === 'ACTIVE' ? 'green' : st === 'REVIEW' ? 'gold' : ''], ['Проверка полноты', c.status === 'PASS' ? 'пройдена' : 'пробелов: ' + c.blocking, c.status === 'PASS' ? 'green' : 'red'],
             ['Мероприятий', d.activities.filter(function (a) { return a.Active !== false; }).length], ['Просрочено', d.schedule.counts.OVERDUE || 0, d.schedule.counts.OVERDUE ? 'red' : '']]);
+          if (p.RevisionReason && st === 'ACTIVE') h += '<div class="bqmsg err" style="white-space:pre-wrap"><b>Требуется пересмотр.</b> ' + esc(p.RevisionReason) + '</div>';
+          h += vCard('Версия', vTable([{ k: 'k', l: '' }, { k: 'v', l: '' }], [['Автор', p.Author || p.CreatedBy], ['Основание', p.Basis], ['Проверил', p.Reviewer], ['Согласовал', p.AgreedBy], ['Утвердил', p.ApprovedBy], ['Действует с', p.DateFrom], ['Предыдущая версия', p.PrevPPKID]]
+            .filter(function (x) { return x[1]; }).map(function (x) { return { k: x[0], v: String(x[1]).replace(/T.*$/, '') }; })));
           var b = [];
           if (st === 'DRAFT' || st === 'REVIEW') b.push(vBtn('Сформировать из данных', 'gen', '', true));
           if (st === 'DRAFT') b.push(vBtn('Отправить на проверку', 'submit'));
-          if (st === 'REVIEW') { b.push(vBtn('Утвердить', 'approve', '', true)); b.push(vBtn('Вернуть на доработку', 'ret')); }
+          // V102 (MC-023): проверка (не автор) → согласование ответственным за ХАССП (не автор) → утверждение директором (не автор)
+          if (st === 'REVIEW') { b.push(vBtn('Проверено — на согласование', 'rev', '', true)); b.push(vBtn('Вернуть на доработку', 'ret')); }
+          if (st === 'AGREEMENT') { if (!p.AgreedBy) b.push(vBtn('Согласовать', 'agree', '', true)); else b.push(vBtn('Утвердить', 'approve', '', true)); b.push(vBtn('Вернуть на доработку', 'ret')); }
+          if (st === 'ACTIVE') b.push(vBtn('Начать пересмотр', 'revstart'));
           if (st === 'APPROVED') b.push(vBtn('Ввести в действие', 'activate', '', true));
           if (st === 'APPROVED' || st === 'ACTIVE') b.push(vBtn('Построить график', 'sched'));
           if (st !== 'ARCHIVED') b.push(vBtn('В архив', 'archive'));
@@ -6043,7 +6064,10 @@ VIEWS.ppk = {
     gen: function (a, btn) { vDo(btn, 'v65Generate', [VIEWS.ppk._id], function (d) { return 'Сформировано: мероприятий ' + d.activities + ', разделов обновлено ' + d.sectionsUpdated + '. Проверка: ' + (d.check.status === 'PASS' ? 'пройдена' : 'пробелов ' + d.check.blocking); }, function () { VIEWS.ppk.h.one(); }); },
     submit: function (a, btn) { vDo(btn, 'v65Submit', [VIEWS.ppk._id], 'Отправлено на проверку', function () { VIEWS.ppk.h.one(); }); },
     approve: function (a, btn) { if (!confirm('Утвердить ППК? Будет выпущен PDF с хешем.')) return; vDo(btn, 'v65Approve', [JSON.stringify({ ppkId: VIEWS.ppk._id })], function (d) { return d.note; }, function (d) { m9Url(d); VIEWS.ppk.h.one(); }); },
-    ret: function (a, btn) { var c = prompt('Что доработать?'); if (!c) return; vDo(btn, 'v65Return', [JSON.stringify({ ppkId: VIEWS.ppk._id, comment: c })], 'Возвращено в черновик', function () { VIEWS.ppk.h.one(); }); },
+    rev: function (a, btn) { var c = prompt('Проверка пройдена. Комментарий (необязательно):', ''); if (c === null) return; vDo(btn, 'v102PpkReview', [JSON.stringify({ ppkId: VIEWS.ppk._id, decision: 'PASS', comment: c })], 'Проверено — передано на согласование', function () { VIEWS.ppk.h.one(); }); },
+    agree: function (a, btn) { var c = prompt('Согласование ответственным за ХАССП. Комментарий (необязательно):', ''); if (c === null) return; vDo(btn, 'v102PpkAgree', [JSON.stringify({ ppkId: VIEWS.ppk._id, comment: c })], 'Согласовано — утверждает директор', function () { VIEWS.ppk.h.one(); }); },
+    revstart: function (a, btn) { var c = prompt('Основание пересмотра: что изменилось (процесс, оборудование, ТТК, требования)?'); if (!c) return; vDo(btn, 'v102PpkRevisionStart', [JSON.stringify({ ppkId: VIEWS.ppk._id, basis: c })], function (d) { return 'Создана версия ' + d.version + ' (проект). Действующая действует до ввода новой.'; }, function (d) { VIEWS.ppk._id = d.ppkId; VIEWS.ppk.h.one(); }); },
+    ret: function (a, btn) { var c = prompt('Что доработать?'); if (!c) return; var V = VIEWS.ppk; if (V._st === 'REVIEW') { vDo(btn, 'v102PpkReview', [JSON.stringify({ ppkId: V._id, decision: 'RETURN', comment: c })], 'Возвращено на доработку', function () { V.h.one(); }); return; } vDo(btn, 'v65Return', [JSON.stringify({ ppkId: VIEWS.ppk._id, comment: c })], 'Возвращено в черновик', function () { VIEWS.ppk.h.one(); }); },
     activate: function (a, btn) { vDo(btn, 'v65Activate', [VIEWS.ppk._id], function (d) { return 'Действует. Пунктов графика: ' + d.scheduleCreated + (d.archived.length ? '; в архив: ' + d.archived.join(', ') : ''); }, function () { VIEWS.ppk.h.one(); }); },
     archive: function (a, btn) { var c = prompt('Причина архивирования'); if (!c) return; vDo(btn, 'v65Archive', [JSON.stringify({ ppkId: VIEWS.ppk._id, comment: c })], 'В архиве', function () { VIEWS.ppk.h.one(); }); },
     sched: function (a, btn) { vDo(btn, 'v65BuildSchedule', [JSON.stringify({ ppkId: VIEWS.ppk._id })], function (d) { return 'Добавлено пунктов: ' + d.created + ' (' + d.from + ' — ' + d.to + ')'; }); },
@@ -7096,6 +7120,17 @@ function rsKiosk(on) {
   try { if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () {}); else if (!on && document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
   window.scrollTo(0, 0);
 }
+/* V102 (MC-023): действующая ППК — всем сотрудникам, только чтение */
+VIEWS.ppkactive = { title: 'Действующая ППК', sub: 'Программа производственного контроля, по которой работает предприятие. Только чтение.',
+  open: function () {
+    vCall('v102PpkActive', []).then(function (r) { var e = vErr(r); if (e) { vMsg(e, 'err'); vBody(''); return; } var a = vData(r).active;
+      if (!a) { vBody('<div class="card empty">Действующей ППК нет.</div>'); return; }
+      vBody((a.revision ? '<div class="bqmsg err" style="white-space:pre-wrap"><b>Готовится пересмотр.</b> ' + esc(a.revision.reason) + '</div>' : '') +
+        vCard(a.name + ' · версия ' + a.version, vTable([{ k: 'k', l: '' }, { k: 'v', l: '' }], [['Действует с', a.from + (a.to ? ' по ' + a.to : '')], ['Утвердил', a.approvedBy + (a.approvedAt ? ', ' + a.approvedAt : '')], ['Согласовал', a.agreedBy], ['Проверил', a.reviewer], ['Автор', a.author], ['Основание', a.basis]]
+          .filter(function (x) { return x[1]; }).map(function (x) { return { k: x[0], v: x[1] }; })) + (a.url ? '<div class="mvbar"><a class="btn pri" target="_blank" href="' + esc(a.url) + '">Утверждённый PDF</a></div>' : '')) +
+        a.sections.map(function (s) { return vCard(s.name, '<div style="white-space:pre-wrap">' + esc(s.text) + '</div>'); }).join(''));
+    }, function (e) { vMsg('Нет связи: ' + (e && e.message || e), 'err'); });
+  }, h: {} };
 VIEWS.hall = { title: 'Зал и бронирование', sub: 'Схема зала, заказы столов, брони гостей и предзаказ. Нажмите на стол: открыть стол, заказ, бронь.', open: function () { rsMount('hall'); }, h: {} };
 VIEWS.kds = { title: 'Кухня и бар', sub: 'Задания кухни и бара, Stop/Go, рецептуры и заготовки бара.', acts: [['На весь экран', 'full']], open: function () { rsMount('kds'); }, h: { full: function () { rsKiosk(true); } } };
 VIEWS.menuedit = { title: 'Гостевое меню', sub: 'Публикация блюд для гостей: фото, видео, GIF, описание. Состав (без граммовок), КБЖУ и аллергены — из ТТК.', open: function () { rsMount('menuedit'); }, h: {} };
