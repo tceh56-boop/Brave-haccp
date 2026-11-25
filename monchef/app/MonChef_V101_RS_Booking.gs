@@ -314,7 +314,7 @@ function rsPreorderForecast(json, token) {
       }); } catch (e) {}
     var ingredients = Object.keys(need).map(function (k) { var o = need[k]; o.qty = Math.round(o.qty * 1000) / 1000; return o; }).sort(function (a, b) { return a.dept < b.dept ? -1 : a.dept > b.dept ? 1 : (a.product < b.product ? -1 : 1); });
     return { from: from, to: to, siteId: siteId, bookings: bookings, rows: rows, ingredients: ingredients,
-      note: 'Подтверждённые предзаказы. Склад не резервируется и не списывается: предзаказ — не продажа. Сырьё — по действующим ТТК (брутто).' };
+      note: 'Подтверждённые предзаказы. Они входят в недельный план MON CHEF: сырьё — в закупку, нехватка п/ф — в задания производства. Склад не резервируется и не списывается: предзаказ — не продажа. Сырьё — по действующим ТТК (брутто).' };
   });
 }
 /** История брони: события обслуживания по BookingID. */

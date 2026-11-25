@@ -154,3 +154,29 @@ function rsBanquetLink(json, token) {
 
 MC_GATE_EXT_.rsBanquetList = { need: 'hall_view|booking|hall_manage' };
 MC_GATE_EXT_.rsBanquetLink = { need: 'booking', mut: true };
+
+/*
+ * 2. Предзаказы → закупки и план производства. Подтверждённые предзаказы броней недели входят в недельный оперативный план
+ *    MON CHEF (V14) как отдельный источник спроса («PREORDER»): сырьё — в закупку (заявки поставщикам V21 строятся из плана),
+ *    нехватка п/ф — в задания производства и канбан. Сами блюда предзаказа заданиями «изготовить заранее» не становятся:
+ *    их готовят по заказу на экране кухни и бара (этапы 3–6). Склад предзаказ не резервирует и не списывает.
+ */
+/** Порции позиции предзаказа: порц/шт — количество; г/кг/мл/л — вес ÷ выход блюда. */
+function _rsPoPortions_(it, dish) {
+  var u = String(it.unit || 'порц').toLowerCase().replace(/\./g, ''), q = Number(it.qty) || 0;
+  if (/^(г|кг|мл|л)$/.test(u)) { var base = q * (u === 'кг' || u === 'л' ? 1000 : 1), y = Number(dish && dish.yield) || 0; return y > 0 ? base / y : 0; }
+  return q;
+}
+/** Спрос подтверждённых предзаказов за период [from; to] (даты YYYY-MM-DD) в форме банкета для планирования: {id, date, time, format, items[{code, qty}], source}. */
+function _rsPreorderDemand_(from, to) {
+  var pos = {}, out = [], idx = null;
+  try { idx = _buildDishIndexes_(); } catch (e) { idx = { dishByCode: {} }; }
+  _rsRows_(MC_RS_SH_.PREORDERS).forEach(function (r) { pos[String(r.PreorderID)] = _rsPoObj_(r); });
+  _rsRows_(MC_RS_SH_.BOOKINGS).map(_rsBkObj_).forEach(function (bk) {
+    if (bk.date < from || bk.date > to || ['NEW', 'CONFIRMED', 'ARRIVED', 'SEATED'].indexOf(bk.status) < 0) return;
+    var po = pos[bk.preorderId]; if (!po || po.status !== 'CONFIRMED') return;
+    var items = po.items.map(function (it) { return { code: it.code, name: it.name, qty: Math.round(_rsPoPortions_(it, idx.dishByCode[it.code]) * 1000) / 1000 }; }).filter(function (x) { return x.qty > 0; });
+    if (items.length) out.push({ id: 'PO:' + po.id, date: bk.date, time: bk.start, format: 'Предзаказ: ' + bk.guest, name: 'Предзаказ: ' + bk.guest, guests: bk.guests, items: items, status: 'Подтверждён', source: 'PREORDER', bookingId: bk.id });
+  });
+  return out;
+}

@@ -85,5 +85,46 @@ t('отмена банкета (статус) и удаление банкета
   ok(call('rsBookingCreate', ADM, { idem: key(), tables: [T[2].id], guest: 'Орлов', date: '2026-11-27', start: '20:00', duration: 90, guests: 2, status: 'CONFIRMED' }));
 });
 
+console.log(' 2) предзаказы → закупки и план производства');
+(() => {
+  const ds = ss.insertSheet('Блюда'); ds.appendRow(['Код', 'Название', 'Категория', 'Выход', '', 'Технология', '', '', 'Цех', '', '', '', 'Выход, г/мл/шт', 'Ед. выхода']);
+  [['D001', 'Стейк рибай', 'Горячее', 'Горячий цех', 300, 'г'], ['PF10', 'Соус перечный п/ф', 'Соусы', 'Горячий цех', 500, 'г'], ['B010', 'Дайкири', 'Коктейли', 'Бар', 85, 'мл']]
+    .forEach(r => ds.appendRow([r[0], r[1], r[2], r[4], '', '', '', '', r[3], '', '', '', r[4], r[5]]));
+  const so = ss.insertSheet('Состав'); so.appendRow(['Код', 'Продукт', '', '', 'Брутто', 'Нетто', 'Выход', 'Ед.']);
+  [['D001', 'Говядина рибай', 300, 'г'], ['D001', 'Соус перечный п/ф', 50, 'г'], ['PF10', 'Сливки 33%', 400, 'мл'], ['PF10', 'Перец чёрный', 20, 'г'], ['B010', 'Ром белый', 50, 'мл']]
+    .forEach(r => so.appendRow([r[0], r[1], '', '', r[2], r[2], r[2], r[3]]));
+  const pr = ss.insertSheet('Цены_Меню'); pr.appendRow(['PriceID', 'DishCode', 'DishName', 'Price', 'Unit', 'Source', 'EventID', 'DateFrom', 'DateTo', 'Status']);
+  [['P1', 'D001', 1500, '100 г'], ['P3', 'B010', 650, 'порц.']].forEach(r => pr.appendRow([r[0], r[1], '', r[2], r[3], 'MENU', '', '2026-11-01', '', 'ACTIVE']));
+  const tv = ss.insertSheet('ТТК_Версии'); tv.appendRow(['Код блюда', 'Версия', 'Статус']); ['D001', 'PF10', 'B010'].forEach(c => tv.appendRow([c, 1, 'действующая']));
+})();
+let planW;
+t('подтверждённый предзаказ (2 стейка, 680 г весом, 2 дайкири) — в недельном плане: сырьё и п/ф к закупке и производству', () => {
+  const bk = ok(call('rsBookingCreate', ADM, { idem: key(), tables: [V[0].id], guest: 'Соколовы', date: '2026-11-26', start: '19:00', duration: 120, guests: 4, status: 'CONFIRMED',
+    preorder: { items: [{ code: 'D001', qty: 680, unit: 'г' }, { code: 'B010', qty: 2 }] } })).booking;
+  const po = ok(call('rsBookingList', ADM, { from: '2026-11-26' })).bookings.find(b => b.id === bk.id).preorder;
+  ok(call('rsPreorderSave', ADM, { idem: key(), bookingId: bk.id, version: po.version, confirm: true, items: po.items }));
+  drop(); planW = J(C.getWeeklyDispatcher('2026-11-25', CHEF)); assert.ok(planW.ok || planW.success, JSON.stringify(planW).slice(0, 300)); planW = planW.data.plan;
+  const pe = planW.events.filter(e => e.source === 'PREORDER'); assert.strictEqual(pe.length, 1); assert.strictEqual(pe[0].items.find(i => i.code === 'D001').qty, 2.267, '680 г ÷ 300 г');
+  const beef = planW.purchase.find(p => p.name === 'Говядина рибай'), rum = planW.purchase.find(p => p.name === 'Ром белый');
+  assert.ok(beef && Math.abs(beef.required - 680) < 0.5, JSON.stringify(beef)); assert.ok(rum && rum.required === 100 && rum.shortage === 100);
+  assert.ok(planW.pfShortages.some(p => p.name === 'Соус перечный п/ф'), 'п/ф соуса — к производству');
+  assert.ok(planW.purchase.some(p => p.name === 'Сливки 33%' && p.required > 0), 'сырьё п/ф — к закупке');
+  assert.ok(!planW.production.some(x => x.code === 'D001' || x.code === 'B010'), 'блюда предзаказа не превращаются в задания «изготовить заранее»');
+  assert.ok(planW.production.some(x => x.code === 'PF10'), 'задание на п/ф');
+});
+t('план записан: строка «PREORDER» в плане, задачи канбана п/ф, заявки поставщикам по нехватке', () => {
+  drop(); const r = J(C.createWeeklyDispatcherPlan('2026-11-25', CHEF)); assert.ok(r.ok || r.success, JSON.stringify(r).slice(0, 300));
+  const pid = (r.data || r).planId;
+  assert.ok(rows('Недельный_План').some(x => x.Type === 'PREORDER' && x.PlanID === pid), 'строка предзаказа в плане');
+  drop(); const q = J(C.createWeeklyPurchaseRequests(pid, CHEF)); assert.ok(q.success, JSON.stringify(q).slice(0, 300));
+  const names = q.data.created.map(x => x.product); assert.ok(names.includes('Ром белый') && names.includes('Говядина рибай'), names.join(', '));
+});
+t('отменённая бронь — предзаказ из плана уходит; склад предзаказ не трогает', () => {
+  const b = rows('Бронирования_V1').find(r => r['Гость'] === 'Соколовы');
+  ok(call('rsBookingStatus', ADM, { idem: key(), id: b.BookingID, version: b.Version, status: 'CANCELLED', reason: 'гости отменили' }));
+  drop(); const p2 = J(C.getWeeklyDispatcher('2026-11-25', CHEF)).data.plan; assert.strictEqual(p2.events.filter(e => e.source === 'PREORDER').length, 0);
+  assert.ok(!rows('Склад_Операции').length);
+});
+
 console.log('\nИтого: ' + pass + ' пройдено, ' + fail + ' не пройдено');
 process.exit(fail ? 1 : 0);

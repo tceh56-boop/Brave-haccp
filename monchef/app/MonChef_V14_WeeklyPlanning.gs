@@ -30,7 +30,10 @@ function _mcV14Events_(from,to){
     var e={};try{e=JSON.parse(v[i][5]||'{}')}catch(ignore){e={};}
     e.id=String(v[i][0]);e.date=ds;if(!e.items)e.items=[];out.push(e);
   }
-  return out.filter(function(e){return String(e.status||'Подтверждён').toLowerCase()!=='отменён'&&String(e.status||'').toLowerCase()!=='отменен';});
+  out=out.filter(function(e){return String(e.status||'Подтверждён').toLowerCase()!=='отменён'&&String(e.status||'').toLowerCase()!=='отменен';});
+  // V101 этап 9: подтверждённые предзаказы броней зала — отдельный источник спроса (сырьё и п/ф; блюда готовят по заказу)
+  try{if(typeof _rsPreorderDemand_==='function')out=out.concat(_rsPreorderDemand_(from,to));}catch(rsErr){try{_log_('WARN','План недели: предзаказы зала не учтены — '+rsErr);}catch(x){}}
+  return out;
 }
 function _mcV14Stock_(){
   var raw=JSON.parse(getStockBalances()||'[]'),m={};
@@ -56,7 +59,7 @@ function _mcV14Build_(fromDate,token,write){
   if(token)_requireAuth_(token,'kanban');
   var monday=_mcV14Monday_(new Date(fromDate||new Date())),from=_mcV14Date_(monday),toD=new Date(monday);toD.setDate(toD.getDate()+6);var to=_mcV14Date_(toD);
   var events=_mcV14Events_(from,to),idx=_buildDishIndexes_(),stock=_mcV14Stock_(),state={raw:{},pf:{},rawMeta:{},pfMeta:{}},dishDays={};
-  events.forEach(function(e){var prodDate=new Date(e.date+'T00:00:00');prodDate.setDate(prodDate.getDate()-1);var pd=_mcV14Date_(prodDate);(e.items||[]).forEach(function(it){var d=idx.dishByCode[it.code];var q=Number(it.qty)||0;if(!d||!q)return;var dk=pd+'|'+d.code;if(!dishDays[dk])dishDays[dk]={date:pd,banquetDate:e.date,code:d.code,name:d.name,qty:0,workshop:(_dishWorkshopMap_()[d.code]||''),banquets:[],dueTime:e.time||''};dishDays[dk].qty+=q;if(dishDays[dk].banquets.indexOf(e.id)<0)dishDays[dk].banquets.push(e.id);_mcV14CollectDish_(d,q,state,idx,{});});});
+  events.forEach(function(e){var prodDate=new Date(e.date+'T00:00:00');prodDate.setDate(prodDate.getDate()-1);var pd=_mcV14Date_(prodDate);(e.items||[]).forEach(function(it){var d=idx.dishByCode[it.code];var q=Number(it.qty)||0;if(!d||!q)return;var dk=pd+'|'+d.code;if(e.source==='PREORDER'){_mcV14CollectDish_(d,q,state,idx,{});return;}if(!dishDays[dk])dishDays[dk]={date:pd,banquetDate:e.date,code:d.code,name:d.name,qty:0,workshop:(_dishWorkshopMap_()[d.code]||''),banquets:[],dueTime:e.time||''};dishDays[dk].qty+=q;if(dishDays[dk].banquets.indexOf(e.id)<0)dishDays[dk].banquets.push(e.id);_mcV14CollectDish_(d,q,state,idx,{});});});
   var purchase=[],shortages=[],pfShort=[];
   Object.keys(state.pf).forEach(function(k){var req=state.pf[k],s=stock[k]||{qty:0,minQty:0},short=Math.max(0,req+Number(s.minQty||0)-Number(s.qty||0));var meta=state.pfMeta[k];if(short>0)pfShort.push({name:meta.name,code:meta.code,required:req,stock:s.qty||0,shortage:short,unit:meta.unit,yield:meta.yield});});
   // ПФ, который будет произведён для закрытия дефицита, превращаем в потребность сырья.
@@ -69,7 +72,7 @@ function _mcV14Build_(fromDate,token,write){
   var planId='WP'+Date.now();
   if(write){
     var ps=_mcV14PlanSheet_(), now=new Date(), actor='';try{actor=_mcSessionFullName_(token?_requireAuth_(token,'kanban'):null)||'';}catch(ignore){}
-    var rows=[];events.forEach(function(e){rows.push([planId,from,to,'BANQUET',e.id,e.date,e.format||e.name||'Банкет','', '', '', '', '', 'CONFIRMED','EVENTS',now,actor]);});
+    var rows=[];events.forEach(function(e){rows.push([planId,from,to,e.source==='PREORDER'?'PREORDER':'BANQUET',e.id,e.date,e.format||e.name||'Банкет','', '', '', '', '', 'CONFIRMED',e.source==='PREORDER'?'RS_PREORDERS':'EVENTS',now,actor]);});
     purchase.forEach(function(p){rows.push([planId,from,to,'PURCHASE','',from,p.name,p.required,p.unit,p.required,p.stock,p.shortage,p.status,'TTK+STOCK',now,actor]);});
     pfShort.forEach(function(p){rows.push([planId,from,to,'SEMI_SHORTAGE','',from,p.name,p.required,p.unit,p.required,p.stock,p.shortage,p.shortage>0?'НУЖНО_ПРОИЗВЕСТИ':'OK','TTK+STOCK',now,actor]);});
     if(rows.length)ps.getRange(ps.getLastRow()+1,1,rows.length,16).setValues(rows);
