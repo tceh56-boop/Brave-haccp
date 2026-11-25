@@ -105,6 +105,7 @@ function _v71Cands_(ctx, name, unit, pid) {
     var recDay = r[4] ? _v71Day_(r[4]) : null;
     if (recDay && recDay > ctx.day) continue;
     if (ctx.blocked[String(r[0])]) continue;
+    if (typeof _v102OwnNoExpiry_ === 'function' && _v102OwnNoExpiry_(r)) continue;   // V102: п/ф без утверждённого срока не используется
     var avail = remain - (ctx.res[String(r[0])] || 0) - (ctx.taken[String(r[0])] || 0);
     if (!(avail > 0.0005)) continue;
     out.push({ i: i, id: String(r[0]), product: String(r[1]), unit: String(r[2] || unit), avail: avail, exp: exp || null, price: parseFloat(r[6]) || 0 });
@@ -124,6 +125,7 @@ function _v71Why_(ctx, name, unit, pid) {
     else if (expDay && expDay < ctx.day) c.exp++;
     else if (recDay && recDay > ctx.day) c.late++;
     else if (ctx.blocked[String(r[0])]) c.blk++;
+    else if (typeof _v102OwnNoExpiry_ === 'function' && _v102OwnNoExpiry_(r)) c.noexp = (c.noexp || 0) + 1;
     else c.res++;
   }
   var p = [];
@@ -131,6 +133,7 @@ function _v71Why_(ctx, name, unit, pid) {
   if (c.exp) p.push('срок истёк: ' + c.exp);
   if (c.late) p.push('получены позже даты продажи: ' + c.late);
   if (c.blk) p.push('заблокированы: ' + c.blk);
+  if (c.noexp) p.push('п/ф без утверждённого срока годности: ' + c.noexp);
   if (c.res) p.push('остаток в резерве банкета или уже списан: ' + c.res);
   if (c.other) p.push('другой статус: ' + c.other);
   return p.length ? 'на складе нет годного остатка (партии ' + p.join('; ') + ')' : 'на складе нет остатка';

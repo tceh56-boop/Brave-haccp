@@ -34,6 +34,7 @@ const tv = ss.insertSheet('ТТК_Версии'); tv.appendRow(['Код блюд
 ['B010', 'B011', 'B012', 'PF20', 'PF21'].forEach(c => tv.appendRow([c, 2, 'действующая', '', '', '', '[]', '', '', '', c === 'PF20' ? 'при +2…+6 °C, в закрытой таре' : '', c === 'PF20' ? '7 сут' : '']));
 
 const login = pin => J(C.loginWithPin(pin, 'dev-' + pin)).token;
+const drop = () => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; };
 const DIR = login('1111'), ADM = login('2222'), WAI = login('3333'), HOT = login('4444'), BAR = login('8888'), BM = login('9999');
 const call = (fn, tok, d) => { C._mcRcDrop_(); C._BOOK_CACHE_ = null; C._MC_ADM_CACHE = null; return J(C[fn](JSON.stringify(d || {}), tok)); };
 const ok = r => { assert.ok(r.success === true || r.ok === true, JSON.stringify(r).slice(0, 400)); return r.data !== undefined ? r.data : r; };
@@ -77,6 +78,8 @@ t('бармен видит рецепт на карточке: состав на
 });
 t('заготовка бара: бармен планирует сироп, начинает и выпускает — сырьё списано, партия заготовки создана', () => {
   err(call('rsBarPrepPlan', BAR, { idem: key(), code: 'PF21', qty: 1000, unit: 'мл' }), 'VALIDATION');   // бульон — не заготовка бара
+  // MC-025: срок сиропа утверждён с основанием (предложил менеджер бара, утвердил директор) — иначе партия без срока в коктейль не идёт
+  drop(); C._v102ShelfSheet_().appendRow(['SH-TEST', 'PF20', 'Сироп сахарный п/ф', 72, 'ТИ предприятия на сиропы, п. 3.2; протокол № 12', 'APPROVED', 'Барнов', new Date(), 'Директорова Анна', new Date(), '', 'OP']);
   const id = ok(call('rsBarPrepPlan', BAR, { idem: key(), code: 'PF20', qty: 1000, unit: 'мл' })).id;
   err(J(C.startProduction(id, HOT)));   // повар горячего цеха задание бара не начинает (цех проверяет сервер)
   ok(call('rsBarPrepStart', BAR, { idem: key(), id }));

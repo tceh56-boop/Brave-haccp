@@ -6811,11 +6811,15 @@ function _fifoConsume_(name, unit, qty, opts) {
   var v = sh.getDataRange().getValues();
   var nameKey = _prodKey_(name);
   var matches = [];
+  // V102 (MC-018/025): заблокированные партии (карантин, отзыв, блокировка) и п/ф собственного производства без утверждённого срока в расход не идут
+  var blk = {}; try { if (!opts.allowBlocked && typeof _v71Blocked_ === 'function') blk = _v71Blocked_(); } catch (eB) {}
   for (var i = 1; i < v.length; i++) {
     var r = v[i];
     // ТЗ §3: та же позиция — по названию или по ProductID (синонимы названий из реестра)
     if (_prodKey_(r[1]) !== nameKey && !(opts.productId && String(r[17] || '') === String(opts.productId))) continue;
     if (String(r[10] || 'active') !== 'active') continue;
+    if (blk[String(r[0])]) continue;
+    if (!opts.allowNoExpiry && typeof _v102OwnNoExpiry_ === 'function' && _v102OwnNoExpiry_(r)) continue;
     var remain = parseFloat(r[9]) || 0;
     if (remain <= 0) continue;
     if (!_unitsCompatible_(r[2], unit || 'г')) continue;
